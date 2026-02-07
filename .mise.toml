@@ -1,0 +1,13 @@
+# .mise.toml — Skein project runtime versions
+# https://mise.jdx.dev/configuration.html
+#
+# mise manages Erlang/OTP and Elixir versions for this project.
+# Run `mise install` to set up, or let the SessionStart hook handle it.
+
+[tools]
+erlang = "28.1"
+elixir = "1.19.5-otp-28"
+
+[env]
+# Ensure hex and rebar are available for mix deps
+MIX_ENV = "dev"
