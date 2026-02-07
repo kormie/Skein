@@ -1,0 +1,16 @@
+module Hello {
+  fn greet(name: String) -> String {
+    "Hello, ${name}!"
+  }
+
+  fn add(a: Int, b: Int) -> Int {
+    a + b
+  }
+
+  fn classify(n: Int) -> String {
+    match n > 0 {
+      true  -> "positive"
+      false -> "non-positive"
+    }
+  }
+}

@@ -2,11 +2,10 @@
   "hooks": {
     "SessionStart": [
       {
-        "matcher": "startup|resume|clear|compact",
         "hooks": [
           {
             "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/session-start.sh",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/session-start.sh",
             "timeout": 300
           }
         ]
@@ -18,7 +17,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/post-edit.sh"
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/post-edit.sh"
           }
         ]
       }
@@ -27,12 +26,18 @@
   "permissions": {
     "allow": [
       "Bash(mix *)",
+      "Bash(elixir *)",
+      "Bash(erl *)",
       "Bash(cd *)",
       "Bash(cat *)",
       "Bash(ls *)",
       "Bash(mkdir *)",
+      "Bash(rm *)",
       "Bash(git *)",
       "Bash(mise *)",
+      "Bash(chmod *)",
+      "Bash(PATH=* mix *)",
+      "Bash(PATH=* elixir *)",
       "Read(*)",
       "Glob(*)",
       "Grep(*)"

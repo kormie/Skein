@@ -1,0 +1,26 @@
+# Elixir/Mix
+/_build/
+/deps/
+*.ez
+*.beam
+
+# Generated
+/cover/
+/doc/
+
+# Editor
+.elixir_ls/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Crash dumps
+erl_crash.dump
+
+# Skein build output
+/_release/
