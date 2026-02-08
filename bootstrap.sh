@@ -132,7 +132,7 @@ cat > examples/refund_agent.skein << 'SKEIN'
 module RefundService {
   capability model("anthropic", "claude-sonnet-4-5")
   capability memory.kv("refund_sessions")
-  capability tool.use("Stripe.CreateRefund")
+  capability tool.use(Stripe.CreateRefund)
   capability store.table("tickets")
 
   type RefundDecision {
@@ -181,7 +181,7 @@ module RefundService {
 
     on phase(Phase.Refund) -> {
       let d = memory.get!("decision")
-      let result = tool.call("Stripe.CreateRefund", {
+      let result = tool.call(Stripe.CreateRefund, {
         customer_id: state.customer_id,
         amount: d.amount
       })

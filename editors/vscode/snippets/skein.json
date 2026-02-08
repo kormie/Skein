@@ -204,7 +204,7 @@
   },
   "Capability": {
     "prefix": "capability",
-    "body": "capability ${1|http.in,http.out,store.table,memory.kv,model,queue.in,queue.publish,topic.publish,topic.consume,event.log,process.spawn,timer,schedule.in|}${2:(\"${3:param}\")}",
+    "body": "capability ${1|http.in,http.out,store.table,memory.kv,model,tool.use,queue.in,queue.publish,topic.publish,topic.consume,event.log,process.spawn,timer,schedule.in|}${2:(${3:param})}",
     "description": "Declare a capability"
   },
   "Test": {

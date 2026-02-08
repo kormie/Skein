@@ -122,10 +122,10 @@ Use the `tool.*` effect calls to interact with tools at runtime:
 
 ```skein
 module AgentService {
-  capability tool.use("CreateRefund")
+  capability tool.use(CreateRefund)
 
   fn process_refund(args: String) -> String {
-    let result = tool.call("CreateRefund", args)
+    let result = tool.call(CreateRefund, args)
     result
   }
 
@@ -133,21 +133,21 @@ module AgentService {
     tool.list()
   }
 
-  fn get_schema(name: String) -> String {
-    tool.schema(name)
+  fn get_schema() -> String {
+    tool.schema(CreateRefund)
   }
 }
 ```
 
 | Effect | Description | Returns |
 |--------|-------------|---------|
-| `tool.call(name, args)` | Execute a registered tool | `Result[Map, ToolError]` |
+| `tool.call(ToolName, args)` | Execute a registered tool | `Result[Map, ToolError]` |
 | `tool.list()` | List all registered tools | `Result[List[ToolInfo], ToolError]` |
-| `tool.schema(name)` | Get a tool's schema | `Result[Map, ToolError]` |
+| `tool.schema(ToolName)` | Get a tool's schema | `Result[Map, ToolError]` |
 
 ### Capability Required
 
-Tool calls require a `capability tool.use("ToolName")` declaration. Without it, the analyzer produces error E0030.
+Tool calls require a `capability tool.use(ToolName)` declaration. Without it, the analyzer produces error E0030.
 
 ### Tracing
 

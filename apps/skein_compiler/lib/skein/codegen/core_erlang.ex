@@ -1352,6 +1352,9 @@ defmodule Skein.CodeGen.CoreErlang do
   end
 
   # Tool effect: tool.call(name, args), tool.list(), tool.schema(name)
+  # For tool.call and tool.schema, the first arg may be an identifier-based
+  # tool reference (e.g., MyTool or Stripe.CreateRefund) that must be lowered
+  # to a runtime string. tool.list() has no tool name arg.
   defp generate_expr(
          %AST.Call{
            target: %AST.FieldAccess{
@@ -1364,7 +1367,18 @@ defmodule Skein.CodeGen.CoreErlang do
        )
        when method in ["call", "list", "schema"] do
     method_atom = String.to_atom(method)
-    args_exprs = Enum.map(args, &generate_expr(&1, scope))
+
+    args_exprs =
+      case {method, args} do
+        {m, [first_arg | rest_args]} when m in ["call", "schema"] ->
+          # Lower tool identifier references to string literals for the runtime
+          first_expr = lower_tool_ref_arg(first_arg, scope)
+          rest_exprs = Enum.map(rest_args, &generate_expr(&1, scope))
+          [first_expr | rest_exprs]
+
+        _ ->
+          Enum.map(args, &generate_expr(&1, scope))
+      end
 
     capabilities = Map.get(scope, :__capabilities__, [])
     caps_expr = generate_capabilities_literal(capabilities)
@@ -1555,6 +1569,18 @@ defmodule Skein.CodeGen.CoreErlang do
   defp generate_expr(%AST.FnRef{name: name}, _scope) do
     :cerl.c_var(var_name(name))
   end
+
+  # ------------------------------------------------------------------
+  # Tool reference lowering helpers
+  # ------------------------------------------------------------------
+
+  # Lower a tool reference argument to a runtime string.
+  # ToolRef nodes (produced by the parser) carry the full dotted name directly.
+  defp lower_tool_ref_arg(%AST.ToolRef{name: name}, _scope) do
+    :cerl.abstract(name)
+  end
+
+  defp lower_tool_ref_arg(expr, scope), do: generate_expr(expr, scope)
 
   # ------------------------------------------------------------------
   # Match arm generation

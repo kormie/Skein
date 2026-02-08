@@ -47,6 +47,7 @@ defmodule Skein.AST do
   defmodule MapLit, do: defstruct([:entries, :meta])
   defmodule Block, do: defstruct([:expressions, :meta])
   defmodule Identifier, do: defstruct([:name, :meta])
+  defmodule ToolRef, do: defstruct([:name, :meta])
   defmodule FnRef, do: defstruct([:name, :meta])
   defmodule Transition, do: defstruct([:phase, :meta])
   defmodule Stop, do: defstruct([:meta])

@@ -127,10 +127,10 @@ defmodule Skein.Integration.ToolTest do
       mod =
         compile!("""
         module ToolCaller {
-          capability tool.use("Greet")
+          capability tool.use(Greet)
 
           fn invoke(name: String) -> String {
-            tool.call("Greet", name)
+            tool.call(Greet, name)
           }
         }
         """)
@@ -142,10 +142,10 @@ defmodule Skein.Integration.ToolTest do
       mod =
         compile!("""
         module ToolCaller2 {
-          capability tool.use("Missing")
+          capability tool.use(Missing)
 
           fn invoke() -> String {
-            tool.call("Missing", "data")
+            tool.call(Missing, "data")
           }
         }
         """)
@@ -162,10 +162,10 @@ defmodule Skein.Integration.ToolTest do
       mod =
         compile!("""
         module ToolCalcBind {
-          capability tool.use("Calc")
+          capability tool.use(Calc)
 
           fn double(n: Int) -> String {
-            let result = tool.call("Calc", n)
+            let result = tool.call(Calc, n)
             result
           }
         }
@@ -187,7 +187,7 @@ defmodule Skein.Integration.ToolTest do
       mod =
         compile!("""
         module ToolLister {
-          capability tool.use("ToolA")
+          capability tool.use(ToolA)
 
           fn get_tools() -> String {
             tool.list()
@@ -208,10 +208,10 @@ defmodule Skein.Integration.ToolTest do
       mod =
         compile!("""
         module ToolSchemaGetter {
-          capability tool.use("SchemaTool")
+          capability tool.use(SchemaTool)
 
           fn get_schema() -> String {
-            tool.schema("SchemaTool")
+            tool.schema(SchemaTool)
           }
         }
         """)
@@ -231,10 +231,10 @@ defmodule Skein.Integration.ToolTest do
       mod =
         compile!("""
         module ToolTraced {
-          capability tool.use("TracedTool")
+          capability tool.use(TracedTool)
 
           fn invoke() -> String {
-            tool.call("TracedTool", "input")
+            tool.call(TracedTool, "input")
           }
         }
         """)
@@ -354,7 +354,7 @@ defmodule Skein.Integration.ToolTest do
         compile!("""
         module FullService {
           capability http.in
-          capability tool.use("HelperTool")
+          capability tool.use(HelperTool)
 
           fn helper(x: Int) -> Int {
             x + 1
@@ -388,6 +388,128 @@ defmodule Skein.Integration.ToolTest do
       caps = mod.__capabilities__()
       tool_caps = Enum.filter(caps, &(&1.kind == "tool.use"))
       assert length(tool_caps) == 1
+    end
+  end
+
+  # ------------------------------------------------------------------
+  # Tool identifier references — end-to-end (capability-as-import)
+  # ------------------------------------------------------------------
+
+  describe "tool identifier references end-to-end" do
+    test "tool.call with identifier goes through full pipeline" do
+      Skein.Runtime.Tool.register("Greet", %{}, fn input ->
+        name = if is_binary(input), do: input, else: inspect(input)
+        {:ok, %{greeting: "Hello, #{name}!"}}
+      end)
+
+      mod =
+        compile!("""
+        module ToolCallerIdent {
+          capability tool.use(Greet)
+
+          fn invoke(name: String) -> String {
+            tool.call(Greet, name)
+          }
+        }
+        """)
+
+      assert {:ok, %{greeting: "Hello, Alice!"}} = mod.invoke("Alice")
+    end
+
+    test "tool.call with dotted identifier end-to-end" do
+      Skein.Runtime.Tool.register("Stripe.Refund", %{}, fn input ->
+        {:ok, %{id: "ref_#{input}"}}
+      end)
+
+      mod =
+        compile!("""
+        module DottedToolCaller {
+          capability tool.use(Stripe.Refund)
+
+          fn refund(data: String) -> String {
+            tool.call(Stripe.Refund, data)
+          }
+        }
+        """)
+
+      assert {:ok, %{id: "ref_123"}} = mod.refund("123")
+    end
+
+    test "tool.schema with identifier end-to-end" do
+      schema = %{input: %{x: :int}, output: %{y: :int}}
+      Skein.Runtime.Tool.register("SchemaTool", schema, fn _i -> {:ok, %{}} end)
+
+      mod =
+        compile!("""
+        module SchemaToolIdent {
+          capability tool.use(SchemaTool)
+
+          fn get_schema() -> String {
+            tool.schema(SchemaTool)
+          }
+        }
+        """)
+
+      assert {:ok, ^schema} = mod.get_schema()
+    end
+
+    test "module with tool declaration and identifier-based tool.call" do
+      Skein.Runtime.Tool.register("HelperTool", %{}, fn input ->
+        {:ok, %{result: "computed_#{input}"}}
+      end)
+
+      mod =
+        compile!("""
+        module FullServiceIdent {
+          capability http.in
+          capability tool.use(HelperTool)
+
+          tool Compute {
+            input { value: Int }
+            output { result: String }
+            implement { "computed" }
+          }
+
+          fn invoke(x: String) -> String {
+            tool.call(HelperTool, x)
+          }
+
+          handler http GET "/health" (req) -> {
+            respond.json(200, "ok")
+          }
+        }
+        """)
+
+      # Tool call works
+      assert {:ok, %{result: "computed_test"}} = mod.invoke("test")
+
+      # Tool metadata still works
+      tools = mod.__tools__()
+      assert length(tools) == 1
+      assert hd(tools).name == "Compute"
+    end
+
+    test "tool.call identifier trace records correct tool name" do
+      Skein.Runtime.Tool.register("TracedIdent", %{}, fn _i -> {:ok, %{}} end)
+      Skein.Runtime.Trace.clear()
+
+      mod =
+        compile!("""
+        module TracedIdentService {
+          capability tool.use(TracedIdent)
+
+          fn invoke() -> String {
+            tool.call(TracedIdent, "input")
+          }
+        }
+        """)
+
+      mod.invoke()
+
+      spans = Skein.Runtime.Trace.recent_spans(10)
+      tool_spans = Enum.filter(spans, &(&1.kind == :tool))
+      assert length(tool_spans) >= 1
+      assert hd(tool_spans).name == "TracedIdent"
     end
   end
 end
