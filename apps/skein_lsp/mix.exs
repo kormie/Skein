@@ -25,16 +25,12 @@ defmodule SkeinLsp.MixProject do
   defp deps do
     [
       {:skein_compiler, in_umbrella: true},
-      {:gen_lsp, git: "https://github.com/elixir-tools/gen_lsp.git", tag: "v0.11.3"},
-      {:typed_struct,
-       git: "https://github.com/ejpcmac/typed_struct.git", tag: "v0.3.0", override: true},
-      {:nimble_options,
-       git: "https://github.com/dashbitco/nimble_options.git", tag: "v1.1.1", override: true},
-      {:schematic,
-       git: "https://github.com/mhanberg/schematic.git", tag: "v0.2.1", override: true},
-      {:jason, git: "https://github.com/michalmuskala/jason.git", tag: "v1.4.4", override: true},
-      {:telemetry,
-       git: "https://github.com/beam-telemetry/telemetry.git", tag: "v1.3.0", override: true}
+      {:gen_lsp, "~> 0.11"},
+      {:typed_struct, "~> 0.3.0"},
+      {:nimble_options, "~> 1.1"},
+      {:schematic, "~> 0.2.1"},
+      {:jason, "~> 1.4"},
+      {:telemetry, "~> 1.3"}
     ]
   end
 end

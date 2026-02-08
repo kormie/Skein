@@ -27,32 +27,44 @@ This page documents the planned work to make Skein fully distributable.
 
 A developer should be able to install Skein, create a project, and deploy a compiled artifact -- without ever cloning the compiler source.
 
-## 1. Standalone CLI Binary
+## 1. Standalone CLI Binary ✅
 
-The highest-priority distribution artifact is a self-contained `skein` binary that bundles the compiler, runtime, and BEAM. A user would download a single file and run `skein new`, `skein build`, `skein test`, and `skein run` directly.
+A self-contained `skein` binary that bundles the compiler, runtime, and BEAM. A user downloads a single file and runs `skein new`, `skein build`, `skein test`, and `skein run` directly.
 
-### Approach: Burrito
+### Burrito Distribution (Implemented)
 
 [Burrito](https://github.com/burrito-elixir/burrito) wraps an OTP release into a self-extracting archive for Linux, macOS, and Windows. It bundles the Erlang runtime so the user doesn't need OTP installed.
 
-**Steps:**
+**Implementation:**
 
-1. Add `burrito` as a dependency in the root `mix.exs`
-2. Configure target platforms (Linux x86_64, macOS ARM64, macOS x86_64)
-3. Add a `releases:` section to `mix.exs` pointing at `skein_cli` as the entry point
-4. Create a `Skein.CLI.Main` module with a `main/1` entry point that dispatches to existing CLI functions
-5. Build per-platform binaries in CI and attach them to GitHub releases
+- `burrito` (~> 1.5) added as a dependency of `skein_cli`
+- Release configured in root `mix.exs` with three targets: Linux x86_64, macOS x86_64, macOS ARM64
+- `Skein.CLI.Main` module implements the `Application` behaviour and dispatches subcommands via `Burrito.Util.Args.argv/0`
+- In release mode (Mix not available), the entry point reads args and routes to `compile`, `new`, `build`, `test`, `run`, `trace`, `version`, and `help` commands
+- In dev mode, the existing Mix aliases continue to work as before
 
-### Alternative: Escript
+**Building standalone binaries:**
 
-An escript is simpler but requires the user to have Erlang/OTP installed. This could serve as an interim solution while the Burrito-based binary is developed.
+```bash
+# Build for the current platform
+MIX_ENV=prod mix release skein
 
-**Steps:**
+# Build for a specific target
+BURRITO_TARGET=linux MIX_ENV=prod mix release skein
+BURRITO_TARGET=macos_arm MIX_ENV=prod mix release skein
+```
 
-1. Add `escript: [main_module: Skein.CLI.Main]` to `skein_cli/mix.exs`
-2. Implement `Skein.CLI.Main.main/1` to parse argv and dispatch
-3. Build with `mix escript.build`
-4. Distribute the resulting `skein` executable
+Binaries are written to `burrito_out/`.
+
+**Using the standalone binary:**
+
+```bash
+./skein new my_project
+./skein build my_project
+./skein test my_project
+./skein run my_project --port 4000
+./skein version
+```
 
 ## 2. OTP Releases for Skein Projects
 
@@ -131,15 +143,14 @@ The installer would detect the user's OS/architecture, download the appropriate 
 
 ## Priority Order
 
-| Priority | Artifact | Rationale |
-|----------|----------|-----------|
-| 1 | Escript | Fastest to implement; unblocks Elixir-native users |
-| 2 | ~~`skein build` writes `.beam` to disk~~ | Done — `skein build --output` writes `.beam` files |
+| Priority | Artifact | Status |
+|----------|----------|--------|
+| 1 | ~~`skein build` writes `.beam` to disk~~ | **Done** — `skein build --output` writes `.beam` files |
+| 2 | ~~Burrito binaries~~ | **Done** — standalone executables for Linux x86_64, macOS x86_64, macOS ARM64 |
 | 3 | OTP release generation | Enables standalone server deployment |
-| 4 | Burrito binaries | Enables zero-dependency install for all users |
-| 5 | Hex.pm packages | Enables embedding Skein in Elixir projects |
-| 6 | Docker template | Enables container-based deployment |
-| 7 | CI release pipeline | Automates everything above |
+| 4 | Hex.pm packages | Enables embedding Skein in Elixir projects |
+| 5 | Docker template | Enables container-based deployment |
+| 6 | CI release pipeline | Automates everything above |
 
 ## Prerequisites
 

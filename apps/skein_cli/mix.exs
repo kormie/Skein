@@ -17,14 +17,16 @@ defmodule SkeinCli.MixProject do
 
   def application do
     [
-      extra_applications: [:logger]
+      extra_applications: [:logger],
+      mod: {Skein.CLI.Main, []}
     ]
   end
 
   defp deps do
     [
       {:skein_compiler, in_umbrella: true},
-      {:skein_runtime, in_umbrella: true}
+      {:skein_runtime, in_umbrella: true},
+      {:burrito, "~> 1.5"}
     ]
   end
 end
