@@ -900,4 +900,353 @@ defmodule Skein.CodeGen.CoreErlangTest do
       assert {:b, 1} in fns
     end
   end
+
+  # ------------------------------------------------------------------
+  # Phase 6a: Agent codegen
+  # ------------------------------------------------------------------
+
+  describe "agent codegen - basic compilation" do
+    test "agent compiles to a BEAM module" do
+      mod =
+        compile!("""
+        agent SimpleAgent {
+          enum Phase {
+            Init -> [Done]
+            Done -> []
+          }
+
+          on start() -> {
+            transition(Phase.Init)
+          }
+
+          on phase(Phase.Init) -> {
+            transition(Phase.Done)
+          }
+
+          on phase(Phase.Done) -> {
+            stop()
+          }
+        }
+        """)
+
+      assert mod.__info__(:module) == mod
+    end
+
+    test "agent exposes __phases__/0 metadata" do
+      mod =
+        compile!("""
+        agent PhasesAgent {
+          enum Phase {
+            Analyze -> [Refund, Done]
+            Refund -> [Done]
+            Done -> []
+          }
+
+          on start() -> {
+            transition(Phase.Analyze)
+          }
+
+          on phase(Phase.Analyze) -> {
+            transition(Phase.Refund)
+          }
+
+          on phase(Phase.Refund) -> {
+            transition(Phase.Done)
+          }
+
+          on phase(Phase.Done) -> {
+            stop()
+          }
+        }
+        """)
+
+      phases = mod.__phases__()
+      assert is_list(phases)
+      assert length(phases) == 3
+
+      analyze = Enum.find(phases, &(&1.name == :analyze))
+      assert analyze != nil
+      assert :refund in analyze.transitions
+      assert :done in analyze.transitions
+    end
+
+    test "agent start_link/1 starts a gen_statem process" do
+      mod =
+        compile!("""
+        agent StartableAgent {
+          enum Phase {
+            Working -> [Done]
+            Done -> []
+          }
+
+          on start() -> {
+            transition(Phase.Working)
+          }
+
+          on phase(Phase.Working) -> {
+            transition(Phase.Done)
+          }
+
+          on phase(Phase.Done) -> {
+            stop()
+          }
+        }
+        """)
+
+      assert {:ok, pid} = mod.start_link(%{})
+      # The agent should transition through all phases and stop
+      # Give it a moment to process
+      Process.sleep(50)
+      refute Process.alive?(pid)
+    end
+  end
+
+  describe "agent codegen - phase transitions" do
+    test "agent transitions through phases and stops" do
+      mod =
+        compile!("""
+        agent TransitionAgent {
+          enum Phase {
+            Init -> [Processing]
+            Processing -> [Done]
+            Done -> []
+          }
+
+          on start() -> {
+            transition(Phase.Init)
+          }
+
+          on phase(Phase.Init) -> {
+            transition(Phase.Processing)
+          }
+
+          on phase(Phase.Processing) -> {
+            transition(Phase.Done)
+          }
+
+          on phase(Phase.Done) -> {
+            stop()
+          }
+        }
+        """)
+
+      {:ok, pid} = mod.start_link(%{})
+      Process.sleep(50)
+      refute Process.alive?(pid)
+    end
+
+    test "agent with match-based transitions" do
+      mod =
+        compile!("""
+        agent MatchAgent {
+          enum Phase {
+            Check -> [Pass, Fail]
+            Pass -> []
+            Fail -> []
+          }
+
+          on start() -> {
+            transition(Phase.Check)
+          }
+
+          on phase(Phase.Check) -> {
+            match true {
+              true -> transition(Phase.Pass)
+              false -> transition(Phase.Fail)
+            }
+          }
+
+          on phase(Phase.Pass) -> {
+            stop()
+          }
+
+          on phase(Phase.Fail) -> {
+            stop()
+          }
+        }
+        """)
+
+      {:ok, pid} = mod.start_link(%{})
+      Process.sleep(50)
+      refute Process.alive?(pid)
+    end
+  end
+
+  describe "agent codegen - start handler with params" do
+    test "agent receives start parameters" do
+      mod =
+        compile!("""
+        agent ParamAgent {
+          enum Phase {
+            Working -> []
+          }
+
+          on start(name: String) -> {
+            transition(Phase.Working)
+          }
+
+          on phase(Phase.Working) -> {
+            stop()
+          }
+        }
+        """)
+
+      {:ok, pid} = mod.start_link(%{name: "test"})
+      Process.sleep(50)
+      refute Process.alive?(pid)
+    end
+  end
+
+  describe "agent codegen - user functions" do
+    test "agent exposes user-defined functions" do
+      mod =
+        compile!("""
+        agent FnAgent {
+          enum Phase {
+            Init -> []
+          }
+
+          fn helper(x: Int) -> Int {
+            x + 1
+          }
+
+          on start() -> {
+            transition(Phase.Init)
+          }
+
+          on phase(Phase.Init) -> {
+            stop()
+          }
+        }
+        """)
+
+      assert mod.helper(5) == 6
+      assert mod.helper(0) == 1
+    end
+  end
+
+  # ------------------------------------------------------------------
+  # Phase 6a acceptance: end-to-end agent lifecycle
+  # ------------------------------------------------------------------
+
+  describe "Phase 6a acceptance - agent compiles to gen_statem" do
+    test "complete agent lifecycle: start -> phases -> transitions -> stop" do
+      mod =
+        compile!("""
+        agent ReviewAgent {
+          state {
+            ticket_id: String
+          }
+
+          enum Phase {
+            Analyze -> [Approve, Reject]
+            Approve -> [Done]
+            Reject -> [Done]
+            Done -> []
+          }
+
+          on start(ticket_id: String) -> {
+            transition(Phase.Analyze)
+          }
+
+          on phase(Phase.Analyze) -> {
+            match 1 > 0 {
+              true -> transition(Phase.Approve)
+              false -> transition(Phase.Reject)
+            }
+          }
+
+          on phase(Phase.Approve) -> {
+            transition(Phase.Done)
+          }
+
+          on phase(Phase.Reject) -> {
+            transition(Phase.Done)
+          }
+
+          on phase(Phase.Done) -> {
+            stop()
+          }
+        }
+        """)
+
+      # Agent compiles to BEAM
+      assert mod.__info__(:module) == mod
+
+      # Phase metadata is accessible
+      phases = mod.__phases__()
+      assert length(phases) == 4
+
+      analyze = Enum.find(phases, &(&1.name == :analyze))
+      assert :approve in analyze.transitions
+      assert :reject in analyze.transitions
+
+      done = Enum.find(phases, &(&1.name == :done))
+      assert done.transitions == []
+
+      # Agent starts, runs through all phases, and stops
+      {:ok, pid} = mod.start_link(%{ticket_id: "T-123"})
+      Process.sleep(50)
+      refute Process.alive?(pid)
+    end
+
+    test "invalid transitions are caught at compile time" do
+      # This should fail analysis because Done -> Analyze is not declared
+      source = """
+      agent InvalidAgent {
+        enum Phase {
+          Analyze -> [Done]
+          Done -> []
+        }
+
+        on start() -> {
+          transition(Phase.Analyze)
+        }
+
+        on phase(Phase.Analyze) -> {
+          transition(Phase.Done)
+        }
+
+        on phase(Phase.Done) -> {
+          transition(Phase.Analyze)
+        }
+      }
+      """
+
+      {:ok, tokens} = Skein.Lexer.tokenize(source)
+      {:ok, ast} = Skein.Parser.parse(tokens)
+      assert {:error, errors} = Skein.Analyzer.analyze(ast)
+
+      transition_error =
+        Enum.find(errors, &(&1.code == "E0030" and &1.message =~ "Done cannot transition"))
+
+      assert transition_error != nil
+    end
+
+    test "missing phase handlers are caught at compile time" do
+      source = """
+      agent IncompleteAgent {
+        enum Phase {
+          A -> [B]
+          B -> []
+        }
+
+        on start() -> {
+          transition(Phase.A)
+        }
+
+        on phase(Phase.A) -> {
+          transition(Phase.B)
+        }
+      }
+      """
+
+      {:ok, tokens} = Skein.Lexer.tokenize(source)
+      {:ok, ast} = Skein.Parser.parse(tokens)
+      assert {:error, errors} = Skein.Analyzer.analyze(ast)
+
+      missing_error = Enum.find(errors, &(&1.code == "E0032" and &1.message =~ "B"))
+      assert missing_error != nil
+    end
+  end
 end

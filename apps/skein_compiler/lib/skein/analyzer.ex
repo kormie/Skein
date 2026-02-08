@@ -83,7 +83,8 @@ defmodule Skein.Analyzer do
 
   @builtin_type_names Map.keys(@builtin_types)
 
-  @spec analyze(AST.Module.t()) :: {:ok, AST.Module.t()} | {:error, [Error.t()]}
+  @spec analyze(AST.Module.t() | AST.Agent.t()) ::
+          {:ok, AST.Module.t() | AST.Agent.t()} | {:error, [Error.t()]}
   def analyze(%AST.Module{} = ast) do
     env = build_initial_env(ast)
     errors = []
@@ -100,6 +101,32 @@ defmodule Skein.Analyzer do
     # Pass 3: Capability checking — verify effect calls have covering capabilities
     errors = errors ++ check_capabilities(ast.declarations, env)
 
+    filter_result(errors, ast)
+  end
+
+  def analyze(%AST.Agent{} = ast) do
+    env = build_agent_env(ast)
+    errors = []
+
+    # Pass 1: Validate state field types
+    errors = errors ++ validate_agent_state(ast.state, env)
+
+    # Pass 2: Validate phase transitions
+    errors = errors ++ validate_phase_transitions(ast, env)
+
+    # Pass 3: Check that all reachable phases have handlers
+    errors = errors ++ check_phase_handlers(ast, env)
+
+    # Pass 4: Validate transition() calls match declared transitions
+    errors = errors ++ validate_transition_calls(ast, env)
+
+    # Pass 5: Type-check agent function bodies
+    errors = errors ++ check_functions(ast.fns, env)
+
+    filter_result(errors, ast)
+  end
+
+  defp filter_result(errors, ast) do
     case Enum.filter(errors, &(&1.severity == :error)) do
       [] when errors == [] ->
         {:ok, ast}
@@ -1140,6 +1167,288 @@ defmodule Skein.Analyzer do
       ]
     end
   end
+
+  # ------------------------------------------------------------------
+  # Agent environment
+  # ------------------------------------------------------------------
+
+  defp build_agent_env(%AST.Agent{
+         capabilities: capabilities,
+         state: state,
+         phases: phases,
+         fns: fns,
+         meta: meta
+       }) do
+    file = Map.get(meta, :file, "unknown")
+
+    types = Map.new(@builtin_type_names, fn name -> {name, :builtin} end)
+
+    types =
+      types
+      |> Map.put("Option", :builtin_param)
+      |> Map.put("Result", :builtin_param)
+      |> Map.put("List", :builtin_param)
+      |> Map.put("Map", :builtin_param)
+      |> Map.put("Set", :builtin_param)
+
+    # Register Phase enum as a type if it exists
+    enums =
+      if phases do
+        %{"Phase" => phases}
+      else
+        %{}
+      end
+
+    types =
+      Enum.reduce(enums, types, fn {name, _}, acc -> Map.put(acc, name, :enum) end)
+
+    # Register functions
+    functions =
+      fns
+      |> Enum.filter(&match?(%AST.Fn{}, &1))
+      |> Map.new(fn %AST.Fn{name: name, params: params, return_type: ret} ->
+        {name, %{params: params, return_type: resolve_type(ret, types)}}
+      end)
+
+    # Build state variables
+    variables =
+      state
+      |> Enum.map(fn %AST.Field{name: name, type: type} ->
+        {name, resolve_type(type, types)}
+      end)
+      |> Map.new()
+
+    %{
+      types: types,
+      enums: enums,
+      functions: functions,
+      variables: variables,
+      capabilities: capabilities,
+      current_fn_return_type: nil,
+      file: file
+    }
+  end
+
+  # ------------------------------------------------------------------
+  # Agent state validation
+  # ------------------------------------------------------------------
+
+  defp validate_agent_state(state_fields, env) do
+    Enum.flat_map(state_fields, fn %AST.Field{type: type} ->
+      validate_type_ref(type, env)
+    end)
+  end
+
+  # ------------------------------------------------------------------
+  # Phase transition validation
+  # ------------------------------------------------------------------
+
+  defp validate_phase_transitions(%AST.Agent{phases: nil}, _env), do: []
+
+  defp validate_phase_transitions(
+         %AST.Agent{phases: %AST.EnumDecl{variants: variants}, meta: meta},
+         env
+       ) do
+    variant_names = MapSet.new(variants, & &1.name)
+
+    # Check that all transition targets exist as phase variants
+    Enum.flat_map(variants, fn %AST.Variant{name: source, transitions: targets, meta: vmeta} ->
+      Enum.flat_map(targets, fn target ->
+        if MapSet.member?(variant_names, target) do
+          []
+        else
+          [
+            %Error{
+              code: "E0030",
+              severity: :error,
+              message:
+                "Invalid phase transition: '#{source}' declares transition to unknown phase '#{target}'",
+              location: location_from_meta(vmeta, env.file),
+              fix_hint: "Add '#{target}' as a Phase variant or remove the transition",
+              fix_code: "#{target} -> []"
+            }
+          ]
+        end
+      end)
+    end) ++ check_unreachable_phases(variants, meta, env)
+  end
+
+  defp check_unreachable_phases(variants, meta, env) do
+    # Find all phases that are transition targets (reachable)
+    all_targets =
+      variants
+      |> Enum.flat_map(& &1.transitions)
+      |> MapSet.new()
+
+    # The first variant is implicitly reachable (it's the start phase)
+    first_variant =
+      case variants do
+        [first | _] -> first.name
+        [] -> nil
+      end
+
+    Enum.flat_map(variants, fn %AST.Variant{name: name} ->
+      if name == first_variant or MapSet.member?(all_targets, name) do
+        []
+      else
+        [
+          %Error{
+            code: "E0031",
+            severity: :warning,
+            message: "Phase '#{name}' is unreachable — no transitions lead to it",
+            location: location_from_meta(meta, env.file),
+            fix_hint: "Add a transition to '#{name}' from another phase or remove it"
+          }
+        ]
+      end
+    end)
+  end
+
+  # ------------------------------------------------------------------
+  # Phase handler checking
+  # ------------------------------------------------------------------
+
+  defp check_phase_handlers(%AST.Agent{phases: nil}, _env), do: []
+
+  defp check_phase_handlers(
+         %AST.Agent{phases: %AST.EnumDecl{variants: variants}, handlers: handlers, meta: meta},
+         env
+       ) do
+    # Collect all phase handler references
+    handled_phases =
+      handlers
+      |> Enum.filter(fn %AST.AgentHandler{kind: kind} -> kind == :phase end)
+      |> Enum.map(fn %AST.AgentHandler{phase: phase} -> phase end)
+      |> MapSet.new()
+
+    # Every phase variant needs a handler
+    Enum.flat_map(variants, fn %AST.Variant{name: name} ->
+      if MapSet.member?(handled_phases, name) do
+        []
+      else
+        [
+          %Error{
+            code: "E0032",
+            severity: :error,
+            message: "Phase '#{name}' has no handler — add 'on phase(Phase.#{name}) -> { ... }'",
+            location: location_from_meta(meta, env.file),
+            fix_hint: "Add a handler for this phase",
+            fix_code: "on phase(Phase.#{name}) -> { ... }"
+          }
+        ]
+      end
+    end)
+  end
+
+  # ------------------------------------------------------------------
+  # Transition call validation
+  # ------------------------------------------------------------------
+
+  defp validate_transition_calls(%AST.Agent{phases: nil, handlers: handlers}, env) do
+    # If there are no phases but there are transition calls, that's an error
+    transitions = collect_transitions_from_handlers(handlers)
+
+    Enum.map(transitions, fn {_phase, tmeta} ->
+      %Error{
+        code: "E0033",
+        severity: :error,
+        message: "transition() used but no Phase enum is defined in this agent",
+        location: location_from_meta(tmeta, env.file),
+        fix_hint: "Define an 'enum Phase { ... }' in the agent"
+      }
+    end)
+  end
+
+  defp validate_transition_calls(
+         %AST.Agent{phases: %AST.EnumDecl{variants: variants}, handlers: handlers},
+         env
+       ) do
+    # Build transition map: source_phase -> allowed_targets
+    transition_map =
+      Map.new(variants, fn %AST.Variant{name: name, transitions: targets} ->
+        {name, MapSet.new(targets)}
+      end)
+
+    variant_names = MapSet.new(variants, & &1.name)
+
+    # Check each handler's transition calls
+    Enum.flat_map(handlers, fn handler ->
+      source_phase =
+        case handler do
+          %AST.AgentHandler{kind: :start} -> :start
+          %AST.AgentHandler{kind: :phase, phase: phase} -> phase
+        end
+
+      transitions = collect_transitions_from_body(handler.body)
+
+      Enum.flat_map(transitions, fn {target_phase, tmeta} ->
+        cond do
+          not MapSet.member?(variant_names, target_phase) ->
+            [
+              %Error{
+                code: "E0030",
+                severity: :error,
+                message: "Transition to unknown phase '#{target_phase}'",
+                location: location_from_meta(tmeta, env.file),
+                fix_hint: "Use a valid Phase variant name"
+              }
+            ]
+
+          source_phase == :start ->
+            # Start handler can transition to any phase
+            []
+
+          true ->
+            allowed = Map.get(transition_map, source_phase, MapSet.new())
+
+            if MapSet.member?(allowed, target_phase) do
+              []
+            else
+              allowed_list = allowed |> MapSet.to_list() |> Enum.join(", ")
+
+              [
+                %Error{
+                  code: "E0030",
+                  severity: :error,
+                  message:
+                    "Invalid transition: Phase.#{source_phase} cannot transition to Phase.#{target_phase}. Allowed targets: [#{allowed_list}]",
+                  location: location_from_meta(tmeta, env.file),
+                  fix_hint:
+                    "Update the Phase enum to allow this transition or use an allowed target",
+                  fix_code: "#{source_phase} -> [#{allowed_list}, #{target_phase}]"
+                }
+              ]
+            end
+        end
+      end)
+    end)
+  end
+
+  defp collect_transitions_from_handlers(handlers) do
+    Enum.flat_map(handlers, fn handler ->
+      collect_transitions_from_body(handler.body)
+    end)
+  end
+
+  defp collect_transitions_from_body(%AST.Block{expressions: exprs}) do
+    Enum.flat_map(exprs, &collect_transitions_from_body/1)
+  end
+
+  defp collect_transitions_from_body(%AST.Transition{phase: phase, meta: meta}) do
+    [{phase, meta}]
+  end
+
+  defp collect_transitions_from_body(%AST.Match{arms: arms}) do
+    Enum.flat_map(arms, fn %AST.MatchArm{body: body} ->
+      collect_transitions_from_body(body)
+    end)
+  end
+
+  defp collect_transitions_from_body(%AST.Let{value: value}) do
+    collect_transitions_from_body(value)
+  end
+
+  defp collect_transitions_from_body(_), do: []
 
   # ------------------------------------------------------------------
   # Helpers

@@ -110,7 +110,9 @@ defmodule Skein.Runtime.StoreTest do
     end
 
     test "returns all records matching multiple filters" do
-      {:ok, _} = Store.put("users", %{id: "u1", name: "Alice", role: "admin", active: true}, @caps)
+      {:ok, _} =
+        Store.put("users", %{id: "u1", name: "Alice", role: "admin", active: true}, @caps)
+
       {:ok, _} = Store.put("users", %{id: "u2", name: "Bob", role: "admin", active: false}, @caps)
       {:ok, _} = Store.put("users", %{id: "u3", name: "Carol", role: "user", active: true}, @caps)
 

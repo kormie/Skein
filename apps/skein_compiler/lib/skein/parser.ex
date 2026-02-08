@@ -26,17 +26,23 @@ defmodule Skein.Parser do
 
   @spec parse(tokens()) :: parse_result()
   def parse(tokens) do
-    case parse_module(tokens, "unknown") do
-      {:ok, ast, _rest} -> {:ok, ast}
-      {:error, errors} -> {:error, errors}
-    end
+    parse(tokens, "unknown")
   end
 
   @spec parse(tokens(), String.t()) :: parse_result()
   def parse(tokens, file) do
-    case parse_module(tokens, file) do
-      {:ok, ast, _rest} -> {:ok, ast}
-      {:error, errors} -> {:error, errors}
+    case tokens do
+      [{:agent, _} | _] ->
+        case parse_agent(tokens, file) do
+          {:ok, ast, _rest} -> {:ok, ast}
+          {:error, errors} -> {:error, errors}
+        end
+
+      _ ->
+        case parse_module(tokens, file) do
+          {:ok, ast, _rest} -> {:ok, ast}
+          {:error, errors} -> {:error, errors}
+        end
     end
   end
 
@@ -59,6 +65,160 @@ defmodule Skein.Parser do
 
       {:ok, ast, rest}
     end
+  end
+
+  # ------------------------------------------------------------------
+  # Agent
+  # ------------------------------------------------------------------
+
+  defp parse_agent([{:agent, {line, col}} | rest], file) do
+    with {:ok, name, rest} <- expect_upper_ident(rest, file),
+         {:ok, _lbrace, rest} <- expect(:lbrace, rest, file),
+         {:ok, agent_parts, rest} <-
+           parse_agent_body(rest, file, %{
+             capabilities: [],
+             state: [],
+             phases: nil,
+             handlers: [],
+             fns: []
+           }),
+         {:ok, _rbrace, rest} <- expect(:rbrace, rest, file) do
+      ast = %AST.Agent{
+        name: name,
+        capabilities: agent_parts.capabilities,
+        state: agent_parts.state,
+        phases: agent_parts.phases,
+        handlers: agent_parts.handlers,
+        fns: agent_parts.fns,
+        meta: %{line: line, col: col, file: file}
+      }
+
+      {:ok, ast, rest}
+    end
+  end
+
+  defp parse_agent_body([{:rbrace, _} | _] = tokens, _file, acc) do
+    {:ok, acc, tokens}
+  end
+
+  defp parse_agent_body([{:eof, _} | _] = tokens, _file, acc) do
+    {:ok, acc, tokens}
+  end
+
+  defp parse_agent_body([{:capability, _} | _] = tokens, file, acc) do
+    case parse_capability(tokens, file) do
+      {:ok, cap, rest} ->
+        parse_agent_body(rest, file, %{acc | capabilities: acc.capabilities ++ [cap]})
+
+      {:error, _} = error ->
+        error
+    end
+  end
+
+  defp parse_agent_body([{:state, {line, col}} | rest], file, acc) do
+    with {:ok, _lbrace, rest} <- expect(:lbrace, rest, file),
+         {:ok, fields, rest} <- parse_fields(rest, file, []),
+         {:ok, _rbrace, rest} <- expect(:rbrace, rest, file) do
+      state_fields =
+        Enum.map(fields, fn field ->
+          %{field | meta: Map.put(field.meta, :file, file)}
+        end)
+
+      _ = {line, col}
+      parse_agent_body(rest, file, %{acc | state: state_fields})
+    end
+  end
+
+  defp parse_agent_body([{:enum, _}, {:upper_ident, _, "Phase"} | _] = tokens, file, acc) do
+    case parse_enum_decl(tokens, file) do
+      {:ok, enum_decl, rest} ->
+        parse_agent_body(rest, file, %{acc | phases: enum_decl})
+
+      {:error, _} = error ->
+        error
+    end
+  end
+
+  defp parse_agent_body([{:on, _} | _] = tokens, file, acc) do
+    case parse_agent_handler(tokens, file) do
+      {:ok, handler, rest} ->
+        parse_agent_body(rest, file, %{acc | handlers: acc.handlers ++ [handler]})
+
+      {:error, _} = error ->
+        error
+    end
+  end
+
+  defp parse_agent_body([{:fn, _} | _] = tokens, file, acc) do
+    case parse_fn(tokens, file) do
+      {:ok, fn_decl, rest} ->
+        parse_agent_body(rest, file, %{acc | fns: acc.fns ++ [fn_decl]})
+
+      {:error, _} = error ->
+        error
+    end
+  end
+
+  defp parse_agent_body(tokens, file, _acc) do
+    unexpected_token_error(
+      tokens,
+      file,
+      "an agent body element (capability, state, enum Phase, on, fn)"
+    )
+  end
+
+  # Parse agent event handler: on start(...) -> { ... } or on phase(Phase.X) -> { ... }
+  defp parse_agent_handler([{:on, {line, col}} | rest], file) do
+    case rest do
+      [{:ident, _, "start"}, {:lparen, _} | rest2] ->
+        # on start(params...) -> { ... }
+        with {:ok, params, rest3} <- parse_params(rest2, file),
+             {:ok, _rparen, rest3} <- expect(:rparen, rest3, file),
+             {:ok, _arrow, rest3} <- expect(:arrow, rest3, file),
+             {:ok, body, rest3} <- parse_block(rest3, file) do
+          handler = %AST.AgentHandler{
+            kind: :start,
+            phase: nil,
+            params: params,
+            body: body,
+            meta: %{line: line, col: col, file: file}
+          }
+
+          {:ok, handler, rest3}
+        end
+
+      [{:ident, _, "phase"}, {:lparen, _} | rest2] ->
+        # on phase(Phase.VariantName) -> { ... }
+        with {:ok, phase_ref, rest3} <- parse_phase_ref(rest2, file),
+             {:ok, _rparen, rest3} <- expect(:rparen, rest3, file),
+             {:ok, _arrow, rest3} <- expect(:arrow, rest3, file),
+             {:ok, body, rest3} <- parse_block(rest3, file) do
+          handler = %AST.AgentHandler{
+            kind: :phase,
+            phase: phase_ref,
+            params: [],
+            body: body,
+            meta: %{line: line, col: col, file: file}
+          }
+
+          {:ok, handler, rest3}
+        end
+
+      _ ->
+        unexpected_token_error(rest, file, "'start' or 'phase' after 'on'")
+    end
+  end
+
+  # Parse Phase.VariantName reference
+  defp parse_phase_ref(
+         [{:upper_ident, _, "Phase"}, {:dot, _}, {:upper_ident, _, variant} | rest],
+         _file
+       ) do
+    {:ok, variant, rest}
+  end
+
+  defp parse_phase_ref(tokens, file) do
+    unexpected_token_error(tokens, file, "a phase reference (Phase.VariantName)")
   end
 
   # ------------------------------------------------------------------
@@ -627,6 +787,39 @@ defmodule Skein.Parser do
   # Match expression
   defp parse_let_or_match_or_pipe([{:match, _} | _] = tokens, file) do
     parse_match(tokens, file)
+  end
+
+  # Emit expression: emit EventName { field: value, ... }
+  defp parse_let_or_match_or_pipe(
+         [{:emit, {line, col}}, {:upper_ident, _, event_name} | rest],
+         file
+       ) do
+    case rest do
+      [{:lbrace, _} | rest2] ->
+        case parse_emit_fields(rest2, file, []) do
+          {:ok, fields, rest3} ->
+            emit = %AST.Emit{
+              event_name: event_name,
+              fields: fields,
+              meta: %{line: line, col: col, file: file}
+            }
+
+            {:ok, emit, rest3}
+
+          {:error, _} = error ->
+            error
+        end
+
+      _ ->
+        # emit with no fields
+        emit = %AST.Emit{
+          event_name: event_name,
+          fields: [],
+          meta: %{line: line, col: col, file: file}
+        }
+
+        {:ok, emit, rest}
+    end
   end
 
   defp parse_let_or_match_or_pipe(tokens, file) do
@@ -1269,6 +1462,24 @@ defmodule Skein.Parser do
     parse_block(tokens, file)
   end
 
+  # transition(Phase.VariantName)
+  defp parse_primary([{:transition, {line, col}}, {:lparen, _} | rest], file) do
+    with {:ok, phase_ref, rest2} <- parse_phase_ref(rest, file),
+         {:ok, _rparen, rest2} <- expect(:rparen, rest2, file) do
+      transition = %AST.Transition{
+        phase: phase_ref,
+        meta: %{line: line, col: col, file: file}
+      }
+
+      {:ok, transition, rest2}
+    end
+  end
+
+  # stop()
+  defp parse_primary([{:stop, {line, col}}, {:lparen, _}, {:rparen, _} | rest], file) do
+    {:ok, %AST.Stop{meta: %{line: line, col: col, file: file}}, rest}
+  end
+
   defp parse_primary(tokens, file) do
     unexpected_token_error(tokens, file, "an expression")
   end
@@ -1292,6 +1503,26 @@ defmodule Skein.Parser do
 
       {:error, _} = error ->
         error
+    end
+  end
+
+  # ------------------------------------------------------------------
+  # Emit fields: { field: value, field: value }
+  # ------------------------------------------------------------------
+
+  defp parse_emit_fields([{:rbrace, _} | rest], _file, acc) do
+    {:ok, Enum.reverse(acc), rest}
+  end
+
+  defp parse_emit_fields([{:comma, _} | rest], file, acc) do
+    parse_emit_fields(rest, file, acc)
+  end
+
+  defp parse_emit_fields(tokens, file, acc) do
+    with {:ok, name, rest} <- expect_lower_ident(tokens, file),
+         {:ok, _colon, rest} <- expect(:colon, rest, file),
+         {:ok, value, rest} <- parse_expression(rest, file) do
+      parse_emit_fields(rest, file, [{name, value} | acc])
     end
   end
 
