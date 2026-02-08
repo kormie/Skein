@@ -66,17 +66,32 @@ skein_compiler/
 
 ## Dependencies
 
-All dependencies use git sources (hex.pm is unreachable in the development environment):
+All dependencies are sourced from [hex.pm](https://hex.pm):
+
+### Compiler (`skein_compiler`)
 
 | Dependency | Version | Purpose |
 |-----------|---------|---------|
-| `nimble_parsec` | v1.4.2 | PEG parser combinator (used by lexer) |
-| `jason` | v1.4.4 | JSON encoding for structured errors and schema gen |
-| `stream_data` | v1.1.2 | Property-based testing generators (test/dev only) |
-| `propcheck` | v1.4.2 | Stateful property testing via PropEr (test/dev only) |
-| `libgraph` | 0.13.3 | Graph library, transitive dep of propcheck (override) |
+| `nimble_parsec` | ~> 1.4 | PEG parser combinator (used by lexer) |
+| `jason` | ~> 1.4 | JSON encoding for structured errors and schema gen |
+| `stream_data` | ~> 1.1 | Property-based testing generators (test/dev only) |
+| `propcheck` | ~> 1.4 | Stateful property testing via PropEr (test/dev only) |
 
-The `libgraph` dependency uses `override: true` to replace propcheck's transitive hex.pm dependency with a git source.
+### Runtime (`skein_runtime`)
+
+| Dependency | Version | Purpose |
+|-----------|---------|---------|
+| `bandit` | ~> 1.6 | HTTP server |
+| `plug` | ~> 1.16 | HTTP middleware |
+| `ecto` / `ecto_sql` | ~> 3.12 | Data layer |
+| `ecto_sqlite3` | ~> 0.17 | SQLite adapter for local dev |
+| `telemetry` | ~> 1.3 | Instrumentation |
+
+### CLI (`skein_cli`)
+
+| Dependency | Version | Purpose |
+|-----------|---------|---------|
+| `burrito` | ~> 1.5 | Standalone binary packaging (wraps OTP release + ERTS) |
 
 ## Key Files
 

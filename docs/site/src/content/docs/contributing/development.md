@@ -20,15 +20,28 @@ mix compile
 
 ### Dependencies
 
-All dependencies use git sources (no hex.pm required):
+All dependencies are sourced from [hex.pm](https://hex.pm):
 
 ```bash
 # Fetch dependencies
 mix deps.get
-
-# If a dependency fails to fetch, retry -- git can be flaky
-mix deps.get
 ```
+
+### Building a Standalone Binary
+
+Skein uses [Burrito](https://github.com/burrito-elixir/burrito) to produce self-contained executables that bundle the Erlang runtime:
+
+```bash
+# Build for the current platform
+MIX_ENV=prod mix release skein
+
+# Build for a specific target
+BURRITO_TARGET=linux MIX_ENV=prod mix release skein
+BURRITO_TARGET=macos MIX_ENV=prod mix release skein
+BURRITO_TARGET=macos_arm MIX_ENV=prod mix release skein
+```
+
+Binaries are written to `burrito_out/`. The entry point is `Skein.CLI.Main`, which dispatches subcommands (`compile`, `new`, `build`, `test`, `run`, `trace`).
 
 ## Project Layout
 
