@@ -1,0 +1,7 @@
+{
+  "name": "github-pages-astro",
+  "description": "Documentation site management for Astro + Starlight on GitHub Pages",
+  "version": "1.0.0",
+  "author": { "name": "David Kormushoff" },
+  "hooks": "./hooks/hooks.json"
+}

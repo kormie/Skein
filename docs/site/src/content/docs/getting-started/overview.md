@@ -51,7 +51,7 @@ The end-to-end compilation pipeline is operational. You can write a `.skein` fil
 - Runtime library (agents, HTTP, storage, LLM, tracing)
 - CLI tooling (`skein new`, `skein build`, `skein test`)
 
-See the [Roadmap](/roadmap/phase-2/) for the full plan.
+See the [Roadmap](/Skein/roadmap/phase-2/) for the full plan.
 
 ## Technology Stack
 

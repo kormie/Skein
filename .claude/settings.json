@@ -21,6 +21,28 @@
           }
         ]
       }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash $CLAUDE_PROJECT_DIR/.claude/plugins/github-pages-astro/hooks/docs-freshness-check.sh",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash $CLAUDE_PROJECT_DIR/.claude/plugins/github-pages-astro/hooks/stop-dev-server.sh",
+            "timeout": 10
+          }
+        ]
+      }
     ]
   },
   "permissions": {
@@ -38,6 +60,9 @@
       "Bash(chmod *)",
       "Bash(PATH=* mix *)",
       "Bash(PATH=* elixir *)",
+      "Bash(bun *)",
+      "Bash(bunx *)",
+      "Bash(pkill *)",
       "Read(*)",
       "Glob(*)",
       "Grep(*)"

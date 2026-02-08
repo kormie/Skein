@@ -1,0 +1,86 @@
+{
+  "site": {
+    "directory": "docs/site",
+    "baseUrl": "/Skein/",
+    "siteUrl": "https://kormie.github.io",
+    "contentDir": "src/content/docs"
+  },
+  "sections": [
+    {
+      "slug": "getting-started",
+      "label": "Getting Started",
+      "purpose": "Entry points for new users — overview, project structure, quickstart"
+    },
+    {
+      "slug": "language",
+      "label": "Language",
+      "purpose": "Skein language syntax, types, expressions, and module system"
+    },
+    {
+      "slug": "compiler",
+      "label": "Compiler",
+      "purpose": "Compiler internals — pipeline, lexer, parser, codegen, error handling"
+    },
+    {
+      "slug": "testing",
+      "label": "Testing",
+      "purpose": "Test strategies — unit tests, property-based tests"
+    },
+    {
+      "slug": "contributing",
+      "label": "Contributing",
+      "purpose": "Development setup, conventions, and contribution guidelines"
+    },
+    {
+      "slug": "roadmap",
+      "label": "Roadmap",
+      "purpose": "Future phases and planned features"
+    },
+    {
+      "slug": "reference",
+      "label": "Reference",
+      "purpose": "Exhaustive technical details and agent quick reference"
+    }
+  ],
+  "sourceMappings": [
+    {
+      "source": "docs/SKEIN_SPEC.md",
+      "docs": ["language/syntax", "language/types", "language/expressions", "language/modules-and-functions"]
+    },
+    {
+      "source": "docs/ARCHITECTURE.md",
+      "docs": ["compiler/pipeline"]
+    },
+    {
+      "source": "docs/IMPLEMENTATION_PLAN.md",
+      "docs": ["roadmap/phase-2"]
+    },
+    {
+      "source": "apps/skein_compiler/lib/skein/lexer.ex",
+      "docs": ["compiler/lexer"]
+    },
+    {
+      "source": "apps/skein_compiler/lib/skein/parser.ex",
+      "docs": ["compiler/parser"]
+    },
+    {
+      "source": "apps/skein_compiler/lib/skein/codegen/*.ex",
+      "docs": ["compiler/codegen"]
+    },
+    {
+      "source": "apps/skein_compiler/lib/skein/error.ex",
+      "docs": ["compiler/errors"]
+    }
+  ],
+  "terminology": {
+    "agent": ["bot", "assistant"],
+    "module": ["class", "package"],
+    "handler": ["endpoint", "route"],
+    "phase": ["state", "stage"],
+    "capability": ["permission", "privilege"]
+  },
+  "agentDocs": {
+    "quickReferencePage": "reference/agent-quick-reference",
+    "llmsSmallExcludes": ["roadmap"]
+  }
+}
