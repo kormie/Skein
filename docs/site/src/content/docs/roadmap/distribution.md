@@ -15,7 +15,13 @@ mix skein.build my_project/
 mix skein.run my_project/ --port 4000
 ```
 
-This page documents the planned work to make Skein distributable.
+`skein build` now supports writing compiled `.beam` files to disk with the `--output` flag:
+
+```bash
+mix skein.build my_project/ --output _build/beam
+```
+
+This page documents the planned work to make Skein fully distributable.
 
 ## Goal
 
@@ -69,10 +75,10 @@ _build/rel/my_service/
 
 **Steps:**
 
-1. Update `skein build` to write `.beam` files to disk instead of only loading them into the running VM
+1. ~~Update `skein build` to write `.beam` files to disk instead of only loading them into the running VM~~ Done
 2. Generate a minimal Mix project on the fly that depends on `skein_runtime` and includes the compiled modules
 3. Run `mix release` against the generated project to produce a self-contained OTP release
-4. Support `skein build --output ./release` to specify the output path
+4. ~~Support `skein build --output ./release` to specify the output path~~ Done
 
 ### Docker Images
 
@@ -128,7 +134,7 @@ The installer would detect the user's OS/architecture, download the appropriate 
 | Priority | Artifact | Rationale |
 |----------|----------|-----------|
 | 1 | Escript | Fastest to implement; unblocks Elixir-native users |
-| 2 | `skein build` writes `.beam` to disk | Required for any deployment workflow |
+| 2 | ~~`skein build` writes `.beam` to disk~~ | Done — `skein build --output` writes `.beam` files |
 | 3 | OTP release generation | Enables standalone server deployment |
 | 4 | Burrito binaries | Enables zero-dependency install for all users |
 | 5 | Hex.pm packages | Enables embedding Skein in Elixir projects |
@@ -137,8 +143,8 @@ The installer would detect the user's OS/architecture, download the appropriate 
 
 ## Prerequisites
 
-Before distribution work begins:
+All prerequisites for distribution work have been completed:
 
-- **Enum variant matching** needs to land in codegen (the last gap in the core language)
-- **Supervisor declarations** should be at least minimally implemented for agent pool use cases
-- **`skein build`** needs to be extended to write `.beam` files to a target directory, which is a prerequisite for both OTP releases and Docker images
+- ~~**Enum variant matching** needs to land in codegen (the last gap in the core language)~~ **Done.** Enum variants compile to tagged tuples (e.g., `{:charge, 100}`) and pattern matching in `match` expressions correctly destructures them. Both simple atom variants and variants with fields are supported.
+- ~~**Supervisor declarations** should be at least minimally implemented for agent pool use cases~~ **Done.** Supervisors can be declared with `child`, `strategy:`, and `max_restarts:` directives. Parsing, analysis (including validation), and codegen (exposing `__supervisors__/0` metadata) are implemented.
+- ~~**`skein build`** needs to be extended to write `.beam` files to a target directory~~ **Done.** `skein build <project> --output <dir>` compiles all `.skein` files and writes `.beam` files to the specified directory. The compiler also exposes `Compiler.compile_to_binary/1` for programmatic use.

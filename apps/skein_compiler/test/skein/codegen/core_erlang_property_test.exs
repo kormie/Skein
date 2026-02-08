@@ -241,6 +241,90 @@ defmodule Skein.CodeGen.CoreErlangPropertyTest do
     end
   end
 
+  # ------------------------------------------------------------------
+  # Enum variant matching property tests (distribution prerequisite)
+  # ------------------------------------------------------------------
+
+  property "enum variant matching dispatches correctly for two-variant enums" do
+    check all(value <- StreamData.integer(-1000..1000)) do
+      mod_name = unique_module_name()
+
+      source = """
+      module #{mod_name} {
+        enum Parity {
+          Even(value: Int)
+          Odd(value: Int)
+        }
+
+        fn classify(p: Parity) -> Int {
+          match p {
+            Parity.Even(v) -> v * 2
+            Parity.Odd(v) -> v * 2 + 1
+          }
+        }
+      }
+      """
+
+      {:module, mod} = Compiler.compile_string(source)
+      assert mod.classify({:even, value}) == value * 2
+      assert mod.classify({:odd, value}) == value * 2 + 1
+    end
+  end
+
+  property "enum variant matching with wildcard catches unmatched variants" do
+    check all(value <- StreamData.integer(0..1000)) do
+      mod_name = unique_module_name()
+
+      source = """
+      module #{mod_name} {
+        enum Wrapper {
+          Val(n: Int)
+          Empty
+        }
+
+        fn extract(w: Wrapper) -> Int {
+          match w {
+            Wrapper.Val(n) -> n
+            _ -> 0
+          }
+        }
+      }
+      """
+
+      {:module, mod} = Compiler.compile_string(source)
+      assert mod.extract({:val, value}) == value
+      assert mod.extract(:empty) == 0
+    end
+  end
+
+  property "supervisor with N children compiles and exposes correct metadata" do
+    check all(
+            n <- StreamData.integer(1..5),
+            strategy <- StreamData.member_of(["one_for_one", "one_for_all", "rest_for_one"])
+          ) do
+      mod_name = unique_module_name()
+
+      children =
+        Enum.map(1..n, fn i -> "    child Worker#{i}" end)
+        |> Enum.join("\n")
+
+      source = """
+      module #{mod_name} {
+        supervisor Main {
+      #{children}
+          strategy: #{strategy}
+        }
+      }
+      """
+
+      {:module, mod} = Compiler.compile_string(source)
+      [sup] = mod.__supervisors__()
+      assert sup.name == "Main"
+      assert sup.strategy == String.to_atom(strategy)
+      assert length(sup.children) == n
+    end
+  end
+
   property "schedule handler compiles for standard cron expressions" do
     check all(
             minute <- StreamData.member_of(["*", "*/5", "*/10", "0", "30"]),

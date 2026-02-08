@@ -1869,4 +1869,154 @@ defmodule Skein.ParserTest do
       assert h3.source == "schedule"
     end
   end
+
+  # ------------------------------------------------------------------
+  # Supervisor declarations
+  # ------------------------------------------------------------------
+
+  describe "supervisor declarations" do
+    test "parses supervisor with a single child" do
+      source = """
+      module M {
+        supervisor Main {
+          child HttpServer
+        }
+      }
+      """
+
+      assert {:ok, %AST.Module{declarations: [sup]}} = parse(source)
+      assert %AST.Supervisor{name: "Main"} = sup
+      assert length(sup.children) == 1
+      [child] = sup.children
+      assert %AST.Child{target: "HttpServer", args: [], options: %{}} = child
+    end
+
+    test "parses supervisor with child options" do
+      source = """
+      module M {
+        supervisor Main {
+          child HttpServer { restart: permanent }
+        }
+      }
+      """
+
+      assert {:ok, %AST.Module{declarations: [sup]}} = parse(source)
+      [child] = sup.children
+      assert child.target == "HttpServer"
+      assert child.options == %{"restart" => "permanent"}
+    end
+
+    test "parses supervisor with child arguments" do
+      source = """
+      module M {
+        supervisor Main {
+          child AgentPool(RefundAgent)
+        }
+      }
+      """
+
+      assert {:ok, %AST.Module{declarations: [sup]}} = parse(source)
+      [child] = sup.children
+      assert child.target == "AgentPool"
+      assert child.args == ["RefundAgent"]
+    end
+
+    test "parses supervisor with child arguments and options" do
+      source = """
+      module M {
+        supervisor Main {
+          child AgentPool(RefundAgent) { max: 5000, restart: transient }
+        }
+      }
+      """
+
+      assert {:ok, %AST.Module{declarations: [sup]}} = parse(source)
+      [child] = sup.children
+      assert child.target == "AgentPool"
+      assert child.args == ["RefundAgent"]
+      assert child.options == %{"max" => 5000, "restart" => "transient"}
+    end
+
+    test "parses supervisor strategy" do
+      source = """
+      module M {
+        supervisor Main {
+          child HttpServer
+          strategy: one_for_one
+        }
+      }
+      """
+
+      assert {:ok, %AST.Module{declarations: [sup]}} = parse(source)
+      assert sup.strategy == :one_for_one
+    end
+
+    test "parses supervisor max_restarts" do
+      source = """
+      module M {
+        supervisor Main {
+          child HttpServer
+          max_restarts: 10 per 60s
+        }
+      }
+      """
+
+      assert {:ok, %AST.Module{declarations: [sup]}} = parse(source)
+      assert sup.max_restarts == {10, 60}
+    end
+
+    test "parses full supervisor with all options" do
+      source = """
+      module M {
+        supervisor Main {
+          child HttpServer { restart: permanent }
+          child AgentPool(RefundAgent) { max: 5000, restart: transient }
+          strategy: one_for_one
+          max_restarts: 10 per 60s
+        }
+      }
+      """
+
+      assert {:ok, %AST.Module{declarations: [sup]}} = parse(source)
+      assert sup.name == "Main"
+      assert length(sup.children) == 2
+      assert sup.strategy == :one_for_one
+      assert sup.max_restarts == {10, 60}
+
+      [c1, c2] = sup.children
+      assert c1.target == "HttpServer"
+      assert c1.options == %{"restart" => "permanent"}
+      assert c2.target == "AgentPool"
+      assert c2.args == ["RefundAgent"]
+      assert c2.options == %{"max" => 5000, "restart" => "transient"}
+    end
+
+    test "parses supervisor with one_for_all strategy" do
+      source = """
+      module M {
+        supervisor Main {
+          child HttpServer
+          strategy: one_for_all
+        }
+      }
+      """
+
+      assert {:ok, %AST.Module{declarations: [sup]}} = parse(source)
+      assert sup.strategy == :one_for_all
+    end
+
+    test "parses supervisor with rest_for_one strategy" do
+      source = """
+      module M {
+        supervisor Main {
+          child HttpServer
+          strategy: rest_for_one
+        }
+      }
+      """
+
+      assert {:ok, %AST.Module{declarations: [sup]}} = parse(source)
+      assert sup.strategy == :rest_for_one
+    end
+  end
 end

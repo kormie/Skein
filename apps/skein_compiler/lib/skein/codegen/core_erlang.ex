@@ -67,6 +67,11 @@ defmodule Skein.CodeGen.CoreErlang do
       ast.declarations
       |> Enum.filter(&match?(%AST.ToolDecl{}, &1))
 
+    # Collect supervisor declarations
+    supervisors =
+      ast.declarations
+      |> Enum.filter(&match?(%AST.Supervisor{}, &1))
+
     # Collect test declarations (test, scenario, golden)
     tests =
       ast.declarations
@@ -135,8 +140,20 @@ defmodule Skein.CodeGen.CoreErlang do
     tests_fname = :cerl.c_fname(:__tests__, 0)
     tests_fun = generate_tests_meta_fn(tests)
 
+    # Add __supervisors__/0 for supervisor metadata
+    supervisors_fname = :cerl.c_fname(:__supervisors__, 0)
+    supervisors_fun = generate_supervisors_meta_fn(supervisors)
+
     all_exports =
-      [info_fname, caps_fname, handlers_fname, tools_fname, tests_fname | fn_exports] ++
+      [
+        info_fname,
+        caps_fname,
+        handlers_fname,
+        tools_fname,
+        tests_fname,
+        supervisors_fname
+        | fn_exports
+      ] ++
         handler_exports ++ test_exports
 
     all_defs =
@@ -145,7 +162,8 @@ defmodule Skein.CodeGen.CoreErlang do
         {caps_fname, caps_fun},
         {handlers_fname, handlers_fun},
         {tools_fname, tools_fun},
-        {tests_fname, tests_fun}
+        {tests_fname, tests_fun},
+        {supervisors_fname, supervisors_fun}
         | fn_defs
       ] ++ handler_defs ++ test_defs
 
@@ -591,6 +609,37 @@ defmodule Skein.CodeGen.CoreErlang do
     |> String.to_atom()
   end
 
+  # Convert enum variant name to a runtime atom.
+  # "Event.Charge" -> :charge, "ChargeSucceeded" -> :charge_succeeded
+  # Strips the enum prefix (before the dot) if present and converts to snake_case atom.
+  defp variant_pattern_atom(name) when is_binary(name) do
+    # Take the part after the last dot (the variant name itself)
+    base =
+      case String.split(name, ".") do
+        [_enum, variant] -> variant
+        [variant] -> variant
+        parts -> List.last(parts)
+      end
+
+    base
+    |> to_snake_case()
+    |> String.to_atom()
+  end
+
+  defp to_snake_case(name) do
+    name
+    |> String.graphemes()
+    |> Enum.with_index()
+    |> Enum.map(fn {char, idx} ->
+      if idx > 0 and char == String.upcase(char) and char != String.downcase(char) do
+        "_" <> String.downcase(char)
+      else
+        String.downcase(char)
+      end
+    end)
+    |> Enum.join()
+  end
+
   # ------------------------------------------------------------------
   # Function generation
   # ------------------------------------------------------------------
@@ -841,6 +890,75 @@ defmodule Skein.CodeGen.CoreErlang do
       |> :cerl.make_list()
 
     :cerl.c_fun([], tests_list)
+  end
+
+  # Generate __supervisors__/0 function that returns supervisor metadata
+  defp generate_supervisors_meta_fn(supervisors) do
+    sups_list =
+      supervisors
+      |> Enum.map(fn %AST.Supervisor{
+                       name: name,
+                       children: children,
+                       strategy: strategy,
+                       max_restarts: max_restarts
+                     } ->
+        name_pair =
+          :cerl.c_map_pair(
+            :cerl.c_atom(:name),
+            :cerl.abstract(name)
+          )
+
+        strategy_pair =
+          :cerl.c_map_pair(
+            :cerl.c_atom(:strategy),
+            :cerl.c_atom(strategy || :one_for_one)
+          )
+
+        max_restarts_pair =
+          :cerl.c_map_pair(
+            :cerl.c_atom(:max_restarts),
+            case max_restarts do
+              {count, period} -> :cerl.c_tuple([:cerl.c_int(count), :cerl.c_int(period)])
+              nil -> :cerl.c_atom(nil)
+            end
+          )
+
+        children_list =
+          children
+          |> Enum.map(fn %AST.Child{target: target, args: args, options: options} ->
+            target_pair =
+              :cerl.c_map_pair(:cerl.c_atom(:target), :cerl.abstract(target))
+
+            args_pair =
+              :cerl.c_map_pair(:cerl.c_atom(:args), :cerl.abstract(args || []))
+
+            opts_pairs =
+              (options || %{})
+              |> Enum.map(fn {k, v} ->
+                :cerl.c_map_pair(:cerl.c_atom(String.to_atom(k)), :cerl.abstract(v))
+              end)
+
+            options_pair =
+              :cerl.c_map_pair(
+                :cerl.c_atom(:options),
+                :cerl.c_map(opts_pairs)
+              )
+
+            :cerl.c_map([target_pair, args_pair, options_pair])
+          end)
+          |> :cerl.make_list()
+
+        children_pair =
+          :cerl.c_map_pair(
+            :cerl.c_atom(:children),
+            children_list
+          )
+
+        :cerl.c_map([name_pair, strategy_pair, max_restarts_pair, children_pair])
+      end)
+      |> :cerl.make_list()
+
+    :cerl.c_fun([], sups_list)
   end
 
   defp test_description(%AST.Test{description: d}), do: d
@@ -1579,12 +1697,37 @@ defmodule Skein.CodeGen.CoreErlang do
   end
 
   defp generate_pattern(%AST.Identifier{name: name}, scope) do
-    vname = var_name(name)
-    {:cerl.c_var(vname), Map.put(scope, name, vname)}
+    first_char = String.at(name, 0)
+
+    if first_char == String.upcase(first_char) and first_char != "_" do
+      # Uppercase identifier in pattern position: enum variant atom match
+      # "Active" -> :active, "ChargeSucceeded" -> :charge_succeeded
+      atom = variant_pattern_atom(name)
+      {:cerl.c_atom(atom), scope}
+    else
+      # Lowercase identifier: variable binding
+      vname = var_name(name)
+      {:cerl.c_var(vname), Map.put(scope, name, vname)}
+    end
   end
 
   defp generate_pattern(%AST.Wildcard{}, scope) do
     {:cerl.c_var(gen_var()), scope}
+  end
+
+  # Enum variant pattern: Variant(arg1, arg2, ...) or Enum.Variant(arg1, arg2, ...)
+  # Compiles to a tuple pattern: {:variant_name, Arg1, Arg2, ...}
+  defp generate_pattern(%AST.Call{target: %AST.Identifier{name: name}, args: args}, scope) do
+    variant_atom = variant_pattern_atom(name)
+
+    {arg_patterns, final_scope} =
+      Enum.reduce(args, {[], scope}, fn arg, {pats, sc} ->
+        {pat, new_sc} = generate_pattern(arg, sc)
+        {[pat | pats], new_sc}
+      end)
+
+    tuple_elements = [:cerl.c_atom(variant_atom) | Enum.reverse(arg_patterns)]
+    {:cerl.c_tuple(tuple_elements), final_scope}
   end
 
   # ------------------------------------------------------------------

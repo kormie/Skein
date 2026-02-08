@@ -2,8 +2,8 @@
 
 ## Project State
 - Phases 1-7 + 8a + 8b + 8c + 8d + 8e + 8f are complete (all Phase 8 subphases done)
+- Distribution prerequisites complete: enum variant matching, supervisors, build --output
 - All core phases complete — MVP reached
-- 779 tests + 81 properties = 860 total, 0 failures
 - Elixir 1.19.5, OTP 28, managed by mise
 
 ## Key Patterns
@@ -75,8 +75,17 @@
 - Property tests (StreamData) required where inputs have wide spaces
 - The compiler should validate all Phase enum clauses have `on phase` handlers (already done: E0032)
 
+## Distribution Prerequisites (Completed)
+- **Enum variant matching**: codegen supports `%AST.Call{}` patterns in `generate_pattern/2`, producing tuple patterns `{:variant_atom, Arg1, ...}`. Uppercase identifiers in pattern position match as atoms.
+- **Supervisor declarations**: Parser handles `supervisor Name { child Target { opts } strategy: ... max_restarts: N per Ms }`. Codegen exposes `__supervisors__/0` metadata. Analyzer validates strategy, max_restarts, and warns on empty children.
+- **`skein build --output`**: `CLI.build/1` accepts `--output <dir>` flag. Uses `Compiler.compile_to_binary/1` to get module name + binary, writes `.beam` files to disk.
+- `to_snake_case/1` helper in codegen converts CamelCase variant names to snake_case atoms
+- `variant_pattern_atom/1` strips enum prefix from dotted names (e.g., "Event.Charge" -> :charge)
+- `decimal` dependency needed override at umbrella root level (`mix.exs`), not just in child app
+
 ## What's Next
-- All Phase 8 subphases complete — MVP reached
+- Distribution work is unblocked — all three prerequisites are done
+- Next priorities: Escript, OTP release generation, Burrito binaries, Hex.pm packages
 - Post-MVP backlog: FFI, hot code upgrades, Web IDE, LSP, llm.embed, managed deployment
 
 ## Streaming Implementation Notes (Phase 8f)

@@ -2033,4 +2033,210 @@ defmodule Skein.CodeGen.CoreErlangTest do
       assert {:respond_json, 200, "scheduled"} = mod.__handler_2__(%{})
     end
   end
+
+  # ------------------------------------------------------------------
+  # Enum variant matching codegen (distribution prerequisite)
+  # ------------------------------------------------------------------
+
+  describe "enum variant matching" do
+    test "match on simple enum variants without fields" do
+      mod =
+        compile!("""
+        module EnumSimple {
+          enum Color {
+            Red
+            Green
+            Blue
+          }
+
+          fn describe(c: String) -> String {
+            match c {
+              Red -> "red"
+              Green -> "green"
+              Blue -> "blue"
+            }
+          }
+        }
+        """)
+
+      assert mod.describe(:red) == "red"
+      assert mod.describe(:green) == "green"
+      assert mod.describe(:blue) == "blue"
+    end
+
+    test "match on enum variant with fields extracts data" do
+      mod =
+        compile!("""
+        module EnumFields {
+          enum Event {
+            Charge(amount: Int)
+            Refund(amount: Int, reason: String)
+          }
+
+          fn describe_event(e: Event) -> String {
+            match e {
+              Event.Charge(amt) -> "charged"
+              Event.Refund(amt, reason) -> "refunded"
+            }
+          }
+        }
+        """)
+
+      assert mod.describe_event({:charge, 100}) == "charged"
+      assert mod.describe_event({:refund, 50, "defective"}) == "refunded"
+    end
+
+    test "match on enum variant with fields uses bound variables" do
+      mod =
+        compile!("""
+        module EnumBind {
+          enum Shape {
+            Circle(radius: Int)
+            Rect(width: Int, height: Int)
+          }
+
+          fn area(s: Shape) -> Int {
+            match s {
+              Shape.Circle(r) -> r * r
+              Shape.Rect(w, h) -> w * h
+            }
+          }
+        }
+        """)
+
+      assert mod.area({:circle, 5}) == 25
+      assert mod.area({:rect, 3, 4}) == 12
+    end
+
+    test "match on enum variant with wildcard arm" do
+      mod =
+        compile!("""
+        module EnumWildcard {
+          enum Status {
+            Active
+            Inactive
+            Suspended(reason: String)
+          }
+
+          fn is_active(s: Status) -> Bool {
+            match s {
+              Active -> true
+              _ -> false
+            }
+          }
+        }
+        """)
+
+      assert mod.is_active(:active) == true
+      assert mod.is_active(:inactive) == false
+      assert mod.is_active({:suspended, "violation"}) == false
+    end
+
+    test "enum variant matching in nested expressions" do
+      mod =
+        compile!("""
+        module EnumNested {
+          enum Result {
+            Ok(value: Int)
+            Err(message: String)
+          }
+
+          fn unwrap_or(r: Result, default: Int) -> Int {
+            match r {
+              Result.Ok(v) -> v
+              Result.Err(msg) -> default
+            }
+          }
+        }
+        """)
+
+      assert mod.unwrap_or({:ok, 42}, 0) == 42
+      assert mod.unwrap_or({:err, "oops"}, 0) == 0
+    end
+  end
+
+  # ------------------------------------------------------------------
+  # Supervisor codegen (distribution prerequisite)
+  # ------------------------------------------------------------------
+
+  describe "supervisor codegen" do
+    test "module with supervisor compiles successfully" do
+      mod =
+        compile!("""
+        module SupBasic {
+          supervisor Main {
+            child HttpServer
+            strategy: one_for_one
+          }
+        }
+        """)
+
+      assert is_atom(mod)
+    end
+
+    test "module with supervisor exposes __supervisors__/0 metadata" do
+      mod =
+        compile!("""
+        module SupMeta {
+          supervisor AppSup {
+            child HttpServer { restart: permanent }
+            child Worker
+            strategy: one_for_one
+            max_restarts: 10 per 60s
+          }
+        }
+        """)
+
+      sups = mod.__supervisors__()
+      assert is_list(sups)
+      assert length(sups) == 1
+      [sup] = sups
+      assert sup.name == "AppSup"
+      assert sup.strategy == :one_for_one
+      assert sup.max_restarts == {10, 60}
+      assert length(sup.children) == 2
+    end
+
+    test "module with multiple supervisors exposes all" do
+      mod =
+        compile!("""
+        module SupMulti {
+          supervisor Primary {
+            child HttpServer
+            strategy: one_for_one
+          }
+
+          supervisor Secondary {
+            child Worker
+            strategy: one_for_all
+          }
+        }
+        """)
+
+      sups = mod.__supervisors__()
+      assert length(sups) == 2
+      names = Enum.map(sups, & &1.name)
+      assert "Primary" in names
+      assert "Secondary" in names
+    end
+
+    test "supervisor child metadata includes target and options" do
+      mod =
+        compile!("""
+        module SupChildren {
+          supervisor Main {
+            child AgentPool(RefundAgent) { max: 5000, restart: transient }
+            strategy: one_for_one
+          }
+        }
+        """)
+
+      [sup] = mod.__supervisors__()
+      [child] = sup.children
+      assert child.target == "AgentPool"
+      assert child.args == ["RefundAgent"]
+      assert child.options.max == 5000
+      assert child.options.restart == "transient"
+    end
+  end
 end

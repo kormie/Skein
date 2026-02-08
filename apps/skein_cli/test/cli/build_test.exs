@@ -106,4 +106,119 @@ defmodule Skein.CLI.BuildTest do
       assert result.compiled == 1
     end
   end
+
+  describe "build/1 with --output" do
+    test "writes .beam files to output directory", %{
+      tmp_dir: tmp,
+      src_dir: src,
+      build_dir: build_dir
+    } do
+      File.write!(Path.join(src, "math.skein"), """
+      module Math {
+        fn add(a: Int, b: Int) -> Int {
+          a + b
+        }
+      }
+      """)
+
+      assert {:ok, result} = CLI.build([tmp, "--output", build_dir])
+      assert result.compiled == 1
+      assert result.output_dir == build_dir
+
+      # Verify .beam file was written
+      beam_files = Path.wildcard(Path.join(build_dir, "*.beam"))
+      assert length(beam_files) == 1
+      assert hd(beam_files) =~ "Elixir.Skein.User.Math.beam"
+    end
+
+    test "writes multiple .beam files to output directory", %{
+      tmp_dir: tmp,
+      src_dir: src,
+      build_dir: build_dir
+    } do
+      File.write!(Path.join(src, "math.skein"), """
+      module Math {
+        fn add(a: Int, b: Int) -> Int { a + b }
+      }
+      """)
+
+      File.write!(Path.join(src, "greeter.skein"), """
+      module Greeter {
+        fn hello(name: String) -> String { "Hello, ${name}!" }
+      }
+      """)
+
+      assert {:ok, result} = CLI.build([tmp, "--output", build_dir])
+      assert result.compiled == 2
+
+      beam_files = Path.wildcard(Path.join(build_dir, "*.beam")) |> Enum.sort()
+      assert length(beam_files) == 2
+    end
+
+    test "beam files can be loaded and executed", %{
+      tmp_dir: tmp,
+      src_dir: src,
+      build_dir: build_dir
+    } do
+      File.write!(Path.join(src, "loader_test.skein"), """
+      module LoaderTest {
+        fn multiply(a: Int, b: Int) -> Int {
+          a * b
+        }
+      }
+      """)
+
+      {:ok, _result} = CLI.build([tmp, "--output", build_dir])
+
+      # Purge the in-memory module so we can verify loading from disk
+      mod = :"Elixir.Skein.User.LoaderTest"
+      :code.purge(mod)
+      :code.delete(mod)
+
+      # Load from .beam file
+      beam_path = Path.join(build_dir, "Elixir.Skein.User.LoaderTest.beam")
+      assert File.exists?(beam_path)
+      {:ok, beam_binary} = File.read(beam_path)
+      {:module, loaded_mod} = :code.load_binary(mod, ~c"#{beam_path}", beam_binary)
+
+      assert loaded_mod.multiply(6, 7) == 42
+    end
+
+    test "creates output directory if it doesn't exist", %{tmp_dir: tmp, src_dir: src} do
+      new_output = Path.join(tmp, "new_output_dir")
+      refute File.dir?(new_output)
+
+      File.write!(Path.join(src, "simple.skein"), """
+      module Simple {
+        fn id(x: Int) -> Int { x }
+      }
+      """)
+
+      assert {:ok, result} = CLI.build([tmp, "--output", new_output])
+      assert result.compiled == 1
+      assert File.dir?(new_output)
+
+      beam_files = Path.wildcard(Path.join(new_output, "*.beam"))
+      assert length(beam_files) == 1
+    end
+
+    test "build without --output does not write beam files", %{
+      tmp_dir: tmp,
+      src_dir: src,
+      build_dir: build_dir
+    } do
+      File.write!(Path.join(src, "no_output.skein"), """
+      module NoOutput {
+        fn x() -> Int { 1 }
+      }
+      """)
+
+      assert {:ok, result} = CLI.build([tmp])
+      refute Map.has_key?(result, :output_dir)
+
+      # Build dir should be empty
+      beam_files = Path.wildcard(Path.join(build_dir, "*.beam"))
+      assert beam_files == []
+    end
+  end
 end
