@@ -82,7 +82,7 @@ Converts source text to a flat list of tokens. Each token is a tuple:
 {:token_type, {line, col}, value} # e.g. {:ident, {1, 8}, "hello"}
 ```
 
-See [Lexer](/compiler/lexer/) for details.
+See [Lexer](/Skein/compiler/lexer/) for details.
 
 ### Stage 2: Parser
 
@@ -91,7 +91,7 @@ See [Lexer](/compiler/lexer/) for details.
 
 Builds a structured AST from the token stream using recursive descent with Pratt-style operator precedence.
 
-See [Parser](/compiler/parser/) for details.
+See [Parser](/Skein/compiler/parser/) for details.
 
 ### Stage 3: Analyzer
 
@@ -111,7 +111,7 @@ In Phase 1, the analyzer simply returns the AST unchanged. Future phases will ad
 
 Translates the AST to Core Erlang using the `:cerl` module, then compiles to BEAM bytecode via `:compile.forms/2`.
 
-See [Code Generator](/compiler/codegen/) for details.
+See [Code Generator](/Skein/compiler/codegen/) for details.
 
 ### Stage 5: Module Loading
 

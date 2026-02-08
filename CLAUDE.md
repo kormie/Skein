@@ -346,6 +346,17 @@ mix skein.compile path/to/file.skein
 mix skein.spec
 ```
 
+## Documentation Site
+
+Published documentation lives at https://kormie.github.io/Skein/ and is built with Astro + Starlight from source in `docs/site/`.
+
+- **Agent entry point:** https://kormie.github.io/Skein/llms.txt
+- **Full docs for agents:** https://kormie.github.io/Skein/llms-full.txt
+- **Compact docs for agents:** https://kormie.github.io/Skein/llms-small.txt
+- **Site config:** `.docs-config.json` (source mappings, sections, terminology)
+- **Build:** `cd docs/site && bun install && bunx astro build`
+- **Dev server:** `cd docs/site && bunx astro dev`
+
 ## What Not To Do
 
 - Don't build a package manager yet. The standard library is the only dependency for now.
