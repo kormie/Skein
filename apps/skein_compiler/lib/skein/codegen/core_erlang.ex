@@ -39,13 +39,38 @@ defmodule Skein.CodeGen.CoreErlang do
       ast.declarations
       |> Enum.filter(&match?(%AST.Fn{}, &1))
 
-    # Build exports and function definitions
-    exports = Enum.map(fns, fn f -> :cerl.c_fname(String.to_atom(f.name), length(f.params)) end)
+    # Build function name -> arity map for local call resolution
+    fn_arities =
+      fns
+      |> Map.new(fn f -> {f.name, length(f.params)} end)
 
-    defs =
+    # Collect handler declarations
+    handlers =
+      ast.declarations
+      |> Enum.filter(&match?(%AST.Handler{}, &1))
+      |> Enum.with_index()
+
+    # Build exports and function definitions for regular functions
+    fn_exports =
+      Enum.map(fns, fn f -> :cerl.c_fname(String.to_atom(f.name), length(f.params)) end)
+
+    fn_defs =
       Enum.map(fns, fn f ->
         fname = :cerl.c_fname(String.to_atom(f.name), length(f.params))
-        fun = generate_fn(f, capabilities)
+        fun = generate_fn(f, capabilities, fn_arities)
+        {fname, fun}
+      end)
+
+    # Build handler exports and definitions
+    handler_exports =
+      Enum.map(handlers, fn {_handler, index} ->
+        :cerl.c_fname(handler_fn_name(index), 1)
+      end)
+
+    handler_defs =
+      Enum.map(handlers, fn {handler, index} ->
+        fname = :cerl.c_fname(handler_fn_name(index), 1)
+        fun = generate_handler_fn(handler, capabilities, fn_arities)
         {fname, fun}
       end)
 
@@ -57,12 +82,27 @@ defmodule Skein.CodeGen.CoreErlang do
     caps_fname = :cerl.c_fname(:__capabilities__, 0)
     caps_fun = generate_capabilities_fn(capabilities)
 
+    # Add __handlers__/0 for handler metadata
+    handlers_fname = :cerl.c_fname(:__handlers__, 0)
+    handlers_fun = generate_handlers_meta_fn(handlers)
+
+    all_exports =
+      [info_fname, caps_fname, handlers_fname | fn_exports] ++ handler_exports
+
+    all_defs =
+      [
+        {info_fname, info_fun},
+        {caps_fname, caps_fun},
+        {handlers_fname, handlers_fun}
+        | fn_defs
+      ] ++ handler_defs
+
     mod =
       :cerl.c_module(
         :cerl.c_atom(module_atom),
-        [info_fname, caps_fname | exports],
+        all_exports,
         [],
-        [{info_fname, info_fun}, {caps_fname, caps_fun} | defs]
+        all_defs
       )
 
     case :compile.forms(mod, [:from_core, :binary, :return_errors]) do
@@ -89,7 +129,7 @@ defmodule Skein.CodeGen.CoreErlang do
   # Function generation
   # ------------------------------------------------------------------
 
-  defp generate_fn(%AST.Fn{params: params, body: body}, capabilities) do
+  defp generate_fn(%AST.Fn{params: params, body: body}, capabilities, fn_arities) do
     # Create variable bindings for params
     param_vars = Enum.map(params, fn %AST.Field{name: name} -> :cerl.c_var(var_name(name)) end)
 
@@ -99,9 +139,61 @@ defmodule Skein.CodeGen.CoreErlang do
       |> Enum.map(fn %AST.Field{name: name} -> {name, var_name(name)} end)
       |> Map.new()
       |> Map.put(:__capabilities__, capabilities)
+      |> Map.put(:__fn_arities__, fn_arities)
 
     body_expr = generate_expr(body, scope)
     :cerl.c_fun(param_vars, body_expr)
+  end
+
+  # ------------------------------------------------------------------
+  # Handler generation
+  # ------------------------------------------------------------------
+
+  defp handler_fn_name(index) do
+    String.to_atom("__handler_#{index}__")
+  end
+
+  defp generate_handler_fn(%AST.Handler{param: param, body: body}, capabilities, fn_arities) do
+    # Handler takes a single request map argument
+    req_var = :cerl.c_var(var_name(param))
+
+    scope =
+      %{param => var_name(param)}
+      |> Map.put(:__capabilities__, capabilities)
+      |> Map.put(:__fn_arities__, fn_arities)
+
+    body_expr = generate_expr(body, scope)
+    :cerl.c_fun([req_var], body_expr)
+  end
+
+  # Generate __handlers__/0 function that returns handler metadata
+  defp generate_handlers_meta_fn(handlers) do
+    handlers_list =
+      handlers
+      |> Enum.map(fn {%AST.Handler{method: method, route: route}, index} ->
+        method_pair =
+          :cerl.c_map_pair(
+            :cerl.c_atom(:method),
+            :cerl.c_atom(String.to_atom(method))
+          )
+
+        route_pair =
+          :cerl.c_map_pair(
+            :cerl.c_atom(:route),
+            :cerl.abstract(route)
+          )
+
+        fn_pair =
+          :cerl.c_map_pair(
+            :cerl.c_atom(:handler),
+            :cerl.c_atom(handler_fn_name(index))
+          )
+
+        :cerl.c_map([method_pair, route_pair, fn_pair])
+      end)
+      |> :cerl.make_list()
+
+    :cerl.c_fun([], handlers_list)
   end
 
   # Generate __capabilities__/0 function that returns capability metadata as a list of maps
@@ -302,6 +394,34 @@ defmodule Skein.CodeGen.CoreErlang do
     end
   end
 
+  # respond.json(status, body) — generates a response tuple
+  defp generate_expr(
+         %AST.Call{
+           target: %AST.FieldAccess{
+             subject: %AST.Identifier{name: "respond"},
+             field: "json"
+           },
+           args: args
+         },
+         scope
+       ) do
+    args_exprs = Enum.map(args, &generate_expr(&1, scope))
+
+    case args_exprs do
+      [status_expr, body_expr] ->
+        # Return {:respond_json, status, body}
+        :cerl.c_tuple([
+          :cerl.c_atom(:respond_json),
+          status_expr,
+          body_expr
+        ])
+
+      _ ->
+        # Fallback: return the args as a tuple
+        :cerl.c_tuple([:cerl.c_atom(:respond_json) | args_exprs])
+    end
+  end
+
   # Effect call: http.get(...), http.post(...), etc.
   defp generate_expr(
          %AST.Call{
@@ -331,6 +451,22 @@ defmodule Skein.CodeGen.CoreErlang do
   end
 
   # Function call
+  defp generate_expr(%AST.Call{target: %AST.Identifier{name: name}, args: args}, scope) do
+    args_exprs = Enum.map(args, &generate_expr(&1, scope))
+    fn_arities = Map.get(scope, :__fn_arities__, %{})
+
+    case Map.get(fn_arities, name) do
+      nil ->
+        target_expr = generate_expr(%AST.Identifier{name: name, meta: %{}}, scope)
+        generate_call(target_expr, args_exprs)
+
+      _arity ->
+        # Known local function: use c_fname for proper Core Erlang local call
+        fname = :cerl.c_fname(String.to_atom(name), length(args_exprs))
+        :cerl.c_apply(fname, args_exprs)
+    end
+  end
+
   defp generate_expr(%AST.Call{target: target, args: args}, scope) do
     target_expr = generate_expr(target, scope)
     args_exprs = Enum.map(args, &generate_expr(&1, scope))

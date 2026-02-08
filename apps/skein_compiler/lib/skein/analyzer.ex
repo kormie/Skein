@@ -91,6 +91,9 @@ defmodule Skein.Analyzer do
     # Pass 2: Type-check function bodies
     errors = errors ++ check_functions(ast.declarations, env)
 
+    # Pass 2b: Type-check handler bodies
+    errors = errors ++ check_handlers(ast.declarations, env)
+
     # Pass 3: Capability checking — verify effect calls have covering capabilities
     errors = errors ++ check_capabilities(ast.declarations, env)
 
@@ -248,6 +251,31 @@ defmodule Skein.Analyzer do
     end)
   end
 
+  defp validate_declaration(%AST.Handler{meta: meta}, env) do
+    # Check that http.in capability is declared
+    has_http_in =
+      Enum.any?(env.capabilities, fn %AST.Capability{kind: kind} ->
+        kind == "http.in"
+      end)
+
+    if has_http_in do
+      []
+    else
+      [
+        %Error{
+          code: "E0030",
+          severity: :error,
+          message:
+            "Capability 'http.in' required but not declared. " <>
+              "HTTP handlers require this capability.",
+          location: location_from_meta(meta, env.file),
+          fix_hint: "Add a capability declaration to the module: capability http.in",
+          fix_code: "capability http.in"
+        }
+      ]
+    end
+  end
+
   defp validate_declaration(%AST.Capability{}, _env), do: []
   defp validate_declaration(_, _env), do: []
 
@@ -371,6 +399,22 @@ defmodule Skein.Analyzer do
       end
 
     errors ++ return_errors
+  end
+
+  # ------------------------------------------------------------------
+  # Pass 2b: Type-check handler bodies
+  # ------------------------------------------------------------------
+
+  defp check_handlers(declarations, env) do
+    handlers = Enum.filter(declarations, &match?(%AST.Handler{}, &1))
+    Enum.flat_map(handlers, &check_handler(&1, env))
+  end
+
+  defp check_handler(%AST.Handler{param: param, body: body}, env) do
+    # Add the request parameter to scope as :unknown (runtime-provided map)
+    handler_env = %{env | variables: Map.put(env.variables, param, :unknown)}
+    {_type, errors} = infer_type(body, handler_env)
+    errors
   end
 
   # ------------------------------------------------------------------
@@ -932,8 +976,17 @@ defmodule Skein.Analyzer do
   # ------------------------------------------------------------------
 
   defp check_capabilities(declarations, env) do
-    fns = Enum.filter(declarations, &match?(%AST.Fn{}, &1))
-    Enum.flat_map(fns, &collect_effect_calls(&1.body, env))
+    fn_errors =
+      declarations
+      |> Enum.filter(&match?(%AST.Fn{}, &1))
+      |> Enum.flat_map(&collect_effect_calls(&1.body, env))
+
+    handler_errors =
+      declarations
+      |> Enum.filter(&match?(%AST.Handler{}, &1))
+      |> Enum.flat_map(&collect_effect_calls(&1.body, env))
+
+    fn_errors ++ handler_errors
   end
 
   # Walk the AST to find effect calls and check them against declared capabilities

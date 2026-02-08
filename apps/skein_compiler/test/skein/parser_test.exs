@@ -572,6 +572,160 @@ defmodule Skein.ParserTest do
     end
   end
 
+  describe "parse/1 - handler declarations" do
+    test "parses a simple GET handler" do
+      source = """
+      module M {
+        capability http.in
+        handler http GET "/users" (req) -> {
+          respond.json(200, "ok")
+        }
+      }
+      """
+
+      assert {:ok, %AST.Module{declarations: [_cap, handler]}} = parse(source)
+      assert %AST.Handler{source: "http", method: "get", route: "/users", param: "req"} = handler
+      assert %AST.Block{} = handler.body
+    end
+
+    test "parses a POST handler" do
+      source = """
+      module M {
+        capability http.in
+        handler http POST "/users" (req) -> {
+          respond.json(201, "created")
+        }
+      }
+      """
+
+      assert {:ok, %AST.Module{declarations: [_cap, handler]}} = parse(source)
+      assert %AST.Handler{method: "post", route: "/users"} = handler
+    end
+
+    test "parses a handler with route params" do
+      source = """
+      module M {
+        capability http.in
+        handler http GET "/users/:id" (req) -> {
+          respond.json(200, "ok")
+        }
+      }
+      """
+
+      assert {:ok, %AST.Module{declarations: [_cap, handler]}} = parse(source)
+      assert handler.route == "/users/:id"
+    end
+
+    test "parses all HTTP methods" do
+      for method <- ~w(GET POST PUT PATCH DELETE) do
+        source = """
+        module M#{method} {
+          capability http.in
+          handler http #{method} "/test" (req) -> {
+            respond.json(200, "ok")
+          }
+        }
+        """
+
+        assert {:ok, %AST.Module{declarations: [_cap, handler]}} = parse(source)
+        assert handler.method == String.downcase(method)
+      end
+    end
+
+    test "parses multiple handlers" do
+      source = """
+      module M {
+        capability http.in
+
+        handler http GET "/users" (req) -> {
+          respond.json(200, "list")
+        }
+
+        handler http POST "/users" (req) -> {
+          respond.json(201, "created")
+        }
+
+        handler http GET "/users/:id" (req) -> {
+          respond.json(200, "detail")
+        }
+      }
+      """
+
+      assert {:ok, %AST.Module{declarations: decls}} = parse(source)
+      handlers = Enum.filter(decls, &match?(%AST.Handler{}, &1))
+      assert length(handlers) == 3
+    end
+
+    test "parses handler with complex body" do
+      source = """
+      module M {
+        capability http.in
+
+        handler http GET "/users/:id" (req) -> {
+          let id = req.params.id
+          match id == "admin" {
+            true  -> respond.json(200, "admin user")
+            false -> respond.json(200, "regular user")
+          }
+        }
+      }
+      """
+
+      assert {:ok, %AST.Module{declarations: [_cap, handler]}} = parse(source)
+      assert %AST.Block{expressions: [%AST.Let{}, %AST.Match{}]} = handler.body
+    end
+
+    test "parses handler mixed with functions" do
+      source = """
+      module M {
+        capability http.in
+
+        fn helper() -> String { "ok" }
+
+        handler http GET "/test" (req) -> {
+          respond.json(200, helper())
+        }
+      }
+      """
+
+      assert {:ok, %AST.Module{declarations: [_cap, fn_decl, handler]}} = parse(source)
+      assert %AST.Fn{name: "helper"} = fn_decl
+      assert %AST.Handler{method: "get"} = handler
+    end
+
+    test "preserves handler source location" do
+      source = """
+      module M {
+        capability http.in
+        handler http GET "/test" (req) -> { respond.json(200, "ok") }
+      }
+      """
+
+      assert {:ok, %AST.Module{declarations: [_cap, handler]}} = parse(source)
+      assert handler.meta.line == 3
+    end
+
+    test "returns error for missing HTTP method" do
+      source = """
+      module M {
+        handler http "/test" (req) -> { respond.json(200, "ok") }
+      }
+      """
+
+      assert {:error, [%Skein.Error{code: "E0001"}]} = parse(source)
+    end
+
+    test "returns error for invalid HTTP method" do
+      source = """
+      module M {
+        handler http CONNECT "/test" (req) -> { respond.json(200, "ok") }
+      }
+      """
+
+      assert {:error, [%Skein.Error{code: "E0001"}]} = parse(source)
+    end
+  end
+
   describe "parse/1 - error cases" do
     test "returns error for missing module keyword" do
       assert {:error, [%Skein.Error{code: "E0001"}]} = parse("Hello { }")
