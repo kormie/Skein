@@ -158,34 +158,98 @@ defmodule Skein.CLI do
     {:error, "Usage: skein build <project-directory>"}
   end
 
-  def build([project_dir | _]) do
+  def build(args) do
+    {project_dir, opts} = parse_build_args(args)
     project_dir = Path.expand(project_dir)
+    output_dir = Keyword.get(opts, :output, nil)
     skein_files = discover_skein_files(project_dir, "src")
 
     if skein_files == [] do
       {:error, "No .skein files found in #{project_dir}/src/"}
     else
-      {modules, failed} =
-        skein_files
-        |> Enum.reduce({[], []}, fn file, {mods, fails} ->
-          case Compiler.compile_file(file) do
-            {:module, mod} ->
-              {[mod | mods], fails}
-
-            {:error, errors} ->
-              {mods, [%{file: file, errors: errors} | fails]}
-          end
-        end)
-
-      {:ok,
-       %{
-         compiled: length(modules),
-         errors: length(failed),
-         modules: Enum.reverse(modules),
-         failed: Enum.reverse(failed)
-       }}
+      if output_dir do
+        build_to_disk(skein_files, output_dir)
+      else
+        build_in_memory(skein_files)
+      end
     end
   end
+
+  defp build_in_memory(skein_files) do
+    {modules, failed} =
+      skein_files
+      |> Enum.reduce({[], []}, fn file, {mods, fails} ->
+        case Compiler.compile_file(file) do
+          {:module, mod} ->
+            {[mod | mods], fails}
+
+          {:error, errors} ->
+            {mods, [%{file: file, errors: errors} | fails]}
+        end
+      end)
+
+    {:ok,
+     %{
+       compiled: length(modules),
+       errors: length(failed),
+       modules: Enum.reverse(modules),
+       failed: Enum.reverse(failed)
+     }}
+  end
+
+  defp build_to_disk(skein_files, output_dir) do
+    output_dir = Path.expand(output_dir)
+    File.mkdir_p!(output_dir)
+
+    {modules, beam_files, failed} =
+      skein_files
+      |> Enum.reduce({[], [], []}, fn file, {mods, beams, fails} ->
+        case Compiler.compile_to_binary(file) do
+          {:ok, module_name, beam_binary} ->
+            # Write .beam file to output directory
+            beam_filename = "#{module_name}.beam"
+            beam_path = Path.join(output_dir, beam_filename)
+            File.write!(beam_path, beam_binary)
+
+            # Also load into VM for immediate use
+            :code.load_binary(module_name, ~c"#{beam_path}", beam_binary)
+
+            {[module_name | mods], [beam_path | beams], fails}
+
+          {:error, errors} ->
+            {mods, beams, [%{file: file, errors: errors} | fails]}
+        end
+      end)
+
+    {:ok,
+     %{
+       compiled: length(modules),
+       errors: length(failed),
+       modules: Enum.reverse(modules),
+       beam_files: Enum.reverse(beam_files),
+       failed: Enum.reverse(failed),
+       output_dir: output_dir
+     }}
+  end
+
+  defp parse_build_args(args) do
+    {project_dir, rest} =
+      case args do
+        ["--" <> _ | _] -> {".", args}
+        [dir | rest] -> {dir, rest}
+        [] -> {".", []}
+      end
+
+    opts = parse_build_flags(rest, [])
+    {project_dir, opts}
+  end
+
+  defp parse_build_flags(["--output", dir | rest], acc) do
+    parse_build_flags(rest, [{:output, dir} | acc])
+  end
+
+  defp parse_build_flags([_ | rest], acc), do: parse_build_flags(rest, acc)
+  defp parse_build_flags([], acc), do: acc
 
   # ------------------------------------------------------------------
   # test (single file) — existing behavior

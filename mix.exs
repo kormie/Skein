@@ -12,7 +12,9 @@ defmodule Skein.MixProject do
   end
 
   defp deps do
-    []
+    [
+      {:decimal, git: "https://github.com/ericmj/decimal.git", tag: "v2.3.0", override: true}
+    ]
   end
 
   defp aliases do

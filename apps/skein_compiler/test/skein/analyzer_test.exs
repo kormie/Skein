@@ -2189,4 +2189,62 @@ defmodule Skein.AnalyzerTest do
                """)
     end
   end
+
+  # ------------------------------------------------------------------
+  # Supervisor validation
+  # ------------------------------------------------------------------
+
+  describe "supervisor validation" do
+    test "valid supervisor passes analysis" do
+      assert {:ok, _} =
+               analyze("""
+               module M {
+                 supervisor Main {
+                   child HttpServer { restart: permanent }
+                   strategy: one_for_one
+                   max_restarts: 10 per 60s
+                 }
+               }
+               """)
+    end
+
+    test "supervisor with no children produces warning" do
+      errors =
+        analyze_errors("""
+        module M {
+          supervisor Empty {
+            strategy: one_for_one
+          }
+        }
+        """)
+
+      assert Enum.any?(errors, fn e ->
+               e.code == "E0042" and e.severity == :warning
+             end)
+    end
+
+    test "supervisor with children and strategy passes" do
+      assert {:ok, _} =
+               analyze("""
+               module M {
+                 supervisor Pool {
+                   child Worker
+                   child Logger
+                   strategy: one_for_all
+                 }
+               }
+               """)
+    end
+
+    test "supervisor with defaults (no strategy/max_restarts) passes" do
+      assert {:ok, _} =
+               analyze("""
+               module M {
+                 supervisor Simple {
+                   child Worker
+                 }
+               }
+               """)
+    end
+  end
 end

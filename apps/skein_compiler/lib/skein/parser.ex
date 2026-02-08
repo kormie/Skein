@@ -279,6 +279,10 @@ defmodule Skein.Parser do
     parse_golden_decl(tokens, file)
   end
 
+  defp parse_declaration([{:supervisor, _} | _] = tokens, file) do
+    parse_supervisor(tokens, file)
+  end
+
   defp parse_declaration([{token_type, {line, col}} | _], file) do
     {:error,
      [
@@ -286,7 +290,7 @@ defmodule Skein.Parser do
          code: "E0001",
          severity: :error,
          message:
-           "Unexpected token #{inspect(token_type)}, expected a declaration (fn, type, enum, capability, handler, tool, test, scenario, golden)",
+           "Unexpected token #{inspect(token_type)}, expected a declaration (fn, type, enum, capability, handler, tool, test, scenario, golden, supervisor)",
          location: %{file: file, line: line, col: col},
          fix_hint: "Add a valid declaration keyword"
        }
@@ -300,7 +304,7 @@ defmodule Skein.Parser do
          code: "E0001",
          severity: :error,
          message:
-           "Unexpected token #{inspect(token_type)}, expected a declaration (fn, type, enum, capability, handler, tool, test, scenario, golden)",
+           "Unexpected token #{inspect(token_type)}, expected a declaration (fn, type, enum, capability, handler, tool, test, scenario, golden, supervisor)",
          location: %{file: file, line: line, col: col},
          fix_hint: "Add a valid declaration keyword"
        }
@@ -1221,6 +1225,156 @@ defmodule Skein.Parser do
 
       parse_variant_fields(rest, file, [field | acc])
     end
+  end
+
+  # ------------------------------------------------------------------
+  # Supervisor declaration
+  # ------------------------------------------------------------------
+
+  defp parse_supervisor([{:supervisor, {line, col}} | rest], file) do
+    with {:ok, name, rest} <- expect_upper_ident(rest, file),
+         {:ok, _lbrace, rest} <- expect(:lbrace, rest, file),
+         {:ok, children, strategy, max_restarts, rest} <-
+           parse_supervisor_body(rest, file, [], nil, nil),
+         {:ok, _rbrace, rest} <- expect(:rbrace, rest, file) do
+      supervisor = %AST.Supervisor{
+        name: name,
+        children: children,
+        strategy: strategy,
+        max_restarts: max_restarts,
+        meta: %{line: line, col: col, file: file}
+      }
+
+      {:ok, supervisor, rest}
+    end
+  end
+
+  # Parse the body of a supervisor: children, strategy, max_restarts (in any order)
+  defp parse_supervisor_body([{:rbrace, _} | _] = tokens, _file, children, strategy, max_restarts) do
+    {:ok, Enum.reverse(children), strategy, max_restarts, tokens}
+  end
+
+  defp parse_supervisor_body([{:child, _} | _] = tokens, file, children, strategy, max_restarts) do
+    case parse_child_decl(tokens, file) do
+      {:ok, child, rest} ->
+        parse_supervisor_body(rest, file, [child | children], strategy, max_restarts)
+
+      {:error, _} = error ->
+        error
+    end
+  end
+
+  defp parse_supervisor_body(
+         [{:strategy, _}, {:colon, _}, {:ident, _, strategy_name} | rest],
+         file,
+         children,
+         _strategy,
+         max_restarts
+       )
+       when strategy_name in ["one_for_one", "one_for_all", "rest_for_one"] do
+    strategy = String.to_atom(strategy_name)
+    parse_supervisor_body(rest, file, children, strategy, max_restarts)
+  end
+
+  # max_restarts: N per Ns
+  defp parse_supervisor_body(
+         [
+           {:ident, _, "max_restarts"},
+           {:colon, _},
+           {:int, _, max_count},
+           {:ident, _, "per"},
+           {:int, _, period},
+           {:ident, _, "s"} | rest
+         ],
+         file,
+         children,
+         strategy,
+         _max_restarts
+       ) do
+    parse_supervisor_body(rest, file, children, strategy, {max_count, period})
+  end
+
+  defp parse_supervisor_body(tokens, file, _children, _strategy, _max_restarts) do
+    unexpected_token_error(
+      tokens,
+      file,
+      "a supervisor body element (child, strategy:, max_restarts:)"
+    )
+  end
+
+  # Parse a child declaration: child Target or child Target(Args...) { opts }
+  defp parse_child_decl([{:child, {line, col}} | rest], file) do
+    with {:ok, target, rest} <- expect_upper_ident(rest, file) do
+      # Check for arguments: child Target(Arg1, Arg2)
+      {args, rest} =
+        case rest do
+          [{:lparen, _} | rest2] ->
+            parse_child_args(rest2, file, [])
+
+          _ ->
+            {[], rest}
+        end
+
+      # Check for options: { key: value, ... }
+      {options, rest} =
+        case rest do
+          [{:lbrace, _} | rest2] ->
+            parse_child_options(rest2, file, %{})
+
+          _ ->
+            {%{}, rest}
+        end
+
+      child = %AST.Child{
+        target: target,
+        args: args,
+        options: options,
+        meta: %{line: line, col: col, file: file}
+      }
+
+      {:ok, child, rest}
+    end
+  end
+
+  defp parse_child_args([{:rparen, _} | rest], _file, acc) do
+    {Enum.reverse(acc), rest}
+  end
+
+  defp parse_child_args([{:comma, _} | rest], file, acc) do
+    parse_child_args(rest, file, acc)
+  end
+
+  defp parse_child_args([{:upper_ident, _, name} | rest], file, acc) do
+    parse_child_args(rest, file, [name | acc])
+  end
+
+  defp parse_child_args(rest, _file, acc) do
+    {Enum.reverse(acc), rest}
+  end
+
+  # Parse child options: key: value pairs terminated by }
+  defp parse_child_options([{:rbrace, _} | rest], _file, acc) do
+    {acc, rest}
+  end
+
+  defp parse_child_options([{:comma, _} | rest], file, acc) do
+    parse_child_options(rest, file, acc)
+  end
+
+  defp parse_child_options([{:ident, _, key}, {:colon, _}, {:int, _, value} | rest], file, acc) do
+    parse_child_options(rest, file, Map.put(acc, key, value))
+  end
+
+  defp parse_child_options(
+         [{:ident, _, key}, {:colon, _}, {:ident, _, value} | rest],
+         file,
+         acc
+       ) do
+    parse_child_options(rest, file, Map.put(acc, key, value))
+  end
+
+  defp parse_child_options(rest, _file, acc) do
+    {acc, rest}
   end
 
   # ------------------------------------------------------------------

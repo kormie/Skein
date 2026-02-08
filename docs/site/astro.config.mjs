@@ -43,6 +43,7 @@ export default defineConfig({
             { label: 'Capabilities & Effects', slug: 'language/capabilities-and-effects' },
             { label: 'Handlers', slug: 'language/handlers' },
             { label: 'Tools', slug: 'language/tools' },
+            { label: 'Supervisors', slug: 'language/supervisors' },
             { label: 'Testing', slug: 'language/testing' },
           ],
         },

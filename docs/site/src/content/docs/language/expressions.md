@@ -124,6 +124,46 @@ Match arms can have:
 - **String patterns:** `"active"`, `"paused"`
 - **Variable patterns:** `x` (binds the matched value)
 - **Wildcard pattern:** `_` (matches anything, discards value)
+- **Enum variant patterns:** `Active`, `Status.Active` (matches atom variants)
+- **Enum variant with fields:** `Event.Charge(amt)` (destructures into bound variables)
+
+### Enum Variant Patterns
+
+Enum variants can be pattern matched with optional field destructuring:
+
+```skein
+enum Result {
+  Ok(value: Int)
+  Err(message: String)
+}
+
+fn unwrap_or(r: Result, default: Int) -> Int {
+  match r {
+    Result.Ok(v) -> v
+    Result.Err(msg) -> default
+  }
+}
+```
+
+Simple variants without fields match as atoms:
+
+```skein
+enum Status {
+  Active
+  Inactive
+}
+
+fn is_active(s: Status) -> Bool {
+  match s {
+    Active -> true
+    _ -> false
+  }
+}
+```
+
+Variant patterns compile to Core Erlang tuple patterns. For example, `Result.Ok(v)` becomes a pattern matching the tuple `{:ok, V}`.
+
+See [Types > Enum Variant Matching](/Skein/language/types/#enum-variant-matching) for details on exhaustiveness checking.
 
 ## Function Calls
 

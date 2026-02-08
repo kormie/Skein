@@ -1,0 +1,39 @@
+-- supervisor_pool.skein
+-- Demonstrates supervisor declarations for managing a pool
+-- of agent workers alongside an HTTP server.
+-- Shows child arguments, restart policies, strategy, and max_restarts.
+
+module SupervisorPool {
+  -- An enum representing the kinds of events we process
+  enum Event {
+    OrderPlaced(order_id: String, amount: Int)
+    OrderCancelled(order_id: String, reason: String)
+    HealthCheck
+  }
+
+  -- Classify an incoming event
+  fn describe(e: Event) -> String {
+    match e {
+      Event.OrderPlaced(id, amt) -> "Order ${id}"
+      Event.OrderCancelled(id, reason) -> "Cancelled ${id}"
+      HealthCheck -> "ping"
+    }
+  }
+
+  -- Main supervisor: manages the HTTP server and agent pool
+  supervisor Main {
+    child HttpServer { restart: permanent }
+    child AgentPool(OrderProcessor) { max: 1000, restart: transient }
+    child MetricsCollector { restart: temporary }
+    strategy: one_for_one
+    max_restarts: 10 per 60s
+  }
+
+  -- Secondary supervisor for background batch jobs
+  supervisor BatchSupervisor {
+    child BatchWorker
+    child RetryWorker
+    strategy: one_for_all
+    max_restarts: 5 per 30s
+  }
+}

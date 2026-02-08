@@ -338,6 +338,73 @@ defmodule Skein.Analyzer do
     input_errors ++ output_errors
   end
 
+  defp validate_declaration(
+         %AST.Supervisor{strategy: strategy, max_restarts: max_restarts} = sup,
+         env
+       ) do
+    strategy_errors =
+      case strategy do
+        nil ->
+          []
+
+        s when s in [:one_for_one, :one_for_all, :rest_for_one] ->
+          []
+
+        _ ->
+          [
+            %Error{
+              code: "E0040",
+              severity: :error,
+              message:
+                "Invalid supervisor strategy '#{inspect(strategy)}', expected one_for_one, one_for_all, or rest_for_one",
+              location: location_from_meta(sup.meta, env.file),
+              fix_hint: "Use one of: one_for_one, one_for_all, rest_for_one"
+            }
+          ]
+      end
+
+    max_restart_errors =
+      case max_restarts do
+        nil ->
+          []
+
+        {count, period}
+        when is_integer(count) and is_integer(period) and count > 0 and period > 0 ->
+          []
+
+        _ ->
+          [
+            %Error{
+              code: "E0041",
+              severity: :error,
+              message:
+                "Invalid max_restarts value, expected positive integers for count and period",
+              location: location_from_meta(sup.meta, env.file),
+              fix_hint: "Use format: max_restarts: N per Xs"
+            }
+          ]
+      end
+
+    children_errors =
+      case sup.children do
+        [] ->
+          [
+            %Error{
+              code: "E0042",
+              severity: :warning,
+              message: "Supervisor '#{sup.name}' has no children",
+              location: location_from_meta(sup.meta, env.file),
+              fix_hint: "Add child declarations to the supervisor"
+            }
+          ]
+
+        _ ->
+          []
+      end
+
+    strategy_errors ++ max_restart_errors ++ children_errors
+  end
+
   defp validate_declaration(%AST.Scenario{}, _env), do: []
   defp validate_declaration(%AST.Golden{}, _env), do: []
   defp validate_declaration(%AST.Capability{}, _env), do: []

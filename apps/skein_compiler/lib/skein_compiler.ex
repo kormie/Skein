@@ -34,6 +34,24 @@ defmodule Skein.Compiler do
     end
   end
 
+  @doc """
+  Compiles a .skein file and returns the module name and BEAM binary
+  without loading it into the VM. Used by `skein build --output` to
+  write .beam files to disk.
+  """
+  @spec compile_to_binary(String.t()) ::
+          {:ok, module(), binary()} | {:error, [Skein.Error.t()]}
+  def compile_to_binary(path) do
+    with {:ok, source} <- File.read(path),
+         {:ok, tokens} <- Lexer.tokenize(source),
+         {:ok, ast} <- Parser.parse(tokens),
+         {:ok, annotated_ast} <- Analyzer.analyze(ast),
+         {:ok, beam_binary} <- CoreErlang.generate(annotated_ast) do
+      module_name = module_name_from_ast(annotated_ast)
+      {:ok, module_name, beam_binary}
+    end
+  end
+
   defp module_name_from_ast(%Skein.AST.Module{name: name}),
     do: String.to_atom("Elixir.Skein.User.#{name}")
 
