@@ -5,9 +5,10 @@ import { readFileSync } from 'node:fs';
 
 // Canonical Skein grammar lives in editors/vscode/ — single source of truth
 // for the VS Code extension, docs site, and any future editor integrations.
-const skeinGrammar = JSON.parse(
+const skeinGrammarRaw = JSON.parse(
   readFileSync(new URL('../../editors/vscode/skein.tmLanguage.json', import.meta.url), 'utf-8')
 );
+const skeinGrammar = { ...skeinGrammarRaw, name: 'skein' };
 
 export default defineConfig({
   site: 'https://kormie.github.io',
