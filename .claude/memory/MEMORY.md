@@ -75,6 +75,9 @@
 - Property tests (StreamData) required where inputs have wide spaces
 - The compiler should validate all Phase enum clauses have `on phase` handlers (already done: E0032)
 
+## Known Limitations / Future Work
+- **Enum exhaustiveness is variant-level only**: The analyzer checks that all *variant names* are covered in a match, but does NOT check exhaustiveness of values *within* variant fields. E.g., `match e { Event.Charge(5) -> "five" }` satisfies the "Charge variant is covered" check, but at runtime a `case_clause` error occurs for `Event.Charge(10)`. This could cause unexpected crashes. A future improvement could warn when a variant arm uses literal patterns without a wildcard fallback. See `check_exhaustiveness/4` in `analyzer.ex` lines 903-951.
+
 ## Distribution Prerequisites (Completed)
 - **Enum variant matching**: codegen supports `%AST.Call{}` patterns in `generate_pattern/2`, producing tuple patterns `{:variant_atom, Arg1, ...}`. Uppercase identifiers in pattern position match as atoms.
 - **Supervisor declarations**: Parser handles `supervisor Name { child Target { opts } strategy: ... max_restarts: N per Ms }`. Codegen exposes `__supervisors__/0` metadata. Analyzer validates strategy, max_restarts, and warns on empty children.

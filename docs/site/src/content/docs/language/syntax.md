@@ -262,6 +262,7 @@ Most Skein constructs are fully compiled end-to-end. The following notes clarify
 - `tool` declarations -- tool metadata (name, description, input/output schemas) is compiled and available at runtime via `__tools__/0`. See [Tools](/Skein/language/tools/) for details.
 - `test`, `scenario`, `golden` -- all three test constructs compile to executable `__test_N__/0` functions with `__tests__/0` metadata. See [Testing](/Skein/language/testing/) for details.
 
-### Not Yet Implemented
+### Also Compiled
 
-- `supervisor` declarations -- agent pool management is defined in the spec but not yet parsed or compiled. The keyword is reserved.
+- `supervisor` declarations -- agent pool management with child processes, restart strategies, and crash recovery. See [Supervisors](/Skein/language/supervisors/) for details.
+- Enum variant pattern matching -- `match` on enum variants with field destructuring compiles to BEAM tuple patterns. See [Types > Enum Variant Matching](/Skein/language/types/#enum-variant-matching).

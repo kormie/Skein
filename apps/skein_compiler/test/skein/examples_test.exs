@@ -198,6 +198,53 @@ defmodule Skein.ExamplesTest do
   # incident_triage.skein — compilation test
   # ------------------------------------------------------------------
 
+  # ------------------------------------------------------------------
+  # supervisor_pool.skein
+  # ------------------------------------------------------------------
+
+  describe "supervisor_pool.skein" do
+    test "compiles successfully" do
+      assert {:module, mod} =
+               Compiler.compile_file(Path.join(project_root(), "examples/supervisor_pool.skein"))
+
+      assert is_atom(mod)
+    end
+
+    test "has supervisor metadata" do
+      {:module, mod} =
+        Compiler.compile_file(Path.join(project_root(), "examples/supervisor_pool.skein"))
+
+      sups = mod.__supervisors__()
+      assert length(sups) == 2
+      names = Enum.map(sups, & &1.name)
+      assert "Main" in names
+      assert "BatchSupervisor" in names
+    end
+
+    test "main supervisor has correct structure" do
+      {:module, mod} =
+        Compiler.compile_file(Path.join(project_root(), "examples/supervisor_pool.skein"))
+
+      main = Enum.find(mod.__supervisors__(), &(&1.name == "Main"))
+      assert main.strategy == :one_for_one
+      assert main.max_restarts == {10, 60}
+      assert length(main.children) == 3
+    end
+
+    test "describe function handles enum variant matching" do
+      {:module, mod} =
+        Compiler.compile_file(Path.join(project_root(), "examples/supervisor_pool.skein"))
+
+      assert mod.describe({:order_placed, "abc", 100}) == "Order abc"
+      assert mod.describe({:order_cancelled, "xyz", "changed mind"}) == "Cancelled xyz"
+      assert mod.describe(:health_check) == "ping"
+    end
+  end
+
+  # ------------------------------------------------------------------
+  # incident_triage.skein — compilation test
+  # ------------------------------------------------------------------
+
   describe "incident_triage.skein" do
     test "compiles successfully" do
       assert {:module, mod} =

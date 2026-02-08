@@ -234,6 +234,55 @@ Produces:
 }
 ```
 
-## What's Not Yet Implemented
+## Enum Variant Matching
 
-- Enum variant matching in codegen -- enum variants are parsed and type-checked, but `match` on enum variants does not yet generate BEAM code
+Enum variants with fields compile to tagged tuples at runtime. You can pattern match on them in `match` expressions:
+
+```skein
+enum Shape {
+  Circle(radius: Int)
+  Rect(width: Int, height: Int)
+}
+
+fn area(s: Shape) -> Int {
+  match s {
+    Shape.Circle(r) -> r * r
+    Shape.Rect(w, h) -> w * h
+  }
+}
+```
+
+At runtime, `Shape.Circle(5)` is represented as the tuple `{:circle, 5}` and `Shape.Rect(3, 4)` as `{:rect, 3, 4}`. Simple variants without fields (like `Active`) compile to atoms (`:active`).
+
+The analyzer checks that all enum variants are covered in a match expression (error E0024). A wildcard `_` arm satisfies this check.
+
+### Exhaustiveness Caveat
+
+Exhaustiveness checking operates at the **variant level**, not at the value level within variant fields. For example:
+
+```skein
+enum Action {
+  GetUser(id: Int)
+  DeleteUser(id: Int)
+}
+
+fn handle(a: Action) -> String {
+  match a {
+    Action.GetUser(5) -> "found user 5"   -- only matches id=5
+    Action.DeleteUser(id) -> "deleted"
+  }
+}
+```
+
+The analyzer considers `GetUser` covered because an arm exists for it. However, at runtime, `Action.GetUser(10)` would cause a `case_clause` error because the literal `5` does not match `10`. To avoid this, use a variable pattern or add a wildcard arm:
+
+```skein
+fn handle(a: Action) -> String {
+  match a {
+    Action.GetUser(id) -> "found user"     -- matches all GetUser values
+    Action.DeleteUser(id) -> "deleted"
+  }
+}
+```
+
+This is consistent with most typed languages — variant-level coverage is checked, but the full domain of contained values is not.
