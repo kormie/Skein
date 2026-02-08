@@ -93,7 +93,7 @@ The compilation pipeline is operational through Phase 7. You can write `.skein` 
 - `scenario` and `golden` test constructs -- parsed but not executed end-to-end
 - Replay engine for deterministic trace playback
 - Managed storage backends (Postgres, SQLite) -- currently ETS only
-- Bandit + Plug HTTP server -- currently using `:gen_tcp` dev server
+- `req.json[T]` body validation in handlers -- parsed but schema validation is basic
 - Agent pool supervision (`AgentPool` with max concurrency)
 - Queue/topic handlers and schedule handlers
 - LLM streaming (`llm.stream` with `on_chunk`)

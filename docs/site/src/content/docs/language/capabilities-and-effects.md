@@ -146,6 +146,28 @@ llm.json("claude-sonnet-4-5", "Return JSON.", input)
 
 This uses an empty schema (`{}`) which accepts any valid JSON.
 
+### Request Body Validation (`req.json[T]`)
+
+Inside HTTP handlers, `req.json[T]` parses the request body as JSON and validates it against the schema derived from type `T`:
+
+```skein
+module UserService {
+  capability http.in
+
+  type CreateUser {
+    email: String
+    name: String
+  }
+
+  handler http POST "/users" (req) -> {
+    let user = req.json[CreateUser]!
+    respond.json(201, user)
+  }
+}
+```
+
+The compiler generates a JSON Schema from `CreateUser` at compile time. At runtime, `req.json[T]` parses the request body and validates the required fields and types. It returns `{:ok, parsed}` or `{:error, reason}`, making it compatible with the `!` (crash) and `?` (propagate) unwrap operators.
+
 ### Tool Effects
 
 ```skein

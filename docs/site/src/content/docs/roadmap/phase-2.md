@@ -249,7 +249,7 @@ The next priorities fill gaps in the existing implementation:
 
 - **8a: Test infrastructure** -- `scenario` tests with `given`/`expect`, `golden` trace tests, replay engine
 - **8b: Storage backend** -- Ecto schema generation, migrations, SQLite/Postgres backends
-- **8c: HTTP server** -- Bandit + Plug integration to replace `:gen_tcp` dev server
+- **8c: HTTP server** -- ✅ Bandit + Plug integration with `req.json[T]` body validation
 - **8d: Canonical examples** -- `hello_http.skein`, `refund_agent.skein`, `incident_triage.skein`, `queue_worker.skein`
 - **8e: Queue and schedule handlers** -- `handler queue` and `handler schedule` constructs
 - **8f: LLM streaming** -- `llm.stream` with `on_chunk` callback
