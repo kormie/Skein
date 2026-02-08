@@ -116,7 +116,7 @@ Skein.Runtime.Trace.clear()
 
 The Skein code generator transforms effect calls into runtime calls:
 
-```
+```skein
 -- Skein source:
 http.get(url)
 

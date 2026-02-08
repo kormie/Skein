@@ -7,7 +7,7 @@ description: How Skein modules and functions work, and how they compile to BEAM 
 
 A Skein file contains a single module declaration:
 
-```
+```skein
 module Hello {
   fn greet(name: String) -> String {
     "Hello, ${name}!"
@@ -49,7 +49,7 @@ Functions require:
 - A return type
 - A body block
 
-```
+```skein
 fn add(a: Int, b: Int) -> Int {
   a + b
 }
@@ -63,7 +63,7 @@ fn get_version() -> String {
 
 Parameters use `name: Type` syntax, separated by commas:
 
-```
+```skein
 fn create_user(name: String, email: String, age: Int) -> String {
   "Created ${name}"
 }
@@ -75,7 +75,7 @@ Each parameter compiles to a Core Erlang function variable. The parameter name i
 
 The return type follows the `->` arrow. It is required on all functions:
 
-```
+```skein
 fn compute(x: Int) -> Int { ... }
 fn greet(name: String) -> String { ... }
 fn is_valid(n: Int) -> Bool { ... }
@@ -85,7 +85,7 @@ fn is_valid(n: Int) -> Bool { ... }
 
 The function body is always a block (`{ ... }`). The last expression is the return value:
 
-```
+```skein
 fn process(x: Int) -> Int {
   let doubled = x * 2      -- intermediate binding
   let adjusted = doubled + 1
@@ -97,7 +97,7 @@ fn process(x: Int) -> Int {
 
 Modules typically contain multiple functions:
 
-```
+```skein
 module Calculator {
   fn add(a: Int, b: Int) -> Int {
     a + b
@@ -123,7 +123,7 @@ All functions are exported from the compiled BEAM module. There is currently no 
 
 A Skein function:
 
-```
+```skein
 fn add(a: Int, b: Int) -> Int {
   a + b
 }

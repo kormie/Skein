@@ -7,7 +7,7 @@ description: All expression types in Skein and how they compile to BEAM code.
 
 Skein is expression-oriented -- everything produces a value. The last expression in a block is its return value. There is no `return` keyword.
 
-```
+```skein
 fn abs_value(n: Int) -> Int {
   match n > 0 {
     true  -> n
@@ -20,7 +20,7 @@ fn abs_value(n: Int) -> Int {
 
 ### Integers
 
-```
+```skein
 42
 0
 -7
@@ -31,7 +31,7 @@ Compile to Erlang integers via `:cerl.abstract/1`.
 
 ### Booleans
 
-```
+```skein
 true
 false
 ```
@@ -42,13 +42,13 @@ Compile to Erlang atoms `true` and `false`.
 
 Plain strings:
 
-```
+```skein
 "hello world"
 ```
 
 Strings with interpolation:
 
-```
+```skein
 "Hello, ${name}!"
 "Result: ${a + b}"
 ```
@@ -86,7 +86,7 @@ Note the Erlang-specific mappings: `!=` becomes `'/='`, `<=` becomes `'=<'`, `/`
 
 Let bindings compile to Core Erlang `let` expressions:
 
-```
+```skein
 let doubled = x + x
 doubled * 3
 ```
@@ -102,7 +102,7 @@ in call 'erlang':'*'(Doubled, 3)
 
 Match compiles to Core Erlang `case` expressions:
 
-```
+```skein
 match n > 0 {
   true  -> "positive"
   false -> "non-positive"
@@ -129,7 +129,7 @@ Match arms can have:
 
 Local function calls compile to Core Erlang `apply`:
 
-```
+```skein
 add(3, 4)
 ```
 

@@ -18,7 +18,7 @@ Phase 1 supports four primitive types. Type annotations are parsed and included 
 
 Functions require explicit type annotations on all parameters and the return type:
 
-```
+```skein
 fn add(a: Int, b: Int) -> Int {
   a + b
 }
@@ -42,7 +42,7 @@ These annotations are stored in the AST as `%AST.TypeRef{}` nodes:
 
 The parser supports parameterized types with bracket syntax:
 
-```
+```skein
 Option[String]
 Result[User, DbError]
 List[Int]
@@ -55,7 +55,7 @@ These parse into `%AST.TypeRef{}` nodes with populated `params` lists. They are 
 
 Record types:
 
-```
+```skein
 type User {
   id: Uuid
   email: String
@@ -65,7 +65,7 @@ type User {
 
 Enum types with optional variant data:
 
-```
+```skein
 enum Status {
   Active
   Suspended(reason: String)

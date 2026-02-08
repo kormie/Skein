@@ -69,7 +69,7 @@ BinaryOp(+,
 
 ### Module Declarations
 
-```
+```skein
 module Hello { ... }
 ```
 
@@ -77,7 +77,7 @@ Produces `%AST.Module{name: "Hello", declarations: [...], meta: %{...}}`.
 
 ### Function Declarations
 
-```
+```skein
 fn add(a: Int, b: Int) -> Int {
   a + b
 }
@@ -89,7 +89,7 @@ Parameters are `%AST.Field{name: "a", type: %AST.TypeRef{name: "Int"}}`.
 
 ### Let Bindings
 
-```
+```skein
 let x = 42
 let result = compute(y)
 ```
@@ -98,7 +98,7 @@ Produces `%AST.Let{name: "x", value: %AST.IntLit{value: 42}}`.
 
 ### Match Expressions
 
-```
+```skein
 match expr {
   true  -> "yes"
   false -> "no"
@@ -109,7 +109,7 @@ Produces `%AST.Match{subject: expr, arms: [%AST.MatchArm{pattern: ..., body: ...
 
 ### Binary Operations
 
-```
+```skein
 a + b * c
 ```
 
@@ -129,7 +129,7 @@ Respects precedence:
 
 ### Pipe Expressions
 
-```
+```skein
 data |> transform() |> validate()
 ```
 
@@ -137,7 +137,7 @@ Produces a chain of `%AST.Pipe{}` nodes (left-associative).
 
 ### Function Calls
 
-```
+```skein
 add(3, 4)
 ```
 
@@ -145,7 +145,7 @@ Produces `%AST.Call{target: %AST.Identifier{name: "add"}, args: [...]}`.
 
 ### Field Access
 
-```
+```skein
 user.name
 user.address.city
 ```
@@ -154,7 +154,7 @@ Produces nested `%AST.FieldAccess{}` nodes.
 
 ### String Literals
 
-```
+```skein
 "Hello, ${name}!"
 ```
 
@@ -162,7 +162,7 @@ Produces `%AST.StringLit{segments: [{:literal, "Hello, "}, {:interpolation, {:id
 
 ### Type and Enum Declarations
 
-```
+```skein
 type User {
   name: String
   age: Int
@@ -178,7 +178,7 @@ These parse to `%AST.TypeDecl{}` and `%AST.EnumDecl{}` nodes.
 
 ### Capability Declarations
 
-```
+```skein
 capability http.out("api.example.com")
 ```
 
