@@ -78,32 +78,56 @@ mod.__test_0__()
 
 ## Running Tests
 
-### Via the CLI
+### Single File
 
 ```bash
-# Run all tests in a .skein file
-mix skein.test path/to/module.skein
+# Compile and run tests in one .skein file
+mix skein.compile path/to/module.skein
 ```
 
-The test runner compiles the file, discovers all test declarations via `__tests__/0`, runs each test function, and reports results:
+### Project-Wide
+
+```bash
+# Discover and run all tests across src/ and test/ directories
+mix skein.test my_project
+```
+
+The test runner:
+1. Walks `test/` and `src/` directories for `.skein` files
+2. Compiles each file (skipping files with compile errors)
+3. Discovers test declarations via `__tests__/0`
+4. Runs each test function and reports aggregate results
 
 ```
-Running 2 tests...
+Running 5 tests across 3 files...
   PASS  add returns correct sum
   PASS  double works
+  PASS  greet returns greeting
+  FAIL  wrong assertion
+  PASS  classify positive
 
-2 passed, 0 failed
+4 passed, 1 failed, 0 compile errors
 ```
 
 ### Programmatically
 
 ```elixir
+# Single file
 {:ok, mod} = Skein.CLI.compile(["path/to/module.skein"])
 {:ok, results} = Skein.CLI.test(["path/to/module.skein"])
 
 results.total   #=> 2
 results.passed  #=> 2
 results.failed  #=> 0
+
+# Project-wide
+{:ok, results} = Skein.CLI.test_all(["my_project"])
+
+results.total           #=> 5
+results.passed          #=> 4
+results.failed          #=> 1
+results.files           #=> 3
+results.compile_errors  #=> 0
 ```
 
 ## Tests Coexist with Code

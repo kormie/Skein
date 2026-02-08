@@ -18,9 +18,9 @@ Skein is designed around six ranked principles:
 | P5 | Crash Gracefully | OTP's "let it crash" philosophy is the default for agent workloads |
 | P6 | Humans Read, Agents Write | Syntax favors regularity and unambiguous parsing over cleverness |
 
-## What Works Today (Phases 1-6)
+## What Works Today (Phases 1-7)
 
-The compilation pipeline is operational through Phase 6. You can write `.skein` files with modules, functions, types, handlers, store operations, and agents -- compile them to BEAM bytecode, and run them.
+The compilation pipeline is operational through Phase 7. You can write `.skein` files with modules, functions, types, handlers, store operations, and agents -- compile them to BEAM bytecode, and run them. The CLI tooling provides project scaffolding, building, testing, running, and trace inspection.
 
 **Language constructs:**
 
@@ -80,15 +80,23 @@ The compilation pipeline is operational through Phase 6. You can write `.skein` 
 - Lightweight HTTP server for serving handlers
 - Trace recording with timing and outcome metadata
 
+**CLI tooling:**
+
+- `skein new <dir>` -- scaffold a new project with `skein.toml`, `src/`, `test/`, and example files
+- `skein build <dir>` -- compile all `.skein` files in a project's `src/` tree
+- `skein test <dir>` -- discover and run all tests across `src/` and `test/` directories
+- `skein run <dir>` -- compile and start an HTTP server for handler modules
+- `skein trace` -- view recent trace spans with `--last` and `--kind` filters
+
 ## What's Not Built Yet
 
-- Tool declarations and execution -- Phase 6 (remaining)
-- Agent pool supervision (`AgentPool` with max concurrency) -- Phase 6 (remaining)
-- Built-in test constructs (`test`, `scenario`, `golden`) -- Phase 7
-- CLI tooling (`skein new`, `skein build`, `skein test`) -- Phase 7
-- `!` and `?` operators for Result unwrap/propagation -- parsed but not compiled
-- Enum variant matching in codegen
+- `scenario` and `golden` test constructs -- parsed but not executed end-to-end
+- Replay engine for deterministic trace playback
 - Managed storage backends (Postgres, SQLite) -- currently ETS only
+- Bandit + Plug HTTP server -- currently using `:gen_tcp` dev server
+- Agent pool supervision (`AgentPool` with max concurrency)
+- Queue/topic handlers and schedule handlers
+- LLM streaming (`llm.stream` with `on_chunk`)
 
 See the [Roadmap](/Skein/roadmap/phase-2/) for the full plan.
 

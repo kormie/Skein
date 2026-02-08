@@ -24,17 +24,18 @@ The language sits at the intersection of three ideas:
 
 ## Current Status
 
-**Phases 1-5 are complete.** The full compilation pipeline is operational with type checking, capability-based security, HTTP handlers, and storage:
+**Phases 1-7 are complete.** The full compilation pipeline is operational with type checking, capability-based security, HTTP handlers, storage, agents, and CLI tooling:
 
 - Lexer tokenizes Skein source into a token stream
 - Parser builds a full AST via recursive descent
-- Analyzer performs type checking, name resolution, and capability validation
+- Analyzer performs type checking, name resolution, capability validation, and transition checking
 - Code generator produces Core Erlang via the `:cerl` module
 - OTP's `:compile.forms/2` compiles to BEAM bytecode
 - Modules load into the VM and functions are callable from Elixir
-- Runtime provides HTTP client, handler dispatch, store, and trace recording
+- Runtime provides agents, HTTP client, handler dispatch, store, memory, LLM, tools, and trace recording
+- CLI provides `skein new`, `skein build`, `skein test`, `skein run`, and `skein trace`
 
-The test suite has **396 checks** (352 unit tests + 44 property-based tests) with 0 failures.
+The test suite has **651 checks** (594 unit tests + 57 property-based tests) with 0 failures.
 
 ## Quick Example
 

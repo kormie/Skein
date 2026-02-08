@@ -25,7 +25,26 @@ The project is an Elixir umbrella with three apps:
 apps/
   skein_compiler/    # Lexer, parser, analyzer, code generator
   skein_runtime/     # Agents, HTTP client, handler dispatch, store, memory, LLM, trace recording
-  skein_cli/         # CLI tooling (stub)
+  skein_cli/         # CLI tooling (new, build, test, run, trace)
+```
+
+## Create a New Project
+
+The fastest way to start is with `skein new`:
+
+```bash
+mix skein.new my_service
+cd my_service
+```
+
+This creates:
+
+```
+my_service/
+  skein.toml           # Project configuration
+  README.md
+  src/main.skein       # Example module
+  test/main_test.skein # Example test
 ```
 
 ## Write Your First Program
@@ -78,7 +97,23 @@ module Math {
 mod.double(21)        #=> 42
 ```
 
-## Run the Tests
+## Build and Test a Project
+
+```bash
+# Build all .skein files in a project
+mix skein.build my_service
+
+# Run all Skein tests across src/ and test/ directories
+mix skein.test my_service
+
+# Start the service (if it has HTTP handlers)
+mix skein.run my_service --port 4000
+
+# View recent traces
+mix skein.trace --last 10
+```
+
+## Run the Compiler Tests
 
 ```bash
 # Run all tests from the project root
@@ -92,8 +127,8 @@ mix test --trace
 ```
 
 The test suite includes:
-- **340 unit tests** across lexer, parser, analyzer, codegen, and runtime
-- **34 property-based tests** -- randomized inputs across lexer, parser, codegen, capability checking, and store operations
+- **594 unit tests** across lexer, parser, analyzer, codegen, runtime, and CLI
+- **57 property-based tests** -- randomized inputs across lexer, parser, codegen, capability checking, store, and tool operations
 
 ## Compiled Module Naming
 

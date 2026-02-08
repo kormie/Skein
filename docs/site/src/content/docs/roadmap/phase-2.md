@@ -13,9 +13,10 @@ description: What's been built, what's next, and the full 7-phase implementation
 | 4 | Handlers and HTTP Server | **Complete** | HTTP handlers, routing, request dispatch, web server |
 | 5 | Storage | **Complete** | ETS-backed `store.table` with get, put, delete, query |
 | 6 | Agents | **Complete** | Agent skeleton, memory, LLM, tools, events |
-| 7 | Testing, Replay, and CLI | **In Progress** | Test constructs and CLI compile/test done; scenario/golden/replay remaining |
+| 7 | Testing, Replay, and CLI | **Complete** | Test constructs, full CLI (new, build, test, run, trace) |
+| 8 | Hardening and Infrastructure | **Next** | Test infrastructure, Ecto backend, Bandit, examples, queue/schedule, streaming |
 
-**Current test suite:** 57 properties, 560 tests, 0 failures
+**Current test suite:** 57 properties, 594 tests, 0 failures
 
 ## Phase 1: Hello BEAM (Complete)
 
@@ -214,32 +215,54 @@ description: What's been built, what's next, and the full 7-phase implementation
 - `suspend()` / `resume()` lifecycle
 - Tool policies (rate limits, approval workflows)
 
-## Phase 7: Testing, Replay, and CLI (In Progress)
+## Phase 7: Testing, Replay, and CLI (Complete)
 
-### Completed
+**Goal:** Built-in test constructs and a complete CLI for project management.
 
+**What was built:**
+
+### Compiler
 - `test "description" { ... }` -- parsing, codegen to `__test_N__/0` functions, `__tests__/0` metadata
 - `assert expr` -- evaluates expression, raises `RuntimeError` on falsy
-- `Skein.CLI.compile/1` -- compile a `.skein` file
-- `Skein.CLI.test/1` -- compile and run all test declarations with pass/fail reporting
 
-### Remaining
+### CLI (5 new commands, 34 new tests)
+- `Skein.CLI.new/1` -- scaffold a new project with `skein.toml`, `src/main.skein`, `test/main_test.skein`, and `README.md`
+- `Skein.CLI.build/1` -- compile all `.skein` files in a project's `src/` tree; reports per-file success/failure
+- `Skein.CLI.test/1` -- compile and run tests in a single `.skein` file
+- `Skein.CLI.test_all/1` -- discover and run all tests across `src/` and `test/` directories with aggregate reporting
+- `Skein.CLI.run/1` -- compile a project and start an HTTP server for handler modules (`--port` flag)
+- `Skein.CLI.trace/1` -- view recent trace spans with `--last` and `--kind` filters
 
-- `scenario` tests with `given`/`expect` blocks
-- `golden` trace tests with `replay`
-- Replay engine: re-execute handlers/agents against recorded I/O
-- `skein new` -- project scaffolding
-- `skein build` -- compile to OTP release
-- `skein run` -- start the service locally
-- `skein trace` -- view recent traces (CLI table output)
+### Mix Aliases
+- `mix skein.new` / `mix skein.build` / `mix skein.test` / `mix skein.run` / `mix skein.trace`
+
+**Acceptance criteria met:**
+- `skein new my_service` generates a working project with compilable example files
+- `skein build` compiles all `.skein` files and reports results
+- `skein test` discovers tests across directories, aggregates pass/fail/compile-error counts
+- `skein run` starts the HTTP server and serves compiled handlers
+- `skein trace --last 10` returns recent trace spans
+
+## Phase 8: Hardening and Infrastructure (Next)
+
+The next priorities fill gaps in the existing implementation:
+
+- **8a: Test infrastructure** -- `scenario` tests with `given`/`expect`, `golden` trace tests, replay engine
+- **8b: Storage backend** -- Ecto schema generation, migrations, SQLite/Postgres backends
+- **8c: HTTP server** -- Bandit + Plug integration to replace `:gen_tcp` dev server
+- **8d: Canonical examples** -- `hello_http.skein`, `refund_agent.skein`, `incident_triage.skein`, `queue_worker.skein`
+- **8e: Queue and schedule handlers** -- `handler queue` and `handler schedule` constructs
+- **8f: LLM streaming** -- `llm.stream` with `on_chunk` callback
+
+See the [Implementation Plan](https://github.com/kormie/Skein/blob/main/docs/IMPLEMENTATION_PLAN.md) for full acceptance criteria.
 
 ## Post-MVP Backlog
 
-- Queue/topic handlers
-- Schedule handlers
-- LLM streaming
 - Erlang/Elixir FFI (`extern`)
 - Hot code upgrades
 - Web IDE (trace viewer)
 - Language Server Protocol (LSP)
+- `llm.embed` and `llm.rerank` for RAG
+- Human-in-the-loop approval workflows
 - Managed deployment platform
+- Marketplace for tools/connectors
