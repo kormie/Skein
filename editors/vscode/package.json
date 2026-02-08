@@ -1,0 +1,28 @@
+{
+  "name": "skein-lang",
+  "displayName": "Skein Language",
+  "description": "Syntax highlighting for the Skein programming language",
+  "version": "0.1.0",
+  "publisher": "kormie",
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": ["Programming Languages"],
+  "contributes": {
+    "languages": [
+      {
+        "id": "skein",
+        "aliases": ["Skein", "skein"],
+        "extensions": [".skein"],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "skein",
+        "scopeName": "source.skein",
+        "path": "./skein.tmLanguage.json"
+      }
+    ]
+  }
+}

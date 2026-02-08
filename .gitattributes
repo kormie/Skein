@@ -1,0 +1,3 @@
+# Skein language files — use Rust highlighting as an approximation
+# until a proper Skein grammar is added to GitHub Linguist.
+*.skein linguist-language=Rust
