@@ -27,6 +27,7 @@ export default defineConfig({
             { label: 'Types', slug: 'language/types' },
             { label: 'Expressions', slug: 'language/expressions' },
             { label: 'Modules & Functions', slug: 'language/modules-and-functions' },
+            { label: 'Capabilities & Effects', slug: 'language/capabilities-and-effects' },
           ],
         },
         {
@@ -37,6 +38,12 @@ export default defineConfig({
             { label: 'Parser', slug: 'compiler/parser' },
             { label: 'Code Generation', slug: 'compiler/codegen' },
             { label: 'Error Handling', slug: 'compiler/errors' },
+          ],
+        },
+        {
+          label: 'Runtime',
+          items: [
+            { label: 'Overview', slug: 'runtime/overview' },
           ],
         },
         {

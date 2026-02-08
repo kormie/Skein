@@ -22,6 +22,11 @@
       "purpose": "Compiler internals — pipeline, lexer, parser, codegen, error handling"
     },
     {
+      "slug": "runtime",
+      "label": "Runtime",
+      "purpose": "Runtime library — HTTP client, capability enforcement, trace recording"
+    },
+    {
       "slug": "testing",
       "label": "Testing",
       "purpose": "Test strategies — unit tests, property-based tests"
@@ -45,11 +50,11 @@
   "sourceMappings": [
     {
       "source": "docs/SKEIN_SPEC.md",
-      "docs": ["language/syntax", "language/types", "language/expressions", "language/modules-and-functions"]
+      "docs": ["language/syntax", "language/types", "language/expressions", "language/modules-and-functions", "language/capabilities-and-effects"]
     },
     {
       "source": "docs/ARCHITECTURE.md",
-      "docs": ["compiler/pipeline"]
+      "docs": ["compiler/pipeline", "runtime/overview"]
     },
     {
       "source": "docs/IMPLEMENTATION_PLAN.md",
