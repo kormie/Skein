@@ -219,21 +219,39 @@ Every operation:
 
 ### `Skein.Runtime.Server`
 
-A lightweight GenServer-based TCP server that serves compiled Skein handlers over HTTP.
+A production-grade HTTP server powered by Bandit + Plug that serves compiled Skein handlers.
 
 **API:**
 
 ```elixir
-Skein.Runtime.Server.start_link(module, port: 4000)
+Skein.Runtime.Server.start_link(module: MyModule, port: 4000)
 #=> {:ok, pid}
 ```
 
 **Features:**
-- Port binding and connection acceptance loop
-- HTTP request parsing via Erlang `:gen_tcp`
+- Bandit HTTP server with concurrent request handling
+- Plug-based router built dynamically from compiled handler metadata (`Skein.Runtime.Router`)
 - Routes requests to handler functions via `Skein.Runtime.Handler`
 - Serves trace data at `GET /__skein/traces`
-- JSON response streaming
+- JSON response encoding with proper content-type headers
+- Exception handling with 500 responses for handler errors
+
+### `Skein.Runtime.Request`
+
+Provides request body parsing and validation for `req.json[T]` expressions in handlers.
+
+**API:**
+
+```elixir
+Skein.Runtime.Request.json(req_map, json_schema)
+#=> {:ok, parsed_map} | {:error, reason}
+```
+
+**Features:**
+- Parses JSON request body from the handler's `req` map
+- Validates against compile-time JSON Schema derived from Skein type declarations
+- Checks required fields and field types (string, integer, number, boolean, array, object)
+- Returns structured error messages for validation failures
 
 ### `Skein.Runtime.Trace`
 

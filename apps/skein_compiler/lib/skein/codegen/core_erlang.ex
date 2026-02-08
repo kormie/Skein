@@ -631,6 +631,7 @@ defmodule Skein.CodeGen.CoreErlang do
       |> Map.put(:__capabilities__, capabilities)
       |> Map.put(:__fn_arities__, fn_arities)
       |> Map.put(:__type_decls__, type_decls)
+      |> Map.put(:__handler_req_param__, param)
 
     body_expr = generate_expr(body, scope)
     :cerl.c_fun([req_var], body_expr)
@@ -1091,6 +1092,51 @@ defmodule Skein.CodeGen.CoreErlang do
       :cerl.c_atom(method_atom),
       [:cerl.abstract(namespace) | args_exprs] ++ [caps_expr]
     )
+  end
+
+  # Request body parsing: req.json[T] — parses and validates JSON body against type schema
+  defp generate_expr(
+         %AST.Call{
+           target: %AST.FieldAccess{
+             subject: %AST.Identifier{name: subject_name},
+             field: "json"
+           },
+           args: [],
+           type_param: %AST.TypeRef{name: type_name} = _type_param
+         },
+         scope
+       )
+       when is_binary(subject_name) do
+    handler_param = Map.get(scope, :__handler_req_param__)
+
+    if handler_param == subject_name do
+      # This is req.json[T] — generate call to Skein.Runtime.Request.json(req, schema)
+      req_var = :cerl.c_var(Map.get(scope, subject_name))
+
+      type_decls = Map.get(scope, :__type_decls__, %{})
+
+      schema =
+        case Map.get(type_decls, type_name) do
+          %AST.TypeDecl{} = decl -> SchemaGen.to_json_schema(decl)
+          _ -> %{}
+        end
+
+      schema_expr = :cerl.abstract(schema)
+
+      :cerl.c_call(
+        :cerl.c_atom(:"Elixir.Skein.Runtime.Request"),
+        :cerl.c_atom(:json),
+        [req_var, schema_expr]
+      )
+    else
+      # Not the handler request param — fall through to generic field access
+      subject_expr = generate_expr(%AST.Identifier{name: subject_name, meta: %{}}, scope)
+
+      :cerl.c_call(:cerl.c_atom(:erlang), :cerl.c_atom(:map_get), [
+        :cerl.c_atom(:json),
+        subject_expr
+      ])
+    end
   end
 
   # LLM effect: llm.json[T](model, system, input) — with type-parameterized schema

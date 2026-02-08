@@ -1682,9 +1682,16 @@ defmodule Skein.Parser do
             error
         end
 
-      {:ok, _type_ref, [{:rbracket, _} | rest2]} ->
-        # Type parameter without call — continue the chain
-        {:ok, expr, rest2}
+      {:ok, type_ref, [{:rbracket, {line, col}} | rest2]} ->
+        # Type parameter without call args — e.g., req.json[T]
+        call = %AST.Call{
+          target: expr,
+          args: [],
+          type_param: type_ref,
+          meta: %{line: line, col: col, file: file}
+        }
+
+        parse_postfix_chain(call, rest2, file)
 
       _ ->
         # Not a valid type parameter, stop the chain

@@ -214,6 +214,7 @@ The code generator translates Skein constructs to Core Erlang + Skein runtime ca
 | `http.*` | Calls to `Skein.Runtime.Http` |
 | `llm.*` | Calls to `Skein.Runtime.LLM` |
 | `tool.call` | Call to `Skein.Runtime.Tool.call/3` |
+| `req.json[T]` | Call to `Skein.Runtime.Request.json/2` with compile-time JSON Schema |
 
 **Core Erlang generation uses the `:cerl` module** to build AST nodes programmatically. This is safer than generating text. The final step calls `:compile.forms/2` to produce `.beam` bytecode.
 
