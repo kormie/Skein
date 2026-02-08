@@ -1,0 +1,72 @@
+/* ==============================================
+   Skein Brand Theme
+   Logo gradient: Indigo (#7c3aed) → Teal (#2dd4bf)
+   ============================================== */
+
+/* --- Dark Mode (default) --- */
+:root {
+  --sl-color-accent-low: #134e4a;
+  --sl-color-accent: #2dd4bf;
+  --sl-color-accent-high: #ccfbf1;
+
+  --brand-gradient: linear-gradient(135deg, #7c3aed 0%, #2dd4bf 100%);
+}
+
+/* --- Light Mode --- */
+:root[data-theme='light'] {
+  --sl-color-accent-low: #ccfbf1;
+  --sl-color-accent: #0f766e;
+  --sl-color-accent-high: #134e4a;
+
+  --brand-gradient: linear-gradient(135deg, #6d28d9 0%, #0d9488 100%);
+}
+
+/* --- Site Title: apply the logo gradient to the text --- */
+.site-title span {
+  background: var(--brand-gradient);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  font-weight: 800;
+}
+
+/* --- Hero: gradient primary action button --- */
+.hero .sl-link-button.primary {
+  background: var(--brand-gradient);
+  border: none;
+  color: white;
+  transition: opacity 0.2s ease, box-shadow 0.2s ease;
+}
+.hero .sl-link-button.primary:hover {
+  opacity: 0.9;
+  box-shadow: 0 0 20px rgba(45, 212, 191, 0.4);
+}
+
+/* --- Header: subtle accent border --- */
+header.header {
+  border-bottom: 1px solid var(--sl-color-accent-low);
+}
+
+/* --- Sidebar: gradient active-page indicator --- */
+[data-sl-sidebar] a[aria-current='page'],
+[data-sl-sidebar] a[aria-current='page']:hover,
+[data-sl-sidebar] a[aria-current='page']:focus {
+  background: linear-gradient(to right, var(--sl-color-accent-low), transparent);
+  border-left: 3px solid var(--sl-color-accent);
+  color: var(--sl-color-accent-high);
+}
+
+/* --- Custom Scrollbar (Webkit) --- */
+::-webkit-scrollbar {
+  width: 8px;
+}
+::-webkit-scrollbar-track {
+  background: var(--sl-color-gray-6);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--sl-color-accent-low);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--sl-color-accent);
+}

@@ -21,6 +21,12 @@ export default defineConfig({
         },
       },
       title: 'Skein',
+      logo: {
+        src: './src/assets/logo.svg',
+      },
+      customCss: [
+        './src/styles/custom.css',
+      ],
       plugins: [
         starlightLlmsTxt({ projectName: 'Skein' }),
       ],
