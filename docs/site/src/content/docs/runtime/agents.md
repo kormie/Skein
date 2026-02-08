@@ -1,0 +1,214 @@
+---
+title: Agents
+description: How Skein agents compile to gen_statem state machines and run on the BEAM.
+---
+
+## Overview
+
+Agents are the core construct in Skein for building stateful, phase-driven services. Each agent is a state machine with:
+
+- A **Phase** enum defining valid states and transitions
+- **State** fields for persistent data across phases
+- An **`on start`** handler that initializes the agent
+- **`on phase`** handlers that execute when entering each phase
+- **Capabilities** for memory, LLM, HTTP, and other effects
+
+At runtime, agents compile to `:gen_statem` processes managed by `Skein.Runtime.Agent`.
+
+## Skein Source
+
+```skein
+agent RefundBot {
+  capability memory.kv("sessions")
+  capability model("claude-3-5-sonnet")
+
+  enum Phase {
+    Review -> Approved, Denied
+    Approved -> Done
+    Denied -> Done
+    Done
+  }
+
+  state {
+    request_id: String
+    amount: Int
+  }
+
+  on start(params) {
+    state.request_id = params.id
+    state.amount = params.amount
+    transition(Review)
+  }
+
+  on phase(Review) {
+    let decision = llm.chat("claude-3-5-sonnet", "Evaluate refund", state.amount)
+    match decision {
+      "approve" -> transition(Approved)
+      "deny" -> transition(Denied)
+    }
+  }
+
+  on phase(Approved) {
+    emit({ type: "refund_approved", amount: state.amount })
+    transition(Done)
+  }
+
+  on phase(Denied) {
+    emit({ type: "refund_denied", amount: state.amount })
+    transition(Done)
+  }
+
+  on phase(Done) {
+    stop()
+  }
+}
+```
+
+## Compilation
+
+The compiler processes agents through all four analyzer passes:
+
+1. **Name resolution** -- registers the agent, its Phase enum variants, state fields, and handlers
+2. **Type checking** -- validates state field types and handler expressions
+3. **Capability checking** -- verifies `memory.kv`, `model`, `http.out`, `store.table` capabilities against effect calls in handlers
+4. **Transition checking** -- validates that every `transition(Phase)` call targets a phase reachable from the current handler's phase via the `->` declarations
+
+### Generated Module
+
+An agent named `RefundBot` compiles to `Elixir.Skein.Agent.RefundBot` with these functions:
+
+| Function | Purpose |
+|----------|---------|
+| `start_link/1` | Start the agent with initial params |
+| `__phases__/0` | Return phase metadata (variants and valid transitions) |
+| `__capabilities__/0` | Return declared capabilities as a list of maps |
+| `__start_handler__/2` | Execute the `on start(params)` handler |
+| `__phase_handler__/3` | Execute phase-specific handlers, dispatched by phase atom |
+
+### Transition Validation (E0040)
+
+The analyzer checks transition validity at compile time. Given the Phase enum:
+
+```skein
+enum Phase {
+  Review -> Approved, Denied
+  Approved -> Done
+  Denied -> Done
+  Done
+}
+```
+
+A `transition(Done)` call inside `on phase(Review)` would be a compile error -- `Review` can only transition to `Approved` or `Denied`.
+
+## Runtime
+
+### Process Lifecycle
+
+`Skein.Runtime.Agent` manages the `:gen_statem` lifecycle:
+
+```
+start_link(args)
+    │
+    ▼
+init: call __start_handler__(args, state)
+    │
+    ├── {:transition, phase, state, events}
+    │       → move to phase, queue :execute_phase
+    │
+    ├── {:stop, state, events}
+    │       → terminate normally
+    │
+    └── {:keep, state, events}
+            → stay in :__idle__ state
+```
+
+When `:execute_phase` fires:
+
+```
+handle_event(:internal, :execute_phase, phase, data)
+    │
+    ▼
+call __phase_handler__(phase, state, events)
+    │
+    ├── {:transition, next_phase, state, events}
+    │       → move to next_phase, queue :execute_phase again
+    │
+    ├── {:stop, state, events}
+    │       → terminate normally
+    │
+    └── {:keep, state, events}
+            → stay in current phase, wait for external events
+```
+
+### Querying Agent State
+
+```elixir
+{:ok, pid} = Skein.Agent.RefundBot.start_link(%{id: "abc", amount: 100})
+
+Skein.Runtime.Agent.get_phase(pid)
+#=> :done
+
+Skein.Runtime.Agent.get_state(pid)
+#=> %{request_id: "abc", amount: 100}
+
+Skein.Runtime.Agent.get_events(pid)
+#=> [%{type: "refund_approved", amount: 100}]
+```
+
+### Handler Return Values
+
+Agent handlers communicate via tagged tuples:
+
+| Return | Meaning |
+|--------|---------|
+| `{:transition, phase, state, events}` | Move to `phase`, merge `state`, append `events`, then execute phase handler |
+| `{:stop, state, events}` | Terminate the agent normally |
+| `{:keep, state, events}` | Stay in current phase, merge state and events |
+
+The code generator maps Skein constructs to these tuples:
+- `transition(Phase)` → `{:transition, :phase, state_updates, new_events}`
+- `stop()` → `{:stop, state_updates, new_events}`
+- `emit(event)` → appends to the events list
+- `state.field = value` → adds to state updates map
+
+## Memory Integration
+
+Agents use `memory.kv` for scoped key-value storage that persists across phase transitions:
+
+```skein
+agent SessionTracker {
+  capability memory.kv("sessions")
+
+  on start(params) {
+    memory.put("sessions", params.id, params.data)
+    transition(Active)
+  }
+
+  on phase(Active) {
+    let data = memory.get("sessions", state.session_id)
+    -- process data...
+  }
+}
+```
+
+Memory is backed by ETS with per-namespace tables. Each namespace requires a `memory.kv` capability declaration.
+
+## LLM Integration
+
+Agents can call LLM models for decision-making:
+
+```skein
+agent Classifier {
+  capability model("claude-3-5-sonnet")
+
+  on phase(Classify) {
+    -- Unstructured text response
+    let analysis = llm.chat("claude-3-5-sonnet", "Classify this input", state.input)
+
+    -- Schema-constrained JSON response
+    let decision = llm.json("claude-3-5-sonnet", "Decide action", state.input, schema)
+  }
+}
+```
+
+The LLM client uses a pluggable backend system. In tests, `Skein.Runtime.Llm.TestBackend` returns deterministic responses. In production, custom backends implement the `Skein.Runtime.Llm.Backend` behaviour.

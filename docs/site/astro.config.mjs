@@ -54,6 +54,7 @@ export default defineConfig({
           label: 'Runtime',
           items: [
             { label: 'Overview', slug: 'runtime/overview' },
+            { label: 'Agents', slug: 'runtime/agents' },
           ],
         },
         {

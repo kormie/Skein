@@ -57,7 +57,7 @@ Source (.skein) → Lexer → Parser → Analyzer → CodeGen → BEAM bytecode
 
 1. **Lexer** (`Skein.Lexer`) — source text to token stream
 2. **Parser** (`Skein.Parser`) — token stream to AST
-3. **Analyzer** (`Skein.Analyzer`) — AST to annotated AST (3 passes: name resolution, type checking, capability checking)
+3. **Analyzer** (`Skein.Analyzer`) — AST to annotated AST (4 passes: name resolution, type checking, capability checking, transition checking)
 4. **CodeGen** (`Skein.Codegen.CoreErlang`) — AST to Core Erlang to BEAM bytecode
 
 ## Key Modules
@@ -79,10 +79,13 @@ Source (.skein) → Lexer → Parser → Analyzer → CodeGen → BEAM bytecode
 
 | Module | Location | Purpose |
 |--------|----------|---------|
+| `Skein.Runtime.Agent` | `apps/skein_runtime/lib/skein/runtime/agent.ex` | GenStateMachine agent lifecycle |
 | `Skein.Runtime.Http` | `apps/skein_runtime/lib/skein/runtime/http.ex` | HTTP client with capability enforcement |
 | `Skein.Runtime.Capability` | `apps/skein_runtime/lib/skein/runtime/capability.ex` | Runtime capability validation |
 | `Skein.Runtime.Handler` | `apps/skein_runtime/lib/skein/runtime/handler.ex` | HTTP request dispatch |
 | `Skein.Runtime.Store` | `apps/skein_runtime/lib/skein/runtime/store.ex` | ETS-backed storage |
+| `Skein.Runtime.Memory` | `apps/skein_runtime/lib/skein/runtime/memory.ex` | Scoped KV memory |
+| `Skein.Runtime.Llm` | `apps/skein_runtime/lib/skein/runtime/llm.ex` | LLM client with schema-constrained JSON |
 | `Skein.Runtime.Server` | `apps/skein_runtime/lib/skein/runtime/server.ex` | TCP HTTP server |
 | `Skein.Runtime.Trace` | `apps/skein_runtime/lib/skein/runtime/trace.ex` | Trace span recording |
 
@@ -112,12 +115,15 @@ Every compiler error is a `%Skein.Error{}` struct with fields: `code`, `severity
 
 ## Current Status
 
-Phases 1-5 are complete. The compilation pipeline supports:
+Phases 1-5 are complete and Phase 6 is in progress (agents, memory, and LLM done; tools and supervision remaining). The compilation pipeline supports:
 - Modules with functions, let bindings, match expressions, pipes, string interpolation
 - Type checking with inference, JSON schema derivation, constraint annotations
 - Capability-based security with compile-time and runtime enforcement
 - HTTP handlers with route matching and path parameters
 - ETS-backed store operations with capability gating
+- Agent state machines with phase transitions, compile-time transition validation
+- Scoped KV memory with namespace isolation
+- LLM client with pluggable backends and schema-constrained JSON
 - Automatic trace recording for all effect calls
 
-**Test suite:** 44 properties, 352 tests, 0 failures
+**Test suite:** 34 properties, 340 tests, 0 failures

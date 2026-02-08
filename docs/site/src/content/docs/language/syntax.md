@@ -202,11 +202,61 @@ Blocks use braces. Always. No significant whitespace, no optional braces.
 
 The last expression in a block is its return value.
 
+## Agents
+
+Agents are state machines with phases, transitions, and event-driven handlers:
+
+```skein
+agent RefundBot {
+  capability memory.kv("sessions")
+  capability model("claude-3-5-sonnet")
+
+  enum Phase {
+    Review -> Approved, Denied
+    Approved -> Done
+    Denied -> Done
+    Done
+  }
+
+  state {
+    request_id: String
+    amount: Int
+  }
+
+  on start(params) {
+    state.request_id = params.id
+    state.amount = params.amount
+    transition(Review)
+  }
+
+  on phase(Review) {
+    let decision = llm.chat("claude-3-5-sonnet", "Evaluate this refund", state.amount)
+    match decision {
+      "approve" -> transition(Approved)
+      "deny" -> transition(Denied)
+    }
+  }
+
+  on phase(Approved) {
+    emit({ type: "refund_approved", amount: state.amount })
+    transition(Done)
+  }
+}
+```
+
+Key features:
+- `Phase` enum with `->` transition declarations -- validated at compile time
+- `on start(params)` handler runs when the agent starts
+- `on phase(Phase)` handlers run when entering each phase
+- `transition(Phase)` moves to a new phase (invalid transitions are compiler errors)
+- `state.field` for reading/writing agent state
+- `emit(event)` for domain events
+- `stop()` to terminate the agent
+
 ## Constructs Parsed but Not Yet Compiled
 
 The parser recognizes these constructs (they produce valid AST nodes), but the code generator does not yet compile them:
 
-- `type Name { field: Type }` -- record type declarations
-- `enum Name { Variant1, Variant2 }` -- enum declarations
-- `capability kind(params)` -- capability declarations
-- `handler`, `agent`, `tool`, `supervisor`, `test` -- future phase constructs
+- `tool` declarations -- tool calling with contract/implementation separation
+- `supervisor` declarations -- agent pool management
+- `test`, `scenario`, `golden` -- built-in test constructs

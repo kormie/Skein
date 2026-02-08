@@ -18,9 +18,9 @@ Skein is designed around six ranked principles:
 | P5 | Crash Gracefully | OTP's "let it crash" philosophy is the default for agent workloads |
 | P6 | Humans Read, Agents Write | Syntax favors regularity and unambiguous parsing over cleverness |
 
-## What Works Today (Phases 1-5)
+## What Works Today (Phases 1-6)
 
-The compilation pipeline is operational through Phase 5. You can write `.skein` files with modules, functions, types, handlers, and store operations -- compile them to BEAM bytecode, and run them.
+The compilation pipeline is operational through Phase 6. You can write `.skein` files with modules, functions, types, handlers, store operations, and agents -- compile them to BEAM bytecode, and run them.
 
 **Language constructs:**
 
@@ -34,6 +34,7 @@ The compilation pipeline is operational through Phase 5. You can write `.skein` 
 - `enum Name { variants }` -- enum type declarations with transitions
 - `capability namespace.kind(params)` -- capability declarations
 - `handler http METHOD "/path" (req) -> { ... }` -- HTTP handler declarations
+- `agent Name { ... }` -- agent state machines with phases and handlers
 - All arithmetic operators: `+`, `-`, `*`, `/`
 - All comparison operators: `==`, `!=`, `<`, `>`, `<=`, `>=`
 - Logical operators: `&&`, `||`
@@ -55,20 +56,34 @@ The compilation pipeline is operational through Phase 5. You can write `.skein` 
 - Compile-time capability checking (missing capability = structured error with `fix_code`)
 - HTTP effect calls: `http.get`, `http.post`, `http.put`, `http.patch`, `http.delete`
 - Store effect calls: `store.<table>.get`, `store.<table>.put`, `store.<table>.delete`, `store.<table>.query`
+- Memory effect calls: `memory.put`, `memory.get`, `memory.delete`, `memory.list`
+- LLM effect calls: `llm.chat`, `llm.json`
 - Runtime capability enforcement (second layer of defense)
 - Automatic trace recording for every effect call
+
+**Agents:**
+
+- `agent` declarations with `Phase` enums and `->` transitions
+- `on start(params)` and `on phase(Phase)` handlers
+- Compile-time phase transition validation
+- `transition(Phase)`, `stop()`, `emit(event)`, `state.field` access
+- GenStateMachine-based runtime with automatic phase handler dispatch
 
 **Runtime:**
 
 - HTTP client with capability enforcement and tracing
 - Handler dispatch with route matching and path parameters
 - ETS-backed store with capability-gated CRUD operations
+- Scoped KV memory with namespace isolation and capability enforcement
+- LLM client with pluggable backends and schema-constrained JSON responses
+- Agent runtime wrapping `:gen_statem` for phase-based state machines
 - Lightweight HTTP server for serving handlers
 - Trace recording with timing and outcome metadata
 
 ## What's Not Built Yet
 
-- Agents (state machines, LLM calls, tool calling) -- Phase 6
+- Tool declarations and execution -- Phase 6 (remaining)
+- Agent pool supervision (`AgentPool` with max concurrency) -- Phase 6 (remaining)
 - Built-in test constructs (`test`, `scenario`, `golden`) -- Phase 7
 - CLI tooling (`skein new`, `skein build`, `skein test`) -- Phase 7
 - `!` and `?` operators for Result unwrap/propagation -- parsed but not compiled

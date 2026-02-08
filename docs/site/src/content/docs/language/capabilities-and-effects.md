@@ -41,8 +41,8 @@ capability <namespace>.<kind>(<params>)
 | `http.out` | Outbound HTTP requests | Host allowlist (optional) |
 | `http.in` | Inbound HTTP handlers | Route prefix (optional) |
 | `store.table` | Database table access | Table name |
-
-More capabilities will be added in later phases (memory, LLM, tools, events).
+| `memory.kv` | Scoped KV memory | Namespace name |
+| `model` | LLM model access | Model identifier |
 
 ### Wildcard Capabilities
 
@@ -83,6 +83,26 @@ store.users.delete(id)
 store.users.query(filter)
 ```
 
+### Memory Effects
+
+```skein
+memory.put("sessions", key, value)
+memory.get("sessions", key)
+memory.delete("sessions", key)
+memory.list("sessions", prefix)
+```
+
+Memory is scoped by namespace. Each namespace requires a `capability memory.kv("namespace")` declaration.
+
+### LLM Effects
+
+```skein
+llm.chat("claude-3-5-sonnet", "system prompt", input)
+llm.json("claude-3-5-sonnet", "system prompt", input, schema)
+```
+
+`llm.chat` returns unstructured text. `llm.json` returns a parsed map constrained by a JSON schema. Both require a `capability model("model-name")` declaration.
+
 ### How They Parse
 
 Effect calls use existing Skein syntax -- no special grammar is needed. `http.get(url)` parses as:
@@ -101,9 +121,19 @@ The analyzer recognizes this pattern and checks it against declared capabilities
 
 ### Return Values
 
-All HTTP effect calls return `Result[String, String]`:
+**HTTP** effect calls return `Result[String, String]`:
 - `{:ok, body}` on success (HTTP 2xx)
 - `{:error, reason}` on failure (HTTP errors, network errors, capability violations)
+
+**Memory** effect calls return `Result` tuples:
+- `memory.get` returns `{:ok, value}` or `{:error, "not_found"}`
+- `memory.put` returns `{:ok, value}`
+- `memory.delete` returns `{:ok, key}`
+- `memory.list` returns a list of matching keys
+
+**LLM** effect calls return `Result` tuples:
+- `llm.chat` returns `{:ok, response_text}` or `{:error, %Llm.Error{}}`
+- `llm.json` returns `{:ok, parsed_map}` or `{:error, %Llm.Error{}}`
 
 ## Compile-Time Checking
 

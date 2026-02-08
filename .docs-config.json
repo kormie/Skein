@@ -24,7 +24,7 @@
     {
       "slug": "runtime",
       "label": "Runtime",
-      "purpose": "Runtime library — HTTP client, capability enforcement, trace recording"
+      "purpose": "Runtime library — agents, HTTP client, memory, LLM client, capability enforcement, trace recording"
     },
     {
       "slug": "testing",
@@ -54,7 +54,19 @@
     },
     {
       "source": "docs/ARCHITECTURE.md",
-      "docs": ["compiler/pipeline", "runtime/overview"]
+      "docs": ["compiler/pipeline", "runtime/overview", "runtime/agents"]
+    },
+    {
+      "source": "apps/skein_runtime/lib/skein/runtime/agent.ex",
+      "docs": ["runtime/agents"]
+    },
+    {
+      "source": "apps/skein_runtime/lib/skein/runtime/memory.ex",
+      "docs": ["runtime/overview"]
+    },
+    {
+      "source": "apps/skein_runtime/lib/skein/runtime/llm.ex",
+      "docs": ["runtime/overview"]
     },
     {
       "source": "docs/IMPLEMENTATION_PLAN.md",

@@ -24,7 +24,7 @@ The project is an Elixir umbrella with three apps:
 ```
 apps/
   skein_compiler/    # Lexer, parser, analyzer, code generator
-  skein_runtime/     # HTTP client, handler dispatch, store, trace recording
+  skein_runtime/     # Agents, HTTP client, handler dispatch, store, memory, LLM, trace recording
   skein_cli/         # CLI tooling (stub)
 ```
 
@@ -92,8 +92,8 @@ mix test --trace
 ```
 
 The test suite includes:
-- **352 unit tests** across lexer, parser, analyzer, codegen, and runtime
-- **44 property-based tests** -- randomized inputs across lexer, parser, codegen, capability checking, and store operations
+- **340 unit tests** across lexer, parser, analyzer, codegen, and runtime
+- **34 property-based tests** -- randomized inputs across lexer, parser, codegen, capability checking, and store operations
 
 ## Compiled Module Naming
 

@@ -12,10 +12,10 @@ description: What's been built, what's next, and the full 7-phase implementation
 | 3 | Capabilities and Effects | **Complete** | Capability declarations, effect calls, runtime enforcement, traces |
 | 4 | Handlers and HTTP Server | **Complete** | HTTP handlers, routing, request dispatch, web server |
 | 5 | Storage | **Complete** | ETS-backed `store.table` with get, put, delete, query |
-| 6 | Agents | Planned | State machines, LLM calls, tool calling |
+| 6 | Agents | **In Progress** | Agent skeleton, memory, LLM -- tools and supervision remaining |
 | 7 | Testing, Replay, and CLI | Planned | Built-in tests, trace replay, `skein` CLI |
 
-**Current test suite:** 44 properties, 352 tests, 0 failures
+**Current test suite:** 34 properties, 340 tests, 0 failures
 
 ## Phase 1: Hello BEAM (Complete)
 
@@ -132,21 +132,65 @@ description: What's been built, what's next, and the full 7-phase implementation
 - Each store operation produces a trace span
 - Query operations support filter functions
 
-## Phase 6: Agents (Next)
+## Phase 6: Agents (In Progress)
 
 **Goal:** The agent construct -- state machines with phases, transitions, memory, LLM calls, and tool calling. This is the crown jewel.
 
-**Planned scope:**
-- `agent` declaration with `state`, `Phase` enum with transitions, `on start`, `on phase(...)` handlers
-- Agent -> `gen_statem` compilation
-- `transition(Phase)` with compile-time transition validation
-- `suspend()` / `resume()` lifecycle
-- `memory.put` / `memory.get` with automatic instance scoping
-- `llm.json[T]` and `llm.chat` -- LLM client with schema-constrained decoding
+### Phase 6a: Agent Skeleton (Complete)
+
+**What was built:**
+
+#### Compiler
+- `agent` declaration parsing: Phase enum with `->` transitions, state fields, `on start` / `on phase` handlers
+- Agent analysis: name resolution of Phase variants and state fields, type checking, capability checking in handlers
+- Transition checking (Analyzer Pass 4): validates `transition(Phase)` calls against declared transitions in the Phase enum
+- Agent code generation: compiles agents to `Elixir.Skein.Agent.<Name>` modules with `start_link/1`, `__phases__/0`, `__start_handler__/2`, `__phase_handler__/3`
+- `transition()`, `stop()`, `emit()`, `state.field` access compiled to handler return tuples
+
+#### Runtime (1 new module)
+- `Skein.Runtime.Agent`: GenStateMachine wrapper with `start/2`, `start_link/2`, `get_phase/1`, `get_state/1`, `get_events/1`
+- Phase transition dispatch via `:gen_statem` internal events
+- State merging and event accumulation across transitions
+
+**Error codes added:**
+- E0040: Invalid phase transition (with `fix_hint` listing valid transitions)
+
+**Acceptance criteria met:**
+- Agent declarations compile to GenStateMachine modules
+- Phase transitions execute at runtime with proper state management
+- Invalid transitions are caught at compile time with structured errors
+- `emit()` appends events, `stop()` terminates the agent, `state.field` accesses agent state
+
+### Phase 6b: Memory and LLM (Complete)
+
+**What was built:**
+
+#### Compiler
+- `memory.*` effect recognition: `memory.put`, `memory.get`, `memory.delete`, `memory.list`
+- `llm.*` effect recognition: `llm.chat`, `llm.json`
+- Capability checking for `memory.kv` and `model` capabilities
+- Code generation for memory and LLM effect calls to runtime module calls
+
+#### Runtime (2 new modules)
+- `Skein.Runtime.Memory`: scoped KV storage with per-namespace ETS tables (`skein_memory_<namespace>`), capability enforcement, and trace recording
+- `Skein.Runtime.Llm`: provider-agnostic LLM client with `chat/4` and `json/5`, pluggable backend system, structured `Llm.Error` type with 8 error kinds
+- `Skein.Runtime.Llm.Backend` behaviour for custom providers
+- `Skein.Runtime.Llm.TestBackend` for deterministic testing
+
+**Acceptance criteria met:**
+- Memory operations compile and execute with namespace scoping
+- Memory calls without `capability memory.kv(...)` fail to compile
+- LLM calls compile and dispatch to the active backend
+- LLM calls without `capability model(...)` fail to compile
+- Schema-constrained JSON responses are parsed and validated
+- All memory and LLM operations produce trace spans
+
+### Phase 6: Remaining Work
+
 - `tool` declarations with contract/implementation separation
 - `tool.call` -- tool execution with tracing
 - Agent pool supervision (`AgentPool` with max concurrency)
-- `emit` for domain events
+- `suspend()` / `resume()` lifecycle
 
 ## Phase 7: Testing, Replay, and CLI (Planned)
 
