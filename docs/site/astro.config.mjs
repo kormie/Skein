@@ -8,6 +8,11 @@ export default defineConfig({
   integrations: [
     starlight({
       title: 'Skein',
+      logo: {
+        src: './src/assets/logo.svg',
+        alt: 'Skein',
+      },
+      favicon: '/favicon.svg',
       plugins: [
         starlightLlmsTxt({ projectName: 'Skein' }),
       ],

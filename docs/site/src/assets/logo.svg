@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 240" fill="none">
+  <defs>
+    <linearGradient id="skein-gradient" x1="0.3" y1="0" x2="1" y2="0.9">
+      <stop offset="0%" stop-color="#6B21A8"/>
+      <stop offset="40%" stop-color="#4F5BD5"/>
+      <stop offset="70%" stop-color="#2B8EC9"/>
+      <stop offset="100%" stop-color="#2DD4BF"/>
+    </linearGradient>
+  </defs>
+  <!-- Teardrop with open right side curling outward -->
+  <path
+    d="M100 14
+       L68 68
+       Q32 120, 32 160
+       Q32 216, 88 228
+       Q122 236, 148 212
+       Q168 192, 158 160
+       Q150 136, 134 148
+       Q118 164, 134 192
+       Q152 220, 180 214"
+    stroke="url(#skein-gradient)"
+    stroke-width="20"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    fill="none"
+  />
+</svg>
