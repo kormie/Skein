@@ -10,10 +10,12 @@ description: What's been built, what's next, and the full 7-phase implementation
 | 1 | Hello BEAM | **Complete** | End-to-end compilation pipeline |
 | 2 | Type System Foundation | **Complete** | Type checking, schemas, constraint annotations |
 | 3 | Capabilities and Effects | **Complete** | Capability declarations, effect calls, runtime enforcement, traces |
-| 4 | Handlers and HTTP Server | Next | HTTP handlers, routing, web server |
-| 5 | Storage | Planned | `store.table` with typed records and migrations |
+| 4 | Handlers and HTTP Server | **Complete** | HTTP handlers, routing, request dispatch, web server |
+| 5 | Storage | **Complete** | ETS-backed `store.table` with get, put, delete, query |
 | 6 | Agents | Planned | State machines, LLM calls, tool calling |
 | 7 | Testing, Replay, and CLI | Planned | Built-in tests, trace replay, `skein` CLI |
+
+**Current test suite:** 44 properties, 352 tests, 0 failures
 
 ## Phase 1: Hello BEAM (Complete)
 
@@ -88,30 +90,76 @@ description: What's been built, what's next, and the full 7-phase implementation
 - Runtime blocks HTTP to undeclared hosts (second layer of defense)
 - Each HTTP call produces a trace span with timing and status
 
-**Test counts:** 39 properties, 255 tests across compiler and runtime
-
-## Phase 4: Handlers and HTTP Server (Next)
+## Phase 4: Handlers and HTTP Server (Complete)
 
 **Goal:** HTTP handlers with routing, request/response handling, and a running web server.
 
+**What was built:**
+
+### Compiler
+- `handler http METHOD "/path/:param" (req) -> { ... }` syntax: parsing, analysis, codegen
+- Handler metadata generation: `__handlers__/0` returns handler definitions with methods, routes, and parameter names
+- Handler function codegen: compiles handler bodies with request parameter binding
+- Route parameter extraction from path patterns
+
+### Runtime (2 new modules)
+- `Skein.Runtime.Handler`: Route matching with path parameters, HTTP method dispatch, request construction, JSON response encoding, trace recording
+- `Skein.Runtime.Server`: GenServer-based TCP server with HTTP parsing, handler dispatch, and trace endpoint (`GET /__skein/traces`)
+
+**Acceptance criteria met:**
+- Handler declarations compile to callable functions with proper metadata
+- Route parameters are extracted and available in the request map
+- The HTTP server accepts connections and dispatches to compiled handlers
+- Trace data is queryable via the debug endpoint
+
+## Phase 5: Storage (Complete)
+
+**Goal:** `store.table` operations with capability enforcement and tracing.
+
+**What was built:**
+
+### Compiler
+- Store effect recognition: `store.<table>.<operation>(args)` pattern matching in analyzer and codegen
+- Store capability checking: `capability store.table("tablename")` validated against store effect calls
+- Store codegen: compiles store calls to `Skein.Runtime.Store` with table name, args, and capabilities
+
+### Runtime (1 new module)
+- `Skein.Runtime.Store`: ETS-backed storage with `get`, `put`, `delete`, `query` operations, capability enforcement, and automatic trace recording
+
+**Acceptance criteria met:**
+- Store operations compile and execute against ETS tables at runtime
+- Store calls without `capability store.table(...)` fail to compile
+- Each store operation produces a trace span
+- Query operations support filter functions
+
+## Phase 6: Agents (Next)
+
+**Goal:** The agent construct -- state machines with phases, transitions, memory, LLM calls, and tool calling. This is the crown jewel.
+
 **Planned scope:**
-- `handler http GET "/users/:id" (req) -> { ... }` syntax
-- Route compilation: Skein routes to Plug router
-- Request object: `req.params`, `req.json[T]`, `req.headers`
-- Response helpers: `respond.json(status, body)`
-- Handler-level tracing: every request produces a trace
-- Bandit + Plug for the HTTP server
+- `agent` declaration with `state`, `Phase` enum with transitions, `on start`, `on phase(...)` handlers
+- Agent -> `gen_statem` compilation
+- `transition(Phase)` with compile-time transition validation
+- `suspend()` / `resume()` lifecycle
+- `memory.put` / `memory.get` with automatic instance scoping
+- `llm.json[T]` and `llm.chat` -- LLM client with schema-constrained decoding
+- `tool` declarations with contract/implementation separation
+- `tool.call` -- tool execution with tracing
+- Agent pool supervision (`AgentPool` with max concurrency)
+- `emit` for domain events
 
-## Phase 5-7 (Future)
+## Phase 7: Testing, Replay, and CLI (Planned)
 
-### Phase 5: Storage
-`store.table` operations. Type-to-Ecto schema generation. Migration generation.
-
-### Phase 6: Agents
-The crown jewel -- state machine agents with phases, transitions, memory, LLM calls, and tool calling. Compiles to `gen_statem`.
-
-### Phase 7: Testing, Replay, and CLI
-Built-in `test` and `scenario` constructs. Deterministic trace replay. `skein new/build/test/run` CLI.
+**Planned scope:**
+- `test "description" { ... }` construct
+- `scenario` tests with `given`/`expect` blocks
+- `golden` trace tests with `replay`
+- Replay engine: re-execute handlers/agents against recorded I/O
+- `skein new` -- project scaffolding
+- `skein build` -- compile to OTP release
+- `skein test` -- run all test types
+- `skein run` -- start the service locally
+- `skein trace` -- view recent traces (CLI table output)
 
 ## Post-MVP Backlog
 

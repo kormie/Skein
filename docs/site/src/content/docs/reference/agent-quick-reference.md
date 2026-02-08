@@ -57,19 +57,34 @@ Source (.skein) → Lexer → Parser → Analyzer → CodeGen → BEAM bytecode
 
 1. **Lexer** (`Skein.Lexer`) — source text to token stream
 2. **Parser** (`Skein.Parser`) — token stream to AST
-3. **Analyzer** (`Skein.Analyzer`) — AST to annotated AST (stub in Phase 1)
+3. **Analyzer** (`Skein.Analyzer`) — AST to annotated AST (3 passes: name resolution, type checking, capability checking)
 4. **CodeGen** (`Skein.Codegen.CoreErlang`) — AST to Core Erlang to BEAM bytecode
 
 ## Key Modules
+
+### Compiler
 
 | Module | Location | Purpose |
 |--------|----------|---------|
 | `Skein.Lexer` | `apps/skein_compiler/lib/skein/lexer.ex` | Tokenizer |
 | `Skein.Parser` | `apps/skein_compiler/lib/skein/parser.ex` | AST construction |
 | `Skein.AST` | `apps/skein_compiler/lib/skein/ast.ex` | AST node definitions |
+| `Skein.Analyzer` | `apps/skein_compiler/lib/skein/analyzer.ex` | Type + capability checking |
 | `Skein.Codegen.CoreErlang` | `apps/skein_compiler/lib/skein/codegen/core_erlang.ex` | Code generation |
+| `Skein.Codegen.SchemaGen` | `apps/skein_compiler/lib/skein/codegen/schema_gen.ex` | JSON Schema derivation |
 | `Skein.Error` | `apps/skein_compiler/lib/skein/error.ex` | Structured error types |
 | `Skein.Compiler` | `apps/skein_compiler/lib/skein_compiler.ex` | Pipeline entry point |
+
+### Runtime
+
+| Module | Location | Purpose |
+|--------|----------|---------|
+| `Skein.Runtime.Http` | `apps/skein_runtime/lib/skein/runtime/http.ex` | HTTP client with capability enforcement |
+| `Skein.Runtime.Capability` | `apps/skein_runtime/lib/skein/runtime/capability.ex` | Runtime capability validation |
+| `Skein.Runtime.Handler` | `apps/skein_runtime/lib/skein/runtime/handler.ex` | HTTP request dispatch |
+| `Skein.Runtime.Store` | `apps/skein_runtime/lib/skein/runtime/store.ex` | ETS-backed storage |
+| `Skein.Runtime.Server` | `apps/skein_runtime/lib/skein/runtime/server.ex` | TCP HTTP server |
+| `Skein.Runtime.Trace` | `apps/skein_runtime/lib/skein/runtime/trace.ex` | Trace span recording |
 
 ## Coding Conventions
 
@@ -97,4 +112,12 @@ Every compiler error is a `%Skein.Error{}` struct with fields: `code`, `severity
 
 ## Current Status
 
-Phase 1 ("Hello BEAM") is complete. The end-to-end compilation pipeline works for modules with functions, let bindings, match expressions, arithmetic, comparisons, string interpolation, and pipe operators.
+Phases 1-5 are complete. The compilation pipeline supports:
+- Modules with functions, let bindings, match expressions, pipes, string interpolation
+- Type checking with inference, JSON schema derivation, constraint annotations
+- Capability-based security with compile-time and runtime enforcement
+- HTTP handlers with route matching and path parameters
+- ETS-backed store operations with capability gating
+- Automatic trace recording for all effect calls
+
+**Test suite:** 44 properties, 352 tests, 0 failures

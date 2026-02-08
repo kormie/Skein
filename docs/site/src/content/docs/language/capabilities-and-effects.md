@@ -1,6 +1,6 @@
 ---
 title: Capabilities and Effects
-description: How Skein enforces capability-based security for side effects like HTTP calls.
+description: How Skein enforces capability-based security for side effects like HTTP calls and store operations.
 ---
 
 ## Overview
@@ -39,8 +39,8 @@ capability <namespace>.<kind>(<params>)
 | Capability | Purpose | Parameters |
 |------------|---------|------------|
 | `http.out` | Outbound HTTP requests | Host allowlist (optional) |
-| `http.in` | Inbound HTTP handlers | *(Phase 4)* |
-| `store.table` | Database table access | Table name *(Phase 5)* |
+| `http.in` | Inbound HTTP handlers | Route prefix (optional) |
+| `store.table` | Database table access | Table name |
 
 More capabilities will be added in later phases (memory, LLM, tools, events).
 
@@ -62,7 +62,9 @@ Use wildcard capabilities sparingly -- explicit host lists are preferred for sec
 
 ## Effect Calls
 
-Effect calls look like regular function calls with a namespace prefix:
+Effect calls look like regular function calls with a namespace prefix.
+
+### HTTP Effects
 
 ```skein
 http.get(url)
@@ -70,6 +72,15 @@ http.post(url, body)
 http.put(url, body)
 http.patch(url, body)
 http.delete(url)
+```
+
+### Store Effects
+
+```skein
+store.users.get(id)
+store.users.put(record)
+store.users.delete(id)
+store.users.query(filter)
 ```
 
 ### How They Parse

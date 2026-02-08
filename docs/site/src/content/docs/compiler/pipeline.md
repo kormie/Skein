@@ -20,7 +20,7 @@ Source (.skein)
      |
      v
 +----------+
-| Analyzer |  AST -> Annotated AST (stub in Phase 1)
+| Analyzer |  AST -> Annotated AST (type checking, capability checking)
 +----+-----+
      |
      v
@@ -96,13 +96,15 @@ See [Parser](/Skein/compiler/parser/) for details.
 ### Stage 3: Analyzer
 
 **Input:** AST
-**Output:** `{:ok, annotated_ast}` (currently pass-through)
+**Output:** `{:ok, annotated_ast}` or `{:error, [Error.t()]}`
 
-In Phase 1, the analyzer simply returns the AST unchanged. Future phases will add:
-- Name resolution
-- Type checking
-- Capability checking
-- Transition validation (for agents)
+The analyzer performs three passes over the AST:
+
+1. **Pass 1: Name resolution** -- builds a symbol table of all declarations (functions, types, enums), resolves identifier references, and reports unknown identifiers (E0010) and unknown types (E0011)
+2. **Pass 2: Type checking** -- validates function return types, operator types, match arm consistency, function call arity (E0012), type mismatches (E0020), operator type errors (E0021), and match exhaustiveness (E0024)
+3. **Pass 3: Capability checking** -- walks function bodies to find effect calls (`http.*`, `store.*`), verifies each has a covering capability declaration, and reports missing capabilities (E0030) with `fix_code` for agent auto-fix
+
+A fourth pass (transition validation for agent phase enums) is planned for Phase 6.
 
 ### Stage 4: Code Generator
 
