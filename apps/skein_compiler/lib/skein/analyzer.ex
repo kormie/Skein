@@ -287,26 +287,30 @@ defmodule Skein.Analyzer do
     end)
   end
 
-  defp validate_declaration(%AST.Handler{meta: meta}, env) do
-    # Check that http.in capability is declared
-    has_http_in =
+  defp validate_declaration(%AST.Handler{source: source, meta: meta}, env) do
+    required_capability = handler_required_capability(source)
+
+    has_capability =
       Enum.any?(env.capabilities, fn %AST.Capability{kind: kind} ->
-        kind == "http.in"
+        kind == required_capability
       end)
 
-    if has_http_in do
+    if has_capability do
       []
     else
+      source_label = handler_source_label(source)
+
       [
         %Error{
           code: "E0030",
           severity: :error,
           message:
-            "Capability 'http.in' required but not declared. " <>
-              "HTTP handlers require this capability.",
+            "Capability '#{required_capability}' required but not declared. " <>
+              "#{source_label} handlers require this capability.",
           location: location_from_meta(meta, env.file),
-          fix_hint: "Add a capability declaration to the module: capability http.in",
-          fix_code: "capability http.in"
+          fix_hint:
+            "Add a capability declaration to the module: capability #{required_capability}",
+          fix_code: "capability #{required_capability}"
         }
       ]
     end
@@ -336,6 +340,16 @@ defmodule Skein.Analyzer do
   defp validate_declaration(%AST.Golden{}, _env), do: []
   defp validate_declaration(%AST.Capability{}, _env), do: []
   defp validate_declaration(_, _env), do: []
+
+  defp handler_required_capability("http"), do: "http.in"
+  defp handler_required_capability("queue"), do: "queue.in"
+  defp handler_required_capability("schedule"), do: "schedule.in"
+  defp handler_required_capability(_), do: "unknown"
+
+  defp handler_source_label("http"), do: "HTTP"
+  defp handler_source_label("queue"), do: "Queue"
+  defp handler_source_label("schedule"), do: "Schedule"
+  defp handler_source_label(source), do: source
 
   defp validate_type_ref(%AST.TypeRef{name: name, params: params, meta: meta}, env) do
     errors =

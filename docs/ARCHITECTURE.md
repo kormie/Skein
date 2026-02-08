@@ -203,7 +203,9 @@ The code generator translates Skein constructs to Core Erlang + Skein runtime ca
 | `?` (propagate) | `case` with error branch returning `{:error, e}` |
 | String interpolation | Binary construction (`<<>>`) |
 | `type` fields | Erlang map construction |
-| `handler` | Function registered with `Skein.Runtime.Handler` |
+| `handler http` | Function registered with `Skein.Runtime.Handler` |
+| `handler queue` | Function dispatched by `Skein.Runtime.Queue` |
+| `handler schedule` | Function triggered by `Skein.Runtime.Schedule` |
 | `agent` | Module implementing `Skein.Runtime.Agent` behaviour |
 | `tool` | Module registered with `Skein.Runtime.Tool.Registry` |
 | `capability` | Metadata stored in module attributes |

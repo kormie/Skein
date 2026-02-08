@@ -628,15 +628,33 @@ defmodule Skein.CodeGen.CoreErlang do
          fn_arities,
          type_decls
        ) do
-    # Handler takes a single request map argument
-    req_var = :cerl.c_var(var_name(param))
+    # Handler takes a single argument (request/message map)
+    # For schedule handlers with no param, use a discard variable
+    {req_var, scope} =
+      case param do
+        nil ->
+          var = :cerl.c_var(:_ScheduleCtx)
 
-    scope =
-      %{param => var_name(param)}
-      |> Map.put(:__capabilities__, capabilities)
-      |> Map.put(:__fn_arities__, fn_arities)
-      |> Map.put(:__type_decls__, type_decls)
-      |> Map.put(:__handler_req_param__, param)
+          scope =
+            %{}
+            |> Map.put(:__capabilities__, capabilities)
+            |> Map.put(:__fn_arities__, fn_arities)
+            |> Map.put(:__type_decls__, type_decls)
+
+          {var, scope}
+
+        _ ->
+          var = :cerl.c_var(var_name(param))
+
+          scope =
+            %{param => var_name(param)}
+            |> Map.put(:__capabilities__, capabilities)
+            |> Map.put(:__fn_arities__, fn_arities)
+            |> Map.put(:__type_decls__, type_decls)
+            |> Map.put(:__handler_req_param__, param)
+
+          {var, scope}
+      end
 
     body_expr = generate_expr(body, scope)
     :cerl.c_fun([req_var], body_expr)
@@ -646,11 +664,17 @@ defmodule Skein.CodeGen.CoreErlang do
   defp generate_handlers_meta_fn(handlers) do
     handlers_list =
       handlers
-      |> Enum.map(fn {%AST.Handler{method: method, route: route}, index} ->
+      |> Enum.map(fn {%AST.Handler{source: source, method: method, route: route}, index} ->
+        source_pair =
+          :cerl.c_map_pair(
+            :cerl.c_atom(:source),
+            :cerl.c_atom(String.to_atom(source))
+          )
+
         method_pair =
           :cerl.c_map_pair(
             :cerl.c_atom(:method),
-            :cerl.c_atom(String.to_atom(method))
+            if(method, do: :cerl.c_atom(String.to_atom(method)), else: :cerl.c_atom(nil))
           )
 
         route_pair =
@@ -665,7 +689,7 @@ defmodule Skein.CodeGen.CoreErlang do
             :cerl.c_atom(handler_fn_name(index))
           )
 
-        :cerl.c_map([method_pair, route_pair, fn_pair])
+        :cerl.c_map([source_pair, method_pair, route_pair, fn_pair])
       end)
       |> :cerl.make_list()
 

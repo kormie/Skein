@@ -1,6 +1,6 @@
 ---
 title: Runtime
-description: The Skein runtime library -- agents, HTTP client, handler dispatch, store, memory, LLM client, capability enforcement, trace recording, and HTTP server.
+description: The Skein runtime library -- agents, HTTP client, handler dispatch, store, memory, LLM client, queue/schedule dispatch, capability enforcement, trace recording, and HTTP server.
 ---
 
 ## Overview
@@ -11,10 +11,12 @@ The Skein runtime (`skein_runtime`) provides the libraries that compiled Skein c
 - **HTTP client** -- making outbound HTTP requests via `Skein.Runtime.Http`
 - **Capability enforcement** -- validating effect calls against declared capabilities
 - **Handler dispatch** -- routing HTTP requests to compiled handler functions
+- **Queue dispatch** -- subscribing to named queues and dispatching messages via `Skein.Runtime.Queue`
+- **Schedule dispatch** -- cron-based scheduling and handler triggering via `Skein.Runtime.Schedule`
 - **Store** -- ETS-backed key-value storage with capability enforcement
 - **Memory** -- scoped KV storage with namespace isolation via `Skein.Runtime.Memory`
 - **LLM client** -- provider-agnostic LLM calls with schema-constrained JSON via `Skein.Runtime.Llm`
-- **HTTP server** -- lightweight TCP server for serving Skein handlers
+- **HTTP server** -- Bandit + Plug HTTP server for serving Skein handlers
 - **Trace recording** -- capturing timing, metadata, and outcomes for every effect call
 
 The runtime is an OTP application that starts automatically when Skein code is loaded.
@@ -124,6 +126,54 @@ Skein.Runtime.Handler.dispatch(method, path, headers, body, module)
 - Request map construction with `params`, `headers`, `body`, `method`, `path`
 - JSON response encoding via Jason
 - Trace span recording for each dispatched request
+
+### `Skein.Runtime.Queue`
+
+In-memory message queue dispatch for compiled Skein queue handlers. Manages subscriptions between queue names and handler functions, dispatching published messages asynchronously.
+
+**API:**
+
+```elixir
+Skein.Runtime.Queue.subscribe("order-events", MyModule, :__handler_0__)
+#=> :ok
+
+Skein.Runtime.Queue.publish("order-events", %{body: "payload"})
+#=> :ok (dispatches asynchronously)
+
+Skein.Runtime.Queue.list_queues()
+#=> ["order-events", "priority-events"]
+```
+
+Features:
+- In-order message delivery within a single queue
+- Multiple subscribers per queue
+- Trace span recording for each dispatched message
+- For testing, `subscribe_fn/2` accepts a plain function
+
+### `Skein.Runtime.Schedule`
+
+Cron-based schedule dispatch for compiled Skein schedule handlers. Registers handlers for cron expressions and triggers them on schedule.
+
+**API:**
+
+```elixir
+Skein.Runtime.Schedule.register("*/5 * * * *", MyModule, :__handler_0__)
+#=> :ok
+
+Skein.Runtime.Schedule.trigger("*/5 * * * *")
+#=> :ok (triggers all handlers for this expression)
+
+Skein.Runtime.Schedule.parse_cron("0 * * * *")
+#=> {:ok, %{minute: "0", hour: "*", day: "*", month: "*", weekday: "*"}}
+
+Skein.Runtime.Schedule.list_schedules()
+#=> ["*/5 * * * *", "0 0 * * *"]
+```
+
+Features:
+- Standard 5-field cron expression parsing
+- Manual triggering for deterministic testing
+- Trace span recording for each triggered handler
 
 ### `Skein.Runtime.Store`
 

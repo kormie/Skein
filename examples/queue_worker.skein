@@ -1,0 +1,37 @@
+-- queue_worker.skein
+-- A background worker that processes messages from a queue
+-- and runs periodic cleanup on a schedule.
+-- Demonstrates queue handlers, schedule handlers, and mixed handler types.
+
+module QueueWorker {
+  capability http.in
+  capability queue.in
+  capability schedule.in
+
+  -- Health check for the worker service
+  handler http GET "/health" (req) -> {
+    respond.json(200, "ok")
+  }
+
+  -- Process incoming job messages from the queue
+  handler queue "jobs" (msg) -> {
+    let result = 1 + 1
+    respond.json(200, result)
+  }
+
+  -- Process high-priority messages from a separate queue
+  handler queue "jobs-priority" (msg) -> {
+    let result = 2 + 2
+    respond.json(200, result)
+  }
+
+  -- Periodic cleanup task running every 5 minutes
+  handler schedule "*/5 * * * *" () -> {
+    respond.json(200, "cleanup")
+  }
+
+  -- Daily summary report at midnight
+  handler schedule "0 0 * * *" () -> {
+    respond.json(200, "daily-report")
+  }
+}

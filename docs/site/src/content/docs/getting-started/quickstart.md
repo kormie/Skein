@@ -127,8 +127,8 @@ mix test --trace
 ```
 
 The test suite includes:
-- **594 unit tests** across lexer, parser, analyzer, codegen, runtime, and CLI
-- **57 property-based tests** -- randomized inputs across lexer, parser, codegen, capability checking, store, and tool operations
+- **706+ unit tests** across lexer, parser, analyzer, codegen, runtime, and CLI
+- **72 property-based tests** -- randomized inputs across lexer, parser, codegen, capability checking, store, tool operations, and handler types
 
 ## Compiled Module Naming
 

@@ -394,8 +394,36 @@ defmodule Skein.Parser do
   @http_methods ~w(GET POST PUT PATCH DELETE)
 
   defp parse_handler([{:handler, {line, col}} | rest], file) do
-    with {:ok, source, rest} <- expect_lower_ident(rest, file),
-         {:ok, method, rest} <- expect_http_method(rest, file),
+    with {:ok, source, rest} <- expect_lower_ident(rest, file) do
+      case source do
+        "http" ->
+          parse_http_handler(rest, file, line, col)
+
+        "queue" ->
+          parse_queue_handler(rest, file, line, col)
+
+        "schedule" ->
+          parse_schedule_handler(rest, file, line, col)
+
+        _ ->
+          {:error,
+           [
+             %Error{
+               code: "E0001",
+               severity: :error,
+               message:
+                 "Unknown handler source '#{source}', expected 'http', 'queue', or 'schedule'",
+               location: %{file: file, line: line, col: col},
+               fix_hint: "Use 'http', 'queue', or 'schedule'"
+             }
+           ]}
+      end
+    end
+  end
+
+  # handler http METHOD "/path" (param) -> { body }
+  defp parse_http_handler(rest, file, line, col) do
+    with {:ok, method, rest} <- expect_http_method(rest, file),
          {:ok, route, rest} <- expect_string_literal(rest, file),
          {:ok, _lparen, rest} <- expect(:lparen, rest, file),
          {:ok, param, rest} <- expect_lower_ident(rest, file),
@@ -403,7 +431,7 @@ defmodule Skein.Parser do
          {:ok, _arrow, rest} <- expect(:arrow, rest, file),
          {:ok, body, rest} <- parse_block(rest, file) do
       handler = %AST.Handler{
-        source: source,
+        source: "http",
         method: method,
         route: route,
         param: param,
@@ -412,6 +440,68 @@ defmodule Skein.Parser do
       }
 
       {:ok, handler, rest}
+    end
+  end
+
+  # handler queue "queue-name" (param) -> { body }
+  defp parse_queue_handler(rest, file, line, col) do
+    with {:ok, queue_name, rest} <- expect_string_literal(rest, file),
+         {:ok, _lparen, rest} <- expect(:lparen, rest, file),
+         {:ok, param, rest} <- expect_lower_ident(rest, file),
+         {:ok, _rparen, rest} <- expect(:rparen, rest, file),
+         {:ok, _arrow, rest} <- expect(:arrow, rest, file),
+         {:ok, body, rest} <- parse_block(rest, file) do
+      handler = %AST.Handler{
+        source: "queue",
+        method: nil,
+        route: queue_name,
+        param: param,
+        body: body,
+        meta: %{line: line, col: col, file: file}
+      }
+
+      {:ok, handler, rest}
+    end
+  end
+
+  # handler schedule "cron-expr" () -> { body }
+  defp parse_schedule_handler(rest, file, line, col) do
+    with {:ok, cron_expr, rest} <- expect_string_literal(rest, file),
+         {:ok, _lparen, rest} <- expect(:lparen, rest, file) do
+      # Schedule handlers may have an empty param list or a single param
+      case rest do
+        [{:rparen, _} | rest2] ->
+          with {:ok, _arrow, rest3} <- expect(:arrow, rest2, file),
+               {:ok, body, rest3} <- parse_block(rest3, file) do
+            handler = %AST.Handler{
+              source: "schedule",
+              method: nil,
+              route: cron_expr,
+              param: nil,
+              body: body,
+              meta: %{line: line, col: col, file: file}
+            }
+
+            {:ok, handler, rest3}
+          end
+
+        _ ->
+          with {:ok, param, rest2} <- expect_lower_ident(rest, file),
+               {:ok, _rparen, rest2} <- expect(:rparen, rest2, file),
+               {:ok, _arrow, rest2} <- expect(:arrow, rest2, file),
+               {:ok, body, rest2} <- parse_block(rest2, file) do
+            handler = %AST.Handler{
+              source: "schedule",
+              method: nil,
+              route: cron_expr,
+              param: param,
+              body: body,
+              meta: %{line: line, col: col, file: file}
+            }
+
+            {:ok, handler, rest2}
+          end
+      end
     end
   end
 

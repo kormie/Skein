@@ -243,15 +243,46 @@ description: What's been built, what's next, and the full 7-phase implementation
 - `skein run` starts the HTTP server and serves compiled handlers
 - `skein trace --last 10` returns recent trace spans
 
-## Phase 8: Hardening and Infrastructure (Next)
+## Phase 8: Hardening and Infrastructure
 
-The next priorities fill gaps in the existing implementation:
+Filling gaps in the existing implementation and proving the full language works end-to-end.
 
-- **8a: Test infrastructure** -- `scenario` tests with `given`/`expect`, `golden` trace tests, replay engine
+- **8a: Test infrastructure** -- ✅ `scenario` tests with `given`/`expect`, `golden` trace tests, replay engine
 - **8b: Storage backend** -- Ecto schema generation, migrations, SQLite/Postgres backends
 - **8c: HTTP server** -- ✅ Bandit + Plug integration with `req.json[T]` body validation
-- **8d: Canonical examples** -- `hello_http.skein`, `refund_agent.skein`, `incident_triage.skein`, `queue_worker.skein`
-- **8e: Queue and schedule handlers** -- `handler queue` and `handler schedule` constructs
+- **8d: Canonical examples** -- ✅ `hello_http.skein`, `refund_agent.skein`, `incident_triage.skein`, `queue_worker.skein` with integration tests
+- **8e: Queue and schedule handlers** -- ✅ `handler queue` and `handler schedule` constructs with full pipeline support
+
+### Phase 8d: Canonical Examples
+
+Four canonical `.skein` programs demonstrating different language features:
+
+| Example | Demonstrates |
+|---------|-------------|
+| `hello_http.skein` | HTTP handlers, route parameters, multiple endpoints |
+| `refund_agent.skein` | Agent lifecycle, phase transitions, memory, LLM |
+| `incident_triage.skein` | Multi-phase agent, classification, escalation |
+| `queue_worker.skein` | Mixed handler types (HTTP, queue, schedule) |
+
+All examples compile successfully and have integration tests verifying their behavior.
+
+### Phase 8e: Queue and Schedule Handlers
+
+**Parser:** Extended `parse_handler` to branch on handler source: `http`, `queue`, or `schedule`. Queue handlers parse a queue name and message parameter. Schedule handlers parse a cron expression and optional parameter.
+
+**Analyzer:** Generalized capability checking to require `queue.in` for queue handlers and `schedule.in` for schedule handlers (alongside existing `http.in` for HTTP handlers). Error E0030 is produced for missing capabilities.
+
+**CodeGen:** Handler metadata in `__handlers__/0` now includes a `source` field (`:http`, `:queue`, `:schedule`). Schedule handlers with no parameters compile with a discard variable.
+
+**Runtime:** Two new modules:
+- `Skein.Runtime.Queue` -- GenServer-based message queue dispatch with subscribe/publish
+- `Skein.Runtime.Schedule` -- Cron-based scheduling with register/trigger and cron expression parsing
+
+**Tests:** 24 new unit tests, 2 new property tests covering all handler types across parser, analyzer, codegen, and runtime.
+
+### Phase 8 Remaining
+
+- **8b: Storage backend** -- Ecto schema generation, migrations
 - **8f: LLM streaming** -- `llm.stream` with `on_chunk` callback
 
 See the [Implementation Plan](https://github.com/kormie/Skein/blob/main/docs/IMPLEMENTATION_PLAN.md) for full acceptance criteria.

@@ -1686,4 +1686,187 @@ defmodule Skein.ParserTest do
       assert %AST.Golden{} = golden_decl
     end
   end
+
+  # ------------------------------------------------------------------
+  # Queue handler declarations (Phase 8e)
+  # ------------------------------------------------------------------
+
+  describe "parse/1 - queue handler declarations" do
+    test "parses a queue handler" do
+      source = """
+      module M {
+        capability queue.in
+        handler queue "order-events" (msg) -> {
+          let data = msg
+          respond.json(200, data)
+        }
+      }
+      """
+
+      assert {:ok, %AST.Module{declarations: [_cap, handler]}} = parse(source)
+
+      assert %AST.Handler{source: "queue", method: nil, route: "order-events", param: "msg"} =
+               handler
+
+      assert %AST.Block{} = handler.body
+    end
+
+    test "parses queue handler with different queue name" do
+      source = """
+      module M {
+        capability queue.in
+        handler queue "user-notifications" (message) -> {
+          respond.json(200, "ok")
+        }
+      }
+      """
+
+      assert {:ok, %AST.Module{declarations: [_cap, handler]}} = parse(source)
+      assert handler.source == "queue"
+      assert handler.route == "user-notifications"
+      assert handler.param == "message"
+    end
+
+    test "parses multiple queue handlers" do
+      source = """
+      module M {
+        capability queue.in
+
+        handler queue "events-a" (msg) -> {
+          respond.json(200, "a")
+        }
+
+        handler queue "events-b" (msg) -> {
+          respond.json(200, "b")
+        }
+      }
+      """
+
+      assert {:ok, %AST.Module{declarations: [_cap, h1, h2]}} = parse(source)
+      assert %AST.Handler{source: "queue", route: "events-a"} = h1
+      assert %AST.Handler{source: "queue", route: "events-b"} = h2
+    end
+
+    test "parses queue handler alongside HTTP handlers" do
+      source = """
+      module M {
+        capability http.in
+        capability queue.in
+
+        handler http GET "/status" (req) -> {
+          respond.json(200, "ok")
+        }
+
+        handler queue "events" (msg) -> {
+          respond.json(200, msg)
+        }
+      }
+      """
+
+      assert {:ok, %AST.Module{declarations: [_cap1, _cap2, http_handler, queue_handler]}} =
+               parse(source)
+
+      assert http_handler.source == "http"
+      assert queue_handler.source == "queue"
+    end
+  end
+
+  # ------------------------------------------------------------------
+  # Schedule handler declarations (Phase 8e)
+  # ------------------------------------------------------------------
+
+  describe "parse/1 - schedule handler declarations" do
+    test "parses a schedule handler with cron expression" do
+      source = """
+      module M {
+        capability schedule.in
+        handler schedule "*/5 * * * *" () -> {
+          respond.json(200, "tick")
+        }
+      }
+      """
+
+      assert {:ok, %AST.Module{declarations: [_cap, handler]}} = parse(source)
+
+      assert %AST.Handler{source: "schedule", method: nil, route: "*/5 * * * *", param: nil} =
+               handler
+
+      assert %AST.Block{} = handler.body
+    end
+
+    test "parses schedule handler with hourly cron" do
+      source = """
+      module M {
+        capability schedule.in
+        handler schedule "0 * * * *" () -> {
+          respond.json(200, "hourly")
+        }
+      }
+      """
+
+      assert {:ok, %AST.Module{declarations: [_cap, handler]}} = parse(source)
+      assert handler.route == "0 * * * *"
+    end
+
+    test "parses schedule handler with daily cron" do
+      source = """
+      module M {
+        capability schedule.in
+        handler schedule "0 0 * * *" () -> {
+          respond.json(200, "daily")
+        }
+      }
+      """
+
+      assert {:ok, %AST.Module{declarations: [_cap, handler]}} = parse(source)
+      assert handler.route == "0 0 * * *"
+    end
+
+    test "parses multiple schedule handlers" do
+      source = """
+      module M {
+        capability schedule.in
+
+        handler schedule "*/5 * * * *" () -> {
+          respond.json(200, "five_min")
+        }
+
+        handler schedule "0 * * * *" () -> {
+          respond.json(200, "hourly")
+        }
+      }
+      """
+
+      assert {:ok, %AST.Module{declarations: [_cap, h1, h2]}} = parse(source)
+      assert %AST.Handler{source: "schedule", route: "*/5 * * * *"} = h1
+      assert %AST.Handler{source: "schedule", route: "0 * * * *"} = h2
+    end
+
+    test "parses all handler types together" do
+      source = """
+      module M {
+        capability http.in
+        capability queue.in
+        capability schedule.in
+
+        handler http GET "/health" (req) -> {
+          respond.json(200, "ok")
+        }
+
+        handler queue "events" (msg) -> {
+          respond.json(200, msg)
+        }
+
+        handler schedule "*/10 * * * *" () -> {
+          respond.json(200, "tick")
+        }
+      }
+      """
+
+      assert {:ok, %AST.Module{declarations: [_c1, _c2, _c3, h1, h2, h3]}} = parse(source)
+      assert h1.source == "http"
+      assert h2.source == "queue"
+      assert h3.source == "schedule"
+    end
+  end
 end

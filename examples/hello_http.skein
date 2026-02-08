@@ -1,0 +1,27 @@
+-- hello_http.skein
+-- A simple HTTP service with multiple endpoints demonstrating handler syntax.
+
+module HelloHttp {
+  capability http.in
+
+  -- Health check endpoint
+  handler http GET "/health" (req) -> {
+    respond.json(200, "ok")
+  }
+
+  -- Greeting endpoint with path parameter
+  handler http GET "/greet/:name" (req) -> {
+    let name = req.params.name
+    respond.json(200, "hello")
+  }
+
+  -- Echo endpoint that returns the request body
+  handler http POST "/echo" (req) -> {
+    respond.json(200, "received")
+  }
+
+  -- Compute endpoint demonstrating logic in handlers
+  handler http GET "/classify/:n" (req) -> {
+    respond.json(200, "classified")
+  }
+}

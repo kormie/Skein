@@ -1833,4 +1833,124 @@ defmodule Skein.AnalyzerTest do
       assert Enum.any?(errors, &(&1.code == "E0030"))
     end
   end
+
+  # ------------------------------------------------------------------
+  # Queue handler capability checking (Phase 8e)
+  # ------------------------------------------------------------------
+
+  describe "queue handler checking - queue.in capability" do
+    test "queue handler without queue.in capability produces error" do
+      errors =
+        analyze_errors("""
+        module M {
+          handler queue "events" (msg) -> {
+            respond.json(200, "ok")
+          }
+        }
+        """)
+
+      assert length(errors) >= 1
+      error = Enum.find(errors, &(&1.code == "E0030"))
+      assert error != nil
+      assert error.message =~ "queue.in"
+      assert error.fix_code == "capability queue.in"
+    end
+
+    test "queue handler with queue.in capability passes" do
+      assert {:ok, _} =
+               analyze("""
+               module M {
+                 capability queue.in
+
+                 handler queue "events" (msg) -> {
+                   respond.json(200, "ok")
+                 }
+               }
+               """)
+    end
+
+    test "multiple queue handlers all require queue.in" do
+      errors =
+        analyze_errors("""
+        module M {
+          handler queue "a" (msg) -> { respond.json(200, "a") }
+          handler queue "b" (msg) -> { respond.json(200, "b") }
+        }
+        """)
+
+      capability_errors = Enum.filter(errors, &(&1.code == "E0030"))
+      assert length(capability_errors) >= 2
+    end
+  end
+
+  # ------------------------------------------------------------------
+  # Schedule handler capability checking (Phase 8e)
+  # ------------------------------------------------------------------
+
+  describe "schedule handler checking - schedule.in capability" do
+    test "schedule handler without schedule.in capability produces error" do
+      errors =
+        analyze_errors("""
+        module M {
+          handler schedule "*/5 * * * *" () -> {
+            respond.json(200, "tick")
+          }
+        }
+        """)
+
+      assert length(errors) >= 1
+      error = Enum.find(errors, &(&1.code == "E0030"))
+      assert error != nil
+      assert error.message =~ "schedule.in"
+      assert error.fix_code == "capability schedule.in"
+    end
+
+    test "schedule handler with schedule.in capability passes" do
+      assert {:ok, _} =
+               analyze("""
+               module M {
+                 capability schedule.in
+
+                 handler schedule "0 * * * *" () -> {
+                   respond.json(200, "hourly")
+                 }
+               }
+               """)
+    end
+
+    test "mixed handler types require respective capabilities" do
+      errors =
+        analyze_errors("""
+        module M {
+          handler http GET "/test" (req) -> { respond.json(200, "ok") }
+          handler queue "events" (msg) -> { respond.json(200, "ok") }
+          handler schedule "*/5 * * * *" () -> { respond.json(200, "ok") }
+        }
+        """)
+
+      # Should produce errors for all three missing capabilities
+      capability_errors = Enum.filter(errors, &(&1.code == "E0030"))
+      assert length(capability_errors) >= 3
+
+      messages = Enum.map(capability_errors, & &1.message)
+      assert Enum.any?(messages, &(&1 =~ "http.in"))
+      assert Enum.any?(messages, &(&1 =~ "queue.in"))
+      assert Enum.any?(messages, &(&1 =~ "schedule.in"))
+    end
+
+    test "all capabilities declared passes for mixed handlers" do
+      assert {:ok, _} =
+               analyze("""
+               module M {
+                 capability http.in
+                 capability queue.in
+                 capability schedule.in
+
+                 handler http GET "/test" (req) -> { respond.json(200, "ok") }
+                 handler queue "events" (msg) -> { respond.json(200, "ok") }
+                 handler schedule "*/5 * * * *" () -> { respond.json(200, "ok") }
+               }
+               """)
+    end
+  end
 end
