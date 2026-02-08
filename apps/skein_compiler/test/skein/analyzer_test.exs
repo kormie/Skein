@@ -611,4 +611,251 @@ defmodule Skein.AnalyzerTest do
       assert decoded["code"] == "E0020"
     end
   end
+
+  # ------------------------------------------------------------------
+  # Capability checking (Phase 3)
+  # ------------------------------------------------------------------
+
+  describe "capability checking - missing capabilities" do
+    test "http.get without capability http.out produces error" do
+      errors =
+        analyze_errors("""
+        module M {
+          fn fetch(url: String) -> String {
+            http.get(url)
+          }
+        }
+        """)
+
+      assert length(errors) >= 1
+      error = Enum.find(errors, &(&1.code == "E0030"))
+      assert error != nil
+      assert error.severity == :error
+      assert error.message =~ "http.out"
+      assert error.message =~ "not declared"
+    end
+
+    test "http.post without capability http.out produces error" do
+      errors =
+        analyze_errors("""
+        module M {
+          fn send(url: String, body: String) -> String {
+            http.post(url, body)
+          }
+        }
+        """)
+
+      assert length(errors) >= 1
+      error = Enum.find(errors, &(&1.code == "E0030"))
+      assert error != nil
+      assert error.message =~ "http.out"
+    end
+
+    test "http.put without capability http.out produces error" do
+      errors =
+        analyze_errors("""
+        module M {
+          fn update(url: String, body: String) -> String {
+            http.put(url, body)
+          }
+        }
+        """)
+
+      assert length(errors) >= 1
+      assert Enum.any?(errors, &(&1.code == "E0030"))
+    end
+
+    test "http.delete without capability http.out produces error" do
+      errors =
+        analyze_errors("""
+        module M {
+          fn remove(url: String) -> String {
+            http.delete(url)
+          }
+        }
+        """)
+
+      assert length(errors) >= 1
+      assert Enum.any?(errors, &(&1.code == "E0030"))
+    end
+
+    test "error includes fix_code with capability declaration" do
+      errors =
+        analyze_errors("""
+        module M {
+          fn fetch(url: String) -> String {
+            http.get(url)
+          }
+        }
+        """)
+
+      error = Enum.find(errors, &(&1.code == "E0030"))
+      assert error.fix_code != nil
+      assert error.fix_code =~ "capability http.out"
+    end
+
+    test "error includes fix_hint" do
+      errors =
+        analyze_errors("""
+        module M {
+          fn fetch(url: String) -> String {
+            http.get(url)
+          }
+        }
+        """)
+
+      error = Enum.find(errors, &(&1.code == "E0030"))
+      assert error.fix_hint != nil
+      assert error.fix_hint =~ "capability"
+    end
+  end
+
+  describe "capability checking - valid capabilities" do
+    test "http.get with capability http.out passes" do
+      assert {:ok, _} =
+               analyze("""
+               module M {
+                 capability http.out("api.example.com")
+
+                 fn fetch(url: String) -> String {
+                   http.get(url)
+                 }
+               }
+               """)
+    end
+
+    test "http.post with capability http.out passes" do
+      assert {:ok, _} =
+               analyze("""
+               module M {
+                 capability http.out("api.example.com")
+
+                 fn send(url: String, body: String) -> String {
+                   http.post(url, body)
+                 }
+               }
+               """)
+    end
+
+    test "multiple http methods with single capability passes" do
+      assert {:ok, _} =
+               analyze("""
+               module M {
+                 capability http.out("api.example.com")
+
+                 fn fetch(url: String) -> String {
+                   http.get(url)
+                 }
+
+                 fn send(url: String, body: String) -> String {
+                   http.post(url, body)
+                 }
+               }
+               """)
+    end
+
+    test "capability without params covers all hosts" do
+      assert {:ok, _} =
+               analyze("""
+               module M {
+                 capability http.out
+
+                 fn fetch(url: String) -> String {
+                   http.get(url)
+                 }
+               }
+               """)
+    end
+
+    test "modules without effect calls don't need capabilities" do
+      assert {:ok, _} =
+               analyze("""
+               module M {
+                 fn add(a: Int, b: Int) -> Int {
+                   a + b
+                 }
+               }
+               """)
+    end
+  end
+
+  describe "capability checking - nested effect calls" do
+    test "effect call in let binding is checked" do
+      errors =
+        analyze_errors("""
+        module M {
+          fn fetch(url: String) -> String {
+            let result = http.get(url)
+            result
+          }
+        }
+        """)
+
+      assert Enum.any?(errors, &(&1.code == "E0030"))
+    end
+
+    test "effect call in match arm is checked" do
+      errors =
+        analyze_errors("""
+        module M {
+          fn fetch(flag: Bool, url: String) -> String {
+            match flag {
+              true -> http.get(url)
+              false -> "cached"
+            }
+          }
+        }
+        """)
+
+      assert Enum.any?(errors, &(&1.code == "E0030"))
+    end
+
+    test "effect call in pipe is checked" do
+      errors =
+        analyze_errors("""
+        module M {
+          fn fetch(url: String) -> String {
+            url |> http.get(url)
+          }
+        }
+        """)
+
+      assert Enum.any?(errors, &(&1.code == "E0030"))
+    end
+
+    test "multiple effect calls produce multiple errors" do
+      errors =
+        analyze_errors("""
+        module M {
+          fn bad(url: String) -> String {
+            let a = http.get(url)
+            let b = http.post(url, a)
+            b
+          }
+        }
+        """)
+
+      capability_errors = Enum.filter(errors, &(&1.code == "E0030"))
+      assert length(capability_errors) >= 2
+    end
+  end
+
+  describe "capability checking - error serialization" do
+    test "capability error serializes to JSON with fix_code" do
+      errors =
+        analyze_errors("""
+        module M {
+          fn fetch(url: String) -> String {
+            http.get(url)
+          }
+        }
+        """)
+
+      error = Enum.find(errors, &(&1.code == "E0030"))
+      json = Skein.Error.to_json(error)
+      decoded = Jason.decode!(json)
+      assert decoded["code"] == "E0030"
+      assert decoded["fix_code"] =~ "capability http.out"
+    end
+  end
 end
