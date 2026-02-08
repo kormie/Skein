@@ -205,4 +205,71 @@ defmodule Skein.CodeGen.CoreErlangPropertyTest do
       assert mod.get_text() == text
     end
   end
+
+  # ------------------------------------------------------------------
+  # Queue handler property tests (Phase 8e)
+  # ------------------------------------------------------------------
+
+  property "queue handler compiles and responds for any alphanumeric queue name" do
+    check all(
+            queue_name <-
+              StreamData.string(Enum.to_list(?a..?z) ++ [?-],
+                min_length: 1,
+                max_length: 20
+              )
+          ) do
+      mod_name = unique_module_name()
+
+      source = """
+      module #{mod_name} {
+        capability queue.in
+
+        handler queue "#{queue_name}" (msg) -> {
+          respond.json(200, "processed")
+        }
+      }
+      """
+
+      {:module, mod} = Compiler.compile_string(source)
+      handlers = mod.__handlers__()
+      assert length(handlers) == 1
+      assert hd(handlers).source == :queue
+      assert hd(handlers).route == queue_name
+
+      result = mod.__handler_0__(%{body: "test"})
+      assert {:respond_json, 200, "processed"} = result
+    end
+  end
+
+  property "schedule handler compiles for standard cron expressions" do
+    check all(
+            minute <- StreamData.member_of(["*", "*/5", "*/10", "0", "30"]),
+            hour <- StreamData.member_of(["*", "0", "6", "12", "23"]),
+            day <- StreamData.member_of(["*", "1", "15"]),
+            month <- StreamData.member_of(["*", "1", "6", "12"]),
+            weekday <- StreamData.member_of(["*", "0", "1", "5"])
+          ) do
+      mod_name = unique_module_name()
+      cron = "#{minute} #{hour} #{day} #{month} #{weekday}"
+
+      source = """
+      module #{mod_name} {
+        capability schedule.in
+
+        handler schedule "#{cron}" () -> {
+          respond.json(200, "tick")
+        }
+      }
+      """
+
+      {:module, mod} = Compiler.compile_string(source)
+      handlers = mod.__handlers__()
+      assert length(handlers) == 1
+      assert hd(handlers).source == :schedule
+      assert hd(handlers).route == cron
+
+      result = mod.__handler_0__(%{})
+      assert {:respond_json, 200, "tick"} = result
+    end
+  end
 end

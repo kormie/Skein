@@ -1779,4 +1779,191 @@ defmodule Skein.CodeGen.CoreErlangTest do
       assert span.name == "MyTool"
     end
   end
+
+  # ------------------------------------------------------------------
+  # Queue handler codegen (Phase 8e)
+  # ------------------------------------------------------------------
+
+  describe "queue handler codegen" do
+    test "__handlers__/0 includes queue handler metadata" do
+      mod =
+        compile!("""
+        module QueueHandlerMeta {
+          capability queue.in
+
+          handler queue "order-events" (msg) -> {
+            respond.json(200, "processed")
+          }
+        }
+        """)
+
+      handlers = mod.__handlers__()
+      assert length(handlers) == 1
+      handler = hd(handlers)
+      assert handler.source == :queue
+      assert handler.route == "order-events"
+      assert handler.handler == :__handler_0__
+    end
+
+    test "queue handler function is callable" do
+      mod =
+        compile!("""
+        module QueueHandlerCall {
+          capability queue.in
+
+          handler queue "events" (msg) -> {
+            respond.json(200, "received")
+          }
+        }
+        """)
+
+      result = mod.__handler_0__(%{body: "test"})
+      assert {:respond_json, 200, "received"} = result
+    end
+
+    test "queue handler can access message parameter" do
+      mod =
+        compile!("""
+        module QueueHandlerParam {
+          capability queue.in
+
+          handler queue "events" (msg) -> {
+            let data = msg
+            respond.json(200, "ok")
+          }
+        }
+        """)
+
+      result = mod.__handler_0__(%{body: "payload"})
+      assert {:respond_json, 200, "ok"} = result
+    end
+
+    test "multiple queue handlers are indexed correctly" do
+      mod =
+        compile!("""
+        module QueueHandlerMulti {
+          capability queue.in
+
+          handler queue "events-a" (msg) -> {
+            respond.json(200, "a")
+          }
+
+          handler queue "events-b" (msg) -> {
+            respond.json(200, "b")
+          }
+        }
+        """)
+
+      handlers = mod.__handlers__()
+      assert length(handlers) == 2
+      assert Enum.at(handlers, 0).route == "events-a"
+      assert Enum.at(handlers, 1).route == "events-b"
+
+      assert {:respond_json, 200, "a"} = mod.__handler_0__(%{})
+      assert {:respond_json, 200, "b"} = mod.__handler_1__(%{})
+    end
+  end
+
+  # ------------------------------------------------------------------
+  # Schedule handler codegen (Phase 8e)
+  # ------------------------------------------------------------------
+
+  describe "schedule handler codegen" do
+    test "__handlers__/0 includes schedule handler metadata" do
+      mod =
+        compile!("""
+        module ScheduleHandlerMeta {
+          capability schedule.in
+
+          handler schedule "*/5 * * * *" () -> {
+            respond.json(200, "tick")
+          }
+        }
+        """)
+
+      handlers = mod.__handlers__()
+      assert length(handlers) == 1
+      handler = hd(handlers)
+      assert handler.source == :schedule
+      assert handler.route == "*/5 * * * *"
+      assert handler.handler == :__handler_0__
+    end
+
+    test "schedule handler function is callable" do
+      mod =
+        compile!("""
+        module ScheduleHandlerCall {
+          capability schedule.in
+
+          handler schedule "0 * * * *" () -> {
+            respond.json(200, "hourly")
+          }
+        }
+        """)
+
+      result = mod.__handler_0__(%{})
+      assert {:respond_json, 200, "hourly"} = result
+    end
+
+    test "schedule handler with body logic" do
+      mod =
+        compile!("""
+        module ScheduleHandlerLogic {
+          capability schedule.in
+
+          handler schedule "0 0 * * *" () -> {
+            let result = 1 + 2
+            respond.json(200, result)
+          }
+        }
+        """)
+
+      result = mod.__handler_0__(%{})
+      assert {:respond_json, 200, 3} = result
+    end
+  end
+
+  # ------------------------------------------------------------------
+  # Mixed handler types codegen (Phase 8e)
+  # ------------------------------------------------------------------
+
+  describe "mixed handler types codegen" do
+    test "http, queue, and schedule handlers coexist" do
+      mod =
+        compile!("""
+        module MixedHandlers {
+          capability http.in
+          capability queue.in
+          capability schedule.in
+
+          handler http GET "/health" (req) -> {
+            respond.json(200, "ok")
+          }
+
+          handler queue "events" (msg) -> {
+            respond.json(200, "queued")
+          }
+
+          handler schedule "*/10 * * * *" () -> {
+            respond.json(200, "scheduled")
+          }
+        }
+        """)
+
+      handlers = mod.__handlers__()
+      assert length(handlers) == 3
+
+      [http_h, queue_h, sched_h] = handlers
+      assert http_h.source == :http
+      assert http_h.method == :get
+      assert queue_h.source == :queue
+      assert queue_h.route == "events"
+      assert sched_h.source == :schedule
+      assert sched_h.route == "*/10 * * * *"
+
+      assert {:respond_json, 200, "ok"} = mod.__handler_0__(%{})
+      assert {:respond_json, 200, "queued"} = mod.__handler_1__(%{})
+      assert {:respond_json, 200, "scheduled"} = mod.__handler_2__(%{})
+    end
+  end
 end

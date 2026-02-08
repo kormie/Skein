@@ -357,6 +357,10 @@ Published documentation lives at https://kormie.github.io/Skein/ and is built wi
 - **Build:** `cd docs/site && bun install && bunx astro build`
 - **Dev server:** `cd docs/site && bunx astro dev`
 
+## Session Memory
+
+Accumulated learnings, gotchas, and project state are stored in `.claude/memory/MEMORY.md`. Consult this file at the start of each session for up-to-date context on completed phases, known pitfalls (e.g., `input` is a keyword, `stop()` needs parens, GenServer race conditions in tests), architecture notes, and user preferences.
+
 ## What Not To Do
 
 - Don't build a package manager yet. The standard library is the only dependency for now.

@@ -1,0 +1,66 @@
+-- incident_triage.skein
+-- A multi-phase agent for triaging production incidents.
+-- Demonstrates memory usage, LLM classification, and phase transitions.
+
+agent IncidentTriage {
+  capability model("gpt-4")
+  capability memory.kv
+
+  state {
+    alert_id: String
+    severity: String
+    summary: String
+  }
+
+  enum Phase {
+    Classify -> [Investigate, Ignore]
+    Investigate -> [Escalate, Resolve]
+    Escalate -> [Resolve]
+    Ignore -> [Complete]
+    Resolve -> [Complete]
+    Complete -> []
+  }
+
+  on start(alert_id: String) -> {
+    memory.put("alert_id", alert_id)
+    transition(Phase.Classify)
+  }
+
+  on phase(Phase.Classify) -> {
+    let data = memory.get("alert_id")
+    let severity = llm.chat("gpt-4", "Classify incident severity", data)
+    memory.put("severity", severity)
+    transition(Phase.Investigate)
+  }
+
+  on phase(Phase.Investigate) -> {
+    let severity = memory.get("severity")
+    let data = memory.get("alert_id")
+    let analysis = llm.chat("gpt-4", "Investigate root cause", data)
+    memory.put("analysis", analysis)
+    transition(Phase.Resolve)
+  }
+
+  on phase(Phase.Escalate) -> {
+    let alert = memory.get("alert_id")
+    emit IncidentEscalated { alert_id: alert }
+    transition(Phase.Resolve)
+  }
+
+  on phase(Phase.Ignore) -> {
+    let alert = memory.get("alert_id")
+    emit IncidentIgnored { alert_id: alert }
+    transition(Phase.Complete)
+  }
+
+  on phase(Phase.Resolve) -> {
+    let alert = memory.get("alert_id")
+    let analysis = memory.get("analysis")
+    emit IncidentResolved { alert_id: alert }
+    transition(Phase.Complete)
+  }
+
+  on phase(Phase.Complete) -> {
+    stop()
+  }
+}

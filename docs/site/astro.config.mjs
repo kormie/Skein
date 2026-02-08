@@ -40,6 +40,7 @@ export default defineConfig({
             { label: 'Expressions', slug: 'language/expressions' },
             { label: 'Modules & Functions', slug: 'language/modules-and-functions' },
             { label: 'Capabilities & Effects', slug: 'language/capabilities-and-effects' },
+            { label: 'Handlers', slug: 'language/handlers' },
             { label: 'Tools', slug: 'language/tools' },
             { label: 'Testing', slug: 'language/testing' },
           ],

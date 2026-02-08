@@ -1,0 +1,49 @@
+-- refund_agent.skein
+-- An agent that processes refund requests through multiple phases.
+-- Demonstrates agent lifecycle, phase transitions, memory, and LLM integration.
+
+agent RefundAgent {
+  capability model("gpt-4")
+  capability memory.kv
+
+  state {
+    order_id: String
+    reason: String
+    amount: Int
+  }
+
+  enum Phase {
+    Review -> [Approved, Denied]
+    Approved -> [Complete]
+    Denied -> [Complete]
+    Complete -> []
+  }
+
+  on start(order_id: String) -> {
+    memory.put("order_id", order_id)
+    transition(Phase.Review)
+  }
+
+  on phase(Phase.Review) -> {
+    let order = memory.get("order_id")
+    let decision = llm.chat("gpt-4", "Evaluate refund", order)
+    memory.put("decision", decision)
+    transition(Phase.Approved)
+  }
+
+  on phase(Phase.Approved) -> {
+    let order = memory.get("order_id")
+    emit RefundApproved { order_id: order }
+    transition(Phase.Complete)
+  }
+
+  on phase(Phase.Denied) -> {
+    let order = memory.get("order_id")
+    emit RefundDenied { order_id: order }
+    transition(Phase.Complete)
+  }
+
+  on phase(Phase.Complete) -> {
+    stop()
+  }
+}
