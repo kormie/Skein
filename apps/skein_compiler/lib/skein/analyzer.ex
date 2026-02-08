@@ -47,12 +47,16 @@ defmodule Skein.Analyzer do
 
   # Known effect namespaces and the capabilities they require
   @effect_namespaces %{
-    "http" => "http.out"
+    "http" => "http.out",
+    "memory" => "memory.kv",
+    "llm" => "model"
   }
 
   # Known effect methods per namespace
   @effect_methods %{
-    "http" => ["get", "post", "put", "patch", "delete"]
+    "http" => ["get", "post", "put", "patch", "delete"],
+    "memory" => ["put", "get", "get!", "delete", "list"],
+    "llm" => ["chat", "json"]
   }
 
   # Store operations: store.<table>.<method>(...)

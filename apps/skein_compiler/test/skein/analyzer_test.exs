@@ -1429,4 +1429,216 @@ defmodule Skein.AnalyzerTest do
              )
     end
   end
+
+  # ------------------------------------------------------------------
+  # Memory capability checking
+  # ------------------------------------------------------------------
+
+  describe "memory capability checking - missing capabilities" do
+    test "memory.put without memory.kv capability produces error" do
+      errors =
+        analyze_errors("""
+        module M {
+          fn save(key: String, value: String) -> String {
+            memory.put(key, value)
+          }
+        }
+        """)
+
+      error = Enum.find(errors, &(&1.code == "E0030"))
+      assert error != nil
+      assert error.message =~ "memory.kv"
+    end
+
+    test "memory.get without memory.kv capability produces error" do
+      errors =
+        analyze_errors("""
+        module M {
+          fn load(key: String) -> String {
+            memory.get(key)
+          }
+        }
+        """)
+
+      error = Enum.find(errors, &(&1.code == "E0030"))
+      assert error != nil
+      assert error.message =~ "memory.kv"
+    end
+
+    test "memory.delete without memory.kv capability produces error" do
+      errors =
+        analyze_errors("""
+        module M {
+          fn remove(key: String) -> String {
+            memory.delete(key)
+          }
+        }
+        """)
+
+      error = Enum.find(errors, &(&1.code == "E0030"))
+      assert error != nil
+      assert error.message =~ "memory.kv"
+    end
+
+    test "memory.list without memory.kv capability produces error" do
+      errors =
+        analyze_errors("""
+        module M {
+          fn keys(prefix: String) -> String {
+            memory.list(prefix)
+          }
+        }
+        """)
+
+      error = Enum.find(errors, &(&1.code == "E0030"))
+      assert error != nil
+      assert error.message =~ "memory.kv"
+    end
+
+    test "memory error includes fix_code with capability declaration" do
+      errors =
+        analyze_errors("""
+        module M {
+          fn save(key: String, value: String) -> String {
+            memory.put(key, value)
+          }
+        }
+        """)
+
+      error = Enum.find(errors, &(&1.code == "E0030"))
+      assert error.fix_code =~ "capability memory.kv"
+    end
+  end
+
+  describe "memory capability checking - valid capabilities" do
+    test "memory.put with memory.kv capability passes" do
+      assert {:ok, _} =
+               analyze("""
+               module M {
+                 capability memory.kv("sessions")
+
+                 fn save(key: String, value: String) -> String {
+                   memory.put(key, value)
+                 }
+               }
+               """)
+    end
+
+    test "memory.get with memory.kv capability passes" do
+      assert {:ok, _} =
+               analyze("""
+               module M {
+                 capability memory.kv("sessions")
+
+                 fn load(key: String) -> String {
+                   memory.get(key)
+                 }
+               }
+               """)
+    end
+
+    test "multiple memory methods with single capability passes" do
+      assert {:ok, _} =
+               analyze("""
+               module M {
+                 capability memory.kv("sessions")
+
+                 fn operate(key: String) -> String {
+                   memory.put(key, "value")
+                 }
+               }
+               """)
+    end
+
+    test "memory.kv without params covers all namespaces" do
+      assert {:ok, _} =
+               analyze("""
+               module M {
+                 capability memory.kv
+
+                 fn save(key: String, value: String) -> String {
+                   memory.put(key, value)
+                 }
+               }
+               """)
+    end
+  end
+
+  # ------------------------------------------------------------------
+  # LLM capability checking
+  # ------------------------------------------------------------------
+
+  describe "llm capability checking - missing capabilities" do
+    test "llm.chat without model capability produces error" do
+      errors =
+        analyze_errors("""
+        module M {
+          fn ask(data: String) -> String {
+            llm.chat("claude-sonnet-4-5", "Be helpful.", data)
+          }
+        }
+        """)
+
+      error = Enum.find(errors, &(&1.code == "E0030"))
+      assert error != nil
+      assert error.message =~ "model"
+    end
+
+    test "llm.json without model capability produces error" do
+      errors =
+        analyze_errors("""
+        module M {
+          fn decide(data: String) -> String {
+            llm.json("claude-sonnet-4-5", "Return JSON.", data)
+          }
+        }
+        """)
+
+      error = Enum.find(errors, &(&1.code == "E0030"))
+      assert error != nil
+      assert error.message =~ "model"
+    end
+
+    test "llm error includes fix_code with capability declaration" do
+      errors =
+        analyze_errors("""
+        module M {
+          fn ask(data: String) -> String {
+            llm.chat("claude-sonnet-4-5", "Be helpful.", data)
+          }
+        }
+        """)
+
+      error = Enum.find(errors, &(&1.code == "E0030"))
+      assert error.fix_code =~ "capability model"
+    end
+  end
+
+  describe "llm capability checking - valid capabilities" do
+    test "llm.chat with model capability passes" do
+      assert {:ok, _} =
+               analyze("""
+               module M {
+                 capability model("anthropic", "claude-sonnet-4-5")
+
+                 fn ask(data: String) -> String {
+                   llm.chat("claude-sonnet-4-5", "Be helpful.", data)
+                 }
+               }
+               """)
+    end
+
+    test "llm.json with model capability passes" do
+      assert {:ok, _} =
+               analyze("""
+               module M {
+                 capability model("anthropic", "claude-sonnet-4-5")
+
+                 fn decide(data: String) -> String {
+                   llm.json("claude-sonnet-4-5", "Return JSON.", data)
+                 }
+               }
+               """)
+    end
+  end
 end
