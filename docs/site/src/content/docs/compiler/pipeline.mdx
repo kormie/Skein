@@ -3,41 +3,27 @@ title: Compilation Pipeline
 description: How Skein source code becomes running BEAM bytecode.
 ---
 
+import Mermaid from '../../../components/Mermaid.astro';
+
 ## Pipeline Overview
 
-```
-Source (.skein)
-    |
-    v
-+---------+
-|  Lexer  |  Source text -> Token stream
-+----+----+
-     |
-     v
-+---------+
-| Parser  |  Token stream -> AST
-+----+----+
-     |
-     v
-+----------+
-| Analyzer |  AST -> Annotated AST (type checking, capability checking)
-+----+-----+
-     |
-     v
-+----------+
-| CodeGen  |  AST -> Core Erlang AST (via :cerl module)
-+----+-----+
-     |
-     v
-+---------------+
-| :compile.forms|  Core Erlang -> BEAM bytecode
-+----+----------+
-     |
-     v
-+------------------+
-| :code.load_binary|  BEAM bytecode -> Loaded module
-+------------------+
-```
+<Mermaid chart={`
+flowchart TD
+    A["Source (.skein)"] --> B["Lexer"]
+    B -->|"Token stream"| C["Parser"]
+    C -->|"AST"| D["Analyzer"]
+    D -->|"Annotated AST"| E["CodeGen"]
+    E -->|"Core Erlang AST"| F[":compile.forms"]
+    F -->|"BEAM bytecode"| G[":code.load_binary"]
+    G --> H["Loaded module"]
+
+    B -.- B1["Source text → Token stream"]
+    C -.- C1["Token stream → AST"]
+    D -.- D1["Type checking, capability checking"]
+    E -.- E1["AST → Core Erlang (via :cerl)"]
+    F -.- F1["Core Erlang → BEAM bytecode"]
+    G -.- G1["BEAM bytecode → Loaded module"]
+`} />
 
 ## Entry Points
 

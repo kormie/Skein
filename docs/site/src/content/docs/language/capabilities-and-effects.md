@@ -274,7 +274,7 @@ module Service {
 3. The runtime validates the URL host against declared hosts
 4. Blocked requests return `{:error, "Host 'x' not declared in http.out capabilities"}`
 
-## Trace Scaffolding
+## Effect Tracing
 
 Every effect call is automatically traced. The runtime records:
 

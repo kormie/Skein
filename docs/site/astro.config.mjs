@@ -87,6 +87,7 @@ export default defineConfig({
           label: 'Roadmap',
           items: [
             { label: 'Full Roadmap', slug: 'roadmap/phase-2' },
+            { label: 'Distribution', slug: 'roadmap/distribution' },
           ],
         },
         {

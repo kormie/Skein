@@ -1,0 +1,34 @@
+---
+interface Props {
+  chart: string;
+}
+const { chart } = Astro.props;
+---
+<div class="mermaid-diagram">
+  <pre class="mermaid" set:text={chart} />
+</div>
+
+<script is:inline type="module">
+  if (!window.__mermaidLoaded) {
+    window.__mermaidLoaded = true;
+    const { default: mermaid } = await import('https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs');
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: document.documentElement.dataset.theme === 'light' ? 'default' : 'dark',
+      flowchart: { curve: 'basis' },
+    });
+    await mermaid.run({ querySelector: '.mermaid' });
+  }
+</script>
+
+<style>
+  .mermaid-diagram {
+    margin: 1.5rem 0;
+    text-align: center;
+  }
+  .mermaid-diagram pre.mermaid {
+    background: transparent;
+    border: none;
+    padding: 0;
+  }
+</style>

@@ -253,10 +253,15 @@ Key features:
 - `emit(event)` for domain events
 - `stop()` to terminate the agent
 
-## Constructs Parsed but Not Yet Compiled
+## Implementation Status
 
-The parser recognizes these constructs (they produce valid AST nodes), but the code generator does not yet compile them:
+Most Skein constructs are fully compiled end-to-end. The following notes clarify the status of specific features:
 
-- `tool` declarations -- tool calling with contract/implementation separation
-- `supervisor` declarations -- agent pool management
-- `test`, `scenario`, `golden` -- built-in test constructs
+### Fully Compiled
+
+- `tool` declarations -- tool metadata (name, description, input/output schemas) is compiled and available at runtime via `__tools__/0`. See [Tools](/Skein/language/tools/) for details.
+- `test`, `scenario`, `golden` -- all three test constructs compile to executable `__test_N__/0` functions with `__tests__/0` metadata. See [Testing](/Skein/language/testing/) for details.
+
+### Not Yet Implemented
+
+- `supervisor` declarations -- agent pool management is defined in the spec but not yet parsed or compiled. The keyword is reserved.

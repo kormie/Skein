@@ -236,7 +236,4 @@ Produces:
 
 ## What's Not Yet Implemented
 
-- `!` operator (unwrap a `Result`, crash on `Err`) -- parsed but not compiled
-- `?` operator (propagate an `Err`, early return) -- parsed but not compiled
-- Enum variant matching in codegen
-- Generic type checking for parameterized types (e.g., `List[Int]` vs `List[String]`)
+- Enum variant matching in codegen -- enum variants are parsed and type-checked, but `match` on enum variants does not yet generate BEAM code
