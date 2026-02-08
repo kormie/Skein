@@ -1249,4 +1249,309 @@ defmodule Skein.CodeGen.CoreErlangTest do
       assert missing_error != nil
     end
   end
+
+  # ------------------------------------------------------------------
+  # Phase 6b: Memory codegen
+  # ------------------------------------------------------------------
+
+  describe "memory capability metadata" do
+    test "module with memory.kv capability returns it" do
+      mod =
+        compile_with_caps!("""
+        module MemoryCaps {
+          capability memory.kv("sessions")
+
+          fn save(key: String, value: String) -> String {
+            memory.put(key, value)
+          }
+        }
+        """)
+
+      caps = mod.__capabilities__()
+      assert length(caps) == 1
+      assert %{kind: "memory.kv", params: ["sessions"]} = hd(caps)
+    end
+  end
+
+  describe "memory.put codegen" do
+    test "memory.put compiles to runtime call" do
+      mod =
+        compile_with_caps!("""
+        module MemPut {
+          capability memory.kv("sessions")
+
+          fn save(key: String, value: String) -> String {
+            memory.put(key, value)
+          }
+        }
+        """)
+
+      fns = mod.__info__(:functions)
+      assert {:save, 2} in fns
+    end
+
+    test "memory.put at runtime stores and returns value" do
+      mod =
+        compile_with_caps!("""
+        module MemPutRun {
+          capability memory.kv("test_ns")
+
+          fn save(key: String, value: String) -> String {
+            memory.put(key, value)
+          }
+        }
+        """)
+
+      Skein.Runtime.Memory.clear("test_ns")
+      result = mod.save("hello", "world")
+      assert {:ok, "world"} = result
+      Skein.Runtime.Memory.clear("test_ns")
+    end
+  end
+
+  describe "memory.get codegen" do
+    test "memory.get compiles and retrieves values" do
+      mod =
+        compile_with_caps!("""
+        module MemGet {
+          capability memory.kv("test_get")
+
+          fn save(key: String, value: String) -> String {
+            memory.put(key, value)
+          }
+
+          fn load(key: String) -> String {
+            memory.get(key)
+          }
+        }
+        """)
+
+      Skein.Runtime.Memory.clear("test_get")
+      mod.save("k1", "v1")
+      assert {:ok, "v1"} = mod.load("k1")
+      assert {:error, "not_found"} = mod.load("missing")
+      Skein.Runtime.Memory.clear("test_get")
+    end
+  end
+
+  describe "memory.delete codegen" do
+    test "memory.delete compiles and removes values" do
+      mod =
+        compile_with_caps!("""
+        module MemDel {
+          capability memory.kv("test_del")
+
+          fn save(key: String, value: String) -> String {
+            memory.put(key, value)
+          }
+
+          fn remove(key: String) -> String {
+            memory.delete(key)
+          }
+
+          fn load(key: String) -> String {
+            memory.get(key)
+          }
+        }
+        """)
+
+      Skein.Runtime.Memory.clear("test_del")
+      mod.save("k1", "v1")
+      assert {:ok, "k1"} = mod.remove("k1")
+      assert {:error, "not_found"} = mod.load("k1")
+      Skein.Runtime.Memory.clear("test_del")
+    end
+  end
+
+  describe "memory.list codegen" do
+    test "memory.list compiles and returns keys" do
+      mod =
+        compile_with_caps!("""
+        module MemList {
+          capability memory.kv("test_list")
+
+          fn save(key: String, value: String) -> String {
+            memory.put(key, value)
+          }
+
+          fn keys(prefix: String) -> String {
+            memory.list(prefix)
+          }
+        }
+        """)
+
+      Skein.Runtime.Memory.clear("test_list")
+      mod.save("user:1", "alice")
+      mod.save("user:2", "bob")
+      mod.save("config:a", "x")
+
+      keys = mod.keys("user:")
+      assert Enum.sort(keys) == ["user:1", "user:2"]
+      Skein.Runtime.Memory.clear("test_list")
+    end
+  end
+
+  describe "memory operations record traces" do
+    test "memory.put records a trace span" do
+      Skein.Runtime.Trace.clear()
+
+      mod =
+        compile_with_caps!("""
+        module MemTrace {
+          capability memory.kv("trace_ns")
+
+          fn save(key: String, value: String) -> String {
+            memory.put(key, value)
+          }
+        }
+        """)
+
+      Skein.Runtime.Memory.clear("trace_ns")
+      mod.save("k", "v")
+
+      spans = Skein.Runtime.Trace.recent_spans(10)
+      memory_spans = Enum.filter(spans, &(&1.kind == :memory))
+      assert length(memory_spans) >= 1
+
+      span = hd(memory_spans)
+      assert span.kind == :memory
+      assert span.method == :put
+      assert span.namespace == "trace_ns"
+      Skein.Runtime.Memory.clear("trace_ns")
+    end
+  end
+
+  # ------------------------------------------------------------------
+  # Phase 6b: LLM codegen
+  # ------------------------------------------------------------------
+
+  describe "llm capability metadata" do
+    test "module with model capability returns it" do
+      mod =
+        compile_with_caps!("""
+        module LlmCaps {
+          capability model("anthropic", "claude-sonnet-4-5")
+
+          fn ask(data: String) -> String {
+            llm.chat("claude-sonnet-4-5", "Be helpful.", data)
+          }
+        }
+        """)
+
+      caps = mod.__capabilities__()
+      assert length(caps) == 1
+      assert %{kind: "model", params: ["anthropic", "claude-sonnet-4-5"]} = hd(caps)
+    end
+  end
+
+  describe "llm.chat codegen" do
+    test "llm.chat compiles to runtime call" do
+      mod =
+        compile_with_caps!("""
+        module LlmChat {
+          capability model("anthropic", "claude-sonnet-4-5")
+
+          fn ask(data: String) -> String {
+            llm.chat("claude-sonnet-4-5", "Be helpful.", data)
+          }
+        }
+        """)
+
+      fns = mod.__info__(:functions)
+      assert {:ask, 1} in fns
+    end
+
+    test "llm.chat at runtime returns response from test backend" do
+      Skein.Runtime.Llm.set_backend(Skein.Runtime.Llm.TestBackend)
+
+      mod =
+        compile_with_caps!("""
+        module LlmChatRun {
+          capability model("anthropic", "claude-sonnet-4-5")
+
+          fn ask(data: String) -> String {
+            llm.chat("claude-sonnet-4-5", "Be helpful.", data)
+          }
+        }
+        """)
+
+      assert {:ok, response} = mod.ask("Hello")
+      assert is_binary(response)
+      assert response =~ "Hello"
+    end
+
+    test "llm.chat without model capability at runtime returns error" do
+      # This tests the runtime capability check layer.
+      # Since the analyzer also blocks this, we test the runtime module directly.
+      Skein.Runtime.Llm.set_backend(Skein.Runtime.Llm.TestBackend)
+
+      result = Skein.Runtime.Llm.chat("claude-sonnet-4-5", "Be helpful.", "Hello", [])
+      assert {:error, %Skein.Runtime.Llm.Error{kind: :capability_error}} = result
+    end
+  end
+
+  describe "llm.json codegen" do
+    test "llm.json compiles to runtime call" do
+      mod =
+        compile_with_caps!("""
+        module LlmJson {
+          capability model("anthropic", "claude-sonnet-4-5")
+
+          fn decide(data: String) -> String {
+            llm.json("claude-sonnet-4-5", "Return JSON.", data)
+          }
+        }
+        """)
+
+      fns = mod.__info__(:functions)
+      assert {:decide, 1} in fns
+    end
+
+    test "llm.json at runtime returns parsed response from test backend" do
+      Skein.Runtime.Llm.set_backend(Skein.Runtime.Llm.TestBackend)
+
+      mod =
+        compile_with_caps!("""
+        module LlmJsonRun {
+          capability model("anthropic", "claude-sonnet-4-5")
+
+          fn decide(data: String) -> String {
+            llm.json("claude-sonnet-4-5", "Return JSON.", data)
+          }
+        }
+        """)
+
+      assert {:ok, result} = mod.decide("some ticket")
+      assert is_map(result)
+    end
+  end
+
+  describe "llm operations record traces" do
+    test "llm.chat records a trace span" do
+      Skein.Runtime.Trace.clear()
+      Skein.Runtime.Llm.set_backend(Skein.Runtime.Llm.TestBackend)
+
+      mod =
+        compile_with_caps!("""
+        module LlmTrace {
+          capability model("anthropic", "claude-sonnet-4-5")
+
+          fn ask(data: String) -> String {
+            llm.chat("claude-sonnet-4-5", "Be helpful.", data)
+          }
+        }
+        """)
+
+      mod.ask("Hello")
+
+      spans = Skein.Runtime.Trace.recent_spans(10)
+      llm_spans = Enum.filter(spans, &(&1.kind == :llm))
+      assert length(llm_spans) >= 1
+
+      span = hd(llm_spans)
+      assert span.kind == :llm
+      assert span.method == :chat
+      assert span.model == "claude-sonnet-4-5"
+    end
+  end
 end

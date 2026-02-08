@@ -21,6 +21,7 @@ defmodule Skein.CodeGen.CoreErlang do
   alias Skein.Error
 
   # Known effect namespaces and their runtime modules
+  # memory and llm have special codegen handlers below
   @effect_runtime_modules %{
     "http" => :"Elixir.Skein.Runtime.Http"
   }
@@ -867,6 +868,94 @@ defmodule Skein.CodeGen.CoreErlang do
       :cerl.c_atom(:"Elixir.Skein.Runtime.Store"),
       :cerl.c_atom(method_atom),
       [:cerl.abstract(table_name) | args_exprs] ++ [caps_expr]
+    )
+  end
+
+  # Memory effect: memory.put(key, value), memory.get(key), etc.
+  # Injects namespace from capabilities as the first argument.
+  defp generate_expr(
+         %AST.Call{
+           target: %AST.FieldAccess{
+             subject: %AST.Identifier{name: "memory"},
+             field: method
+           },
+           args: args
+         },
+         scope
+       )
+       when method in ["put", "get", "get!", "delete", "list"] do
+    method_atom = String.to_atom(method)
+    args_exprs = Enum.map(args, &generate_expr(&1, scope))
+
+    capabilities = Map.get(scope, :__capabilities__, [])
+    caps_expr = generate_capabilities_literal(capabilities)
+
+    # Extract namespace from the first memory.kv capability
+    namespace =
+      capabilities
+      |> Enum.find(fn %AST.Capability{kind: kind} -> kind == "memory.kv" end)
+      |> case do
+        %AST.Capability{params: [%AST.StringLit{segments: [{:literal, ns}]} | _]} -> ns
+        _ -> "default"
+      end
+
+    # Call: Skein.Runtime.Memory.method(namespace, args..., capabilities)
+    :cerl.c_call(
+      :cerl.c_atom(:"Elixir.Skein.Runtime.Memory"),
+      :cerl.c_atom(method_atom),
+      [:cerl.abstract(namespace) | args_exprs] ++ [caps_expr]
+    )
+  end
+
+  # LLM effect: llm.json(model, system, input) — needs schema injection
+  defp generate_expr(
+         %AST.Call{
+           target: %AST.FieldAccess{
+             subject: %AST.Identifier{name: "llm"},
+             field: "json"
+           },
+           args: args
+         },
+         scope
+       ) do
+    args_exprs = Enum.map(args, &generate_expr(&1, scope))
+
+    capabilities = Map.get(scope, :__capabilities__, [])
+    caps_expr = generate_capabilities_literal(capabilities)
+
+    # Inject empty schema as 4th argument (after model, system, input)
+    # TODO: When llm.json[T] parser support is added, generate schema from type T
+    schema_expr = :cerl.abstract(%{})
+
+    # Call: Skein.Runtime.Llm.json(model, system, input, schema, capabilities)
+    :cerl.c_call(
+      :cerl.c_atom(:"Elixir.Skein.Runtime.Llm"),
+      :cerl.c_atom(:json),
+      args_exprs ++ [schema_expr, caps_expr]
+    )
+  end
+
+  # LLM effect: llm.chat(model, system, input) — standard pattern
+  defp generate_expr(
+         %AST.Call{
+           target: %AST.FieldAccess{
+             subject: %AST.Identifier{name: "llm"},
+             field: "chat"
+           },
+           args: args
+         },
+         scope
+       ) do
+    args_exprs = Enum.map(args, &generate_expr(&1, scope))
+
+    capabilities = Map.get(scope, :__capabilities__, [])
+    caps_expr = generate_capabilities_literal(capabilities)
+
+    # Call: Skein.Runtime.Llm.chat(model, system, input, capabilities)
+    :cerl.c_call(
+      :cerl.c_atom(:"Elixir.Skein.Runtime.Llm"),
+      :cerl.c_atom(:chat),
+      args_exprs ++ [caps_expr]
     )
   end
 
