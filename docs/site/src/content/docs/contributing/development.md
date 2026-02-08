@@ -41,6 +41,9 @@ skein/
     skein_compiler/      # Lexer, parser, analyzer, code generator
     skein_runtime/       # Agents, HTTP, handlers, store, memory, LLM, tools, trace
     skein_cli/           # CLI: new, build, test, run, trace
+    skein_lsp/           # Language Server Protocol implementation (GenLSP)
+  editors/
+    vscode/              # VS Code extension (grammar, snippets, LSP client)
   docs/                  # Specifications and documentation
   examples/              # Example .skein programs
 ```
@@ -50,7 +53,7 @@ skein/
 ### Running Tests
 
 ```bash
-# All tests (651 checks: 594 unit + 57 property)
+# All tests (812 checks: 731 unit + 81 property)
 mix test
 
 # Verbose output
@@ -64,6 +67,9 @@ mix test apps/skein_runtime/test/
 
 # Just CLI tests
 mix test apps/skein_cli/test/
+
+# Just LSP tests
+mix test apps/skein_lsp/test/
 
 # Specific test file
 mix test apps/skein_compiler/test/skein/parser_test.exs
@@ -177,6 +183,49 @@ Skein `snake_case` becomes Core Erlang `CamelCase`:
 
 ### Temporary Variables
 Use `Process.get/put(:skein_var_counter, ...)` for unique variable generation during codegen.
+
+## Working on the Language Server
+
+The LSP server lives in `apps/skein_lsp/` and is built with [GenLSP](https://github.com/elixir-tools/gen_lsp). It provides IDE features by calling the Skein compiler API directly.
+
+### Running the LSP
+
+```bash
+# Start the LSP server (stdio transport, used by VS Code)
+mix skein.lsp
+```
+
+### LSP Modules
+
+| Module | Purpose |
+|--------|---------|
+| `Skein.Lsp.Server` | Main GenLSP server, protocol request/notification handlers |
+| `Skein.Lsp.Diagnostics` | Runs lexer→parser→analyzer, converts errors to LSP diagnostics |
+| `Skein.Lsp.Symbols` | Extracts document symbols from AST |
+| `Skein.Lsp.HoverProvider` | Hover info and go-to-definition |
+| `Skein.Lsp.Completions` | Context-aware code completion |
+| `Skein.Lsp.SemanticTokens` | Lexer-based semantic token encoding |
+
+### Adding LSP Features
+
+When adding a new compiler feature, also consider:
+1. **Diagnostics** -- the LSP automatically picks up new compiler errors
+2. **Symbols** -- if you add a new top-level construct, add it to `Symbols.document_symbols/1`
+3. **Completions** -- if you add new keywords or built-in types, add them to `Completions`
+4. **Hover** -- if you add new built-in types, add descriptions to `HoverProvider`
+
+### VS Code Extension
+
+The VS Code extension at `editors/vscode/` has two parts:
+- **Static**: TextMate grammar (`skein.tmLanguage.json`), snippets (`snippets/skein.json`), language config
+- **Dynamic**: TypeScript LSP client (`src/extension.ts`) that launches `mix skein.lsp`
+
+To build the extension:
+```bash
+cd editors/vscode
+npm install
+npm run compile
+```
 
 ## Adding a New Language Feature
 

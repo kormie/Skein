@@ -96,6 +96,14 @@ The compilation pipeline is operational through Phase 8. You can write `.skein` 
 - `skein run <dir>` -- compile and start an HTTP server for handler modules
 - `skein trace` -- view recent trace spans with `--last` and `--kind` filters
 
+**Editor tooling:**
+
+- VS Code extension with syntax highlighting, 30+ snippets, and full LSP integration
+- Language Server Protocol (LSP) providing diagnostics, document symbols, hover, go-to-definition, code completion, and semantic tokens
+- LSP server built with [GenLSP](https://github.com/elixir-tools/gen_lsp), using the Skein compiler for analysis
+
+See the [Editor Support](/Skein/editor/vscode/) docs for setup instructions.
+
 ## What's Not Built Yet
 
 - Agent pool supervision (`AgentPool` with max concurrency)
@@ -112,4 +120,5 @@ See the [Roadmap](/Skein/roadmap/phase-2/) for the full plan.
 | Lexer | Hand-written (NimbleParsec-based) | Fast, composable token parsing |
 | Parser | Hand-written recursive descent | Better error messages than parser generators |
 | IR target | Core Erlang | Standard BEAM compilation target (used by Elixir, Gleam, LFE) |
+| Language server | GenLSP | OTP behaviour for LSP implementations |
 | Testing | ExUnit + StreamData + PropCheck | Unit + property-based + stateful testing |

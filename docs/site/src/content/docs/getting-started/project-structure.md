@@ -5,7 +5,7 @@ description: How the Skein codebase is organized.
 
 ## Umbrella Layout
 
-Skein is an Elixir umbrella project with three apps:
+Skein is an Elixir umbrella project with four apps:
 
 ```
 skein/
@@ -16,12 +16,23 @@ skein/
 │   ├── ARCHITECTURE.md              # Compiler and runtime architecture
 │   ├── IMPLEMENTATION_PLAN.md       # 7-phase build plan
 │   └── skein_first_principles.md    # Language design philosophy
-├── examples/
-│   └── hello.skein                  # Phase 1 acceptance example
+├── examples/                        # Canonical .skein programs
+│   ├── hello.skein
+│   ├── hello_http.skein
+│   ├── refund_agent.skein
+│   ├── incident_triage.skein
+│   └── queue_worker.skein
+├── editors/
+│   └── vscode/                      # VS Code extension
+│       ├── package.json             # Extension manifest
+│       ├── skein.tmLanguage.json    # TextMate grammar
+│       ├── snippets/skein.json      # 30+ snippets
+│       └── src/extension.ts         # LSP client (TypeScript)
 ├── apps/
-│   ├── skein_compiler/              # The compiler
-│   ├── skein_runtime/               # Runtime behaviours (stub)
-│   └── skein_cli/                   # CLI tooling (stub)
+│   ├── skein_compiler/              # Lexer, parser, analyzer, code generator
+│   ├── skein_runtime/               # OTP behaviours and runtime support
+│   ├── skein_cli/                   # CLI tooling
+│   └── skein_lsp/                   # Language Server Protocol implementation
 └── spec/                            # Language test suite (future)
 ```
 

@@ -71,6 +71,13 @@ export default defineConfig({
           ],
         },
         {
+          label: 'Editor Support',
+          items: [
+            { label: 'VS Code Extension', slug: 'editor/vscode' },
+            { label: 'Language Server (LSP)', slug: 'editor/language-server' },
+          ],
+        },
+        {
           label: 'Contributing',
           items: [
             { label: 'Development', slug: 'contributing/development' },

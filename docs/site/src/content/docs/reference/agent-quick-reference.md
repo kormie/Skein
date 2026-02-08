@@ -21,10 +21,13 @@ skein/
 │   ├── ARCHITECTURE.md          # Compiler and runtime architecture
 │   ├── IMPLEMENTATION_PLAN.md   # Phased build plan
 │   └── site/                    # Astro + Starlight documentation site
+├── editors/
+│   └── vscode/                  # VS Code extension (grammar, snippets, LSP client)
 ├── apps/
 │   ├── skein_compiler/          # Lexer, parser, analyzer, code generator
 │   ├── skein_runtime/           # OTP behaviours and runtime support
-│   └── skein_cli/               # CLI tooling
+│   ├── skein_cli/               # CLI tooling
+│   └── skein_lsp/               # Language Server Protocol implementation
 ├── examples/                    # Canonical .skein programs
 └── spec/                        # Language test suite
 ```
@@ -39,7 +42,8 @@ skein/
 | IR target | Core Erlang |
 | Agent runtime | gen_statem (GenStateMachine) |
 | HTTP server | Bandit + Plug |
-| Storage | Ecto + Postgres |
+| Storage | Ecto + SQLite3 |
+| Language server | GenLSP |
 | Testing | ExUnit + StreamData + PropCheck |
 
 ## Commands
@@ -93,6 +97,17 @@ Source (.skein) → Lexer → Parser → Analyzer → CodeGen → BEAM bytecode
 | `Skein.Runtime.Server` | `apps/skein_runtime/lib/skein/runtime/server.ex` | HTTP server |
 | `Skein.Runtime.Trace` | `apps/skein_runtime/lib/skein/runtime/trace.ex` | Trace span recording |
 
+### Language Server
+
+| Module | Location | Purpose |
+|--------|----------|---------|
+| `Skein.Lsp.Server` | `apps/skein_lsp/lib/skein/lsp/server.ex` | Main LSP server |
+| `Skein.Lsp.Diagnostics` | `apps/skein_lsp/lib/skein/lsp/diagnostics.ex` | Compiler error → LSP diagnostic |
+| `Skein.Lsp.Symbols` | `apps/skein_lsp/lib/skein/lsp/symbols.ex` | Document symbol extraction |
+| `Skein.Lsp.HoverProvider` | `apps/skein_lsp/lib/skein/lsp/hover_provider.ex` | Hover info and go-to-definition |
+| `Skein.Lsp.Completions` | `apps/skein_lsp/lib/skein/lsp/completions.ex` | Context-aware code completion |
+| `Skein.Lsp.SemanticTokens` | `apps/skein_lsp/lib/skein/lsp/semantic_tokens.ex` | Semantic token encoding |
+
 ## Coding Conventions
 
 - Follow `mix format` style
@@ -119,15 +134,17 @@ Every compiler error is a `%Skein.Error{}` struct with fields: `code`, `severity
 
 ## Current Status
 
-Phases 1-5 are complete and Phase 6 is in progress (agents, memory, and LLM done; tools and supervision remaining). The compilation pipeline supports:
+All phases complete — MVP reached. The full compilation pipeline supports:
 - Modules with functions, let bindings, match expressions, pipes, string interpolation
 - Type checking with inference, JSON schema derivation, constraint annotations
 - Capability-based security with compile-time and runtime enforcement
-- HTTP handlers with route matching and path parameters
-- ETS-backed store operations with capability gating
+- HTTP/queue/schedule handlers with route matching and path parameters
+- ETS and Ecto/SQLite-backed store operations with capability gating
 - Agent state machines with phase transitions, compile-time transition validation
 - Scoped KV memory with namespace isolation
-- LLM client with pluggable backends and schema-constrained JSON
+- LLM client with pluggable backends, schema-constrained JSON, and streaming
 - Automatic trace recording for all effect calls
+- Full CLI tooling (new, build, test, run, trace)
+- VS Code extension with LSP (diagnostics, symbols, hover, completions, go-to-definition)
 
-**Test suite:** 81 properties, 779 tests, 0 failures
+**Test suite:** 81 properties, 812 tests, 0 failures
