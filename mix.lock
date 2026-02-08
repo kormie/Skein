@@ -1,5 +1,8 @@
 %{
   "jason": {:git, "https://github.com/michalmuskala/jason.git", "926d2ac6cc0271b9a7079b2ec16ae0cf802f7963", [tag: "v1.4.4"]},
+  "libgraph": {:git, "https://github.com/bitwalker/libgraph.git", "0d2e8cb741eec5b4f3fefbca373689dd203b4b93", [tag: "0.13.3"]},
   "nimble_parsec": {:git, "https://github.com/dashbitco/nimble_parsec.git", "e20b0b366463695bff1040120700efdd8d31ae05", [tag: "v1.4.2"]},
+  "propcheck": {:git, "https://github.com/alfert/propcheck.git", "8a4bd2d5913338c75317a11691e71fc21a0d055a", [tag: "v1.4.2"]},
+  "proper": {:git, "https://github.com/proper-testing/proper.git", "a5ae5669f01143b0828fc21667d4f5e344aa760b", [ref: "a5ae5669f01143b0828fc21667d4f5e344aa760b"]},
   "stream_data": {:git, "https://github.com/whatyouhide/stream_data.git", "028e21fd2cd6935da9cc541c51848b8be45409ba", [tag: "v1.1.2"]},
 }

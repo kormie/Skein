@@ -26,9 +26,12 @@ defmodule SkeinCompiler.MixProject do
       {:nimble_parsec, git: "https://github.com/dashbitco/nimble_parsec.git", tag: "v1.4.2"},
       {:jason, git: "https://github.com/michalmuskala/jason.git", tag: "v1.4.4"},
       {:stream_data, git: "https://github.com/whatyouhide/stream_data.git", tag: "v1.1.2",
-       only: [:test, :dev]}
-      # TODO: Add {:propcheck, "~> 1.4", only: [:test, :dev]} when hex.pm is accessible
-      # PropCheck is needed for stateful/state-machine property testing (agents, runtime)
+       only: [:test, :dev]},
+      {:propcheck, git: "https://github.com/alfert/propcheck.git", tag: "v1.4.2",
+       only: [:test, :dev]},
+      # Override transitive hex dep with git — hex.pm is unreachable in this env
+      {:libgraph, git: "https://github.com/bitwalker/libgraph.git", tag: "0.13.3",
+       override: true, only: [:test, :dev]}
     ]
   end
 end
