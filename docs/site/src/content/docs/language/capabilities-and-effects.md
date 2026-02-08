@@ -100,9 +100,10 @@ Memory is scoped by namespace. Each namespace requires a `capability memory.kv("
 ```skein
 llm.chat("claude-sonnet-4-5", "system prompt", input)
 llm.json[RefundDecision]("claude-sonnet-4-5", "system prompt", input)
+llm.stream("claude-sonnet-4-5", "system prompt", input)
 ```
 
-`llm.chat` returns unstructured text. `llm.json[T]` returns a parsed map constrained by a JSON schema derived from type `T` at compile time. Both require a `capability model(...)` declaration.
+`llm.chat` returns unstructured text. `llm.json[T]` returns a parsed map constrained by a JSON schema derived from type `T` at compile time. `llm.stream` returns the assembled response text after streaming all chunks. All three require a `capability model(...)` declaration.
 
 #### Type-Parameterized JSON (`llm.json[T]`)
 
@@ -209,6 +210,7 @@ The analyzer recognizes this pattern and checks it against declared capabilities
 **LLM** effect calls return `Result` tuples:
 - `llm.chat` returns `{:ok, response_text}` or `{:error, %Llm.Error{}}`
 - `llm.json` returns `{:ok, parsed_map}` or `{:error, %Llm.Error{}}`
+- `llm.stream` returns `{:ok, assembled_text}` or `{:error, %Llm.Error{}}` (chunks delivered via callback at runtime)
 
 ## Compile-Time Checking
 

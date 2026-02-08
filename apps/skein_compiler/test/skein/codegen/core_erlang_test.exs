@@ -1556,6 +1556,73 @@ defmodule Skein.CodeGen.CoreErlangTest do
   end
 
   # ------------------------------------------------------------------
+  # llm.stream codegen (Phase 8f)
+  # ------------------------------------------------------------------
+
+  describe "llm.stream codegen" do
+    test "llm.stream compiles to runtime call" do
+      mod =
+        compile_with_caps!("""
+        module LlmStream {
+          capability model("anthropic", "claude-sonnet-4-5")
+
+          fn stream_it(data: String) -> String {
+            llm.stream("claude-sonnet-4-5", "Be helpful.", data)
+          }
+        }
+        """)
+
+      fns = mod.__info__(:functions)
+      assert {:stream_it, 1} in fns
+    end
+
+    test "llm.stream at runtime returns assembled response" do
+      Skein.Runtime.Llm.set_backend(Skein.Runtime.Llm.StreamingTestBackend)
+
+      mod =
+        compile_with_caps!("""
+        module LlmStreamRun {
+          capability model("anthropic", "claude-sonnet-4-5")
+
+          fn stream_it(data: String) -> String {
+            llm.stream("claude-sonnet-4-5", "Be helpful.", data)
+          }
+        }
+        """)
+
+      assert {:ok, response} = mod.stream_it("Hello")
+      assert is_binary(response)
+    end
+
+    test "llm.stream records a trace span" do
+      Skein.Runtime.Trace.clear()
+      Skein.Runtime.Llm.set_backend(Skein.Runtime.Llm.StreamingTestBackend)
+
+      mod =
+        compile_with_caps!("""
+        module LlmStreamTrace {
+          capability model("anthropic", "claude-sonnet-4-5")
+
+          fn stream_it(data: String) -> String {
+            llm.stream("claude-sonnet-4-5", "Be helpful.", data)
+          }
+        }
+        """)
+
+      mod.stream_it("Hello")
+
+      spans = Skein.Runtime.Trace.recent_spans(10)
+      llm_spans = Enum.filter(spans, &(&1.kind == :llm))
+      assert length(llm_spans) >= 1
+
+      span = hd(llm_spans)
+      assert span.kind == :llm
+      assert span.method == :stream
+      assert span.model == "claude-sonnet-4-5"
+    end
+  end
+
+  # ------------------------------------------------------------------
   # Tool declarations and tool.call (Phase 6c)
   # ------------------------------------------------------------------
 

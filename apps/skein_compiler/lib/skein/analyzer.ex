@@ -57,7 +57,7 @@ defmodule Skein.Analyzer do
   @effect_methods %{
     "http" => ["get", "post", "put", "patch", "delete"],
     "memory" => ["put", "get", "get!", "delete", "list"],
-    "llm" => ["chat", "json"],
+    "llm" => ["chat", "json", "stream"],
     "tool" => ["call", "list", "schema"]
   }
 

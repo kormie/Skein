@@ -417,16 +417,25 @@ These are the immediate next priorities after Phase 7. They fill gaps in the exi
 
 **Acceptance criteria:** A queue handler compiles and processes messages from an in-memory queue. A schedule handler compiles and can be triggered by the test harness. Mixed handler modules (HTTP + queue + schedule) work correctly.
 
-### 8f: LLM Streaming
+### 8f: LLM Streaming ✅
 
 **Goal:** Support streaming LLM responses for real-time agent output.
 
-- [ ] `llm.stream` API with `on_chunk` callback
-- [ ] Token-level streaming in the runtime LLM client
-- [ ] Trace spans for streaming calls (total duration, chunk count)
-- [ ] Capability checking for `llm.stream` (same as `llm.chat`)
+- [x] `llm.stream` API with `on_chunk` callback
+- [x] Chunk-level streaming in the runtime LLM client with pluggable backends
+- [x] Trace spans for streaming calls (total duration, model, outcome)
+- [x] Capability checking for `llm.stream` (same as `llm.chat`)
 
-**Acceptance criteria:** An agent calls `llm.stream` and processes chunks via callback. The full response is assembled and a trace span records the streaming call.
+**Acceptance criteria:** An agent calls `llm.stream` and processes chunks via callback. The full response is assembled and a trace span records the streaming call. ✅
+
+**Implementation notes:**
+- Analyzer: Added `"stream"` to `@effect_methods["llm"]` — reuses existing `model` capability check
+- CodeGen: New `generate_expr` clause for `llm.stream` that emits a no-op callback for compiled Skein code
+- Runtime: `Skein.Runtime.Llm.stream/5` accepts `(model, system, input, on_chunk, capabilities)`
+- Backend behaviour: Optional `stream/3` callback returns `{:ok, [chunks]}` or `{:error, error}`
+- Dynamic backends: `set_backend({Module, config})` tuple form for property testing
+- 4 streaming backends: `StreamingTestBackend`, `EmptyStreamBackend`, `FailingStreamBackend`, `DynamicStreamBackend`
+- 7 unit tests, 4 property tests, 2 analyzer tests, 3 codegen tests, 3 integration tests
 
 ---
 

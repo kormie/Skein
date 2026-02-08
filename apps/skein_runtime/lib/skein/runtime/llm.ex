@@ -2,12 +2,14 @@ defmodule Skein.Runtime.Llm do
   @moduledoc """
   Provider-agnostic LLM client for Skein.
 
-  Provides `chat/4` for unstructured text responses and `json/5` for
-  schema-constrained structured responses. Called by compiled Skein code
-  when `llm.chat(...)` or `llm.json(...)` effect calls are encountered.
+  Provides `chat/4` for unstructured text responses, `json/5` for
+  schema-constrained structured responses, and `stream/5` for streaming
+  chunked responses. Called by compiled Skein code when `llm.chat(...)`,
+  `llm.json(...)`, or `llm.stream(...)` effect calls are encountered.
 
   Uses a pluggable backend system:
   - `Skein.Runtime.Llm.TestBackend` — deterministic responses for testing
+  - `Skein.Runtime.Llm.StreamingTestBackend` — deterministic streaming for testing
   - Custom backends implement the `Skein.Runtime.Llm.Backend` behaviour
 
   Every operation is:
@@ -75,18 +77,62 @@ defmodule Skein.Runtime.Llm do
   end
 
   @doc """
-  Sets the active LLM backend. Useful for testing.
+  Sends a streaming request to the LLM, delivering chunks via `on_chunk` callback.
+
+  The `on_chunk` callback receives each text chunk as it arrives.
+  The full response is assembled from all chunks and returned.
+
+  When called from compiled Skein code without a callback (e.g. `llm.stream(model, system, input)`),
+  the codegen passes a no-op callback and returns the assembled response.
+
+  Returns `{:ok, assembled_text}` or `{:error, %Llm.Error{}}`.
   """
-  @spec set_backend(module()) :: :ok
-  def set_backend(backend_module) when is_atom(backend_module) do
-    :persistent_term.put(:skein_llm_backend, backend_module)
+  @spec stream(String.t(), String.t(), any(), function(), [map()]) ::
+          {:ok, String.t()} | {:error, Error.t()}
+  def stream(model, system, input, on_chunk, capabilities)
+      when is_binary(model) and is_binary(system) and is_function(on_chunk, 1) and
+             is_list(capabilities) do
+    Trace.with_span(%{kind: :llm, method: :stream, model: model}, fn ->
+      case check_model_capability(model, capabilities) do
+        :ok ->
+          backend = get_backend()
+
+          case call_stream(backend, model, system, input, on_chunk) do
+            {:ok, chunks} when is_list(chunks) ->
+              # Deliver each chunk to the callback and assemble
+              Enum.each(chunks, on_chunk)
+              {:ok, Enum.join(chunks, "")}
+
+            {:error, _} = error ->
+              error
+          end
+
+        {:error, reason} ->
+          {:error, Error.capability_error(reason)}
+      end
+    end)
+  end
+
+  @doc """
+  Sets the active LLM backend. Useful for testing.
+
+  Accepts a module atom or a `{module, config}` tuple for dynamic backends.
+  """
+  @spec set_backend(module() | {module(), any()}) :: :ok
+  def set_backend(backend) when is_atom(backend) do
+    :persistent_term.put(:skein_llm_backend, backend)
+    :ok
+  end
+
+  def set_backend({module, _config} = backend) when is_atom(module) do
+    :persistent_term.put(:skein_llm_backend, backend)
     :ok
   end
 
   @doc """
-  Returns the currently active LLM backend module.
+  Returns the currently active LLM backend.
   """
-  @spec get_backend() :: module()
+  @spec get_backend() :: module() | {module(), any()}
   def get_backend do
     try do
       :persistent_term.get(:skein_llm_backend)
@@ -98,6 +144,15 @@ defmodule Skein.Runtime.Llm do
   # ------------------------------------------------------------------
   # Internal
   # ------------------------------------------------------------------
+
+  # Call stream on the backend, handling both module and {module, config} tuple backends
+  defp call_stream({module, config}, model, system, input, _on_chunk) do
+    module.stream(model, system, input, config)
+  end
+
+  defp call_stream(module, model, system, input, _on_chunk) when is_atom(module) do
+    module.stream(model, system, input)
+  end
 
   defp check_model_capability(_model, capabilities) do
     model_caps =
@@ -211,6 +266,11 @@ defmodule Skein.Runtime.Llm.Backend do
 
   @callback json(model :: String.t(), system :: String.t(), input :: any(), schema :: map()) ::
               {:ok, String.t() | map()} | {:error, Skein.Runtime.Llm.Error.t()}
+
+  @callback stream(model :: String.t(), system :: String.t(), input :: any()) ::
+              {:ok, [String.t()]} | {:error, Skein.Runtime.Llm.Error.t()}
+
+  @optional_callbacks [stream: 3]
 end
 
 defmodule Skein.Runtime.Llm.TestBackend do
@@ -264,5 +324,83 @@ defmodule Skein.Runtime.Llm.InvalidJsonBackend do
   @impl true
   def json(_model, _system, _input, _schema) do
     {:ok, "this is not { valid json"}
+  end
+end
+
+defmodule Skein.Runtime.Llm.StreamingTestBackend do
+  @moduledoc """
+  Test backend that returns deterministic streaming chunks.
+  """
+
+  @behaviour Skein.Runtime.Llm.Backend
+
+  @impl true
+  def chat(_model, _system, input) do
+    {:ok, "Test response for: #{inspect(input)}"}
+  end
+
+  @impl true
+  def json(_model, _system, _input, _schema) do
+    {:ok, %{"action" => "approve", "amount" => 100, "reason" => "Test decision"}}
+  end
+
+  @impl true
+  def stream(_model, _system, _input) do
+    {:ok, ["Hello, ", "world!"]}
+  end
+end
+
+defmodule Skein.Runtime.Llm.EmptyStreamBackend do
+  @moduledoc """
+  Test backend that streams zero chunks (empty response).
+  """
+
+  @behaviour Skein.Runtime.Llm.Backend
+
+  @impl true
+  def chat(_model, _system, _input), do: {:ok, ""}
+
+  @impl true
+  def json(_model, _system, _input, _schema), do: {:ok, %{}}
+
+  @impl true
+  def stream(_model, _system, _input) do
+    {:ok, []}
+  end
+end
+
+defmodule Skein.Runtime.Llm.FailingStreamBackend do
+  @moduledoc """
+  Test backend that returns errors during streaming.
+  """
+
+  @behaviour Skein.Runtime.Llm.Backend
+
+  @impl true
+  def chat(_model, _system, _input) do
+    {:error, Skein.Runtime.Llm.Error.provider_error("500", "Internal server error")}
+  end
+
+  @impl true
+  def json(_model, _system, _input, _schema) do
+    {:error, Skein.Runtime.Llm.Error.provider_error("500", "Internal server error")}
+  end
+
+  @impl true
+  def stream(_model, _system, _input) do
+    {:error, Skein.Runtime.Llm.Error.provider_error("500", "Stream failed")}
+  end
+end
+
+defmodule Skein.Runtime.Llm.DynamicStreamBackend do
+  @moduledoc """
+  Test backend that streams a configurable list of chunks.
+  Used with `set_backend({DynamicStreamBackend, chunks})`.
+  """
+
+  @spec stream(String.t(), String.t(), any(), [String.t()]) ::
+          {:ok, [String.t()]}
+  def stream(_model, _system, _input, chunks) when is_list(chunks) do
+    {:ok, chunks}
   end
 end
