@@ -1,0 +1,305 @@
+{
+  "Module": {
+    "prefix": "module",
+    "body": [
+      "module ${1:Name} {",
+      "  $0",
+      "}"
+    ],
+    "description": "Define a Skein module"
+  },
+  "Function": {
+    "prefix": "fn",
+    "body": [
+      "fn ${1:name}(${2:params}) -> ${3:ReturnType} {",
+      "  $0",
+      "}"
+    ],
+    "description": "Define a function"
+  },
+  "Let Binding": {
+    "prefix": "let",
+    "body": "let ${1:name} = ${0}",
+    "description": "Create a let binding"
+  },
+  "Agent": {
+    "prefix": "agent",
+    "body": [
+      "agent ${1:Name} {",
+      "  capability model(\"${2:gpt-4}\")",
+      "  capability memory.kv",
+      "",
+      "  state {",
+      "    ${3:field}: ${4:String}",
+      "  }",
+      "",
+      "  enum Phase {",
+      "    ${5:Initial} -> [${6:Processing}]",
+      "    ${6:Processing} -> [${7:Complete}]",
+      "    ${7:Complete} -> []",
+      "  }",
+      "",
+      "  on start(${8:param}: ${9:String}) -> {",
+      "    $0",
+      "    transition(Phase.${5:Initial})",
+      "  }",
+      "}"
+    ],
+    "description": "Define an agent with state machine"
+  },
+  "Agent Phase Handler": {
+    "prefix": "on phase",
+    "body": [
+      "on phase(Phase.${1:PhaseName}) -> {",
+      "  $0",
+      "}"
+    ],
+    "description": "Agent phase handler"
+  },
+  "Agent Start Handler": {
+    "prefix": "on start",
+    "body": [
+      "on start(${1:param}: ${2:String}) -> {",
+      "  $0",
+      "}"
+    ],
+    "description": "Agent start handler"
+  },
+  "HTTP Handler GET": {
+    "prefix": "handler http get",
+    "body": [
+      "handler http GET \"${1:/path}\" (${2:req}) -> {",
+      "  $0",
+      "}"
+    ],
+    "description": "HTTP GET handler"
+  },
+  "HTTP Handler POST": {
+    "prefix": "handler http post",
+    "body": [
+      "handler http POST \"${1:/path}\" (${2:req}) -> {",
+      "  $0",
+      "}"
+    ],
+    "description": "HTTP POST handler"
+  },
+  "HTTP Handler PUT": {
+    "prefix": "handler http put",
+    "body": [
+      "handler http PUT \"${1:/path}\" (${2:req}) -> {",
+      "  $0",
+      "}"
+    ],
+    "description": "HTTP PUT handler"
+  },
+  "HTTP Handler PATCH": {
+    "prefix": "handler http patch",
+    "body": [
+      "handler http PATCH \"${1:/path}\" (${2:req}) -> {",
+      "  $0",
+      "}"
+    ],
+    "description": "HTTP PATCH handler"
+  },
+  "HTTP Handler DELETE": {
+    "prefix": "handler http delete",
+    "body": [
+      "handler http DELETE \"${1:/path}\" (${2:req}) -> {",
+      "  $0",
+      "}"
+    ],
+    "description": "HTTP DELETE handler"
+  },
+  "Queue Handler": {
+    "prefix": "handler queue",
+    "body": [
+      "handler queue \"${1:queue-name}\" (${2:msg}) -> {",
+      "  $0",
+      "}"
+    ],
+    "description": "Queue message handler"
+  },
+  "Schedule Handler": {
+    "prefix": "handler schedule",
+    "body": [
+      "handler schedule \"${1:*/5 * * * *}\" () -> {",
+      "  $0",
+      "}"
+    ],
+    "description": "Scheduled cron handler"
+  },
+  "Topic Handler": {
+    "prefix": "handler topic",
+    "body": [
+      "handler topic \"${1:topic-name}\" (${2:msg}) -> {",
+      "  $0",
+      "}"
+    ],
+    "description": "Topic subscription handler"
+  },
+  "Type": {
+    "prefix": "type",
+    "body": [
+      "type ${1:Name} {",
+      "  ${2:field}: ${3:String}",
+      "  $0",
+      "}"
+    ],
+    "description": "Define a named type"
+  },
+  "Enum": {
+    "prefix": "enum",
+    "body": [
+      "enum ${1:Name} {",
+      "  ${2:Variant1} -> [${3:Variant2}]",
+      "  ${3:Variant2} -> []",
+      "  $0",
+      "}"
+    ],
+    "description": "Define an enum with transitions"
+  },
+  "Match Expression": {
+    "prefix": "match",
+    "body": [
+      "match ${1:value} {",
+      "  ${2:pattern} -> ${3:expression}",
+      "  _ -> ${0:default}",
+      "}"
+    ],
+    "description": "Pattern match expression"
+  },
+  "Tool": {
+    "prefix": "tool",
+    "body": [
+      "tool ${1:Namespace}.${2:Name} {",
+      "  description: \"${3:Tool description}\"",
+      "",
+      "  input {",
+      "    ${4:field}: ${5:String} @description(\"${6:field description}\")",
+      "  }",
+      "",
+      "  output {",
+      "    ${7:result}: ${8:String}",
+      "  }",
+      "",
+      "  errors { ${9:ErrorType} }",
+      "",
+      "  implement {",
+      "    $0",
+      "  }",
+      "}"
+    ],
+    "description": "Define a tool"
+  },
+  "Supervisor": {
+    "prefix": "supervisor",
+    "body": [
+      "supervisor ${1:Name} {",
+      "  child ${2:ChildName} { restart: ${3|permanent,transient,temporary|} }",
+      "  strategy: ${4|one_for_one,one_for_all,rest_for_one|}",
+      "  $0",
+      "}"
+    ],
+    "description": "Define a supervisor"
+  },
+  "Capability": {
+    "prefix": "capability",
+    "body": "capability ${1|http.in,http.out,store.table,memory.kv,model,queue.in,queue.publish,topic.publish,topic.consume,event.log,process.spawn,timer,schedule.in|}${2:(\"${3:param}\")}",
+    "description": "Declare a capability"
+  },
+  "Test": {
+    "prefix": "test",
+    "body": [
+      "test \"${1:description}\" {",
+      "  ${2:let result = $3}",
+      "  assert ${0:result == expected}",
+      "}"
+    ],
+    "description": "Define a test"
+  },
+  "Scenario Test": {
+    "prefix": "scenario",
+    "body": [
+      "scenario \"${1:description}\" {",
+      "  given {",
+      "    ${2:variable}: ${3:value}",
+      "  }",
+      "",
+      "  expect {",
+      "    assert ${0:condition}",
+      "  }",
+      "}"
+    ],
+    "description": "Define a scenario test"
+  },
+  "Golden Test": {
+    "prefix": "golden",
+    "body": [
+      "golden \"${1:name}\" from trace \"${2:trace_file.json}\" {",
+      "  $0",
+      "}"
+    ],
+    "description": "Define a golden test from a trace"
+  },
+  "Emit Event": {
+    "prefix": "emit",
+    "body": [
+      "emit ${1:EventName} {",
+      "  ${2:field}: ${0:value}",
+      "}"
+    ],
+    "description": "Emit an event"
+  },
+  "Transition": {
+    "prefix": "transition",
+    "body": "transition(Phase.${0:NextPhase})",
+    "description": "Transition to a new phase"
+  },
+  "Respond JSON": {
+    "prefix": "respond",
+    "body": "respond.json(${1:200}, ${0:body})",
+    "description": "Respond with JSON"
+  },
+  "LLM Chat": {
+    "prefix": "llm.chat",
+    "body": "llm.chat(\"${1:model}\", \"${2:prompt}\", ${0:input})",
+    "description": "LLM chat call"
+  },
+  "LLM JSON": {
+    "prefix": "llm.json",
+    "body": "llm.json[${1:Type}](model: \"${2:model}\", system: \"${3:prompt}\", input: ${0:data})",
+    "description": "LLM structured JSON call"
+  },
+  "Memory Put": {
+    "prefix": "memory.put",
+    "body": "memory.put(\"${1:key}\", ${0:value})",
+    "description": "Store a value in memory"
+  },
+  "Memory Get": {
+    "prefix": "memory.get",
+    "body": "memory.get(\"${0:key}\")",
+    "description": "Get a value from memory"
+  },
+  "Pipe": {
+    "prefix": "pipe",
+    "body": "${1:value}\n  |> ${0:function}",
+    "description": "Pipe operator chain"
+  },
+  "HTTP Module": {
+    "prefix": "httpmodule",
+    "body": [
+      "module ${1:Name} {",
+      "  capability http.in",
+      "",
+      "  handler http GET \"/health\" (req) -> {",
+      "    respond.json(200, \"ok\")",
+      "  }",
+      "",
+      "  handler http ${2|GET,POST,PUT,PATCH,DELETE|} \"${3:/path}\" (${4:req}) -> {",
+      "    $0",
+      "  }",
+      "}"
+    ],
+    "description": "HTTP module with health check"
+  }
+}
