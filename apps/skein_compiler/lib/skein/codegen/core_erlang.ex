@@ -55,6 +55,11 @@ defmodule Skein.CodeGen.CoreErlang do
       |> Enum.filter(&match?(%AST.Handler{}, &1))
       |> Enum.with_index()
 
+    # Collect tool declarations
+    tools =
+      ast.declarations
+      |> Enum.filter(&match?(%AST.ToolDecl{}, &1))
+
     # Build exports and function definitions for regular functions
     fn_exports =
       Enum.map(fns, fn f -> :cerl.c_fname(String.to_atom(f.name), length(f.params)) end)
@@ -91,14 +96,19 @@ defmodule Skein.CodeGen.CoreErlang do
     handlers_fname = :cerl.c_fname(:__handlers__, 0)
     handlers_fun = generate_handlers_meta_fn(handlers)
 
+    # Add __tools__/0 for tool metadata
+    tools_fname = :cerl.c_fname(:__tools__, 0)
+    tools_fun = generate_tools_meta_fn(tools)
+
     all_exports =
-      [info_fname, caps_fname, handlers_fname | fn_exports] ++ handler_exports
+      [info_fname, caps_fname, handlers_fname, tools_fname | fn_exports] ++ handler_exports
 
     all_defs =
       [
         {info_fname, info_fun},
         {caps_fname, caps_fun},
-        {handlers_fname, handlers_fun}
+        {handlers_fname, handlers_fun},
+        {tools_fname, tools_fun}
         | fn_defs
       ] ++ handler_defs
 
@@ -647,6 +657,71 @@ defmodule Skein.CodeGen.CoreErlang do
     :cerl.c_fun([], caps_list)
   end
 
+  # Generate __tools__/0 function that returns tool metadata
+  defp generate_tools_meta_fn(tools) do
+    tools_list =
+      tools
+      |> Enum.map(fn %AST.ToolDecl{name: name, description: desc, input: input, output: output} ->
+        name_pair =
+          :cerl.c_map_pair(
+            :cerl.c_atom(:name),
+            :cerl.abstract(name)
+          )
+
+        desc_pair =
+          :cerl.c_map_pair(
+            :cerl.c_atom(:description),
+            :cerl.abstract(desc)
+          )
+
+        input_fields =
+          (input || [])
+          |> Enum.map(fn %AST.Field{name: field_name, type: type} ->
+            :cerl.c_map([
+              :cerl.c_map_pair(:cerl.c_atom(:name), :cerl.abstract(field_name)),
+              :cerl.c_map_pair(:cerl.c_atom(:type), :cerl.abstract(type_ref_to_string(type)))
+            ])
+          end)
+          |> :cerl.make_list()
+
+        input_pair =
+          :cerl.c_map_pair(
+            :cerl.c_atom(:input),
+            input_fields
+          )
+
+        output_fields =
+          (output || [])
+          |> Enum.map(fn %AST.Field{name: field_name, type: type} ->
+            :cerl.c_map([
+              :cerl.c_map_pair(:cerl.c_atom(:name), :cerl.abstract(field_name)),
+              :cerl.c_map_pair(:cerl.c_atom(:type), :cerl.abstract(type_ref_to_string(type)))
+            ])
+          end)
+          |> :cerl.make_list()
+
+        output_pair =
+          :cerl.c_map_pair(
+            :cerl.c_atom(:output),
+            output_fields
+          )
+
+        :cerl.c_map([name_pair, desc_pair, input_pair, output_pair])
+      end)
+      |> :cerl.make_list()
+
+    :cerl.c_fun([], tools_list)
+  end
+
+  defp type_ref_to_string(%AST.TypeRef{name: name, params: []}) do
+    name
+  end
+
+  defp type_ref_to_string(%AST.TypeRef{name: name, params: params}) do
+    param_strs = Enum.map(params, &type_ref_to_string/1)
+    "#{name}[#{Enum.join(param_strs, ", ")}]"
+  end
+
   # Generate a minimal __info__/1 function for Elixir interop
   defp generate_info_fn(module_atom, fns) do
     arg = :cerl.c_var(:Info)
@@ -955,6 +1030,32 @@ defmodule Skein.CodeGen.CoreErlang do
     :cerl.c_call(
       :cerl.c_atom(:"Elixir.Skein.Runtime.Llm"),
       :cerl.c_atom(:chat),
+      args_exprs ++ [caps_expr]
+    )
+  end
+
+  # Tool effect: tool.call(name, args), tool.list(), tool.schema(name)
+  defp generate_expr(
+         %AST.Call{
+           target: %AST.FieldAccess{
+             subject: %AST.Identifier{name: "tool"},
+             field: method
+           },
+           args: args
+         },
+         scope
+       )
+       when method in ["call", "list", "schema"] do
+    method_atom = String.to_atom(method)
+    args_exprs = Enum.map(args, &generate_expr(&1, scope))
+
+    capabilities = Map.get(scope, :__capabilities__, [])
+    caps_expr = generate_capabilities_literal(capabilities)
+
+    # Call: Skein.Runtime.Tool.method(args..., capabilities)
+    :cerl.c_call(
+      :cerl.c_atom(:"Elixir.Skein.Runtime.Tool"),
+      :cerl.c_atom(method_atom),
       args_exprs ++ [caps_expr]
     )
   end

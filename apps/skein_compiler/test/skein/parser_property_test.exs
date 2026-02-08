@@ -233,4 +233,136 @@ defmodule Skein.ParserPropertyTest do
       assert {:ok, %AST.Module{name: ^mod_name, declarations: []}} = Parser.parse(tokens)
     end
   end
+
+  # ------------------------------------------------------------------
+  # Tool declaration properties (Phase 6c)
+  # ------------------------------------------------------------------
+
+  defp field_gen do
+    gen all(
+          name <- lower_ident_gen(),
+          type <- type_name_gen()
+        ) do
+      "#{name}: #{type}"
+    end
+  end
+
+  defp tool_name_gen do
+    gen all(parts <- StreamData.list_of(upper_ident_gen(), min_length: 1, max_length: 3)) do
+      Enum.join(parts, ".")
+    end
+  end
+
+  defp tool_gen do
+    gen all(
+          tool_name <- tool_name_gen(),
+          input_fields <- StreamData.list_of(field_gen(), min_length: 1, max_length: 3),
+          output_fields <- StreamData.list_of(field_gen(), min_length: 1, max_length: 3),
+          body <- body_expr_gen()
+        ) do
+      input_str = Enum.join(input_fields, "\n      ")
+      output_str = Enum.join(output_fields, "\n      ")
+
+      """
+      tool #{tool_name} {
+          input {
+            #{input_str}
+          }
+          output {
+            #{output_str}
+          }
+          implement {
+            #{body}
+          }
+        }
+      """
+    end
+  end
+
+  property "any generated tool declaration lexes and parses successfully" do
+    check all(
+            mod_name <- upper_ident_gen(),
+            tool_decl <- tool_gen()
+          ) do
+      source = "module #{mod_name} {\n  #{tool_decl}\n}"
+      {:ok, tokens} = Lexer.tokenize(source)
+      assert {:ok, %AST.Module{declarations: [%AST.ToolDecl{}]}} = Parser.parse(tokens)
+    end
+  end
+
+  property "parsed tool name matches the generated dotted name" do
+    check all(
+            mod_name <- upper_ident_gen(),
+            tool_name <- tool_name_gen(),
+            input_field <- field_gen(),
+            output_field <- field_gen()
+          ) do
+      source = """
+      module #{mod_name} {
+        tool #{tool_name} {
+          input { #{input_field} }
+          output { #{output_field} }
+          implement { 42 }
+        }
+      }
+      """
+
+      {:ok, tokens} = Lexer.tokenize(source)
+      {:ok, %AST.Module{declarations: [tool]}} = Parser.parse(tokens)
+      assert %AST.ToolDecl{name: ^tool_name} = tool
+    end
+  end
+
+  property "tool input/output field counts match generated counts" do
+    check all(
+            mod_name <- upper_ident_gen(),
+            tool_name <- tool_name_gen(),
+            input_fields <- StreamData.list_of(field_gen(), min_length: 1, max_length: 4),
+            output_fields <- StreamData.list_of(field_gen(), min_length: 1, max_length: 4)
+          ) do
+      input_str = Enum.join(input_fields, "\n      ")
+      output_str = Enum.join(output_fields, "\n      ")
+
+      source = """
+      module #{mod_name} {
+        tool #{tool_name} {
+          input { #{input_str} }
+          output { #{output_str} }
+          implement { 42 }
+        }
+      }
+      """
+
+      {:ok, tokens} = Lexer.tokenize(source)
+      {:ok, %AST.Module{declarations: [tool]}} = Parser.parse(tokens)
+      assert length(tool.input) == length(input_fields)
+      assert length(tool.output) == length(output_fields)
+    end
+  end
+
+  property "tool declaration always has non-nil implement block" do
+    check all(
+            mod_name <- upper_ident_gen(),
+            tool_decl <- tool_gen()
+          ) do
+      source = "module #{mod_name} {\n  #{tool_decl}\n}"
+      {:ok, tokens} = Lexer.tokenize(source)
+      {:ok, %AST.Module{declarations: [tool]}} = Parser.parse(tokens)
+      assert %AST.Block{} = tool.implement
+    end
+  end
+
+  property "tool declaration preserves source location metadata" do
+    check all(
+            mod_name <- upper_ident_gen(),
+            tool_decl <- tool_gen()
+          ) do
+      source = "module #{mod_name} {\n  #{tool_decl}\n}"
+      {:ok, tokens} = Lexer.tokenize(source)
+      {:ok, %AST.Module{declarations: [tool]}} = Parser.parse(tokens)
+      assert is_map(tool.meta)
+      assert tool.meta.line >= 1
+      assert tool.meta.col >= 1
+    end
+  end
 end

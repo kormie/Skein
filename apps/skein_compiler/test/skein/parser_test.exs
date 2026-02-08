@@ -987,4 +987,345 @@ defmodule Skein.ParserTest do
       assert %AST.Transition{phase: "Failed"} = arm2.body
     end
   end
+
+  # ------------------------------------------------------------------
+  # Tool declarations (Phase 6c)
+  # ------------------------------------------------------------------
+
+  describe "parse/1 - tool declarations" do
+    test "parses a minimal tool declaration" do
+      source = """
+      module M {
+        tool CreateRefund {
+          input {
+            amount: Int
+          }
+
+          output {
+            id: String
+          }
+
+          implement {
+            "refund_123"
+          }
+        }
+      }
+      """
+
+      assert {:ok, %AST.Module{declarations: [tool]}} = parse(source)
+      assert %AST.ToolDecl{name: "CreateRefund"} = tool
+      assert [%AST.Field{name: "amount", type: %AST.TypeRef{name: "Int"}}] = tool.input
+      assert [%AST.Field{name: "id", type: %AST.TypeRef{name: "String"}}] = tool.output
+      assert %AST.Block{} = tool.implement
+    end
+
+    test "parses tool with dotted name" do
+      source = """
+      module M {
+        tool Stripe.CreateRefund {
+          input {
+            customer_id: String
+          }
+
+          output {
+            id: String
+          }
+
+          implement {
+            "ok"
+          }
+        }
+      }
+      """
+
+      assert {:ok, %AST.Module{declarations: [tool]}} = parse(source)
+      assert %AST.ToolDecl{name: "Stripe.CreateRefund"} = tool
+    end
+
+    test "parses tool with description" do
+      source = """
+      module M {
+        tool MyTool {
+          description: "A helpful tool"
+
+          input {
+            name: String
+          }
+
+          output {
+            result: String
+          }
+
+          implement {
+            "done"
+          }
+        }
+      }
+      """
+
+      assert {:ok, %AST.Module{declarations: [tool]}} = parse(source)
+      assert %AST.ToolDecl{description: "A helpful tool"} = tool
+    end
+
+    test "parses tool with errors block" do
+      source = """
+      module M {
+        tool CreateRefund {
+          input {
+            amount: Int
+          }
+
+          output {
+            id: String
+          }
+
+          errors { StripeError, NetworkError }
+
+          implement {
+            "ok"
+          }
+        }
+      }
+      """
+
+      assert {:ok, %AST.Module{declarations: [tool]}} = parse(source)
+      assert ["StripeError", "NetworkError"] = tool.errors
+    end
+
+    test "parses tool with annotated input fields" do
+      source = """
+      module M {
+        tool CreateRefund {
+          input {
+            customer_id: String @description("Stripe customer ID")
+            amount: Int @min(1) @max(100000)
+          }
+
+          output {
+            id: String
+          }
+
+          implement {
+            "ok"
+          }
+        }
+      }
+      """
+
+      assert {:ok, %AST.Module{declarations: [tool]}} = parse(source)
+      [cid, amount] = tool.input
+      assert [%AST.Annotation{name: "description"}] = cid.annotations
+      assert [%AST.Annotation{name: "min"}, %AST.Annotation{name: "max"}] = amount.annotations
+    end
+
+    test "parses tool with multiple output fields" do
+      source = """
+      module M {
+        tool CreateRefund {
+          input {
+            amount: Int
+          }
+
+          output {
+            id: String
+            amount: Int
+            status: String
+          }
+
+          implement {
+            "ok"
+          }
+        }
+      }
+      """
+
+      assert {:ok, %AST.Module{declarations: [tool]}} = parse(source)
+      assert length(tool.output) == 3
+    end
+
+    test "parses tool with complex implement body" do
+      source = """
+      module M {
+        tool CreateRefund {
+          input {
+            amount: Int
+          }
+
+          output {
+            id: String
+          }
+
+          implement {
+            let result = http.post("https://api.stripe.com/v1/refunds", "body")
+            match result {
+              Ok(r)  -> r
+              Err(e) -> e
+            }
+          }
+        }
+      }
+      """
+
+      assert {:ok, %AST.Module{declarations: [tool]}} = parse(source)
+      assert %AST.Block{expressions: [%AST.Let{}, %AST.Match{}]} = tool.implement
+    end
+
+    test "preserves source location on tool declaration" do
+      source = """
+      module M {
+        tool MyTool {
+          input { x: Int }
+          output { y: Int }
+          implement { 42 }
+        }
+      }
+      """
+
+      assert {:ok, %AST.Module{declarations: [tool]}} = parse(source)
+      assert tool.meta.line == 2
+    end
+
+    test "parses tool mixed with other declarations" do
+      source = """
+      module M {
+        capability http.out("api.example.com")
+
+        fn helper() -> Int { 42 }
+
+        tool MyTool {
+          input { x: Int }
+          output { y: Int }
+          implement { 42 }
+        }
+      }
+      """
+
+      assert {:ok, %AST.Module{declarations: [cap, fn_decl, tool]}} = parse(source)
+      assert %AST.Capability{} = cap
+      assert %AST.Fn{name: "helper"} = fn_decl
+      assert %AST.ToolDecl{name: "MyTool"} = tool
+    end
+
+    test "returns error for tool with missing input block" do
+      source = """
+      module M {
+        tool MyTool {
+          output { y: Int }
+          implement { 42 }
+        }
+      }
+      """
+
+      assert {:error, [%Skein.Error{code: "E0001"}]} = parse(source)
+    end
+
+    test "returns error for tool with missing output block" do
+      source = """
+      module M {
+        tool MyTool {
+          input { x: Int }
+          implement { 42 }
+        }
+      }
+      """
+
+      assert {:error, [%Skein.Error{code: "E0001"}]} = parse(source)
+    end
+
+    test "returns error for tool with missing implement block" do
+      source = """
+      module M {
+        tool MyTool {
+          input { x: Int }
+          output { y: Int }
+        }
+      }
+      """
+
+      assert {:error, [%Skein.Error{code: "E0001"}]} = parse(source)
+    end
+  end
+
+  # ------------------------------------------------------------------
+  # tool.call, tool.list, tool.schema expressions (Phase 6c)
+  # ------------------------------------------------------------------
+
+  describe "parse/1 - tool expressions" do
+    test "parses tool.call expression" do
+      source = """
+      module M {
+        capability tool.use("MyTool")
+
+        fn f(args: String) -> String {
+          tool.call("MyTool", args)
+        }
+      }
+      """
+
+      assert {:ok, %AST.Module{declarations: [_cap, fn_decl]}} = parse(source)
+      assert %AST.Block{expressions: [call]} = fn_decl.body
+
+      assert %AST.Call{
+               target: %AST.FieldAccess{subject: %AST.Identifier{name: "tool"}, field: "call"}
+             } = call
+
+      assert length(call.args) == 2
+    end
+
+    test "parses tool.list expression" do
+      source = """
+      module M {
+        capability tool.use("MyTool")
+
+        fn f() -> String {
+          tool.list()
+        }
+      }
+      """
+
+      assert {:ok, %AST.Module{declarations: [_cap, fn_decl]}} = parse(source)
+      assert %AST.Block{expressions: [call]} = fn_decl.body
+
+      assert %AST.Call{
+               target: %AST.FieldAccess{subject: %AST.Identifier{name: "tool"}, field: "list"}
+             } = call
+    end
+
+    test "parses tool.schema expression" do
+      source = """
+      module M {
+        capability tool.use("MyTool")
+
+        fn f() -> String {
+          tool.schema("MyTool")
+        }
+      }
+      """
+
+      assert {:ok, %AST.Module{declarations: [_cap, fn_decl]}} = parse(source)
+      assert %AST.Block{expressions: [call]} = fn_decl.body
+
+      assert %AST.Call{
+               target: %AST.FieldAccess{subject: %AST.Identifier{name: "tool"}, field: "schema"}
+             } = call
+    end
+
+    test "parses tool.call result in let binding" do
+      source = """
+      module M {
+        capability tool.use("CreateRefund")
+
+        fn f(args: String) -> String {
+          let result = tool.call("CreateRefund", args)
+          result
+        }
+      }
+      """
+
+      assert {:ok, %AST.Module{declarations: [_cap, fn_decl]}} = parse(source)
+
+      assert %AST.Block{expressions: [%AST.Let{name: "result", value: %AST.Call{}}, _]} =
+               fn_decl.body
+    end
+  end
 end

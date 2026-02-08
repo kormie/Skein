@@ -1641,4 +1641,196 @@ defmodule Skein.AnalyzerTest do
                """)
     end
   end
+
+  # ------------------------------------------------------------------
+  # Tool validation (Phase 6c)
+  # ------------------------------------------------------------------
+
+  describe "tool declarations" do
+    test "valid tool declaration with known types passes" do
+      assert {:ok, _} =
+               analyze("""
+               module M {
+                 tool MyTool {
+                   input { amount: Int }
+                   output { id: String }
+                   implement { "ok" }
+                 }
+               }
+               """)
+    end
+
+    test "tool with unknown input type produces E0011" do
+      errors =
+        analyze_errors("""
+        module M {
+          tool MyTool {
+            input { data: Foo }
+            output { id: String }
+            implement { "ok" }
+          }
+        }
+        """)
+
+      assert Enum.any?(errors, &(&1.code == "E0011"))
+      assert Enum.any?(errors, &String.contains?(&1.message, "Foo"))
+    end
+
+    test "tool with unknown output type produces E0011" do
+      errors =
+        analyze_errors("""
+        module M {
+          tool MyTool {
+            input { amount: Int }
+            output { result: Bar }
+            implement { "ok" }
+          }
+        }
+        """)
+
+      assert Enum.any?(errors, &(&1.code == "E0011"))
+      assert Enum.any?(errors, &String.contains?(&1.message, "Bar"))
+    end
+
+    test "tool with user-defined type in input passes" do
+      assert {:ok, _} =
+               analyze("""
+               module M {
+                 type RefundInput {
+                   amount: Int
+                   customer_id: String
+                 }
+
+                 tool MyTool {
+                   input { amount: Int }
+                   output { id: String }
+                   implement { "ok" }
+                 }
+               }
+               """)
+    end
+
+    test "tool with parameterized types passes" do
+      assert {:ok, _} =
+               analyze("""
+               module M {
+                 tool MyTool {
+                   input { items: List[String] }
+                   output { results: List[Int] }
+                   implement { "ok" }
+                 }
+               }
+               """)
+    end
+  end
+
+  describe "tool.call capability checking" do
+    test "tool.call without tool.use capability produces E0030" do
+      errors =
+        analyze_errors("""
+        module M {
+          fn f(args: String) -> String {
+            tool.call("MyTool", args)
+          }
+        }
+        """)
+
+      assert Enum.any?(errors, &(&1.code == "E0030"))
+      assert Enum.any?(errors, &String.contains?(&1.message, "tool.use"))
+    end
+
+    test "tool.call with tool.use capability passes" do
+      assert {:ok, _} =
+               analyze("""
+               module M {
+                 capability tool.use("MyTool")
+
+                 fn f(args: String) -> String {
+                   tool.call("MyTool", args)
+                 }
+               }
+               """)
+    end
+
+    test "tool.list without tool.use capability produces E0030" do
+      errors =
+        analyze_errors("""
+        module M {
+          fn f() -> String {
+            tool.list()
+          }
+        }
+        """)
+
+      assert Enum.any?(errors, &(&1.code == "E0030"))
+    end
+
+    test "tool.list with tool.use capability passes" do
+      assert {:ok, _} =
+               analyze("""
+               module M {
+                 capability tool.use("MyTool")
+
+                 fn f() -> String {
+                   tool.list()
+                 }
+               }
+               """)
+    end
+
+    test "tool.schema without tool.use capability produces E0030" do
+      errors =
+        analyze_errors("""
+        module M {
+          fn f() -> String {
+            tool.schema("MyTool")
+          }
+        }
+        """)
+
+      assert Enum.any?(errors, &(&1.code == "E0030"))
+    end
+
+    test "tool.schema with tool.use capability passes" do
+      assert {:ok, _} =
+               analyze("""
+               module M {
+                 capability tool.use("MyTool")
+
+                 fn f() -> String {
+                   tool.schema("MyTool")
+                 }
+               }
+               """)
+    end
+
+    test "tool.call in handler with tool.use capability passes" do
+      assert {:ok, _} =
+               analyze("""
+               module M {
+                 capability http.in
+                 capability tool.use("MyTool")
+
+                 handler http GET "/test" (req) -> {
+                   tool.call("MyTool", req)
+                 }
+               }
+               """)
+    end
+
+    test "tool.call in handler without tool.use capability produces E0030" do
+      errors =
+        analyze_errors("""
+        module M {
+          capability http.in
+
+          handler http GET "/test" (req) -> {
+            tool.call("MyTool", req)
+          }
+        }
+        """)
+
+      assert Enum.any?(errors, &(&1.code == "E0030"))
+    end
+  end
 end
