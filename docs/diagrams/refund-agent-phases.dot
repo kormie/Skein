@@ -1,0 +1,34 @@
+// RefundAgent Phase Transitions
+// Machine-readable DOT format for LLM consumption
+//
+// This is the state machine for the RefundAgent example from the README.
+// Skein compiles phase declarations into verified state machines —
+// any transition not declared here is a compile-time error.
+//
+// Phase declarations in Skein:
+//   Analyze -> [Refund, Done]
+//   Refund  -> [Done, Failed]
+//   Failed  -> [Analyze]
+//   Done    -> []              (terminal)
+
+digraph refund_agent_phases {
+    rankdir=TB;
+    node [shape=circle, style=filled, fontname="Helvetica"];
+    edge [fontname="Helvetica", fontsize=10];
+
+    start [shape=point, width=0.2, fillcolor=black];
+    end [shape=doublecircle, label="", width=0.2, fillcolor=black];
+
+    Analyze [fillcolor="#fff3cd"];
+    Refund [fillcolor="#cce5ff"];
+    Failed [fillcolor="#f8d7da"];
+    Done [fillcolor="#d4edda"];
+
+    start -> Analyze;
+    Analyze -> Refund [label="approve"];
+    Analyze -> Done [label="deny"];
+    Refund -> Done [label="success"];
+    Refund -> Failed [label="error"];
+    Failed -> Analyze [label="retry"];
+    Done -> end;
+}

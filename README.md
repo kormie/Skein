@@ -33,6 +33,19 @@ agent RefundAgent {
 
 > The compiler verifies every phase transition, every side effect, and every type contract — before a single line runs.
 
+The phase graph above compiles to a verified state machine — the compiler rejects invalid transitions before your code ever runs:
+
+```mermaid
+stateDiagram-v2
+    [*] --> Analyze
+    Analyze --> Refund : approve
+    Analyze --> Done : deny
+    Refund --> Done : success
+    Refund --> Failed : error
+    Failed --> Analyze : retry
+    Done --> [*]
+```
+
 ---
 
 ## Why Skein?
@@ -242,23 +255,17 @@ Phase 1 target: take a `.skein` file, lex it, parse it, generate Core Erlang, co
 
 ## Architecture
 
-```
-Source (.skein)
-    │
-    ▼
-  Lexer ──────── Source text → Token stream
-    │
-    ▼
-  Parser ─────── Token stream → AST
-    │
-    ▼
-  Analyzer ───── AST → Annotated AST (types, capabilities, transitions)
-    │
-    ▼
-  CodeGen ────── Annotated AST → Core Erlang
-    │
-    ▼
-  BEAM ───────── Core Erlang → .beam bytecode (via OTP)
+```mermaid
+graph TD
+    A["Source (.skein)"] --> B["Lexer"]
+    B -->|"Token stream"| C["Parser"]
+    C -->|"AST"| D["Analyzer"]
+    D -->|"Typed AST"| E["CodeGen"]
+    E -->|"Core Erlang"| F["BEAM Compiler (OTP)"]
+    F -->|".beam bytecode"| G["Erlang VM"]
+
+    style A fill:#f9f,stroke:#333
+    style G fill:#9f9,stroke:#333
 ```
 
 The compiler is written in Elixir. The runtime is a set of OTP behaviours — agents run as supervised `gen_statem` processes, HTTP goes through Bandit + Plug, storage through Ecto.
@@ -277,7 +284,7 @@ See [ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full picture.
 | [Design Rationale](docs/skein_first_principles.md) | First principles and the "why" behind every decision |
 | [Documentation Site](https://kormie.github.io/Skein/) | Published docs with LLM-friendly endpoints |
 
-**For LLMs:** The documentation site publishes machine-readable formats at [`/llms.txt`](https://kormie.github.io/Skein/llms.txt) and [`/llms-full.txt`](https://kormie.github.io/Skein/llms-full.txt).
+**For LLMs:** The documentation site publishes machine-readable formats at [`/llms.txt`](https://kormie.github.io/Skein/llms.txt) and [`/llms-full.txt`](https://kormie.github.io/Skein/llms-full.txt). Architecture diagrams are available as DOT (Graphviz) in [`docs/diagrams/`](docs/diagrams/).
 
 ---
 

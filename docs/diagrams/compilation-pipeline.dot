@@ -1,0 +1,26 @@
+// Skein Compilation Pipeline
+// Machine-readable DOT format for LLM consumption
+//
+// Each node represents a compiler phase. Edge labels describe the
+// intermediate representation passed between phases.
+
+digraph compilation_pipeline {
+    rankdir=TB;
+    node [shape=box, style="rounded,filled", fontname="Helvetica"];
+    edge [fontname="Helvetica", fontsize=10];
+
+    source [label="Source (.skein)", fillcolor="#f9f0ff"];
+    lexer [label="Lexer", fillcolor="#e8e8e8"];
+    parser [label="Parser", fillcolor="#e8e8e8"];
+    analyzer [label="Analyzer", fillcolor="#e8e8e8"];
+    codegen [label="CodeGen", fillcolor="#e8e8e8"];
+    beam_compiler [label="BEAM Compiler (OTP)", fillcolor="#e8e8e8"];
+    vm [label="Erlang VM", fillcolor="#e8ffe8"];
+
+    source -> lexer [label="source text"];
+    lexer -> parser [label="token stream"];
+    parser -> analyzer [label="AST"];
+    analyzer -> codegen [label="typed AST\n(types, capabilities,\ntransitions validated)"];
+    codegen -> beam_compiler [label="Core Erlang"];
+    beam_compiler -> vm [label=".beam bytecode"];
+}
