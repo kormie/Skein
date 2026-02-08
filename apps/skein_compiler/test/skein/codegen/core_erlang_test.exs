@@ -469,6 +469,201 @@ defmodule Skein.CodeGen.CoreErlangTest do
     end
   end
 
+  # ------------------------------------------------------------------
+  # Phase 4: Handler codegen
+  # ------------------------------------------------------------------
+
+  describe "__handlers__/0" do
+    test "module with no handlers returns empty list" do
+      mod =
+        compile!("""
+        module HandlersEmpty {
+          fn x() -> Int { 1 }
+        }
+        """)
+
+      assert mod.__handlers__() == []
+    end
+
+    test "module with one handler returns metadata" do
+      mod =
+        compile!("""
+        module HandlersOne {
+          capability http.in
+
+          handler http GET "/users" (req) -> {
+            respond.json(200, "ok")
+          }
+        }
+        """)
+
+      handlers = mod.__handlers__()
+      assert length(handlers) == 1
+      assert %{method: :get, route: "/users", handler: :__handler_0__} = hd(handlers)
+    end
+
+    test "module with multiple handlers returns all metadata" do
+      mod =
+        compile!("""
+        module HandlersMulti {
+          capability http.in
+
+          handler http GET "/users" (req) -> {
+            respond.json(200, "list")
+          }
+
+          handler http POST "/users" (req) -> {
+            respond.json(201, "created")
+          }
+
+          handler http GET "/users/:id" (req) -> {
+            respond.json(200, "detail")
+          }
+        }
+        """)
+
+      handlers = mod.__handlers__()
+      assert length(handlers) == 3
+
+      [h0, h1, h2] = handlers
+      assert h0.method == :get
+      assert h0.route == "/users"
+      assert h1.method == :post
+      assert h1.route == "/users"
+      assert h2.method == :get
+      assert h2.route == "/users/:id"
+    end
+  end
+
+  describe "handler function codegen" do
+    test "handler function is callable with request map" do
+      mod =
+        compile!("""
+        module HandlerCall {
+          capability http.in
+
+          handler http GET "/test" (req) -> {
+            respond.json(200, "hello")
+          }
+        }
+        """)
+
+      result = mod.__handler_0__(%{})
+      assert {:respond_json, 200, "hello"} = result
+    end
+
+    test "handler with integer status code and string body" do
+      mod =
+        compile!("""
+        module HandlerStatus {
+          capability http.in
+
+          handler http POST "/items" (req) -> {
+            respond.json(201, "created")
+          }
+        }
+        """)
+
+      result = mod.__handler_0__(%{})
+      assert {:respond_json, 201, "created"} = result
+    end
+
+    test "handler can access request parameter" do
+      mod =
+        compile!("""
+        module HandlerReq {
+          capability http.in
+
+          handler http GET "/users/:id" (req) -> {
+            let name = "user"
+            respond.json(200, name)
+          }
+        }
+        """)
+
+      result = mod.__handler_0__(%{params: %{id: "123"}})
+      assert {:respond_json, 200, "user"} = result
+    end
+
+    test "handler with match expression" do
+      mod =
+        compile!("""
+        module HandlerMatch {
+          capability http.in
+
+          handler http GET "/status" (req) -> {
+            match 1 > 0 {
+              true -> respond.json(200, "ok")
+              false -> respond.json(500, "error")
+            }
+          }
+        }
+        """)
+
+      result = mod.__handler_0__(%{})
+      assert {:respond_json, 200, "ok"} = result
+    end
+
+    test "handler with let bindings" do
+      mod =
+        compile!("""
+        module HandlerLet {
+          capability http.in
+
+          handler http GET "/compute" (req) -> {
+            let x = 1 + 2
+            let y = x + 3
+            respond.json(200, y)
+          }
+        }
+        """)
+
+      result = mod.__handler_0__(%{})
+      assert {:respond_json, 200, 6} = result
+    end
+
+    test "handler can call module functions" do
+      mod =
+        compile!("""
+        module HandlerCallFn {
+          capability http.in
+
+          fn make_greeting(name: String) -> String {
+            "Hello, ${name}!"
+          }
+
+          handler http GET "/greet" (req) -> {
+            let greeting = make_greeting("World")
+            respond.json(200, greeting)
+          }
+        }
+        """)
+
+      result = mod.__handler_0__(%{})
+      assert {:respond_json, 200, "Hello, World!"} = result
+    end
+
+    test "multiple handlers have separate functions" do
+      mod =
+        compile!("""
+        module HandlerSep {
+          capability http.in
+
+          handler http GET "/a" (req) -> {
+            respond.json(200, "a")
+          }
+
+          handler http POST "/b" (req) -> {
+            respond.json(201, "b")
+          }
+        }
+        """)
+
+      assert {:respond_json, 200, "a"} = mod.__handler_0__(%{})
+      assert {:respond_json, 201, "b"} = mod.__handler_1__(%{})
+    end
+  end
+
   describe "__info__/1 Elixir interop" do
     test "module responds to __info__(:module)" do
       mod =

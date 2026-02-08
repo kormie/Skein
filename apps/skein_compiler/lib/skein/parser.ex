@@ -99,6 +99,10 @@ defmodule Skein.Parser do
     parse_capability(tokens, file)
   end
 
+  defp parse_declaration([{:handler, _} | _] = tokens, file) do
+    parse_handler(tokens, file)
+  end
+
   defp parse_declaration([{token_type, {line, col}} | _], file) do
     {:error,
      [
@@ -106,7 +110,7 @@ defmodule Skein.Parser do
          code: "E0001",
          severity: :error,
          message:
-           "Unexpected token #{inspect(token_type)}, expected a declaration (fn, type, enum, capability)",
+           "Unexpected token #{inspect(token_type)}, expected a declaration (fn, type, enum, capability, handler)",
          location: %{file: file, line: line, col: col},
          fix_hint: "Add a valid declaration keyword"
        }
@@ -120,7 +124,7 @@ defmodule Skein.Parser do
          code: "E0001",
          severity: :error,
          message:
-           "Unexpected token #{inspect(token_type)}, expected a declaration (fn, type, enum, capability)",
+           "Unexpected token #{inspect(token_type)}, expected a declaration (fn, type, enum, capability, handler)",
          location: %{file: file, line: line, col: col},
          fix_hint: "Add a valid declaration keyword"
        }
@@ -199,6 +203,61 @@ defmodule Skein.Parser do
 
   defp parse_dotted_ident_rest(rest, _file, acc) do
     {:ok, acc, rest}
+  end
+
+  # ------------------------------------------------------------------
+  # Handler declaration
+  # handler http GET "/path/:param" (req) -> { ... }
+  # ------------------------------------------------------------------
+
+  @http_methods ~w(GET POST PUT PATCH DELETE)
+
+  defp parse_handler([{:handler, {line, col}} | rest], file) do
+    with {:ok, source, rest} <- expect_lower_ident(rest, file),
+         {:ok, method, rest} <- expect_http_method(rest, file),
+         {:ok, route, rest} <- expect_string_literal(rest, file),
+         {:ok, _lparen, rest} <- expect(:lparen, rest, file),
+         {:ok, param, rest} <- expect_lower_ident(rest, file),
+         {:ok, _rparen, rest} <- expect(:rparen, rest, file),
+         {:ok, _arrow, rest} <- expect(:arrow, rest, file),
+         {:ok, body, rest} <- parse_block(rest, file) do
+      handler = %AST.Handler{
+        source: source,
+        method: method,
+        route: route,
+        param: param,
+        body: body,
+        meta: %{line: line, col: col, file: file}
+      }
+
+      {:ok, handler, rest}
+    end
+  end
+
+  defp expect_http_method([{:upper_ident, _, name} | rest], _file)
+       when name in @http_methods do
+    {:ok, String.downcase(name), rest}
+  end
+
+  defp expect_http_method(tokens, file) do
+    unexpected_token_error(tokens, file, "an HTTP method (GET, POST, PUT, PATCH, DELETE)")
+  end
+
+  defp expect_string_literal([{:string, _, segments} | rest], _file) do
+    # Extract the route string from segments (should be a single literal)
+    route =
+      segments
+      |> Enum.map(fn
+        {:literal, text} -> text
+        {:interpolation, _} -> ""
+      end)
+      |> Enum.join()
+
+    {:ok, route, rest}
+  end
+
+  defp expect_string_literal(tokens, file) do
+    unexpected_token_error(tokens, file, "a route string")
   end
 
   # ------------------------------------------------------------------

@@ -840,6 +840,113 @@ defmodule Skein.AnalyzerTest do
     end
   end
 
+  # ------------------------------------------------------------------
+  # Handler checking (Phase 4)
+  # ------------------------------------------------------------------
+
+  describe "handler checking - http.in capability" do
+    test "handler without http.in capability produces error" do
+      errors =
+        analyze_errors("""
+        module M {
+          handler http GET "/test" (req) -> {
+            respond.json(200, "ok")
+          }
+        }
+        """)
+
+      assert length(errors) >= 1
+      error = Enum.find(errors, &(&1.code == "E0030"))
+      assert error != nil
+      assert error.message =~ "http.in"
+      assert error.fix_code == "capability http.in"
+    end
+
+    test "handler with http.in capability passes" do
+      assert {:ok, _} =
+               analyze("""
+               module M {
+                 capability http.in
+
+                 handler http GET "/test" (req) -> {
+                   respond.json(200, "ok")
+                 }
+               }
+               """)
+    end
+
+    test "multiple handlers all require http.in" do
+      errors =
+        analyze_errors("""
+        module M {
+          handler http GET "/a" (req) -> { respond.json(200, "a") }
+          handler http POST "/b" (req) -> { respond.json(200, "b") }
+        }
+        """)
+
+      capability_errors = Enum.filter(errors, &(&1.code == "E0030"))
+      assert length(capability_errors) >= 2
+    end
+
+    test "handler body is type-checked with req in scope" do
+      assert {:ok, _} =
+               analyze("""
+               module M {
+                 capability http.in
+
+                 handler http GET "/users/:id" (req) -> {
+                   let id = req.params.id
+                   respond.json(200, id)
+                 }
+               }
+               """)
+    end
+
+    test "unknown variable in handler body produces error" do
+      errors =
+        analyze_errors("""
+        module M {
+          capability http.in
+
+          handler http GET "/test" (req) -> {
+            unknown_var
+          }
+        }
+        """)
+
+      assert Enum.any?(errors, &(&1.code == "E0010"))
+    end
+
+    test "handler body effect calls are capability-checked" do
+      errors =
+        analyze_errors("""
+        module M {
+          capability http.in
+
+          handler http GET "/proxy" (req) -> {
+            http.get("https://example.com")
+          }
+        }
+        """)
+
+      assert Enum.any?(errors, &(&1.code == "E0030" and &1.message =~ "http.out"))
+    end
+
+    test "handler with both http.in and http.out capabilities passes" do
+      assert {:ok, _} =
+               analyze("""
+               module M {
+                 capability http.in
+                 capability http.out("example.com")
+
+                 handler http GET "/proxy" (req) -> {
+                   http.get("https://example.com/data")
+                 }
+               }
+               """)
+    end
+  end
+
   describe "capability checking - error serialization" do
     test "capability error serializes to JSON with fix_code" do
       errors =
