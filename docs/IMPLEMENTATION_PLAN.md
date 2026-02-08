@@ -361,16 +361,23 @@ These are the immediate next priorities after Phase 7. They fill gaps in the exi
 
 **Acceptance criteria:** A Skein module with `capability store.table("users")` compiles and performs real CRUD against SQLite in tests.
 
-### 8c: HTTP Server — Bandit + Plug Integration
+### 8c: HTTP Server — Bandit + Plug Integration ✅
 
 **Goal:** Replace the dev-only `:gen_tcp` server with production-grade HTTP.
 
-- [ ] Compile Skein handlers to a Plug router
-- [ ] Use Bandit as the HTTP server
-- [ ] Preserve `/__skein/traces` debug endpoint
-- [ ] Support request body validation via `req.json[T]`
+- [x] Compile Skein handlers to a Plug router (`Skein.Runtime.Router`)
+- [x] Use Bandit as the HTTP server
+- [x] Preserve `/__skein/traces` debug endpoint
+- [x] Support request body validation via `req.json[T]` (`Skein.Runtime.Request`)
 
-**Acceptance criteria:** `skein run` starts a Bandit server that passes all existing handler tests and handles concurrent requests correctly.
+**Acceptance criteria:** `skein run` starts a Bandit server that passes all existing handler tests and handles concurrent requests correctly. ✅
+
+**Implementation notes:**
+- `Skein.Runtime.Router` dynamically builds Plug modules from compiled handler metadata
+- `Skein.Runtime.Request.json/2` parses JSON bodies and validates against compile-time schemas
+- Parser updated to create `Call` AST nodes for type-parameterized expressions without call args (e.g., `req.json[T]`)
+- Router catches handler exceptions and returns 500 for graceful error handling
+- 42 new tests (11 router, 9 Bandit server, 12 request unit, 6 request properties, 4 integration)
 
 ### 8d: Canonical Examples
 
