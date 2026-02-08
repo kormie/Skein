@@ -1189,6 +1189,22 @@ defmodule Skein.Parser do
     end
   end
 
+  # List literal: [expr, expr, ...]
+  defp parse_primary([{:lbracket, {line, col}} | rest], file) do
+    case parse_list_elements(rest, file, []) do
+      {:ok, elements, rest} ->
+        list = %AST.ListLit{
+          elements: elements,
+          meta: %{line: line, col: col, file: file}
+        }
+
+        {:ok, list, rest}
+
+      {:error, _} = error ->
+        error
+    end
+  end
+
   # Block as primary expression
   defp parse_primary([{:lbrace, _} | _] = tokens, file) do
     parse_block(tokens, file)
@@ -1196,6 +1212,28 @@ defmodule Skein.Parser do
 
   defp parse_primary(tokens, file) do
     unexpected_token_error(tokens, file, "an expression")
+  end
+
+  # ------------------------------------------------------------------
+  # List elements
+  # ------------------------------------------------------------------
+
+  defp parse_list_elements([{:rbracket, _} | rest], _file, acc) do
+    {:ok, Enum.reverse(acc), rest}
+  end
+
+  defp parse_list_elements([{:comma, _} | rest], file, acc) do
+    parse_list_elements(rest, file, acc)
+  end
+
+  defp parse_list_elements(tokens, file, acc) do
+    case parse_expression(tokens, file) do
+      {:ok, expr, rest} ->
+        parse_list_elements(rest, file, [expr | acc])
+
+      {:error, _} = error ->
+        error
+    end
   end
 
   # ------------------------------------------------------------------
