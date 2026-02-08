@@ -25,7 +25,11 @@ defmodule Skein.CodeGen.CoreErlang do
     "http" => :"Elixir.Skein.Runtime.Http"
   }
 
-  @spec generate(AST.Module.t()) :: {:ok, binary()} | {:error, [Error.t()]}
+  @spec generate(AST.Module.t() | AST.Agent.t()) :: {:ok, binary()} | {:error, [Error.t()]}
+  def generate(%AST.Agent{} = ast) do
+    generate_agent(ast)
+  end
+
   def generate(%AST.Module{} = ast) do
     module_atom = String.to_atom("Elixir.Skein.User.#{ast.name}")
 
@@ -123,6 +127,420 @@ defmodule Skein.CodeGen.CoreErlang do
            }
          ]}
     end
+  end
+
+  # ------------------------------------------------------------------
+  # Agent generation
+  # ------------------------------------------------------------------
+
+  defp generate_agent(%AST.Agent{} = ast) do
+    module_atom = String.to_atom("Elixir.Skein.Agent.#{ast.name}")
+
+    capabilities = ast.capabilities
+
+    # Build function name -> arity map for local call resolution
+    fn_arities =
+      ast.fns
+      |> Map.new(fn f -> {f.name, length(f.params)} end)
+
+    # Find the start handler
+    start_handler =
+      Enum.find(ast.handlers, fn h -> h.kind == :start end)
+
+    # Find phase handlers
+    phase_handlers =
+      Enum.filter(ast.handlers, fn h -> h.kind == :phase end)
+
+    # Generate __info__/1
+    info_fname = :cerl.c_fname(:__info__, 1)
+    info_fun = generate_agent_info_fn(module_atom, ast.fns)
+
+    # Generate __phases__/0 — returns phase metadata
+    phases_fname = :cerl.c_fname(:__phases__, 0)
+    phases_fun = generate_phases_fn(ast.phases)
+
+    # Generate start_link/1 — calls Skein.Runtime.Agent.start_link
+    start_link_fname = :cerl.c_fname(:start_link, 1)
+    start_link_fun = generate_start_link_fn(module_atom)
+
+    # Generate __start_handler__/2 — the on start(...) handler
+    start_handler_fname = :cerl.c_fname(:__start_handler__, 2)
+
+    start_handler_fun =
+      generate_start_handler_fn(start_handler, capabilities, fn_arities, ast.state)
+
+    # Generate __phase_handler__/3 — dispatches to phase-specific handlers
+    phase_handler_fname = :cerl.c_fname(:__phase_handler__, 3)
+    phase_handler_fun = generate_phase_handler_fn(phase_handlers, capabilities, fn_arities)
+
+    # Generate user functions
+    fn_exports =
+      Enum.map(ast.fns, fn f -> :cerl.c_fname(String.to_atom(f.name), length(f.params)) end)
+
+    fn_defs =
+      Enum.map(ast.fns, fn f ->
+        fname = :cerl.c_fname(String.to_atom(f.name), length(f.params))
+        fun = generate_fn(f, capabilities, fn_arities)
+        {fname, fun}
+      end)
+
+    all_exports =
+      [
+        info_fname,
+        phases_fname,
+        start_link_fname,
+        start_handler_fname,
+        phase_handler_fname | fn_exports
+      ]
+
+    all_defs =
+      [
+        {info_fname, info_fun},
+        {phases_fname, phases_fun},
+        {start_link_fname, start_link_fun},
+        {start_handler_fname, start_handler_fun},
+        {phase_handler_fname, phase_handler_fun}
+      ] ++ fn_defs
+
+    mod =
+      :cerl.c_module(
+        :cerl.c_atom(module_atom),
+        all_exports,
+        [],
+        all_defs
+      )
+
+    case :compile.forms(mod, [:from_core, :binary, :return_errors]) do
+      {:ok, _, beam_binary} ->
+        {:ok, beam_binary}
+
+      {:ok, _, beam_binary, _warnings} ->
+        {:ok, beam_binary}
+
+      {:error, errors, _warnings} ->
+        {:error,
+         [
+           %Error{
+             code: "E0001",
+             severity: :error,
+             message: "Core Erlang compilation failed: #{inspect(errors)}",
+             location: %{file: ast.meta.file, line: 1, col: 1}
+           }
+         ]}
+    end
+  end
+
+  defp generate_agent_info_fn(module_atom, fns) do
+    arg = :cerl.c_var(:Info)
+
+    functions_list =
+      fns
+      |> Enum.map(fn f ->
+        :cerl.c_tuple([
+          :cerl.c_atom(String.to_atom(f.name)),
+          :cerl.c_int(length(f.params))
+        ])
+      end)
+      |> :cerl.make_list()
+
+    module_clause =
+      :cerl.c_clause(
+        [:cerl.c_atom(:module)],
+        :cerl.c_atom(module_atom)
+      )
+
+    functions_clause =
+      :cerl.c_clause(
+        [:cerl.c_atom(:functions)],
+        functions_list
+      )
+
+    catch_all =
+      :cerl.c_clause(
+        [:cerl.c_var(:_Other)],
+        :cerl.c_atom(:undefined)
+      )
+
+    body = :cerl.c_case(arg, [module_clause, functions_clause, catch_all])
+    :cerl.c_fun([arg], body)
+  end
+
+  defp generate_phases_fn(nil) do
+    :cerl.c_fun([], :cerl.make_list([]))
+  end
+
+  defp generate_phases_fn(%AST.EnumDecl{variants: variants}) do
+    phases_list =
+      variants
+      |> Enum.map(fn %AST.Variant{name: name, transitions: transitions} ->
+        name_pair =
+          :cerl.c_map_pair(
+            :cerl.c_atom(:name),
+            :cerl.c_atom(phase_atom(name))
+          )
+
+        targets =
+          transitions
+          |> Enum.map(&:cerl.c_atom(phase_atom(&1)))
+          |> :cerl.make_list()
+
+        transitions_pair =
+          :cerl.c_map_pair(
+            :cerl.c_atom(:transitions),
+            targets
+          )
+
+        :cerl.c_map([name_pair, transitions_pair])
+      end)
+      |> :cerl.make_list()
+
+    :cerl.c_fun([], phases_list)
+  end
+
+  defp generate_start_link_fn(module_atom) do
+    args_var = :cerl.c_var(:Args)
+
+    body =
+      :cerl.c_call(
+        :cerl.c_atom(:"Elixir.Skein.Runtime.Agent"),
+        :cerl.c_atom(:start_link),
+        [:cerl.c_atom(module_atom), args_var]
+      )
+
+    :cerl.c_fun([args_var], body)
+  end
+
+  defp generate_start_handler_fn(nil, _capabilities, _fn_arities, _state_fields) do
+    # No start handler defined — just return keep
+    args_var = :cerl.c_var(:_Args)
+    state_var = :cerl.c_var(:_State)
+    body = :cerl.c_tuple([:cerl.c_atom(:keep), :cerl.c_map([]), :cerl.make_list([])])
+    :cerl.c_fun([args_var, state_var], body)
+  end
+
+  defp generate_start_handler_fn(
+         %AST.AgentHandler{params: params, body: body},
+         capabilities,
+         fn_arities,
+         state_fields
+       ) do
+    args_var = :cerl.c_var(:ArgsMap)
+    state_var = :cerl.c_var(:StateMap)
+
+    # Build scope: extract params from the args map
+    # Each param is accessed as map_get(param_name, args_map)
+    scope =
+      %{}
+      |> Map.put(:__capabilities__, capabilities)
+      |> Map.put(:__fn_arities__, fn_arities)
+      |> Map.put(:__agent_context__, true)
+      |> Map.put(:__state_var__, :StateMap)
+      |> Map.put(:__state_fields__, Enum.map(state_fields, & &1.name))
+
+    # Bind params from the args map using let bindings
+    {body_with_bindings, final_scope} =
+      Enum.reduce(params, {nil, scope}, fn %AST.Field{name: name}, {_prev, sc} ->
+        vname = var_name(name)
+        new_sc = Map.put(sc, name, vname)
+        {nil, new_sc}
+      end)
+
+    _ = body_with_bindings
+
+    # Generate the body, wrapping param extractions as let bindings
+    inner_body = generate_agent_body(body, final_scope)
+
+    # Wrap with let bindings to extract params from the args map
+    wrapped =
+      Enum.reduce(Enum.reverse(params), inner_body, fn %AST.Field{name: name}, acc ->
+        vname = var_name(name)
+
+        extract =
+          :cerl.c_call(
+            :cerl.c_atom(:erlang),
+            :cerl.c_atom(:map_get),
+            [:cerl.c_atom(String.to_atom(name)), args_var]
+          )
+
+        :cerl.c_let([:cerl.c_var(vname)], extract, acc)
+      end)
+
+    :cerl.c_fun([args_var, state_var], wrapped)
+  end
+
+  defp generate_phase_handler_fn(phase_handlers, capabilities, fn_arities) do
+    phase_var = :cerl.c_var(:Phase)
+    state_var = :cerl.c_var(:StateMap)
+    events_var = :cerl.c_var(:Events)
+
+    # Build a case statement that dispatches on the phase atom
+    clauses =
+      Enum.map(phase_handlers, fn %AST.AgentHandler{phase: phase_name, body: body} ->
+        scope =
+          %{}
+          |> Map.put(:__capabilities__, capabilities)
+          |> Map.put(:__fn_arities__, fn_arities)
+          |> Map.put(:__agent_context__, true)
+          |> Map.put(:__state_var__, :StateMap)
+          |> Map.put(:__events_var__, :Events)
+          |> Map.put(:__state_fields__, [])
+
+        phase_body = generate_agent_body(body, scope)
+
+        :cerl.c_clause(
+          [:cerl.c_atom(phase_atom(phase_name))],
+          phase_body
+        )
+      end)
+
+    # Add a catch-all clause
+    catch_all =
+      :cerl.c_clause(
+        [:cerl.c_var(:_Other)],
+        :cerl.c_tuple([:cerl.c_atom(:keep), :cerl.c_map([]), :cerl.make_list([])])
+      )
+
+    body = :cerl.c_case(phase_var, clauses ++ [catch_all])
+    :cerl.c_fun([phase_var, state_var, events_var], body)
+  end
+
+  # Generate agent body — wraps expressions so that transition/stop/emit
+  # produce the right return tuples
+  defp generate_agent_body(%AST.Block{expressions: []}, _scope) do
+    :cerl.c_tuple([:cerl.c_atom(:keep), :cerl.c_map([]), :cerl.make_list([])])
+  end
+
+  defp generate_agent_body(%AST.Block{expressions: exprs}, scope) do
+    generate_agent_sequence(exprs, scope)
+  end
+
+  defp generate_agent_body(expr, scope) do
+    generate_agent_expr(expr, scope)
+  end
+
+  # Agent-specific expression generation
+  defp generate_agent_expr(%AST.Transition{phase: phase_name}, _scope) do
+    :cerl.c_tuple([
+      :cerl.c_atom(:transition),
+      :cerl.c_atom(phase_atom(phase_name)),
+      :cerl.c_map([]),
+      :cerl.make_list([])
+    ])
+  end
+
+  defp generate_agent_expr(%AST.Stop{}, _scope) do
+    :cerl.c_tuple([
+      :cerl.c_atom(:stop),
+      :cerl.c_map([]),
+      :cerl.make_list([])
+    ])
+  end
+
+  defp generate_agent_expr(%AST.Emit{event_name: name, fields: fields}, scope) do
+    # Build event map
+    field_pairs =
+      Enum.map(fields, fn {field_name, value_expr} ->
+        :cerl.c_map_pair(
+          :cerl.c_atom(String.to_atom(field_name)),
+          generate_expr(value_expr, scope)
+        )
+      end)
+
+    event_map =
+      :cerl.c_map([
+        :cerl.c_map_pair(:cerl.c_atom(:event), :cerl.abstract(name))
+        | field_pairs
+      ])
+
+    # Return {:keep, state, [event]} — emit doesn't change state or phase
+    :cerl.c_tuple([
+      :cerl.c_atom(:keep),
+      :cerl.c_map([]),
+      :cerl.make_list([event_map])
+    ])
+  end
+
+  defp generate_agent_expr(%AST.Match{subject: subject, arms: arms}, scope) do
+    subject_expr = generate_expr(subject, scope)
+    clauses = Enum.map(arms, &generate_agent_match_arm(&1, scope))
+    :cerl.c_case(subject_expr, clauses)
+  end
+
+  defp generate_agent_expr(%AST.Block{} = block, scope) do
+    generate_agent_body(block, scope)
+  end
+
+  # Field access on "state" — access state map
+  defp generate_agent_expr(
+         %AST.FieldAccess{subject: %AST.Identifier{name: "state"}, field: field},
+         scope
+       ) do
+    state_var_name = Map.get(scope, :__state_var__, :StateMap)
+
+    :cerl.c_call(
+      :cerl.c_atom(:erlang),
+      :cerl.c_atom(:map_get),
+      [:cerl.c_atom(String.to_atom(field)), :cerl.c_var(state_var_name)]
+    )
+  end
+
+  # Fall through to normal expression generation for other expressions
+  defp generate_agent_expr(expr, scope) do
+    generate_expr(expr, scope)
+  end
+
+  defp generate_agent_match_arm(%AST.MatchArm{pattern: pattern, body: body}, scope) do
+    {pat, new_scope} = generate_pattern(pattern, scope)
+    body_expr = generate_agent_expr(body, new_scope)
+    :cerl.c_clause([pat], body_expr)
+  end
+
+  defp generate_agent_sequence([expr], scope) do
+    generate_agent_expr(expr, scope)
+  end
+
+  defp generate_agent_sequence([%AST.Let{name: name, value: value} | rest], scope) do
+    vname = var_name(name)
+    new_scope = Map.put(scope, name, vname)
+    value_expr = generate_expr(value, scope)
+    body = generate_agent_sequence(rest, new_scope)
+    :cerl.c_let([:cerl.c_var(vname)], value_expr, body)
+  end
+
+  defp generate_agent_sequence([%AST.Emit{event_name: name, fields: fields} | rest], scope) do
+    # Emit in a sequence: we need to collect events and continue
+    # For simplicity, the last expression in a sequence determines the return
+    # Emit in the middle is a side effect captured later
+    field_pairs =
+      Enum.map(fields, fn {field_name, value_expr} ->
+        :cerl.c_map_pair(
+          :cerl.c_atom(String.to_atom(field_name)),
+          generate_expr(value_expr, scope)
+        )
+      end)
+
+    event_map =
+      :cerl.c_map([
+        :cerl.c_map_pair(:cerl.c_atom(:event), :cerl.abstract(name))
+        | field_pairs
+      ])
+
+    discard_var = :cerl.c_var(gen_var())
+    body = generate_agent_sequence(rest, scope)
+    :cerl.c_let([discard_var], event_map, body)
+  end
+
+  defp generate_agent_sequence([expr | rest], scope) do
+    val = generate_expr(expr, scope)
+    body = generate_agent_sequence(rest, scope)
+    discard_var = :cerl.c_var(gen_var())
+    :cerl.c_let([discard_var], val, body)
+  end
+
+  defp phase_atom(name) when is_binary(name) do
+    name
+    |> String.downcase()
+    |> String.to_atom()
   end
 
   # ------------------------------------------------------------------

@@ -37,5 +37,8 @@ defmodule Skein.Compiler do
   defp module_name_from_ast(%Skein.AST.Module{name: name}),
     do: String.to_atom("Elixir.Skein.User.#{name}")
 
+  defp module_name_from_ast(%Skein.AST.Agent{name: name}),
+    do: String.to_atom("Elixir.Skein.Agent.#{name}")
+
   defp module_name_from_ast(_), do: :skein_unknown
 end

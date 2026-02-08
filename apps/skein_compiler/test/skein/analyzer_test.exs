@@ -1164,4 +1164,269 @@ defmodule Skein.AnalyzerTest do
       assert decoded["fix_code"] =~ "capability http.out"
     end
   end
+
+  # ------------------------------------------------------------------
+  # Agent analysis (Phase 6a)
+  # ------------------------------------------------------------------
+
+  describe "agent analysis - valid agents" do
+    test "accepts a well-formed agent with all phases handled" do
+      assert {:ok, _} =
+               analyze("""
+               agent A {
+                 state {
+                   ticket_id: String
+                 }
+
+                 enum Phase {
+                   Init -> [Done]
+                   Done -> []
+                 }
+
+                 on start(ticket_id: String) -> {
+                   transition(Phase.Init)
+                 }
+
+                 on phase(Phase.Init) -> {
+                   transition(Phase.Done)
+                 }
+
+                 on phase(Phase.Done) -> {
+                   stop()
+                 }
+               }
+               """)
+    end
+
+    test "accepts agent with functions" do
+      assert {:ok, _} =
+               analyze("""
+               agent A {
+                 enum Phase {
+                   Init -> [Done]
+                   Done -> []
+                 }
+
+                 fn helper(x: Int) -> Int {
+                   x + 1
+                 }
+
+                 on start() -> {
+                   transition(Phase.Init)
+                 }
+
+                 on phase(Phase.Init) -> {
+                   transition(Phase.Done)
+                 }
+
+                 on phase(Phase.Done) -> {
+                   stop()
+                 }
+               }
+               """)
+    end
+  end
+
+  describe "agent analysis - phase transition errors" do
+    test "reports error for transition to unknown phase" do
+      errors =
+        analyze_errors("""
+        agent A {
+          enum Phase {
+            Init -> [Unknown]
+            Done -> []
+          }
+
+          on start() -> {
+            transition(Phase.Init)
+          }
+
+          on phase(Phase.Init) -> {
+            transition(Phase.Done)
+          }
+
+          on phase(Phase.Done) -> {
+            stop()
+          }
+        }
+        """)
+
+      assert Enum.any?(errors, &(&1.code == "E0030" and &1.message =~ "unknown phase 'Unknown'"))
+    end
+
+    test "reports error for invalid transition call" do
+      errors =
+        analyze_errors("""
+        agent A {
+          enum Phase {
+            Init -> [Done]
+            Done -> []
+          }
+
+          on start() -> {
+            transition(Phase.Init)
+          }
+
+          on phase(Phase.Init) -> {
+            transition(Phase.Done)
+          }
+
+          on phase(Phase.Done) -> {
+            transition(Phase.Init)
+          }
+        }
+        """)
+
+      assert Enum.any?(
+               errors,
+               &(&1.code == "E0030" and &1.message =~ "Done cannot transition to Phase.Init")
+             )
+    end
+
+    test "start handler can transition to any phase" do
+      assert {:ok, _} =
+               analyze("""
+               agent A {
+                 enum Phase {
+                   Init -> [Done]
+                   Done -> []
+                 }
+
+                 on start() -> {
+                   transition(Phase.Done)
+                 }
+
+                 on phase(Phase.Init) -> {
+                   transition(Phase.Done)
+                 }
+
+                 on phase(Phase.Done) -> {
+                   stop()
+                 }
+               }
+               """)
+    end
+  end
+
+  describe "agent analysis - missing phase handlers" do
+    test "reports error for phase without handler" do
+      errors =
+        analyze_errors("""
+        agent A {
+          enum Phase {
+            Init -> [Done]
+            Done -> []
+          }
+
+          on start() -> {
+            transition(Phase.Init)
+          }
+
+          on phase(Phase.Init) -> {
+            transition(Phase.Done)
+          }
+        }
+        """)
+
+      assert Enum.any?(errors, &(&1.code == "E0032" and &1.message =~ "Done"))
+    end
+  end
+
+  describe "agent analysis - unreachable phases" do
+    test "warns about unreachable phases" do
+      errors =
+        analyze_errors("""
+        agent A {
+          enum Phase {
+            Init -> [Done]
+            Orphan -> []
+            Done -> []
+          }
+
+          on start() -> {
+            transition(Phase.Init)
+          }
+
+          on phase(Phase.Init) -> {
+            transition(Phase.Done)
+          }
+
+          on phase(Phase.Orphan) -> {
+            stop()
+          }
+
+          on phase(Phase.Done) -> {
+            stop()
+          }
+        }
+        """)
+
+      assert Enum.any?(
+               errors,
+               &(&1.code == "E0031" and &1.message =~ "Orphan" and &1.severity == :warning)
+             )
+    end
+  end
+
+  describe "agent analysis - state validation" do
+    test "reports error for unknown type in state" do
+      errors =
+        analyze_errors("""
+        agent A {
+          state {
+            data: UnknownType
+          }
+
+          enum Phase {
+            Init -> []
+          }
+
+          on start() -> {
+            transition(Phase.Init)
+          }
+
+          on phase(Phase.Init) -> {
+            stop()
+          }
+        }
+        """)
+
+      assert Enum.any?(errors, &(&1.code == "E0011" and &1.message =~ "UnknownType"))
+    end
+  end
+
+  describe "agent analysis - transition in match" do
+    test "validates transitions inside match arms" do
+      errors =
+        analyze_errors("""
+        agent A {
+          enum Phase {
+            Init -> [Done]
+            Done -> []
+          }
+
+          on start() -> {
+            transition(Phase.Init)
+          }
+
+          on phase(Phase.Init) -> {
+            match true {
+              true -> transition(Phase.Done)
+              false -> transition(Phase.Init)
+            }
+          }
+
+          on phase(Phase.Done) -> {
+            stop()
+          }
+        }
+        """)
+
+      # Init -> Init is not declared, so it should be an error
+      assert Enum.any?(
+               errors,
+               &(&1.code == "E0030" and &1.message =~ "Init cannot transition to Phase.Init")
+             )
+    end
+  end
 end

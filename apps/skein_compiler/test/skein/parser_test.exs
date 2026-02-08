@@ -743,4 +743,248 @@ defmodule Skein.ParserTest do
       assert {:error, [%Skein.Error{code: "E0001"}]} = parse("module Hello { 42 }")
     end
   end
+
+  # ------------------------------------------------------------------
+  # Agent declarations (Phase 6a)
+  # ------------------------------------------------------------------
+
+  describe "parse/1 - agent declarations" do
+    test "parses an empty agent" do
+      source = "agent MyAgent { }"
+
+      assert {:ok,
+              %AST.Agent{
+                name: "MyAgent",
+                capabilities: [],
+                state: [],
+                phases: nil,
+                handlers: [],
+                fns: []
+              }} =
+               parse(source)
+    end
+
+    test "parses agent with state" do
+      source = """
+      agent MyAgent {
+        state {
+          ticket_id: Uuid
+          customer_id: String
+        }
+      }
+      """
+
+      assert {:ok, %AST.Agent{state: state}} = parse(source)
+      assert length(state) == 2
+      assert %AST.Field{name: "ticket_id", type: %AST.TypeRef{name: "Uuid"}} = hd(state)
+    end
+
+    test "parses agent with phase enum" do
+      source = """
+      agent MyAgent {
+        enum Phase {
+          Analyze -> [Refund, Done]
+          Refund -> [Done, Failed]
+          Failed -> [Analyze]
+          Done -> []
+        }
+      }
+      """
+
+      assert {:ok, %AST.Agent{phases: phases}} = parse(source)
+      assert %AST.EnumDecl{name: "Phase", variants: variants} = phases
+      assert length(variants) == 4
+
+      analyze = hd(variants)
+      assert %AST.Variant{name: "Analyze", transitions: ["Refund", "Done"]} = analyze
+
+      done = List.last(variants)
+      assert %AST.Variant{name: "Done", transitions: []} = done
+    end
+
+    test "parses agent with on start handler" do
+      source = """
+      agent MyAgent {
+        on start(ticket_id: Uuid) -> {
+          transition(Phase.Analyze)
+        }
+      }
+      """
+
+      assert {:ok, %AST.Agent{handlers: [handler]}} = parse(source)
+      assert %AST.AgentHandler{kind: :start, params: [param]} = handler
+      assert %AST.Field{name: "ticket_id", type: %AST.TypeRef{name: "Uuid"}} = param
+    end
+
+    test "parses agent with on phase handler" do
+      source = """
+      agent MyAgent {
+        on phase(Phase.Analyze) -> {
+          transition(Phase.Done)
+        }
+      }
+      """
+
+      assert {:ok, %AST.Agent{handlers: [handler]}} = parse(source)
+      assert %AST.AgentHandler{kind: :phase, phase: "Analyze"} = handler
+    end
+
+    test "parses agent with capabilities" do
+      source = """
+      agent MyAgent {
+        capability model("anthropic", "claude-sonnet-4-5")
+      }
+      """
+
+      assert {:ok, %AST.Agent{capabilities: [cap]}} = parse(source)
+      assert %AST.Capability{kind: "model"} = cap
+    end
+
+    test "parses agent with functions" do
+      source = """
+      agent MyAgent {
+        fn helper(x: Int) -> Int {
+          x + 1
+        }
+      }
+      """
+
+      assert {:ok, %AST.Agent{fns: [fn_decl]}} = parse(source)
+      assert %AST.Fn{name: "helper"} = fn_decl
+    end
+
+    test "parses complete agent with all parts" do
+      source = """
+      agent RefundAgent {
+        capability model("anthropic", "claude-sonnet-4-5")
+
+        state {
+          ticket_id: Uuid
+          customer_id: String
+        }
+
+        enum Phase {
+          Analyze -> [Refund, Done]
+          Refund -> [Done, Failed]
+          Failed -> [Analyze]
+          Done -> []
+        }
+
+        on start(ticket_id: Uuid, customer_id: String) -> {
+          transition(Phase.Analyze)
+        }
+
+        on phase(Phase.Analyze) -> {
+          transition(Phase.Refund)
+        }
+
+        on phase(Phase.Refund) -> {
+          transition(Phase.Done)
+        }
+
+        on phase(Phase.Failed) -> {
+          stop()
+        }
+
+        on phase(Phase.Done) -> {
+          stop()
+        }
+      }
+      """
+
+      assert {:ok, %AST.Agent{} = agent} = parse(source)
+      assert agent.name == "RefundAgent"
+      assert length(agent.capabilities) == 1
+      assert length(agent.state) == 2
+      assert %AST.EnumDecl{name: "Phase"} = agent.phases
+      assert length(agent.handlers) == 5
+    end
+  end
+
+  describe "parse/1 - transition and stop expressions" do
+    test "parses transition expression" do
+      source = """
+      agent A {
+        on start() -> {
+          transition(Phase.Init)
+        }
+      }
+      """
+
+      assert {:ok, %AST.Agent{handlers: [handler]}} = parse(source)
+      assert %AST.Block{expressions: [%AST.Transition{phase: "Init"}]} = handler.body
+    end
+
+    test "parses stop expression" do
+      source = """
+      agent A {
+        on phase(Phase.Done) -> {
+          stop()
+        }
+      }
+      """
+
+      assert {:ok, %AST.Agent{handlers: [handler]}} = parse(source)
+      assert %AST.Block{expressions: [%AST.Stop{}]} = handler.body
+    end
+
+    test "parses emit expression with fields" do
+      source = """
+      agent A {
+        on phase(Phase.Done) -> {
+          emit RefundIssued { ticket_id: 42, amount: 100 }
+        }
+      }
+      """
+
+      assert {:ok, %AST.Agent{handlers: [handler]}} = parse(source)
+
+      assert %AST.Block{expressions: [%AST.Emit{event_name: "RefundIssued", fields: fields}]} =
+               handler.body
+
+      assert length(fields) == 2
+      assert {"ticket_id", %AST.IntLit{value: 42}} = hd(fields)
+    end
+
+    test "parses emit expression without fields" do
+      source = """
+      agent A {
+        on phase(Phase.Done) -> {
+          emit Completed
+        }
+      }
+      """
+
+      assert {:ok, %AST.Agent{handlers: [handler]}} = parse(source)
+
+      assert %AST.Block{expressions: [%AST.Emit{event_name: "Completed", fields: []}]} =
+               handler.body
+    end
+  end
+
+  describe "parse/1 - agent with match and transition" do
+    test "parses transition inside match arms" do
+      source = """
+      agent A {
+        enum Phase {
+          Init -> [Done, Failed]
+          Done -> []
+          Failed -> []
+        }
+
+        on phase(Phase.Init) -> {
+          match true {
+            true -> transition(Phase.Done)
+            false -> transition(Phase.Failed)
+          }
+        }
+      }
+      """
+
+      assert {:ok, %AST.Agent{handlers: [handler]}} = parse(source)
+      assert %AST.Block{expressions: [%AST.Match{arms: [arm1, arm2]}]} = handler.body
+      assert %AST.Transition{phase: "Done"} = arm1.body
+      assert %AST.Transition{phase: "Failed"} = arm2.body
+    end
+  end
 end

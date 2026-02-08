@@ -14,6 +14,7 @@ defmodule Skein.AST do
   defmodule EnumDecl, do: defstruct([:name, :variants, :transitions, :meta])
   defmodule Handler, do: defstruct([:source, :method, :route, :param, :body, :meta])
   defmodule Agent, do: defstruct([:name, :capabilities, :state, :phases, :handlers, :fns, :meta])
+  defmodule AgentHandler, do: defstruct([:kind, :phase, :params, :body, :meta])
 
   defmodule ToolDecl,
     do: defstruct([:name, :description, :input, :output, :errors, :policy, :implement, :meta])
@@ -46,6 +47,7 @@ defmodule Skein.AST do
   defmodule Identifier, do: defstruct([:name, :meta])
   defmodule FnRef, do: defstruct([:name, :meta])
   defmodule Transition, do: defstruct([:phase, :meta])
+  defmodule Stop, do: defstruct([:meta])
   defmodule Emit, do: defstruct([:event_name, :fields, :meta])
   defmodule Respond, do: defstruct([:method, :args, :meta])
   defmodule Wildcard, do: defstruct([:meta])
