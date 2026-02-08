@@ -1,9 +1,9 @@
 # Skein Project Memory
 
 ## Project State
-- Phases 1-7 + 8a + 8c + 8d + 8e + 8f are complete
-- Remaining: 8b (Ecto storage)
-- 742 tests + 76 properties, 0 failures
+- Phases 1-7 + 8a + 8b + 8c + 8d + 8e + 8f are complete (all Phase 8 subphases done)
+- All core phases complete — MVP reached
+- 779 tests + 81 properties = 860 total, 0 failures
 - Elixir 1.19.5, OTP 28, managed by mise
 
 ## Key Patterns
@@ -32,6 +32,18 @@
 - Compilation: `compile_file/1` and `compile_string/1` in `Skein.Compiler`
 - Analyzer helper functions must come after all clauses of a `validate_declaration` defp to avoid ungrouped clauses warning
 
+## Storage Backend (Phase 8b)
+- `Skein.Runtime.EctoSchema` — dynamically creates Ecto schema modules from field maps
+- `Skein.Runtime.MigrationGen` — generates and executes Ecto migrations
+- `Skein.Runtime.StoreEcto` — Ecto-backed get/put/delete/query with upsert (ON CONFLICT DO UPDATE)
+- `Skein.Runtime.Repo` — SQLite3 via `ecto_sqlite3`
+- Schema registry: ETS table `skein_store_ecto_schemas` maps table names -> schema modules
+- Changeset must cast ALL fields including primary key (autogenerate: false)
+- Ecto tests need `async: false` and explicit Repo start/stop with try/catch for cleanup
+- Type mapping: String→:string, Int→:integer, Float→:float, Bool→:boolean, Uuid→:binary_id, Instant→:utc_datetime
+- Dependencies: ecto v3.12.5, ecto_sql v3.12.1, ecto_sqlite3 v0.17.5, exqlite v0.24.2
+- All git deps with override: true (no hex.pm access in this env)
+
 ## Common Issues
 - ETS race condition: Always wrap `:ets.new` in try/rescue when called from multiple processes
 - Property tests: Avoid generating keywords as identifiers (prefix with "z")
@@ -39,6 +51,8 @@
 - Parser: `from` and `trace` in golden tests are identifiers, not keywords
 - GenServer cleanup race: `on_exit` callbacks may run after GenServer dies — wrap in try/catch :exit
 - Schedule/Queue nil handling: method is nil for non-HTTP handlers, param is nil for schedule handlers
+- Hex.pm unreachable: All dependencies must be git-based with override: true
+- exqlite NIF: Compiles from C source when precompiled binary unavailable — needs gcc
 
 ## File Locations
 - Parser: `apps/skein_compiler/lib/skein/parser.ex`
@@ -46,6 +60,10 @@
 - CodeGen: `apps/skein_compiler/lib/skein/codegen/core_erlang.ex`
 - Runtime Queue: `apps/skein_runtime/lib/skein/runtime/queue.ex`
 - Runtime Schedule: `apps/skein_runtime/lib/skein/runtime/schedule.ex`
+- Ecto Schema: `apps/skein_runtime/lib/skein/runtime/ecto_schema.ex`
+- Migration Gen: `apps/skein_runtime/lib/skein/runtime/migration_gen.ex`
+- Store Ecto: `apps/skein_runtime/lib/skein/runtime/store_ecto.ex`
+- Repo: `apps/skein_runtime/lib/skein/runtime/repo.ex`
 - Examples: `examples/` (hello.skein, hello_http.skein, refund_agent.skein, incident_triage.skein, queue_worker.skein)
 - Examples Tests: `apps/skein_compiler/test/skein/examples_test.exs`
 - Docs site: `docs/site/src/content/docs/`
@@ -58,7 +76,8 @@
 - The compiler should validate all Phase enum clauses have `on phase` handlers (already done: E0032)
 
 ## What's Next
-- 8b: Storage Backend (Ecto integration)
+- All Phase 8 subphases complete — MVP reached
+- Post-MVP backlog: FFI, hot code upgrades, Web IDE, LSP, llm.embed, managed deployment
 
 ## Streaming Implementation Notes (Phase 8f)
 - `llm.stream` uses same `model` capability as `chat`/`json`

@@ -253,9 +253,9 @@ Skein is in active development. The compiler and runtime are being built in phas
 | **8d** | **Canonical examples** — 5 working `.skein` programs with integration tests | Complete |
 | **8e** | **Queue & schedule handlers** — event-driven and cron-triggered execution | Complete |
 | **8f** | **LLM streaming** — `llm.stream` with chunked responses and trace spans | Complete |
-| **8b** | **Storage backend** — Ecto integration, Postgres/SQLite | Next |
+| **8b** | **Storage backend** — Ecto/SQLite integration, schema + migration generation | Complete |
 
-742 tests (76 property-based), 0 failures. The full compilation pipeline works end-to-end — from `.skein` source to running BEAM bytecode.
+860 tests (81 property-based), 0 failures. The full compilation pipeline works end-to-end — from `.skein` source to running BEAM bytecode with real database storage.
 
 ---
 

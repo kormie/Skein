@@ -19,9 +19,9 @@ description: What's been built, what's next, and the full 7-phase implementation
 | 8d | Canonical Examples | **Complete** | 5 working `.skein` programs with integration tests |
 | 8e | Queue & Schedule Handlers | **Complete** | Event-driven and cron-triggered execution |
 | 8f | LLM Streaming | **Complete** | `llm.stream` with chunked responses and trace spans |
-| 8b | Storage Backend | **Next** | Ecto integration, Postgres/SQLite |
+| 8b | Storage Backend | **Complete** | Ecto/SQLite integration, schema + migration generation |
 
-**Current test suite:** 76 properties, 742 tests, 0 failures
+**Current test suite:** 81 properties, 779 tests, 0 failures
 
 ## Phase 1: Hello BEAM (Complete)
 
@@ -255,7 +255,7 @@ These Phase 6 features were intentionally deferred — the core agent runtime is
 Filling gaps in the existing implementation and proving the full language works end-to-end.
 
 - **8a: Test infrastructure** -- ✅ `scenario` tests with `given`/`expect`, `golden` trace tests, replay engine
-- **8b: Storage backend** -- Ecto schema generation, migrations, SQLite/Postgres backends
+- **8b: Storage backend** -- ✅ Ecto schema generation, migrations, SQLite backend, Ecto-backed CRUD
 - **8c: HTTP server** -- ✅ Bandit + Plug integration with `req.json[T]` body validation
 - **8d: Canonical examples** -- ✅ `hello_http.skein`, `refund_agent.skein`, `incident_triage.skein`, `queue_worker.skein` with integration tests
 - **8e: Queue and schedule handlers** -- ✅ `handler queue` and `handler schedule` constructs with full pipeline support
@@ -314,11 +314,21 @@ All examples compile successfully and have integration tests verifying their beh
 - Each streaming call produces a trace span
 - Property tests verify: chunk reassembly equals concatenation, chunk ordering, capability enforcement, trace recording
 
-### Phase 8 Remaining
+### Phase 8b: Storage Backend (Complete)
 
-- **8b: Storage backend** -- Ecto schema generation, migrations
+Ecto-backed storage with SQLite for local dev.
 
-See the [Implementation Plan](https://github.com/kormie/Skein/blob/main/docs/IMPLEMENTATION_PLAN.md) for full acceptance criteria.
+**Implementation:**
+- `Skein.Runtime.EctoSchema` -- dynamically generates Ecto schema modules from Skein type field definitions
+- `Skein.Runtime.MigrationGen` -- generates and runs Ecto migrations (create table, primary keys, unique indexes)
+- `Skein.Runtime.StoreEcto` -- Ecto-backed get/put/delete/query with upsert semantics, capability enforcement, and trace integration
+- `Skein.Runtime.Repo` -- Ecto Repo configured for SQLite3 via `ecto_sqlite3`
+- Type mapping: String→:string, Int→:integer, Float→:float, Bool→:boolean, Uuid→:binary_id, Instant→:utc_datetime
+- Schema registry maps table names to dynamically-generated Ecto schema modules
+
+**Acceptance criteria met:**
+- A Skein module with `capability store.table("users")` compiles and performs real CRUD against SQLite
+- 10 schema tests, 7 migration tests, 17 Ecto store tests, 5 Ecto store properties, 3 integration tests
 
 ## Post-MVP Backlog
 

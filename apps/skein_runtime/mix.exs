@@ -24,7 +24,7 @@ defmodule SkeinRuntime.MixProject do
 
   defp deps do
     [
-      {:jason, git: "https://github.com/michalmuskala/jason.git", tag: "v1.4.4"},
+      {:jason, git: "https://github.com/michalmuskala/jason.git", tag: "v1.4.4", override: true},
       {:bandit, git: "https://github.com/mtrudel/bandit.git", tag: "1.6.7"},
       {:plug, git: "https://github.com/elixir-plug/plug.git", tag: "v1.16.1", override: true},
       {:plug_crypto,
@@ -37,6 +37,20 @@ defmodule SkeinRuntime.MixProject do
       {:telemetry,
        git: "https://github.com/beam-telemetry/telemetry.git", tag: "v1.3.0", override: true},
       {:mime, git: "https://github.com/elixir-plug/mime.git", tag: "v2.0.6", override: true},
+      # Ecto + SQLite for storage backend
+      {:ecto, git: "https://github.com/elixir-ecto/ecto.git", tag: "v3.12.5", override: true},
+      {:ecto_sql,
+       git: "https://github.com/elixir-ecto/ecto_sql.git", tag: "v3.12.1", override: true},
+      {:ecto_sqlite3, git: "https://github.com/elixir-sqlite/ecto_sqlite3.git", tag: "v0.17.5"},
+      {:exqlite,
+       git: "https://github.com/elixir-sqlite/exqlite.git", tag: "v0.24.2", override: true},
+      {:decimal, git: "https://github.com/ericmj/decimal.git", tag: "v2.3.0", override: true},
+      {:db_connection,
+       git: "https://github.com/elixir-ecto/db_connection.git", tag: "v2.7.0", override: true},
+      {:elixir_make,
+       git: "https://github.com/elixir-lang/elixir_make.git", tag: "v0.9.0", override: true},
+      {:cc_precompiler,
+       git: "https://github.com/cocoa-xu/cc_precompiler.git", tag: "v0.1.9", override: true},
       {:stream_data,
        git: "https://github.com/whatyouhide/stream_data.git", tag: "v1.1.2", only: [:test, :dev]}
     ]
