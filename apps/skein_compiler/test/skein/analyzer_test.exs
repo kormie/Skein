@@ -1764,7 +1764,7 @@ defmodule Skein.AnalyzerTest do
         analyze_errors("""
         module M {
           fn f(args: String) -> String {
-            tool.call("MyTool", args)
+            tool.call(MyTool, args)
           }
         }
         """)
@@ -1777,10 +1777,10 @@ defmodule Skein.AnalyzerTest do
       assert {:ok, _} =
                analyze("""
                module M {
-                 capability tool.use("MyTool")
+                 capability tool.use(MyTool)
 
                  fn f(args: String) -> String {
-                   tool.call("MyTool", args)
+                   tool.call(MyTool, args)
                  }
                }
                """)
@@ -1803,7 +1803,7 @@ defmodule Skein.AnalyzerTest do
       assert {:ok, _} =
                analyze("""
                module M {
-                 capability tool.use("MyTool")
+                 capability tool.use(MyTool)
 
                  fn f() -> String {
                    tool.list()
@@ -1817,7 +1817,7 @@ defmodule Skein.AnalyzerTest do
         analyze_errors("""
         module M {
           fn f() -> String {
-            tool.schema("MyTool")
+            tool.schema(MyTool)
           }
         }
         """)
@@ -1829,10 +1829,10 @@ defmodule Skein.AnalyzerTest do
       assert {:ok, _} =
                analyze("""
                module M {
-                 capability tool.use("MyTool")
+                 capability tool.use(MyTool)
 
                  fn f() -> String {
-                   tool.schema("MyTool")
+                   tool.schema(MyTool)
                  }
                }
                """)
@@ -1843,10 +1843,10 @@ defmodule Skein.AnalyzerTest do
                analyze("""
                module M {
                  capability http.in
-                 capability tool.use("MyTool")
+                 capability tool.use(MyTool)
 
                  handler http GET "/test" (req) -> {
-                   tool.call("MyTool", req)
+                   tool.call(MyTool, req)
                  }
                }
                """)
@@ -1859,7 +1859,7 @@ defmodule Skein.AnalyzerTest do
           capability http.in
 
           handler http GET "/test" (req) -> {
-            tool.call("MyTool", req)
+            tool.call(MyTool, req)
           }
         }
         """)
@@ -1983,6 +1983,208 @@ defmodule Skein.AnalyzerTest do
                  handler http GET "/test" (req) -> { respond.json(200, "ok") }
                  handler queue "events" (msg) -> { respond.json(200, "ok") }
                  handler schedule "*/5 * * * *" () -> { respond.json(200, "ok") }
+               }
+               """)
+    end
+  end
+
+  # ------------------------------------------------------------------
+  # Tool identifier references — capability-as-import (Phase 9)
+  # ------------------------------------------------------------------
+
+  describe "tool identifier capability checking" do
+    test "tool.call with identifier matching declared capability passes" do
+      assert {:ok, _} =
+               analyze("""
+               module M {
+                 capability tool.use(MyTool)
+
+                 fn f(args: String) -> String {
+                   tool.call(MyTool, args)
+                 }
+               }
+               """)
+    end
+
+    test "tool.call with identifier NOT matching declared capability produces E0031" do
+      errors =
+        analyze_errors("""
+        module M {
+          capability tool.use(MyTool)
+
+          fn f(args: String) -> String {
+            tool.call(OtherTool, args)
+          }
+        }
+        """)
+
+      assert Enum.any?(errors, &(&1.code == "E0031"))
+      assert Enum.any?(errors, &String.contains?(&1.message, "OtherTool"))
+    end
+
+    test "tool.call with identifier but no capability at all produces E0030" do
+      errors =
+        analyze_errors("""
+        module M {
+          fn f(args: String) -> String {
+            tool.call(MyTool, args)
+          }
+        }
+        """)
+
+      assert Enum.any?(errors, &(&1.code == "E0030"))
+    end
+
+    test "tool.schema with identifier matching declared capability passes" do
+      assert {:ok, _} =
+               analyze("""
+               module M {
+                 capability tool.use(MyTool)
+
+                 fn f() -> String {
+                   tool.schema(MyTool)
+                 }
+               }
+               """)
+    end
+
+    test "tool.schema with identifier NOT matching declared capability produces E0031" do
+      errors =
+        analyze_errors("""
+        module M {
+          capability tool.use(MyTool)
+
+          fn f() -> String {
+            tool.schema(OtherTool)
+          }
+        }
+        """)
+
+      assert Enum.any?(errors, &(&1.code == "E0031"))
+    end
+
+    test "tool.list with any tool.use capability passes (no specific tool needed)" do
+      assert {:ok, _} =
+               analyze("""
+               module M {
+                 capability tool.use(MyTool)
+
+                 fn f() -> String {
+                   tool.list()
+                 }
+               }
+               """)
+    end
+
+    test "tool.call with dotted identifier matching dotted capability passes" do
+      assert {:ok, _} =
+               analyze("""
+               module M {
+                 capability tool.use(Stripe.CreateRefund)
+
+                 fn f(args: String) -> String {
+                   tool.call(Stripe.CreateRefund, args)
+                 }
+               }
+               """)
+    end
+
+    test "tool.call with dotted identifier NOT matching produces E0031" do
+      errors =
+        analyze_errors("""
+        module M {
+          capability tool.use(Stripe.CreateRefund)
+
+          fn f(args: String) -> String {
+            tool.call(Stripe.GetBalance, args)
+          }
+        }
+        """)
+
+      assert Enum.any?(errors, &(&1.code == "E0031"))
+    end
+
+    test "multiple tools declared in capability, correct one referenced passes" do
+      assert {:ok, _} =
+               analyze("""
+               module M {
+                 capability tool.use(ToolA, ToolB)
+
+                 fn f(args: String) -> String {
+                   tool.call(ToolB, args)
+                 }
+               }
+               """)
+    end
+
+    test "multiple tools declared across separate capabilities, all valid" do
+      assert {:ok, _} =
+               analyze("""
+               module M {
+                 capability tool.use(ToolA)
+                 capability tool.use(ToolB)
+
+                 fn f(args: String) -> String {
+                   let a = tool.call(ToolA, args)
+                   tool.call(ToolB, args)
+                 }
+               }
+               """)
+    end
+
+    test "duplicate short tool name across capabilities produces E0032" do
+      errors =
+        analyze_errors("""
+        module M {
+          capability tool.use(Payments.CreateRefund, Billing.CreateRefund)
+        }
+        """)
+
+      assert Enum.any?(errors, &(&1.code == "E0032"))
+      assert Enum.any?(errors, &String.contains?(&1.message, "CreateRefund"))
+    end
+
+    test "duplicate short tool name across separate capability lines produces E0032" do
+      errors =
+        analyze_errors("""
+        module M {
+          capability tool.use(Payments.CreateRefund)
+          capability tool.use(Billing.CreateRefund)
+        }
+        """)
+
+      assert Enum.any?(errors, &(&1.code == "E0032"))
+    end
+
+    test "tool.call identifier fix_hint suggests adding capability" do
+      errors =
+        analyze_errors("""
+        module M {
+          capability tool.use(ToolA)
+
+          fn f(args: String) -> String {
+            tool.call(ToolB, args)
+          }
+        }
+        """)
+
+      tool_errors = Enum.filter(errors, &(&1.code == "E0031"))
+      assert length(tool_errors) >= 1
+      error = hd(tool_errors)
+      assert error.fix_hint =~ "capability tool.use"
+      assert error.fix_code =~ "ToolB"
+    end
+
+    test "tool.call in handler with identifier capability passes" do
+      assert {:ok, _} =
+               analyze("""
+               module M {
+                 capability http.in
+                 capability tool.use(MyTool)
+
+                 handler http GET "/test" (req) -> {
+                   tool.call(MyTool, req)
+                 }
                }
                """)
     end

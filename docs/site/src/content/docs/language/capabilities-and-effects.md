@@ -172,12 +172,12 @@ The compiler generates a JSON Schema from `CreateUser` at compile time. At runti
 ### Tool Effects
 
 ```skein
-tool.call("CreateRefund", args)
+tool.call(CreateRefund, args)
 tool.list()
-tool.schema("CreateRefund")
+tool.schema(CreateRefund)
 ```
 
-Tool effects require a `capability tool.use("ToolName")` declaration. See the [Tools](/Skein/language/tools/) page for full documentation on tool declarations and calling.
+Tool effects require a `capability tool.use(ToolName)` declaration. See the [Tools](/Skein/language/tools/) page for full documentation on tool declarations and calling.
 
 ### How They Parse
 

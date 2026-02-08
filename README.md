@@ -7,7 +7,7 @@ Skein compiles to BEAM bytecode and runs on the Erlang VM — the same battle-te
 ```rust
 agent RefundAgent {
   capability model("anthropic", "claude-sonnet-4-5")
-  capability tool.use("Stripe.CreateRefund")
+  capability tool.use(Stripe.CreateRefund)
 
   enum Phase {
     Analyze -> [Refund, Done]

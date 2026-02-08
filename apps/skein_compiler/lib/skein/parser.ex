@@ -320,6 +320,12 @@ defmodule Skein.Parser do
           [{:lparen, _} | rest2] ->
             case parse_capability_params(rest2, file, []) do
               {:ok, params, rest3} ->
+                # Convert params to ToolRef nodes for tool.use capabilities
+                params =
+                  if kind == "tool.use",
+                    do: convert_tool_use_params(params),
+                    else: params
+
                 cap = %AST.Capability{
                   kind: kind,
                   params: params,
@@ -1847,6 +1853,10 @@ defmodule Skein.Parser do
     # Function call
     case parse_args(rest, file, []) do
       {:ok, args, rest} ->
+        # When the call target is tool.call or tool.schema, convert the
+        # first argument from Identifier/FieldAccess to a ToolRef node.
+        args = maybe_convert_tool_ref_arg(expr, args)
+
         call = %AST.Call{
           target: expr,
           args: args,
@@ -2188,4 +2198,56 @@ defmodule Skein.Parser do
   defp op_to_atom(:gte), do: :>=
   defp op_to_atom(:and_and), do: :&&
   defp op_to_atom(:or_or), do: :||
+
+  # ------------------------------------------------------------------
+  # ToolRef conversion helpers
+  # ------------------------------------------------------------------
+
+  # For tool.call(ToolName, args) and tool.schema(ToolName), convert the
+  # first PascalCase identifier arg to a ToolRef AST node.
+  defp maybe_convert_tool_ref_arg(
+         %AST.FieldAccess{subject: %AST.Identifier{name: "tool"}, field: method},
+         [first_arg | rest]
+       )
+       when method in ["call", "schema"] do
+    [expr_to_tool_ref(first_arg) | rest]
+  end
+
+  defp maybe_convert_tool_ref_arg(_target, args), do: args
+
+  # Convert capability tool.use params to ToolRef nodes.
+  defp convert_tool_use_params(params) do
+    Enum.map(params, &expr_to_tool_ref/1)
+  end
+
+  # Convert a PascalCase Identifier or dotted FieldAccess chain to a ToolRef.
+  # Non-matching expressions pass through unchanged.
+  defp expr_to_tool_ref(%AST.Identifier{name: <<first, _::binary>> = name, meta: meta})
+       when first in ?A..?Z do
+    %AST.ToolRef{name: name, meta: meta}
+  end
+
+  defp expr_to_tool_ref(%AST.FieldAccess{meta: meta} = fa) do
+    case collect_dotted_tool_name(fa) do
+      nil -> fa
+      name -> %AST.ToolRef{name: name, meta: meta}
+    end
+  end
+
+  defp expr_to_tool_ref(other), do: other
+
+  # Collect "Stripe.CreateRefund" from nested FieldAccess(Identifier("Stripe"), "CreateRefund")
+  defp collect_dotted_tool_name(%AST.FieldAccess{subject: subject, field: field}) do
+    case collect_dotted_tool_name(subject) do
+      nil -> nil
+      prefix -> prefix <> "." <> field
+    end
+  end
+
+  defp collect_dotted_tool_name(%AST.Identifier{name: <<first, _::binary>> = name})
+       when first in ?A..?Z do
+    name
+  end
+
+  defp collect_dotted_tool_name(_), do: nil
 end

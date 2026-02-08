@@ -302,6 +302,105 @@ defmodule Skein.AnalyzerPropertyTest do
   defp tool_method_args("list"), do: {"", ""}
   defp tool_method_args("schema"), do: {"name", "name: String"}
 
+  # Identifier-based tool method args (no quotes around tool name)
+  defp tool_ident_method_args("call", tool_name), do: {"#{tool_name}, data", "data: String"}
+  defp tool_ident_method_args("list", _tool_name), do: {"", ""}
+  defp tool_ident_method_args("schema", tool_name), do: {"#{tool_name}", ""}
+
+  # ------------------------------------------------------------------
+  # Identifier-based tool reference properties
+  # ------------------------------------------------------------------
+
+  property "tool.call/schema with matching identifier capability passes" do
+    check all(
+            method <- StreamData.member_of(["call", "schema"]),
+            tool_name <- tool_name_gen()
+          ) do
+      {args, params} = tool_ident_method_args(method, tool_name)
+      fn_params = if params == "", do: "", else: params
+
+      source = """
+      module TestMod {
+        capability tool.use(#{tool_name})
+
+        fn do_tool(#{fn_params}) -> String {
+          tool.#{method}(#{args})
+        }
+      }
+      """
+
+      result = analyze(source)
+
+      assert {:ok, _} = result,
+             "Expected ok for tool.#{method}(#{tool_name}) with identifier capability"
+    end
+  end
+
+  property "tool.call/schema with non-matching identifier produces E0031" do
+    check all(
+            method <- StreamData.member_of(["call", "schema"]),
+            declared <- tool_name_gen(),
+            called <- tool_name_gen(),
+            declared != called
+          ) do
+      {args, params} = tool_ident_method_args(method, called)
+      fn_params = if params == "", do: "", else: params
+
+      source = """
+      module TestMod {
+        capability tool.use(#{declared})
+
+        fn do_tool(#{fn_params}) -> String {
+          tool.#{method}(#{args})
+        }
+      }
+      """
+
+      errors = analyze_errors(source)
+      tool_name_errors = Enum.filter(errors, &(&1.code == "E0031"))
+
+      assert length(tool_name_errors) >= 1,
+             "Expected E0031 for tool.#{method}(#{called}) when only #{declared} declared"
+    end
+  end
+
+  property "duplicate short tool names across dotted capabilities produce E0032" do
+    check all(
+            prefix1 <-
+              StreamData.string(Enum.to_list(?A..?Z) ++ Enum.to_list(?a..?z),
+                min_length: 3,
+                max_length: 6
+              ),
+            prefix2 <-
+              StreamData.string(Enum.to_list(?A..?Z) ++ Enum.to_list(?a..?z),
+                min_length: 3,
+                max_length: 6
+              ),
+            suffix <-
+              StreamData.string(Enum.to_list(?A..?Z) ++ Enum.to_list(?a..?z),
+                min_length: 3,
+                max_length: 6
+              ),
+            prefix1 != prefix2
+          ) do
+      p1 = String.capitalize(prefix1)
+      p2 = String.capitalize(prefix2)
+      s = String.capitalize(suffix)
+
+      source = """
+      module TestMod {
+        capability tool.use(#{p1}.#{s}, #{p2}.#{s})
+      }
+      """
+
+      errors = analyze_errors(source)
+      dup_errors = Enum.filter(errors, &(&1.code == "E0032"))
+
+      assert length(dup_errors) >= 1,
+             "Expected E0032 for duplicate short name '#{s}' from #{p1}.#{s} and #{p2}.#{s}"
+    end
+  end
+
   property "N distinct effect calls without capability produce N errors" do
     check all(
             methods <-

@@ -354,7 +354,7 @@ Consider this scenario: a human writes a capability block that defines what a co
 capability http.out("api.stripe.com", methods: [POST], paths: ["/v1/refunds", "/v1/charges"])
 capability store.table("transactions")
 capability model.anthropic("claude-sonnet-4-5")
-capability tool.use("Stripe.Refund", "Stripe.Charge")
+capability tool.use(Stripe.Refund, Stripe.Charge)
 ```
 
 An LLM generating code for this service *physically cannot* compile code that calls an unauthorized endpoint, uses an unapproved model, or accesses a table it shouldn't touch. The capability system is both security and specification.
@@ -381,7 +381,7 @@ capability queue.consume(name: String)
 capability model(provider: String, model: String, max_cost_per_call: Money?)
 
 -- Tools
-capability tool.use(names: List[String])
+capability tool.use(names: List[Tool])
 
 -- System
 capability process.spawn(agent: String?, max: Int?)
@@ -437,7 +437,7 @@ An agent in Skein is an explicitly defined state machine running as a supervised
 agent RefundAgent {
   capability model("anthropic", "claude-sonnet-4-5")
   capability memory.kv("refund_sessions")
-  capability tool.use("Stripe.CreateRefund")
+  capability tool.use(Stripe.CreateRefund)
 
   -- Explicit state with typed fields
   state {
@@ -478,7 +478,7 @@ agent RefundAgent {
   on phase(Phase.Refund) -> {
     let decision = memory.get!("decision")
 
-    let result = tool.call("Stripe.CreateRefund", {
+    let result = tool.call(Stripe.CreateRefund, {
       customer_id: state.customer_id,
       ticket_id: state.ticket_id,
       amount: decision.amount
@@ -677,7 +677,7 @@ handler topic "incident.created" (msg) -> {
 ```
 handler schedule "0 9 * * MON" (tick) -> {
   let report = generate_weekly_report()
-  tool.call("Slack.PostMessage", { channel: "#ops", text: report })
+  tool.call(Slack.PostMessage, { channel: "#ops", text: report })
 }
 ```
 
@@ -784,7 +784,7 @@ module InvoiceProcessor {
   capability http.out("api.stripe.com", methods: [GET])
   capability store.table("invoices", ops: [read, write])
   capability model("anthropic", "claude-sonnet-4-5")
-  capability tool.use("Slack.PostMessage")
+  capability tool.use(Slack.PostMessage)
 }
 
 -- LLM generates the implementation.
@@ -1035,7 +1035,7 @@ module IncidentTriage {
   capability topic.publish("incident.created")
   capability topic.consume("incident.created")
   capability model("anthropic", "claude-sonnet-4-5")
-  capability tool.use("Jira.CreateIssue", "Slack.PostMessage")
+  capability tool.use(Jira.CreateIssue, Slack.PostMessage)
   capability memory.kv("incidents")
 
   -- Types
@@ -1133,7 +1133,7 @@ module IncidentTriage {
 
       match s.recommended_action {
         Action.CreateTicket -> {
-          tool.call("Jira.CreateIssue", {
+          tool.call(Jira.CreateIssue, {
             title: "Incident: ${s.root_cause}",
             body: s.slack_message,
             priority: "high"
@@ -1142,7 +1142,7 @@ module IncidentTriage {
         _ -> {}
       }
 
-      tool.call("Slack.PostMessage", {
+      tool.call(Slack.PostMessage, {
         channel: "#oncall",
         text: s.slack_message
       })!

@@ -87,8 +87,11 @@ cap_kind    = "http.out" | "http.in" | "store.table" | "memory.kv"
             | "event.log" | "topic.publish" | "topic.consume"
             | "queue.publish" | "queue.consume" | "model"
             | "tool.use" | "process.spawn" | "timer"
-cap_params  = (string | named_arg) ("," (string | named_arg))*
+cap_params  = (string | identifier | named_arg) ("," (string | identifier | named_arg))*
+              -- tool.use params are dotted identifiers: tool.use(Stripe.CreateRefund)
+              -- other capabilities use strings: store.table("users"), model("anthropic", "claude-sonnet-4-5")
 named_arg   = lower_ident ":" expr
+identifier  = dotted_name
 ```
 
 ### 3.3 Functions
@@ -465,10 +468,10 @@ enum LlmError {
 ### 6.5 Tools
 
 ```
--- Requires: capability tool.use(tool_names)
-tool.call(name: String, args: Map) -> Result[Map, ToolError]
+-- Requires: capability tool.use(ToolNames)
+tool.call(name: ToolName, args: Map) -> Result[Map, ToolError]
 tool.list() -> List[ToolInfo]
-tool.schema(name: String) -> Map
+tool.schema(name: ToolName) -> Map
 ```
 
 ### 6.6 Topics and Queues
@@ -537,6 +540,8 @@ All errors are JSON-serializable with this structure:
 | E0011 | Name | Duplicate definition |
 | E0012 | Capability | Missing capability declaration |
 | E0013 | Capability | Capability parameter mismatch |
+| E0014 | Tool | Tool name not declared in `capability tool.use` params |
+| E0015 | Tool | Duplicate short tool name in `capability tool.use` params |
 | E0020 | Type | Type mismatch |
 | E0021 | Type | Non-exhaustive match |
 | E0022 | Type | Invalid `!` on non-Result |
@@ -652,7 +657,7 @@ module BillingWorker {
 module RefundService {
   capability model("anthropic", "claude-sonnet-4-5")
   capability memory.kv("refund_sessions")
-  capability tool.use("Stripe.CreateRefund")
+  capability tool.use(Stripe.CreateRefund)
   capability store.table("tickets")
 
   type RefundDecision {
@@ -733,7 +738,7 @@ module RefundService {
 
     on phase(Phase.Refund) -> {
       let d = memory.get!("decision")
-      let result = tool.call("Stripe.CreateRefund", {
+      let result = tool.call(Stripe.CreateRefund, {
         customer_id: state.customer_id,
         amount: d.amount
       })

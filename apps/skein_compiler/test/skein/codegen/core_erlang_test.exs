@@ -1775,10 +1775,10 @@ defmodule Skein.CodeGen.CoreErlangTest do
       mod =
         compile_with_caps!("""
         module ToolCallSimple {
-          capability tool.use("MyTool")
+          capability tool.use(MyTool)
 
           fn invoke(data: String) -> String {
-            tool.call("MyTool", data)
+            tool.call(MyTool, data)
           }
         }
         """)
@@ -1791,7 +1791,7 @@ defmodule Skein.CodeGen.CoreErlangTest do
       mod =
         compile_with_caps!("""
         module ToolListCall {
-          capability tool.use("MyTool")
+          capability tool.use(MyTool)
 
           fn get_tools() -> String {
             tool.list()
@@ -1808,10 +1808,10 @@ defmodule Skein.CodeGen.CoreErlangTest do
       mod =
         compile_with_caps!("""
         module ToolSchemaCall {
-          capability tool.use("MyTool")
+          capability tool.use(MyTool)
 
           fn get_schema() -> String {
-            tool.schema("MyTool")
+            tool.schema(MyTool)
           }
         }
         """)
@@ -1826,10 +1826,10 @@ defmodule Skein.CodeGen.CoreErlangTest do
       mod =
         compile_with_caps!("""
         module ToolCallTrace {
-          capability tool.use("MyTool")
+          capability tool.use(MyTool)
 
           fn invoke(data: String) -> String {
-            tool.call("MyTool", data)
+            tool.call(MyTool, data)
           }
         }
         """)
@@ -2031,6 +2031,99 @@ defmodule Skein.CodeGen.CoreErlangTest do
       assert {:respond_json, 200, "ok"} = mod.__handler_0__(%{})
       assert {:respond_json, 200, "queued"} = mod.__handler_1__(%{})
       assert {:respond_json, 200, "scheduled"} = mod.__handler_2__(%{})
+    end
+  end
+
+  # ------------------------------------------------------------------
+  # Tool identifier references codegen (capability-as-import)
+  # ------------------------------------------------------------------
+
+  describe "tool identifier codegen" do
+    setup do
+      Skein.Runtime.Tool.clear_registry()
+      Skein.Runtime.Trace.clear()
+
+      Skein.Runtime.Tool.register("MyTool", %{}, fn input ->
+        {:ok, %{result: "processed_#{input}"}}
+      end)
+
+      :ok
+    end
+
+    test "tool.call with identifier arg compiles and dispatches to runtime" do
+      mod =
+        compile_with_caps!("""
+        module ToolCallIdent {
+          capability tool.use(MyTool)
+
+          fn invoke(data: String) -> String {
+            tool.call(MyTool, data)
+          }
+        }
+        """)
+
+      result = mod.invoke("hello")
+      assert {:ok, %{result: "processed_hello"}} = result
+    end
+
+    test "tool.schema with identifier arg compiles and dispatches to runtime" do
+      mod =
+        compile_with_caps!("""
+        module ToolSchemaIdent {
+          capability tool.use(MyTool)
+
+          fn get_schema() -> String {
+            tool.schema(MyTool)
+          }
+        }
+        """)
+
+      result = mod.get_schema()
+      assert {:ok, _schema} = result
+    end
+
+    test "tool.call with dotted identifier arg compiles and dispatches" do
+      Skein.Runtime.Tool.register("Stripe.CreateRefund", %{}, fn input ->
+        {:ok, %{refund_id: "ref_#{input}"}}
+      end)
+
+      mod =
+        compile_with_caps!("""
+        module ToolCallDotted {
+          capability tool.use(Stripe.CreateRefund)
+
+          fn refund(data: String) -> String {
+            tool.call(Stripe.CreateRefund, data)
+          }
+        }
+        """)
+
+      result = mod.refund("100")
+      assert {:ok, %{refund_id: "ref_100"}} = result
+    end
+
+    test "tool.call identifier records a trace span with correct name" do
+      Skein.Runtime.Trace.clear()
+
+      mod =
+        compile_with_caps!("""
+        module ToolTraceIdent {
+          capability tool.use(MyTool)
+
+          fn invoke(data: String) -> String {
+            tool.call(MyTool, data)
+          }
+        }
+        """)
+
+      mod.invoke("test")
+
+      spans = Skein.Runtime.Trace.recent_spans(10)
+      tool_spans = Enum.filter(spans, &(&1.kind == :tool))
+      assert length(tool_spans) >= 1
+
+      span = hd(tool_spans)
+      assert span.name == "MyTool"
     end
   end
 end

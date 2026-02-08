@@ -262,8 +262,8 @@
           }
         },
         {
-          "comment": "Effect operations: llm.chat, memory.put, store.get, etc.",
-          "match": "\\b(llm|memory|store|http|topic|queue|trace|config|secret|stream|task)\\s*\\.\\s*([a-z][a-z0-9_]*)\\s*(?=[\\(\\[])",
+          "comment": "Effect operations: llm.chat, memory.put, store.get, tool.call, etc.",
+          "match": "\\b(llm|memory|store|http|topic|queue|trace|config|secret|stream|task|tool)\\s*\\.\\s*([a-z][a-z0-9_]*)\\s*(?=[\\(\\[])",
           "captures": {
             "1": { "name": "support.class.effect.skein" },
             "2": { "name": "support.function.effect.skein" }
