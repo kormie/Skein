@@ -12,10 +12,10 @@ description: What's been built, what's next, and the full 7-phase implementation
 | 3 | Capabilities and Effects | **Complete** | Capability declarations, effect calls, runtime enforcement, traces |
 | 4 | Handlers and HTTP Server | **Complete** | HTTP handlers, routing, request dispatch, web server |
 | 5 | Storage | **Complete** | ETS-backed `store.table` with get, put, delete, query |
-| 6 | Agents | **In Progress** | Agent skeleton, memory, LLM -- tools and supervision remaining |
-| 7 | Testing, Replay, and CLI | Planned | Built-in tests, trace replay, `skein` CLI |
+| 6 | Agents | **Complete** | Agent skeleton, memory, LLM, tools, events |
+| 7 | Testing, Replay, and CLI | **In Progress** | Test constructs and CLI compile/test done; scenario/golden/replay remaining |
 
-**Current test suite:** 34 properties, 340 tests, 0 failures
+**Current test suite:** 57 properties, 560 tests, 0 failures
 
 ## Phase 1: Hello BEAM (Complete)
 
@@ -132,7 +132,7 @@ description: What's been built, what's next, and the full 7-phase implementation
 - Each store operation produces a trace span
 - Query operations support filter functions
 
-## Phase 6: Agents (In Progress)
+## Phase 6: Agents (Complete)
 
 **Goal:** The agent construct -- state machines with phases, transitions, memory, LLM calls, and tool calling. This is the crown jewel.
 
@@ -185,23 +185,51 @@ description: What's been built, what's next, and the full 7-phase implementation
 - Schema-constrained JSON responses are parsed and validated
 - All memory and LLM operations produce trace spans
 
-### Phase 6: Remaining Work
+### Phase 6c: Tools and Events (Complete)
 
-- `tool` declarations with contract/implementation separation
-- `tool.call` -- tool execution with tracing
+**What was built:**
+
+#### Compiler
+- `tool` declaration parsing: dotted names, input/output fields with annotations, errors block, implement body
+- Tool metadata generation: `__tools__/0` returns tool definitions with name, description, field metadata, and JSON Schema
+- `tool.call`, `tool.list`, `tool.schema` effect codegen
+- `emit` expression codegen for domain events
+- `llm.json[T]` type-parameterized call syntax: parser support for `[TypeExpr]` in postfix position
+- Compile-time JSON Schema derivation from type declarations for `llm.json[T]`
+- `SchemaGen.fields_to_schema/1` for generating JSON Schema from field lists
+
+#### Runtime (1 new module)
+- `Skein.Runtime.Tool`: Tool registry with `register/3`, `call/3`, `list/2`, `schema/3`, capability enforcement, structured `Tool.Error` type, and automatic trace recording
+
+**Acceptance criteria met:**
+- Tool declarations compile with full metadata including JSON Schema
+- `tool.call` executes registered tools and traces the calls
+- `llm.json[T]` passes compiled schema to the LLM runtime
+- `llm.json` without type parameter still works (backward compatible)
+- All tool operations produce trace spans
+
+### Phase 6: Remaining (Future)
+
 - Agent pool supervision (`AgentPool` with max concurrency)
 - `suspend()` / `resume()` lifecycle
+- Tool policies (rate limits, approval workflows)
 
-## Phase 7: Testing, Replay, and CLI (Planned)
+## Phase 7: Testing, Replay, and CLI (In Progress)
 
-**Planned scope:**
-- `test "description" { ... }` construct
+### Completed
+
+- `test "description" { ... }` -- parsing, codegen to `__test_N__/0` functions, `__tests__/0` metadata
+- `assert expr` -- evaluates expression, raises `RuntimeError` on falsy
+- `Skein.CLI.compile/1` -- compile a `.skein` file
+- `Skein.CLI.test/1` -- compile and run all test declarations with pass/fail reporting
+
+### Remaining
+
 - `scenario` tests with `given`/`expect` blocks
 - `golden` trace tests with `replay`
 - Replay engine: re-execute handlers/agents against recorded I/O
 - `skein new` -- project scaffolding
 - `skein build` -- compile to OTP release
-- `skein test` -- run all test types
 - `skein run` -- start the service locally
 - `skein trace` -- view recent traces (CLI table output)
 
