@@ -74,11 +74,54 @@ Errors are returned as lists throughout the pipeline:
 
 The compiler's `with` chain short-circuits on the first error list.
 
-## Future Error Categories
+## Error Code Reference
 
-Phase 2+ will add error categories for:
+### Lexer/Parser Errors
 
-- **Type errors:** "Expected String, got Int at line 12, col 5"
-- **Capability errors:** "Capability 'http.out' required but not declared" with `fix_code: "capability http.out(\"api.example.com\")"`
-- **Transition errors:** "Invalid transition from Done to Analyze" (for agent phase graphs)
-- **Exhaustiveness warnings:** "Non-exhaustive match: missing pattern 'Deleted'"
+| Code | Severity | Description |
+|------|----------|-------------|
+| E0001 | error | Core Erlang compilation failed |
+| E0002 | error | Unexpected token / parse error |
+
+### Name Resolution Errors (Phase 2)
+
+| Code | Severity | Description |
+|------|----------|-------------|
+| E0010 | error | Unknown identifier |
+| E0011 | error | Unknown type reference |
+| E0012 | error | Wrong function call arity |
+
+### Type Errors (Phase 2)
+
+| Code | Severity | Description |
+|------|----------|-------------|
+| E0020 | error | Type mismatch (return type, match arm types) |
+| E0021 | error | Operator type error (wrong operand types) |
+| E0024 | warning | Non-exhaustive match |
+| E0025 | error | Invalid constraint annotation |
+
+### Capability Errors (Phase 3)
+
+| Code | Severity | Description |
+|------|----------|-------------|
+| E0030 | error | Missing capability for effect call |
+
+Example:
+
+```json
+{
+  "code": "E0030",
+  "severity": "error",
+  "message": "Capability 'http.out' required but not declared. Effect calls to 'http' require this capability.",
+  "location": {"file": "service.skein", "line": 5, "col": 5},
+  "fix_hint": "Add a capability declaration to the module: capability http.out",
+  "fix_code": "capability http.out"
+}
+```
+
+The `fix_code` field is especially useful for LLM agents -- it provides the exact text to insert to resolve the error.
+
+### Future Error Codes
+
+- **Transition errors:** "Invalid transition from Done to Analyze" (Phase 6)
+- **Store errors:** Missing `store.table` capability (Phase 5)

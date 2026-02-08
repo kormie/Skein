@@ -20,9 +20,19 @@ defmodule Skein.CodeGen.CoreErlang do
   alias Skein.AST
   alias Skein.Error
 
+  # Known effect namespaces and their runtime modules
+  @effect_runtime_modules %{
+    "http" => :"Elixir.Skein.Runtime.Http"
+  }
+
   @spec generate(AST.Module.t()) :: {:ok, binary()} | {:error, [Error.t()]}
   def generate(%AST.Module{} = ast) do
     module_atom = String.to_atom("Elixir.Skein.User.#{ast.name}")
+
+    # Extract capabilities for embedding in the module
+    capabilities =
+      ast.declarations
+      |> Enum.filter(&match?(%AST.Capability{}, &1))
 
     # Collect function declarations
     fns =
@@ -35,7 +45,7 @@ defmodule Skein.CodeGen.CoreErlang do
     defs =
       Enum.map(fns, fn f ->
         fname = :cerl.c_fname(String.to_atom(f.name), length(f.params))
-        fun = generate_fn(f)
+        fun = generate_fn(f, capabilities)
         {fname, fun}
       end)
 
@@ -43,12 +53,16 @@ defmodule Skein.CodeGen.CoreErlang do
     info_fname = :cerl.c_fname(:__info__, 1)
     info_fun = generate_info_fn(module_atom, fns)
 
+    # Add __capabilities__/0 for runtime capability access
+    caps_fname = :cerl.c_fname(:__capabilities__, 0)
+    caps_fun = generate_capabilities_fn(capabilities)
+
     mod =
       :cerl.c_module(
         :cerl.c_atom(module_atom),
-        [info_fname | exports],
+        [info_fname, caps_fname | exports],
         [],
-        [{info_fname, info_fun} | defs]
+        [{info_fname, info_fun}, {caps_fname, caps_fun} | defs]
       )
 
     case :compile.forms(mod, [:from_core, :binary, :return_errors]) do
@@ -75,7 +89,7 @@ defmodule Skein.CodeGen.CoreErlang do
   # Function generation
   # ------------------------------------------------------------------
 
-  defp generate_fn(%AST.Fn{params: params, body: body}) do
+  defp generate_fn(%AST.Fn{params: params, body: body}, capabilities) do
     # Create variable bindings for params
     param_vars = Enum.map(params, fn %AST.Field{name: name} -> :cerl.c_var(var_name(name)) end)
 
@@ -84,9 +98,42 @@ defmodule Skein.CodeGen.CoreErlang do
       params
       |> Enum.map(fn %AST.Field{name: name} -> {name, var_name(name)} end)
       |> Map.new()
+      |> Map.put(:__capabilities__, capabilities)
 
     body_expr = generate_expr(body, scope)
     :cerl.c_fun(param_vars, body_expr)
+  end
+
+  # Generate __capabilities__/0 function that returns capability metadata as a list of maps
+  defp generate_capabilities_fn(capabilities) do
+    caps_list =
+      capabilities
+      |> Enum.map(fn %AST.Capability{kind: kind, params: params} ->
+        param_strings =
+          Enum.map(params, fn
+            %AST.StringLit{segments: [{:literal, text}]} -> text
+            %AST.StringLit{segments: []} -> ""
+            _ -> ""
+          end)
+
+        # Build a map: %{kind: kind, params: [param_strings]}
+        kind_pair =
+          :cerl.c_map_pair(
+            :cerl.c_atom(:kind),
+            :cerl.abstract(kind)
+          )
+
+        params_pair =
+          :cerl.c_map_pair(
+            :cerl.c_atom(:params),
+            :cerl.abstract(param_strings)
+          )
+
+        :cerl.c_map([kind_pair, params_pair])
+      end)
+      |> :cerl.make_list()
+
+    :cerl.c_fun([], caps_list)
   end
 
   # Generate a minimal __info__/1 function for Elixir interop
@@ -255,6 +302,34 @@ defmodule Skein.CodeGen.CoreErlang do
     end
   end
 
+  # Effect call: http.get(...), http.post(...), etc.
+  defp generate_expr(
+         %AST.Call{
+           target: %AST.FieldAccess{
+             subject: %AST.Identifier{name: namespace},
+             field: method
+           },
+           args: args
+         },
+         scope
+       )
+       when is_map_key(@effect_runtime_modules, namespace) do
+    runtime_module = Map.fetch!(@effect_runtime_modules, namespace)
+    method_atom = String.to_atom(method)
+    args_exprs = Enum.map(args, &generate_expr(&1, scope))
+
+    # Build capabilities literal from scope
+    capabilities = Map.get(scope, :__capabilities__, [])
+    caps_expr = generate_capabilities_literal(capabilities)
+
+    # Call: RuntimeModule.method(args..., capabilities)
+    :cerl.c_call(
+      :cerl.c_atom(runtime_module),
+      :cerl.c_atom(method_atom),
+      args_exprs ++ [caps_expr]
+    )
+  end
+
   # Function call
   defp generate_expr(%AST.Call{target: target, args: args}, scope) do
     target_expr = generate_expr(target, scope)
@@ -408,6 +483,38 @@ defmodule Skein.CodeGen.CoreErlang do
       :cerl.c_atom(:map_get),
       [:cerl.c_atom(String.to_atom(field)), subj]
     )
+  end
+
+  # ------------------------------------------------------------------
+  # Capabilities literal for passing to runtime
+  # ------------------------------------------------------------------
+
+  defp generate_capabilities_literal(capabilities) do
+    caps_list =
+      Enum.map(capabilities, fn %AST.Capability{kind: kind, params: params} ->
+        param_strings =
+          Enum.map(params, fn
+            %AST.StringLit{segments: [{:literal, text}]} -> text
+            %AST.StringLit{segments: []} -> ""
+            _ -> ""
+          end)
+
+        kind_pair =
+          :cerl.c_map_pair(
+            :cerl.c_atom(:kind),
+            :cerl.abstract(kind)
+          )
+
+        params_pair =
+          :cerl.c_map_pair(
+            :cerl.c_atom(:params),
+            :cerl.abstract(param_strings)
+          )
+
+        :cerl.c_map([kind_pair, params_pair])
+      end)
+
+    :cerl.make_list(caps_list)
   end
 
   # ------------------------------------------------------------------

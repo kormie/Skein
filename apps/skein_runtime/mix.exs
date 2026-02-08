@@ -17,14 +17,16 @@ defmodule SkeinRuntime.MixProject do
 
   def application do
     [
-      extra_applications: [:logger],
+      extra_applications: [:logger, :inets, :ssl],
       mod: {SkeinRuntime.Application, []}
     ]
   end
 
   defp deps do
     [
-      {:jason, git: "https://github.com/michalmuskala/jason.git", tag: "v1.4.4"}
+      {:jason, git: "https://github.com/michalmuskala/jason.git", tag: "v1.4.4"},
+      {:stream_data,
+       git: "https://github.com/whatyouhide/stream_data.git", tag: "v1.1.2", only: [:test, :dev]}
     ]
   end
 end

@@ -5,7 +5,7 @@ defmodule Skein.Analyzer do
   Runs multiple passes:
   1. Name resolution (build symbol table, resolve identifiers)
   2. Type checking (verify types at boundaries, check match exhaustiveness)
-  3. Capability checking (verify effect calls have covering capabilities) — Phase 3
+  3. Capability checking (verify effect calls have covering capabilities)
   4. Transition checking (verify agent phase transitions are valid) — Phase 6
 
   ## Error Codes
@@ -19,6 +19,7 @@ defmodule Skein.Analyzer do
   - E0023: Invalid ? on non-Result or enclosing fn doesn't return Result
   - E0024: Non-exhaustive match (warning)
   - E0025: Invalid constraint annotation
+  - E0030: Missing capability for effect call
   """
 
   alias Skein.AST
@@ -44,12 +45,23 @@ defmodule Skein.Analyzer do
           | {:enum, String.t()}
           | :unknown
 
-  # Environment tracks types, functions, and variables in scope
+  # Known effect namespaces and the capabilities they require
+  @effect_namespaces %{
+    "http" => "http.out"
+  }
+
+  # Known effect methods per namespace
+  @effect_methods %{
+    "http" => ["get", "post", "put", "patch", "delete"]
+  }
+
+  # Environment tracks types, functions, variables, and capabilities in scope
   @type env :: %{
           types: %{String.t() => :builtin | AST.TypeDecl.t()},
           enums: %{String.t() => AST.EnumDecl.t()},
           functions: %{String.t() => %{params: [AST.Field.t()], return_type: skein_type}},
           variables: %{String.t() => skein_type},
+          capabilities: [AST.Capability.t()],
           current_fn_return_type: skein_type | nil,
           file: String.t()
         }
@@ -78,6 +90,9 @@ defmodule Skein.Analyzer do
 
     # Pass 2: Type-check function bodies
     errors = errors ++ check_functions(ast.declarations, env)
+
+    # Pass 3: Capability checking — verify effect calls have covering capabilities
+    errors = errors ++ check_capabilities(ast.declarations, env)
 
     case Enum.filter(errors, &(&1.severity == :error)) do
       [] when errors == [] ->
@@ -138,11 +153,17 @@ defmodule Skein.Analyzer do
         {name, %{params: params, return_type: resolve_type(ret, types)}}
       end)
 
+    # Extract capabilities
+    capabilities =
+      declarations
+      |> Enum.filter(&match?(%AST.Capability{}, &1))
+
     %{
       types: types,
       enums: enums,
       functions: functions,
       variables: %{},
+      capabilities: capabilities,
       current_fn_return_type: nil,
       file: file
     }
@@ -905,6 +926,108 @@ defmodule Skein.Analyzer do
   defp types_compatible?(_, {:enum, _}), do: true
 
   defp types_compatible?(_, _), do: false
+
+  # ------------------------------------------------------------------
+  # Pass 3: Capability checking
+  # ------------------------------------------------------------------
+
+  defp check_capabilities(declarations, env) do
+    fns = Enum.filter(declarations, &match?(%AST.Fn{}, &1))
+    Enum.flat_map(fns, &collect_effect_calls(&1.body, env))
+  end
+
+  # Walk the AST to find effect calls and check them against declared capabilities
+  defp collect_effect_calls(%AST.Block{expressions: exprs}, env) do
+    Enum.flat_map(exprs, &collect_effect_calls(&1, env))
+  end
+
+  defp collect_effect_calls(
+         %AST.Call{
+           target: %AST.FieldAccess{
+             subject: %AST.Identifier{name: namespace},
+             field: method
+           },
+           meta: meta
+         } = _call,
+         env
+       ) do
+    if effect_namespace?(namespace) and effect_method?(namespace, method) do
+      check_effect_capability(namespace, method, meta, env)
+    else
+      []
+    end
+  end
+
+  defp collect_effect_calls(%AST.Call{args: args}, env) do
+    Enum.flat_map(args, &collect_effect_calls(&1, env))
+  end
+
+  defp collect_effect_calls(%AST.Let{value: value}, env) do
+    collect_effect_calls(value, env)
+  end
+
+  defp collect_effect_calls(%AST.Match{subject: subject, arms: arms}, env) do
+    subject_errors = collect_effect_calls(subject, env)
+
+    arm_errors =
+      Enum.flat_map(arms, fn %AST.MatchArm{body: body} ->
+        collect_effect_calls(body, env)
+      end)
+
+    subject_errors ++ arm_errors
+  end
+
+  defp collect_effect_calls(%AST.Pipe{left: left, right: right}, env) do
+    collect_effect_calls(left, env) ++ collect_effect_calls(right, env)
+  end
+
+  defp collect_effect_calls(%AST.BinaryOp{left: left, right: right}, env) do
+    collect_effect_calls(left, env) ++ collect_effect_calls(right, env)
+  end
+
+  defp collect_effect_calls(%AST.UnaryOp{operand: operand}, env) do
+    collect_effect_calls(operand, env)
+  end
+
+  defp collect_effect_calls(_expr, _env), do: []
+
+  @doc false
+  def effect_namespace?(namespace), do: Map.has_key?(@effect_namespaces, namespace)
+
+  @doc false
+  def effect_method?(namespace, method) do
+    case Map.get(@effect_methods, namespace) do
+      nil -> false
+      methods -> method in methods
+    end
+  end
+
+  defp check_effect_capability(namespace, _method, meta, env) do
+    required_capability = Map.fetch!(@effect_namespaces, namespace)
+
+    has_capability =
+      Enum.any?(env.capabilities, fn %AST.Capability{kind: kind} ->
+        kind == required_capability
+      end)
+
+    if has_capability do
+      []
+    else
+      [
+        %Error{
+          code: "E0030",
+          severity: :error,
+          message:
+            "Capability '#{required_capability}' required but not declared. " <>
+              "Effect calls to '#{namespace}' require this capability.",
+          location: location_from_meta(meta, env.file),
+          fix_hint:
+            "Add a capability declaration to the module: capability #{required_capability}",
+          fix_code: "capability #{required_capability}"
+        }
+      ]
+    end
+  end
 
   # ------------------------------------------------------------------
   # Helpers

@@ -289,6 +289,43 @@ The final step compiles the Core Erlang AST to BEAM bytecode:
 
 The `:from_core` flag tells the compiler the input is Core Erlang (not Erlang source). The `:binary` flag returns the bytecode as a binary rather than writing to disk. The `:return_errors` flag returns errors as data rather than printing to stderr.
 
+## Effect Call Generation (Phase 3)
+
+When the code generator encounters an effect call like `http.get(url)`, it generates a remote call to the runtime instead of a local apply:
+
+```
+-- Skein source:
+http.get(url)
+
+-- Compiles to (Core Erlang):
+call 'Elixir.Skein.Runtime.Http':'get'(Url, Capabilities)
+```
+
+The generator recognizes effect calls by pattern-matching on `Call{target: FieldAccess{subject: Identifier{name}, field}}` where `name` is a known effect namespace (currently `"http"`).
+
+### Effect namespace to runtime module mapping
+
+| Namespace | Runtime Module |
+|-----------|---------------|
+| `http` | `Skein.Runtime.Http` |
+
+### Capabilities parameter
+
+The capabilities list is built at compile time from the module's `capability` declarations and passed as a literal argument to every runtime call. This enables the runtime to enforce capability restrictions even without access to the module metadata.
+
+## `__capabilities__/0` Function
+
+Every compiled module includes a `__capabilities__/0` function that returns the module's declared capabilities as a list of maps:
+
+```elixir
+Skein.User.MyService.__capabilities__()
+#=> [%{kind: "http.out", params: ["api.example.com"]}]
+```
+
+A module with no capabilities returns an empty list. Each capability map has:
+- `:kind` -- the capability type (e.g., `"http.out"`)
+- `:params` -- list of string parameters (e.g., host allowlist)
+
 ## Property-Tested Invariants
 
 The code generator has 9 property-based tests verifying:

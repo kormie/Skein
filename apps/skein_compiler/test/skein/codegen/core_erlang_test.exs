@@ -11,6 +11,11 @@ defmodule Skein.CodeGen.CoreErlangTest do
     end
   end
 
+  # Helper: same as compile! but for modules with capabilities and effect calls
+  defp compile_with_caps!(source) do
+    compile!(source)
+  end
+
   describe "Phase 1 acceptance - hello.skein" do
     test "greet/1 returns interpolated greeting" do
       mod =
@@ -273,6 +278,194 @@ defmodule Skein.CodeGen.CoreErlangTest do
       assert mod.greet("World") == "Hello, World!"
       assert mod.add(3, 4) == 7
       assert mod.classify(5) == "positive"
+    end
+  end
+
+  # ------------------------------------------------------------------
+  # Phase 3: Capability metadata and effect call codegen
+  # ------------------------------------------------------------------
+
+  describe "__capabilities__/0" do
+    test "module with no capabilities returns empty list" do
+      mod =
+        compile!("""
+        module CapEmpty {
+          fn x() -> Int { 1 }
+        }
+        """)
+
+      assert mod.__capabilities__() == []
+    end
+
+    test "module with http.out capability returns it" do
+      mod =
+        compile_with_caps!("""
+        module CapHttp {
+          capability http.out("api.example.com")
+
+          fn fetch(url: String) -> String {
+            "stub"
+          }
+        }
+        """)
+
+      caps = mod.__capabilities__()
+      assert length(caps) == 1
+      assert %{kind: "http.out", params: ["api.example.com"]} = hd(caps)
+    end
+
+    test "module with multiple capabilities returns all" do
+      mod =
+        compile_with_caps!("""
+        module CapMulti {
+          capability http.out("api.example.com")
+          capability http.out("api.other.com")
+
+          fn fetch(url: String) -> String {
+            "stub"
+          }
+        }
+        """)
+
+      caps = mod.__capabilities__()
+      assert length(caps) == 2
+    end
+
+    test "capability without params returns empty params list" do
+      mod =
+        compile_with_caps!("""
+        module CapNoParams {
+          capability http.out
+
+          fn fetch(url: String) -> String {
+            "stub"
+          }
+        }
+        """)
+
+      caps = mod.__capabilities__()
+      assert length(caps) == 1
+      assert %{kind: "http.out", params: []} = hd(caps)
+    end
+  end
+
+  describe "effect call codegen" do
+    test "http.get compiles to runtime call" do
+      mod =
+        compile_with_caps!("""
+        module EffectGet {
+          capability http.out("api.example.com")
+
+          fn fetch(url: String) -> String {
+            http.get(url)
+          }
+        }
+        """)
+
+      # The function should exist and be callable
+      fns = mod.__info__(:functions)
+      assert {:fetch, 1} in fns
+    end
+
+    test "http.post compiles to runtime call" do
+      mod =
+        compile_with_caps!("""
+        module EffectPost {
+          capability http.out("api.example.com")
+
+          fn send(url: String, body: String) -> String {
+            http.post(url, body)
+          }
+        }
+        """)
+
+      fns = mod.__info__(:functions)
+      assert {:send, 2} in fns
+    end
+
+    test "http.get at runtime enforces capabilities - blocks undeclared host" do
+      mod =
+        compile_with_caps!("""
+        module EffectBlock {
+          capability http.out("api.allowed.com")
+
+          fn fetch(url: String) -> String {
+            http.get(url)
+          }
+        }
+        """)
+
+      # Calling with an undeclared host should return capability error
+      result = mod.fetch("https://api.blocked.com/data")
+      assert {:error, reason} = result
+      assert reason =~ "not declared"
+    end
+
+    test "http.get at runtime enforces capabilities - allows declared host" do
+      mod =
+        compile_with_caps!("""
+        module EffectAllow {
+          capability http.out("api.example.com")
+
+          fn fetch(url: String) -> String {
+            http.get(url)
+          }
+        }
+        """)
+
+      # Calling with a declared host - will attempt HTTP (may fail to connect,
+      # but should NOT be a capability error)
+      result = mod.fetch("https://api.example.com/data")
+
+      case result do
+        {:error, reason} -> refute reason =~ "not declared"
+        {:ok, _} -> :ok
+      end
+    end
+
+    test "http.get records trace span" do
+      Skein.Runtime.Trace.clear()
+
+      mod =
+        compile_with_caps!("""
+        module EffectTrace {
+          capability http.out("api.allowed.com")
+
+          fn fetch(url: String) -> String {
+            http.get(url)
+          }
+        }
+        """)
+
+      # This will be blocked by capability, but should still trace
+      mod.fetch("https://api.blocked.com/data")
+
+      spans = Skein.Runtime.Trace.recent_spans(10)
+      assert length(spans) >= 1
+
+      span = hd(spans)
+      assert span.kind == :http
+      assert span.method == :get
+      assert span.url == "https://api.blocked.com/data"
+      assert is_integer(span.duration_us)
+    end
+
+    test "effect call in let binding works" do
+      mod =
+        compile_with_caps!("""
+        module EffectLet {
+          capability http.out("api.allowed.com")
+
+          fn fetch(url: String) -> String {
+            let result = http.get(url)
+            result
+          }
+        }
+        """)
+
+      result = mod.fetch("https://api.blocked.com/data")
+      assert {:error, reason} = result
+      assert reason =~ "not declared"
     end
   end
 
