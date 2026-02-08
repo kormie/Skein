@@ -19,6 +19,7 @@ defmodule Skein.CodeGen.CoreErlang do
 
   alias Skein.AST
   alias Skein.Error
+  alias Skein.CodeGen.SchemaGen
 
   # Known effect namespaces and their runtime modules
   # memory and llm have special codegen handlers below
@@ -38,6 +39,12 @@ defmodule Skein.CodeGen.CoreErlang do
     capabilities =
       ast.declarations
       |> Enum.filter(&match?(%AST.Capability{}, &1))
+
+    # Collect type declarations for schema resolution (llm.json[T])
+    type_decls =
+      ast.declarations
+      |> Enum.filter(&match?(%AST.TypeDecl{}, &1))
+      |> Map.new(fn %AST.TypeDecl{name: name} = decl -> {name, decl} end)
 
     # Collect function declarations
     fns =
@@ -60,6 +67,12 @@ defmodule Skein.CodeGen.CoreErlang do
       ast.declarations
       |> Enum.filter(&match?(%AST.ToolDecl{}, &1))
 
+    # Collect test declarations
+    tests =
+      ast.declarations
+      |> Enum.filter(&match?(%AST.Test{}, &1))
+      |> Enum.with_index()
+
     # Build exports and function definitions for regular functions
     fn_exports =
       Enum.map(fns, fn f -> :cerl.c_fname(String.to_atom(f.name), length(f.params)) end)
@@ -67,7 +80,7 @@ defmodule Skein.CodeGen.CoreErlang do
     fn_defs =
       Enum.map(fns, fn f ->
         fname = :cerl.c_fname(String.to_atom(f.name), length(f.params))
-        fun = generate_fn(f, capabilities, fn_arities)
+        fun = generate_fn(f, capabilities, fn_arities, type_decls)
         {fname, fun}
       end)
 
@@ -80,7 +93,20 @@ defmodule Skein.CodeGen.CoreErlang do
     handler_defs =
       Enum.map(handlers, fn {handler, index} ->
         fname = :cerl.c_fname(handler_fn_name(index), 1)
-        fun = generate_handler_fn(handler, capabilities, fn_arities)
+        fun = generate_handler_fn(handler, capabilities, fn_arities, type_decls)
+        {fname, fun}
+      end)
+
+    # Build test exports and definitions
+    test_exports =
+      Enum.map(tests, fn {_test, index} ->
+        :cerl.c_fname(test_fn_name(index), 0)
+      end)
+
+    test_defs =
+      Enum.map(tests, fn {test_decl, index} ->
+        fname = :cerl.c_fname(test_fn_name(index), 0)
+        fun = generate_test_fn(test_decl, capabilities, fn_arities, type_decls)
         {fname, fun}
       end)
 
@@ -100,17 +126,23 @@ defmodule Skein.CodeGen.CoreErlang do
     tools_fname = :cerl.c_fname(:__tools__, 0)
     tools_fun = generate_tools_meta_fn(tools)
 
+    # Add __tests__/0 for test metadata
+    tests_fname = :cerl.c_fname(:__tests__, 0)
+    tests_fun = generate_tests_meta_fn(tests)
+
     all_exports =
-      [info_fname, caps_fname, handlers_fname, tools_fname | fn_exports] ++ handler_exports
+      [info_fname, caps_fname, handlers_fname, tools_fname, tests_fname | fn_exports] ++
+        handler_exports ++ test_exports
 
     all_defs =
       [
         {info_fname, info_fun},
         {caps_fname, caps_fun},
         {handlers_fname, handlers_fun},
-        {tools_fname, tools_fun}
+        {tools_fname, tools_fun},
+        {tests_fname, tests_fun}
         | fn_defs
-      ] ++ handler_defs
+      ] ++ handler_defs ++ test_defs
 
     mod =
       :cerl.c_module(
@@ -558,7 +590,9 @@ defmodule Skein.CodeGen.CoreErlang do
   # Function generation
   # ------------------------------------------------------------------
 
-  defp generate_fn(%AST.Fn{params: params, body: body}, capabilities, fn_arities) do
+  defp generate_fn(fn_decl, capabilities, fn_arities, type_decls \\ %{})
+
+  defp generate_fn(%AST.Fn{params: params, body: body}, capabilities, fn_arities, type_decls) do
     # Create variable bindings for params
     param_vars = Enum.map(params, fn %AST.Field{name: name} -> :cerl.c_var(var_name(name)) end)
 
@@ -569,6 +603,7 @@ defmodule Skein.CodeGen.CoreErlang do
       |> Map.new()
       |> Map.put(:__capabilities__, capabilities)
       |> Map.put(:__fn_arities__, fn_arities)
+      |> Map.put(:__type_decls__, type_decls)
 
     body_expr = generate_expr(body, scope)
     :cerl.c_fun(param_vars, body_expr)
@@ -582,7 +617,12 @@ defmodule Skein.CodeGen.CoreErlang do
     String.to_atom("__handler_#{index}__")
   end
 
-  defp generate_handler_fn(%AST.Handler{param: param, body: body}, capabilities, fn_arities) do
+  defp generate_handler_fn(
+         %AST.Handler{param: param, body: body},
+         capabilities,
+         fn_arities,
+         type_decls
+       ) do
     # Handler takes a single request map argument
     req_var = :cerl.c_var(var_name(param))
 
@@ -590,6 +630,7 @@ defmodule Skein.CodeGen.CoreErlang do
       %{param => var_name(param)}
       |> Map.put(:__capabilities__, capabilities)
       |> Map.put(:__fn_arities__, fn_arities)
+      |> Map.put(:__type_decls__, type_decls)
 
     body_expr = generate_expr(body, scope)
     :cerl.c_fun([req_var], body_expr)
@@ -657,7 +698,7 @@ defmodule Skein.CodeGen.CoreErlang do
     :cerl.c_fun([], caps_list)
   end
 
-  # Generate __tools__/0 function that returns tool metadata
+  # Generate __tools__/0 function that returns tool metadata with JSON Schema
   defp generate_tools_meta_fn(tools) do
     tools_list =
       tools
@@ -674,6 +715,7 @@ defmodule Skein.CodeGen.CoreErlang do
             :cerl.abstract(desc)
           )
 
+        # Basic field metadata (backward compatible)
         input_fields =
           (input || [])
           |> Enum.map(fn %AST.Field{name: field_name, type: type} ->
@@ -688,6 +730,24 @@ defmodule Skein.CodeGen.CoreErlang do
           :cerl.c_map_pair(
             :cerl.c_atom(:input),
             input_fields
+          )
+
+        # JSON Schema for input fields
+        input_schema = SchemaGen.fields_to_schema(input || [])
+
+        input_schema_pair =
+          :cerl.c_map_pair(
+            :cerl.c_atom(:input_schema),
+            :cerl.abstract(input_schema)
+          )
+
+        # JSON Schema for output fields
+        output_schema = SchemaGen.fields_to_schema(output || [])
+
+        output_schema_pair =
+          :cerl.c_map_pair(
+            :cerl.c_atom(:output_schema),
+            :cerl.abstract(output_schema)
           )
 
         output_fields =
@@ -706,11 +766,62 @@ defmodule Skein.CodeGen.CoreErlang do
             output_fields
           )
 
-        :cerl.c_map([name_pair, desc_pair, input_pair, output_pair])
+        :cerl.c_map([
+          name_pair,
+          desc_pair,
+          input_pair,
+          input_schema_pair,
+          output_pair,
+          output_schema_pair
+        ])
       end)
       |> :cerl.make_list()
 
     :cerl.c_fun([], tools_list)
+  end
+
+  # Generate __tests__/0 function that returns test metadata
+  defp generate_tests_meta_fn(tests) do
+    tests_list =
+      tests
+      |> Enum.map(fn {%AST.Test{description: desc}, index} ->
+        desc_pair =
+          :cerl.c_map_pair(
+            :cerl.c_atom(:description),
+            :cerl.abstract(desc)
+          )
+
+        fn_pair =
+          :cerl.c_map_pair(
+            :cerl.c_atom(:fn),
+            :cerl.c_atom(test_fn_name(index))
+          )
+
+        :cerl.c_map([desc_pair, fn_pair])
+      end)
+      |> :cerl.make_list()
+
+    :cerl.c_fun([], tests_list)
+  end
+
+  defp test_fn_name(index) do
+    String.to_atom("__test_#{index}__")
+  end
+
+  # Generate a __test_N__/0 function for a test declaration
+  defp generate_test_fn(%AST.Test{body: body}, capabilities, fn_arities, type_decls) do
+    scope =
+      %{}
+      |> Map.put(:__capabilities__, capabilities)
+      |> Map.put(:__fn_arities__, fn_arities)
+      |> Map.put(:__type_decls__, type_decls)
+
+    body_expr = generate_expr(body, scope)
+
+    # Wrap: run body, then return :ok (body raises on assertion failure)
+    discard_var = :cerl.c_var(gen_var())
+    wrapped = :cerl.c_let([discard_var], body_expr, :cerl.c_atom(:ok))
+    :cerl.c_fun([], wrapped)
   end
 
   defp type_ref_to_string(%AST.TypeRef{name: name, params: []}) do
@@ -982,14 +1093,15 @@ defmodule Skein.CodeGen.CoreErlang do
     )
   end
 
-  # LLM effect: llm.json(model, system, input) — needs schema injection
+  # LLM effect: llm.json[T](model, system, input) — with type-parameterized schema
   defp generate_expr(
          %AST.Call{
            target: %AST.FieldAccess{
              subject: %AST.Identifier{name: "llm"},
              field: "json"
            },
-           args: args
+           args: args,
+           type_param: type_param
          },
          scope
        ) do
@@ -998,9 +1110,22 @@ defmodule Skein.CodeGen.CoreErlang do
     capabilities = Map.get(scope, :__capabilities__, [])
     caps_expr = generate_capabilities_literal(capabilities)
 
-    # Inject empty schema as 4th argument (after model, system, input)
-    # TODO: When llm.json[T] parser support is added, generate schema from type T
-    schema_expr = :cerl.abstract(%{})
+    # Generate schema from type parameter if present, otherwise empty map
+    schema =
+      case type_param do
+        %AST.TypeRef{name: type_name} ->
+          type_decls = Map.get(scope, :__type_decls__, %{})
+
+          case Map.get(type_decls, type_name) do
+            %AST.TypeDecl{} = decl -> SchemaGen.to_json_schema(decl)
+            _ -> %{}
+          end
+
+        _ ->
+          %{}
+      end
+
+    schema_expr = :cerl.abstract(schema)
 
     # Call: Skein.Runtime.Llm.json(model, system, input, schema, capabilities)
     :cerl.c_call(
@@ -1085,6 +1210,38 @@ defmodule Skein.CodeGen.CoreErlang do
       :cerl.c_atom(runtime_module),
       :cerl.c_atom(method_atom),
       args_exprs ++ [caps_expr]
+    )
+  end
+
+  # Assert expression: __assert__(expr) — raises on falsy
+  defp generate_expr(
+         %AST.Call{target: %AST.Identifier{name: "__assert__"}, args: [expr]},
+         scope
+       ) do
+    expr_val = generate_expr(expr, scope)
+    result_var = :cerl.c_var(gen_var())
+
+    # If truthy, return :ok. If falsy, raise RuntimeError.
+    ok_clause =
+      :cerl.c_clause(
+        [:cerl.c_atom(true)],
+        :cerl.c_atom(:ok)
+      )
+
+    fail_clause =
+      :cerl.c_clause(
+        [:cerl.c_var(:_AssertVal)],
+        :cerl.c_call(
+          :cerl.c_atom(:erlang),
+          :cerl.c_atom(:error),
+          [:cerl.abstract(%RuntimeError{message: "Assertion failed"})]
+        )
+      )
+
+    :cerl.c_let(
+      [result_var],
+      expr_val,
+      :cerl.c_case(result_var, [ok_clause, fail_clause])
     )
   end
 

@@ -257,6 +257,90 @@ defmodule Skein.Integration.ToolTest do
   end
 
   # ------------------------------------------------------------------
+  # Tool JSON Schema generation in __tools__/0
+  # ------------------------------------------------------------------
+
+  describe "tool JSON Schema in __tools__ metadata" do
+    test "tool metadata includes input_schema as JSON Schema object" do
+      mod =
+        compile!("""
+        module ToolSchemaService {
+          tool CreateRefund {
+            description: "Issue a refund"
+
+            input {
+              customer_id: String
+              amount: Int
+            }
+
+            output {
+              id: String
+              status: String
+            }
+
+            implement {
+              "ok"
+            }
+          }
+        }
+        """)
+
+      [tool] = mod.__tools__()
+      assert tool.input_schema["type"] == "object"
+      assert tool.input_schema["properties"]["customer_id"] == %{"type" => "string"}
+      assert tool.input_schema["properties"]["amount"] == %{"type" => "integer"}
+      assert "customer_id" in tool.input_schema["required"]
+      assert "amount" in tool.input_schema["required"]
+    end
+
+    test "tool metadata includes output_schema as JSON Schema object" do
+      mod =
+        compile!("""
+        module ToolOutputSchema {
+          tool GetBalance {
+            input { account_id: String }
+
+            output {
+              balance: Int
+              currency: String
+            }
+
+            implement { "ok" }
+          }
+        }
+        """)
+
+      [tool] = mod.__tools__()
+      assert tool.output_schema["type"] == "object"
+      assert tool.output_schema["properties"]["balance"] == %{"type" => "integer"}
+      assert tool.output_schema["properties"]["currency"] == %{"type" => "string"}
+    end
+
+    test "tool with annotated fields includes constraints in schema" do
+      mod =
+        compile!("""
+        module ToolAnnotated {
+          tool CreateRefund {
+            input {
+              customer_id: String @description("Stripe customer ID")
+              amount: Int @min(1) @max(100000)
+            }
+
+            output { id: String }
+
+            implement { "ok" }
+          }
+        }
+        """)
+
+      [tool] = mod.__tools__()
+      assert tool.input_schema["properties"]["customer_id"]["description"] == "Stripe customer ID"
+      assert tool.input_schema["properties"]["amount"]["minimum"] == 1
+      assert tool.input_schema["properties"]["amount"]["maximum"] == 100_000
+    end
+  end
+
+  # ------------------------------------------------------------------
   # Tools coexisting with other declarations
   # ------------------------------------------------------------------
 

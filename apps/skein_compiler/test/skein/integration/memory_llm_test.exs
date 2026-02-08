@@ -210,6 +210,50 @@ defmodule Skein.Integration.MemoryLlmTest do
   end
 
   # ------------------------------------------------------------------
+  # llm.json[T] — type-parameterized schema generation
+  # ------------------------------------------------------------------
+
+  describe "llm.json[T] with type parameter" do
+    test "llm.json[T] compiles and passes schema derived from type T" do
+      mod =
+        compile!("""
+        module AiTyped {
+          type RefundDecision {
+            action: String
+            amount: Int
+            reason: String
+          }
+
+          capability model("anthropic", "claude-sonnet-4-5")
+
+          fn decide(ticket: String) -> String {
+            llm.json[RefundDecision]("claude-sonnet-4-5", "Decide if this warrants a refund.", ticket)
+          }
+        }
+        """)
+
+      assert {:ok, result} = mod.decide("Ticket: item not received")
+      assert is_map(result)
+    end
+
+    test "llm.json without type parameter still works (backward compat)" do
+      mod =
+        compile!("""
+        module AiUntyped {
+          capability model("anthropic", "claude-sonnet-4-5")
+
+          fn decide(ticket: String) -> String {
+            llm.json("claude-sonnet-4-5", "Decide.", ticket)
+          }
+        }
+        """)
+
+      assert {:ok, result} = mod.decide("Ticket: item not received")
+      assert is_map(result)
+    end
+  end
+
+  # ------------------------------------------------------------------
   # Capability enforcement
   # ------------------------------------------------------------------
 

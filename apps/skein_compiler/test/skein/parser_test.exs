@@ -1328,4 +1328,158 @@ defmodule Skein.ParserTest do
                fn_decl.body
     end
   end
+
+  # ------------------------------------------------------------------
+  # Type-parameterized calls: llm.json[T](...) (Phase 6c completion)
+  # ------------------------------------------------------------------
+
+  describe "parse/1 - type-parameterized calls" do
+    test "parses llm.json[T](args) with type parameter" do
+      source = """
+      module M {
+        type Decision {
+          action: String
+          amount: Int
+        }
+
+        capability model("anthropic", "claude-sonnet-4-5")
+
+        fn decide(ticket: String) -> String {
+          llm.json[Decision]("claude-sonnet-4-5", "Decide.", ticket)
+        }
+      }
+      """
+
+      assert {:ok, %AST.Module{declarations: [_type, _cap, fn_decl]}} = parse(source)
+      assert %AST.Block{expressions: [call]} = fn_decl.body
+      assert %AST.Call{type_param: %AST.TypeRef{name: "Decision"}} = call
+      assert %AST.FieldAccess{subject: %AST.Identifier{name: "llm"}, field: "json"} = call.target
+      assert length(call.args) == 3
+    end
+
+    test "parses type-parameterized call with parameterized type" do
+      source = """
+      module M {
+        capability model("anthropic", "claude-sonnet-4-5")
+
+        fn decide(ticket: String) -> String {
+          llm.json[Result[String, String]]("claude-sonnet-4-5", "Decide.", ticket)
+        }
+      }
+      """
+
+      assert {:ok, %AST.Module{declarations: [_cap, fn_decl]}} = parse(source)
+      assert %AST.Block{expressions: [call]} = fn_decl.body
+      assert %AST.Call{type_param: %AST.TypeRef{name: "Result", params: [_, _]}} = call
+    end
+
+    test "parses llm.json without type parameter (backward compat)" do
+      source = """
+      module M {
+        capability model("anthropic", "claude-sonnet-4-5")
+
+        fn decide(ticket: String) -> String {
+          llm.json("claude-sonnet-4-5", "Decide.", ticket)
+        }
+      }
+      """
+
+      assert {:ok, %AST.Module{declarations: [_cap, fn_decl]}} = parse(source)
+      assert %AST.Block{expressions: [call]} = fn_decl.body
+      assert %AST.Call{type_param: nil} = call
+    end
+  end
+
+  # ------------------------------------------------------------------
+  # Test declarations (Phase 7)
+  # ------------------------------------------------------------------
+
+  describe "parse/1 - test declarations" do
+    test "parses a simple test declaration" do
+      source = """
+      module M {
+        fn add(a: Int, b: Int) -> Int { a + b }
+
+        test "add returns correct sum" {
+          assert add(2, 3) == 5
+        }
+      }
+      """
+
+      assert {:ok, %AST.Module{declarations: [_fn, test_decl]}} = parse(source)
+      assert %AST.Test{description: "add returns correct sum"} = test_decl
+      assert %AST.Block{expressions: [_assert_call]} = test_decl.body
+    end
+
+    test "parses test with multiple assertions" do
+      source = """
+      module M {
+        fn double(x: Int) -> Int { x * 2 }
+
+        test "double works" {
+          assert double(1) == 2
+          assert double(0) == 0
+          assert double(5) == 10
+        }
+      }
+      """
+
+      assert {:ok, %AST.Module{declarations: [_fn, test_decl]}} = parse(source)
+      assert %AST.Test{description: "double works"} = test_decl
+      assert %AST.Block{expressions: exprs} = test_decl.body
+      assert length(exprs) == 3
+    end
+
+    test "parses assert as a call to __assert__" do
+      source = """
+      module M {
+        test "truth" {
+          assert true
+        }
+      }
+      """
+
+      assert {:ok, %AST.Module{declarations: [test_decl]}} = parse(source)
+      assert %AST.Block{expressions: [assert_call]} = test_decl.body
+
+      assert %AST.Call{
+               target: %AST.Identifier{name: "__assert__"},
+               args: [%AST.BoolLit{value: true}]
+             } = assert_call
+    end
+
+    test "preserves source location on test" do
+      source = """
+      module M {
+        test "my test" {
+          assert true
+        }
+      }
+      """
+
+      assert {:ok, %AST.Module{declarations: [test_decl]}} = parse(source)
+      assert test_decl.meta.line == 2
+    end
+
+    test "parses test mixed with other declarations" do
+      source = """
+      module M {
+        fn greet(name: String) -> String { "hello" }
+
+        test "greet works" {
+          assert greet("world") == "hello"
+        }
+
+        fn add(a: Int, b: Int) -> Int { a + b }
+
+        test "add works" {
+          assert add(1, 2) == 3
+        }
+      }
+      """
+
+      assert {:ok, %AST.Module{declarations: decls}} = parse(source)
+      assert [%AST.Fn{}, %AST.Test{}, %AST.Fn{}, %AST.Test{}] = decls
+    end
+  end
 end
