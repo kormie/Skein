@@ -4,7 +4,7 @@
 
 Skein compiles to BEAM bytecode and runs on the Erlang VM — the same battle-tested runtime behind WhatsApp, Discord, and millions of telecom systems. It's designed for building cloud services where reliability matters and AI agents do real work.
 
-```
+```rust
 agent RefundAgent {
   capability model("anthropic", "claude-sonnet-4-5")
   capability tool.use("Stripe.CreateRefund")
@@ -53,7 +53,7 @@ Most languages treat AI agents as library code running inside a general-purpose 
 
 ### 12 constructs. One way to do things.
 
-```
+```rust
 -- Bindings are immutable
 let user = store.users.get!(id)
 
@@ -74,7 +74,7 @@ request.body
 
 ### Types as contracts
 
-```
+```rust
 type Money {
   amount: Int       @min(0)
   currency: String  @one_of(["USD", "CAD", "EUR"])
@@ -98,7 +98,7 @@ Annotations like `@min`, `@max`, and `@one_of` flow through to JSON Schema, vali
 
 ### Capabilities declare intent
 
-```
+```rust
 module PaymentService {
   capability http.in
   capability http.out("api.stripe.com", methods: [POST])
@@ -112,7 +112,7 @@ module PaymentService {
 
 ### Handlers respond to the world
 
-```
+```rust
 handler http POST "/refunds" (req) -> {
   let input = req.json[RefundRequest]?
   RefundAgent.start(ticket_id: input.ticket_id, customer_id: input.customer_id)
@@ -134,7 +134,7 @@ handler schedule "0 9 * * MON" (tick) -> {
 
 ### Tools separate contract from implementation
 
-```
+```rust
 tool Stripe.CreateRefund {
   description: "Creates a refund via Stripe."
 
