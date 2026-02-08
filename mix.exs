@@ -18,7 +18,11 @@ defmodule Skein.MixProject do
   defp aliases do
     [
       "skein.compile": ["run -e 'Skein.CLI.compile(System.argv())'"],
-      "skein.spec": ["run -e 'Skein.CLI.spec(System.argv())'"]
+      "skein.new": ["run -e 'Skein.CLI.new(System.argv())'"],
+      "skein.build": ["run -e 'Skein.CLI.build(System.argv())'"],
+      "skein.test": ["run -e 'Skein.CLI.test_all(System.argv())'"],
+      "skein.run": ["run -e 'Skein.CLI.run(System.argv())'"],
+      "skein.trace": ["run -e 'Skein.CLI.trace(System.argv())'"]
     ]
   end
 end

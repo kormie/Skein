@@ -36,11 +36,11 @@ Skein is an Elixir umbrella project:
 
 ```
 skein/
-  mix.exs               # Root umbrella
+  mix.exs               # Root umbrella (mix aliases for skein.* commands)
   apps/
-    skein_compiler/      # Where all current work lives
-    skein_runtime/       # Stub for future runtime
-    skein_cli/           # Stub for future CLI
+    skein_compiler/      # Lexer, parser, analyzer, code generator
+    skein_runtime/       # Agents, HTTP, handlers, store, memory, LLM, tools, trace
+    skein_cli/           # CLI: new, build, test, run, trace
   docs/                  # Specifications and documentation
   examples/              # Example .skein programs
 ```
@@ -50,11 +50,20 @@ skein/
 ### Running Tests
 
 ```bash
-# All tests (162 checks: 134 unit + 28 property)
+# All tests (651 checks: 594 unit + 57 property)
 mix test
 
 # Verbose output
 mix test --trace
+
+# Just compiler tests
+mix test apps/skein_compiler/test/
+
+# Just runtime tests
+mix test apps/skein_runtime/test/
+
+# Just CLI tests
+mix test apps/skein_cli/test/
 
 # Specific test file
 mix test apps/skein_compiler/test/skein/parser_test.exs
