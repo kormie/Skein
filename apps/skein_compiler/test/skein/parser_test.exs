@@ -1254,10 +1254,10 @@ defmodule Skein.ParserTest do
     test "parses tool.call expression" do
       source = """
       module M {
-        capability tool.use("MyTool")
+        capability tool.use(MyTool)
 
         fn f(args: String) -> String {
-          tool.call("MyTool", args)
+          tool.call(MyTool, args)
         }
       }
       """
@@ -1275,7 +1275,7 @@ defmodule Skein.ParserTest do
     test "parses tool.list expression" do
       source = """
       module M {
-        capability tool.use("MyTool")
+        capability tool.use(MyTool)
 
         fn f() -> String {
           tool.list()
@@ -1294,10 +1294,10 @@ defmodule Skein.ParserTest do
     test "parses tool.schema expression" do
       source = """
       module M {
-        capability tool.use("MyTool")
+        capability tool.use(MyTool)
 
         fn f() -> String {
-          tool.schema("MyTool")
+          tool.schema(MyTool)
         }
       }
       """
@@ -1313,10 +1313,10 @@ defmodule Skein.ParserTest do
     test "parses tool.call result in let binding" do
       source = """
       module M {
-        capability tool.use("CreateRefund")
+        capability tool.use(CreateRefund)
 
         fn f(args: String) -> String {
-          let result = tool.call("CreateRefund", args)
+          let result = tool.call(CreateRefund, args)
           result
         }
       }
@@ -1867,6 +1867,145 @@ defmodule Skein.ParserTest do
       assert h1.source == "http"
       assert h2.source == "queue"
       assert h3.source == "schedule"
+    end
+  end
+
+  # ------------------------------------------------------------------
+  # Tool identifier references (capability-as-import)
+  # ------------------------------------------------------------------
+
+  describe "parse/1 - tool identifier references" do
+    test "parses capability tool.use with identifier param" do
+      source = """
+      module M {
+        capability tool.use(CreateRefund)
+      }
+      """
+
+      assert {:ok, %AST.Module{declarations: [cap]}} = parse(source)
+      assert %AST.Capability{kind: "tool.use"} = cap
+      assert [%AST.ToolRef{name: "CreateRefund"}] = cap.params
+    end
+
+    test "parses capability tool.use with dotted identifier param" do
+      source = """
+      module M {
+        capability tool.use(Stripe.CreateRefund)
+      }
+      """
+
+      assert {:ok, %AST.Module{declarations: [cap]}} = parse(source)
+      assert %AST.Capability{kind: "tool.use"} = cap
+
+      assert [%AST.ToolRef{name: "Stripe.CreateRefund"}] = cap.params
+    end
+
+    test "parses capability tool.use with multiple identifier params" do
+      source = """
+      module M {
+        capability tool.use(CreateRefund, GetBalance)
+      }
+      """
+
+      assert {:ok, %AST.Module{declarations: [cap]}} = parse(source)
+      assert %AST.Capability{kind: "tool.use"} = cap
+      assert [%AST.ToolRef{name: "CreateRefund"}, %AST.ToolRef{name: "GetBalance"}] = cap.params
+    end
+
+    test "parses capability tool.use with multiple dotted identifier params" do
+      source = """
+      module M {
+        capability tool.use(Stripe.CreateRefund, Stripe.GetBalance)
+      }
+      """
+
+      assert {:ok, %AST.Module{declarations: [cap]}} = parse(source)
+      assert %AST.Capability{kind: "tool.use"} = cap
+
+      assert [%AST.ToolRef{name: "Stripe.CreateRefund"}, %AST.ToolRef{name: "Stripe.GetBalance"}] =
+               cap.params
+    end
+
+    test "parses tool.call with identifier first arg" do
+      source = """
+      module M {
+        capability tool.use(MyTool)
+
+        fn f(args: String) -> String {
+          tool.call(MyTool, args)
+        }
+      }
+      """
+
+      assert {:ok, %AST.Module{declarations: [_cap, fn_decl]}} = parse(source)
+      assert %AST.Block{expressions: [call]} = fn_decl.body
+
+      assert %AST.Call{
+               target: %AST.FieldAccess{subject: %AST.Identifier{name: "tool"}, field: "call"}
+             } = call
+
+      assert [%AST.ToolRef{name: "MyTool"}, %AST.Identifier{name: "args"}] = call.args
+    end
+
+    test "parses tool.call with dotted identifier first arg" do
+      source = """
+      module M {
+        capability tool.use(Stripe.CreateRefund)
+
+        fn f(args: String) -> String {
+          tool.call(Stripe.CreateRefund, args)
+        }
+      }
+      """
+
+      assert {:ok, %AST.Module{declarations: [_cap, fn_decl]}} = parse(source)
+      assert %AST.Block{expressions: [call]} = fn_decl.body
+
+      assert %AST.Call{
+               target: %AST.FieldAccess{subject: %AST.Identifier{name: "tool"}, field: "call"}
+             } = call
+
+      [tool_ref | _] = call.args
+      assert %AST.ToolRef{name: "Stripe.CreateRefund"} = tool_ref
+    end
+
+    test "parses tool.schema with identifier arg" do
+      source = """
+      module M {
+        capability tool.use(MyTool)
+
+        fn f() -> String {
+          tool.schema(MyTool)
+        }
+      }
+      """
+
+      assert {:ok, %AST.Module{declarations: [_cap, fn_decl]}} = parse(source)
+      assert %AST.Block{expressions: [call]} = fn_decl.body
+
+      assert %AST.Call{
+               target: %AST.FieldAccess{subject: %AST.Identifier{name: "tool"}, field: "schema"}
+             } = call
+
+      assert [%AST.ToolRef{name: "MyTool"}] = call.args
+    end
+
+    test "parses tool.call identifier result in let binding" do
+      source = """
+      module M {
+        capability tool.use(CreateRefund)
+
+        fn f(args: String) -> String {
+          let result = tool.call(CreateRefund, args)
+          result
+        }
+      }
+      """
+
+      assert {:ok, %AST.Module{declarations: [_cap, fn_decl]}} = parse(source)
+
+      assert %AST.Block{expressions: [%AST.Let{name: "result", value: %AST.Call{}}, _]} =
+               fn_decl.body
     end
   end
 

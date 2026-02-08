@@ -20,6 +20,8 @@ defmodule Skein.Analyzer do
   - E0024: Non-exhaustive match (warning)
   - E0025: Invalid constraint annotation
   - E0030: Missing capability for effect call
+  - E0031: Tool name not declared in capability tool.use params
+  - E0032: Duplicate short tool name in capability tool.use params
   """
 
   alias Skein.AST
@@ -1119,6 +1121,9 @@ defmodule Skein.Analyzer do
   # ------------------------------------------------------------------
 
   defp check_capabilities(declarations, env) do
+    # Check for duplicate short tool names across all tool.use capabilities
+    dup_errors = check_duplicate_tool_short_names(env)
+
     fn_errors =
       declarations
       |> Enum.filter(&match?(%AST.Fn{}, &1))
@@ -1129,7 +1134,7 @@ defmodule Skein.Analyzer do
       |> Enum.filter(&match?(%AST.Handler{}, &1))
       |> Enum.flat_map(&collect_effect_calls(&1.body, env))
 
-    fn_errors ++ handler_errors
+    dup_errors ++ fn_errors ++ handler_errors
   end
 
   # Walk the AST to find effect calls and check them against declared capabilities
@@ -1154,6 +1159,30 @@ defmodule Skein.Analyzer do
        )
        when method in @store_methods do
     check_store_capability(table_name, method, meta, env)
+  end
+
+  # Tool effect with identifier first arg: tool.call(ToolName, args) / tool.schema(ToolName)
+  # Check that the specific tool name is declared in capability tool.use params.
+  defp collect_effect_calls(
+         %AST.Call{
+           target: %AST.FieldAccess{
+             subject: %AST.Identifier{name: "tool"},
+             field: method
+           },
+           args: [first_arg | _],
+           meta: meta
+         },
+         env
+       )
+       when method in ["call", "schema"] do
+    tool_name = extract_tool_name_from_expr(first_arg)
+
+    if tool_name do
+      check_tool_capability(tool_name, method, meta, env)
+    else
+      # Non-identifier first arg (e.g. variable) — fall back to generic check
+      check_effect_capability("tool", method, meta, env)
+    end
   end
 
   defp collect_effect_calls(
@@ -1275,6 +1304,124 @@ defmodule Skein.Analyzer do
         }
       ]
     end
+  end
+
+  # ------------------------------------------------------------------
+  # Tool capability checking — identifier-based tool references
+  # ------------------------------------------------------------------
+
+  # Extract a tool name string from an AST expression.
+  # The parser produces ToolRef nodes for tool references in tool.call/tool.schema
+  # and capability tool.use params. StringLit is supported for backward compatibility.
+  @doc false
+  def extract_tool_name_from_expr(%AST.ToolRef{name: name}), do: name
+  def extract_tool_name_from_expr(%AST.StringLit{segments: [{:literal, name}]}), do: name
+  def extract_tool_name_from_expr(_), do: nil
+
+  # Extract a tool name from a capability param expression.
+  @doc false
+  def extract_tool_name_from_param(%AST.ToolRef{name: name}), do: name
+  def extract_tool_name_from_param(%AST.StringLit{segments: [{:literal, name}]}), do: name
+  def extract_tool_name_from_param(_), do: nil
+
+  # Get the short (unqualified) name of a tool, e.g. "CreateRefund" from "Stripe.CreateRefund"
+  defp tool_short_name(name) do
+    case String.split(name, ".") do
+      [short] -> short
+      parts -> List.last(parts)
+    end
+  end
+
+  # Collect all declared tool names from tool.use capabilities in env
+  defp collect_declared_tool_names(env) do
+    env.capabilities
+    |> Enum.filter(&match?(%AST.Capability{kind: "tool.use"}, &1))
+    |> Enum.flat_map(fn %AST.Capability{params: params} ->
+      params
+      |> Enum.map(&extract_tool_name_from_param/1)
+      |> Enum.reject(&is_nil/1)
+    end)
+  end
+
+  # Check that a tool.call/tool.schema references a tool declared in capability tool.use params
+  defp check_tool_capability(tool_name, _method, meta, env) do
+    declared_names = collect_declared_tool_names(env)
+
+    cond do
+      declared_names == [] ->
+        # No tool.use capability at all — produce E0030
+        [
+          %Error{
+            code: "E0030",
+            severity: :error,
+            message:
+              "Capability 'tool.use' required but not declared. " <>
+                "Effect calls to 'tool' require this capability.",
+            location: location_from_meta(meta, env.file),
+            fix_hint:
+              "Add a capability declaration to the module: capability tool.use(#{tool_name})",
+            fix_code: "capability tool.use(#{tool_name})"
+          }
+        ]
+
+      tool_name in declared_names ->
+        # Exact match found
+        []
+
+      true ->
+        # Has tool.use but this specific tool is not listed
+        [
+          %Error{
+            code: "E0031",
+            severity: :error,
+            message:
+              "Tool '#{tool_name}' is not declared in any capability tool.use. " <>
+                "Declared tools: #{Enum.join(declared_names, ", ")}.",
+            location: location_from_meta(meta, env.file),
+            fix_hint:
+              "Add '#{tool_name}' to your capability declaration: capability tool.use(#{tool_name})",
+            fix_code: "capability tool.use(#{tool_name})"
+          }
+        ]
+    end
+  end
+
+  # Check that no two tool.use params produce the same short name
+  defp check_duplicate_tool_short_names(env) do
+    declared_names = collect_declared_tool_names(env)
+
+    # Group by short name and find duplicates
+    declared_names
+    |> Enum.group_by(&tool_short_name/1)
+    |> Enum.flat_map(fn {short_name, full_names} ->
+      if length(full_names) > 1 do
+        # Find a capability meta to attach the error to
+        cap_meta =
+          env.capabilities
+          |> Enum.filter(&match?(%AST.Capability{kind: "tool.use"}, &1))
+          |> List.first()
+          |> then(fn
+            %AST.Capability{meta: meta} -> meta
+            _ -> %{line: 1, col: 1, file: env.file}
+          end)
+
+        [
+          %Error{
+            code: "E0032",
+            severity: :error,
+            message:
+              "Duplicate short tool name '#{short_name}'. " <>
+                "The following tools share the same short name: #{Enum.join(full_names, ", ")}. " <>
+                "Tool names must be unique within a module.",
+            location: location_from_meta(cap_meta, env.file),
+            fix_hint: "Rename one of the tools to avoid the naming conflict",
+            fix_code: nil
+          }
+        ]
+      else
+        []
+      end
+    end)
   end
 
   # ------------------------------------------------------------------
