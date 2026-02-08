@@ -11,7 +11,7 @@ defmodule Skein.Compiler do
   alias Skein.Analyzer
   alias Skein.CodeGen.CoreErlang
 
-  @spec compile_file(String.t()) :: {:ok, module()} | {:error, [Skein.Error.t()]}
+  @spec compile_file(String.t()) :: {:module, module()} | {:error, [Skein.Error.t()]}
   def compile_file(path) do
     with {:ok, source} <- File.read(path),
          {:ok, tokens} <- Lexer.tokenize(source),
@@ -23,7 +23,7 @@ defmodule Skein.Compiler do
     end
   end
 
-  @spec compile_string(String.t()) :: {:ok, module()} | {:error, [Skein.Error.t()]}
+  @spec compile_string(String.t()) :: {:module, module()} | {:error, [Skein.Error.t()]}
   def compile_string(source) do
     with {:ok, tokens} <- Lexer.tokenize(source),
          {:ok, ast} <- Parser.parse(tokens),

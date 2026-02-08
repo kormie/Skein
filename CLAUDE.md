@@ -86,6 +86,8 @@ skein/
 # skein_compiler/mix.exs
 {:nimble_parsec, "~> 1.4"},
 {:jason, "~> 1.4"},           # JSON for structured errors and schema gen
+{:stream_data, "~> 1.1", only: [:test, :dev]},   # Property-based testing
+{:propcheck, "~> 1.4", only: [:test, :dev]},      # Stateful property testing
 
 # skein_runtime/mix.exs
 {:gen_state_machine, "~> 3.0"},
@@ -160,13 +162,40 @@ end
 ```
 
 ### Testing Conventions
+
+**TDD is mandatory.** Write tests before or alongside implementation — never after. Every public function must have tests covering its happy path and error cases before the implementation is considered done.
+
 - Every compiler phase has its own test directory under `spec/`
 - Spec tests use `.skein` source files as input and compare against expected output
 - Use snapshot testing for AST and Core Erlang output (store expected output in `.expected` files)
 - Runtime tests use ExUnit with Skein-specific helpers
+- Integration tests compile `.skein` source to BEAM and call the resulting functions
+
+**Property Testing** is required for components with wide input spaces:
+
+| Library | Use Case | When to Use |
+|---------|----------|-------------|
+| `StreamData` | Standard property-based testing | Lexer (random valid/invalid source strings), parser (generated token streams), type checker (generated type combinations), codegen (generated ASTs) |
+| `PropCheck` (PropEr) | Stateful/state-machine testing | Agent lifecycle (phase transitions), runtime behaviours (gen_statem sequences), store operations (sequential command sequences) |
+
+- Use `StreamData` generators for all data-in/data-out functions (pure transforms)
+- Use `PropCheck`'s `forall` and state machine testing for stateful components
+- Property tests go alongside unit tests in the same test file
+- Name property tests descriptively: `property "lexer round-trips all valid tokens"`
 
 ```elixir
-# Example compiler test
+# Example: property test for lexer
+use ExUnitProperties
+
+property "tokenizing any valid identifier produces an :ident token" do
+  check all name <- identifier_generator() do
+    assert {:ok, [{:ident, {1, 1}, ^name}, {:eof, _}]} = Skein.Lexer.tokenize(name)
+  end
+end
+```
+
+```elixir
+# Example: unit test
 defmodule Skein.LexerTest do
   use ExUnit.Case
 
