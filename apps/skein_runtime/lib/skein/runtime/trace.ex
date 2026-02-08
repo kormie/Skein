@@ -23,7 +23,11 @@ defmodule Skein.Runtime.Trace do
   @spec init() :: :ok
   def init do
     if :ets.whereis(@table) == :undefined do
-      :ets.new(@table, [:named_table, :ordered_set, :public, read_concurrency: true])
+      try do
+        :ets.new(@table, [:named_table, :ordered_set, :public, read_concurrency: true])
+      rescue
+        ArgumentError -> :ok
+      end
     end
 
     :ok

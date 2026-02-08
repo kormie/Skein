@@ -365,4 +365,181 @@ defmodule Skein.ParserPropertyTest do
       assert tool.meta.col >= 1
     end
   end
+
+  # ------------------------------------------------------------------
+  # Scenario declaration properties (Phase 8a)
+  # ------------------------------------------------------------------
+
+  defp given_binding_gen do
+    gen all(
+          name <- lower_ident_gen(),
+          value <- literal_expr_gen()
+        ) do
+      "#{name}: #{value}"
+    end
+  end
+
+  defp scenario_gen do
+    gen all(
+          desc <-
+            StreamData.string(Enum.to_list(?a..?z) ++ [?\s], min_length: 1, max_length: 20),
+          bindings <- StreamData.list_of(given_binding_gen(), min_length: 1, max_length: 3),
+          assertion_expr <- binary_expr_gen()
+        ) do
+      bindings_str = Enum.join(bindings, "\n      ")
+
+      """
+      scenario "#{desc}" {
+          given {
+            #{bindings_str}
+          }
+          expect {
+            assert #{assertion_expr}
+          }
+        }
+      """
+    end
+  end
+
+  property "any generated scenario declaration lexes and parses successfully" do
+    check all(
+            mod_name <- upper_ident_gen(),
+            scenario_decl <- scenario_gen()
+          ) do
+      source = "module #{mod_name} {\n  #{scenario_decl}\n}"
+      {:ok, tokens} = Lexer.tokenize(source)
+      assert {:ok, %AST.Module{declarations: [%AST.Scenario{}]}} = Parser.parse(tokens)
+    end
+  end
+
+  property "scenario description matches generated description" do
+    check all(
+            mod_name <- upper_ident_gen(),
+            desc <-
+              StreamData.string(Enum.to_list(?a..?z) ++ [?\s], min_length: 1, max_length: 15),
+            binding <- given_binding_gen()
+          ) do
+      source = """
+      module #{mod_name} {
+        scenario "#{desc}" {
+          given { #{binding} }
+          expect { assert true }
+        }
+      }
+      """
+
+      {:ok, tokens} = Lexer.tokenize(source)
+      {:ok, %AST.Module{declarations: [scenario]}} = Parser.parse(tokens)
+      assert scenario.description == desc
+    end
+  end
+
+  property "scenario given var count matches generated bindings" do
+    check all(
+            mod_name <- upper_ident_gen(),
+            bindings <- StreamData.list_of(given_binding_gen(), min_length: 1, max_length: 4)
+          ) do
+      bindings_str = Enum.join(bindings, "\n      ")
+
+      source = """
+      module #{mod_name} {
+        scenario "test" {
+          given { #{bindings_str} }
+          expect { assert true }
+        }
+      }
+      """
+
+      {:ok, tokens} = Lexer.tokenize(source)
+      {:ok, %AST.Module{declarations: [scenario]}} = Parser.parse(tokens)
+      assert length(scenario.given_vars) == length(bindings)
+    end
+  end
+
+  property "scenario preserves source location metadata" do
+    check all(
+            mod_name <- upper_ident_gen(),
+            scenario_decl <- scenario_gen()
+          ) do
+      source = "module #{mod_name} {\n  #{scenario_decl}\n}"
+      {:ok, tokens} = Lexer.tokenize(source)
+      {:ok, %AST.Module{declarations: [scenario]}} = Parser.parse(tokens)
+      assert is_map(scenario.meta)
+      assert scenario.meta.line >= 1
+      assert scenario.meta.col >= 1
+    end
+  end
+
+  # ------------------------------------------------------------------
+  # Golden declaration properties (Phase 8a)
+  # ------------------------------------------------------------------
+
+  defp trace_file_gen do
+    gen all(
+          dir <- StreamData.member_of(["traces", "data", "test"]),
+          name <-
+            StreamData.string(Enum.to_list(?a..?z) ++ [?_], min_length: 1, max_length: 10)
+        ) do
+      "#{dir}/#{name}.json"
+    end
+  end
+
+  defp golden_gen do
+    gen all(
+          desc <-
+            StreamData.string(Enum.to_list(?a..?z) ++ [?\s], min_length: 1, max_length: 20),
+          trace_file <- trace_file_gen(),
+          assertion_expr <- binary_expr_gen()
+        ) do
+      """
+      golden "#{desc}" from trace "#{trace_file}" {
+          assert #{assertion_expr}
+        }
+      """
+    end
+  end
+
+  property "any generated golden declaration lexes and parses successfully" do
+    check all(
+            mod_name <- upper_ident_gen(),
+            golden_decl <- golden_gen()
+          ) do
+      source = "module #{mod_name} {\n  #{golden_decl}\n}"
+      {:ok, tokens} = Lexer.tokenize(source)
+      assert {:ok, %AST.Module{declarations: [%AST.Golden{}]}} = Parser.parse(tokens)
+    end
+  end
+
+  property "golden trace file matches generated path" do
+    check all(
+            mod_name <- upper_ident_gen(),
+            trace_file <- trace_file_gen()
+          ) do
+      source = """
+      module #{mod_name} {
+        golden "test" from trace "#{trace_file}" {
+          assert true
+        }
+      }
+      """
+
+      {:ok, tokens} = Lexer.tokenize(source)
+      {:ok, %AST.Module{declarations: [golden]}} = Parser.parse(tokens)
+      assert golden.trace_file == trace_file
+    end
+  end
+
+  property "golden preserves source location metadata" do
+    check all(
+            mod_name <- upper_ident_gen(),
+            golden_decl <- golden_gen()
+          ) do
+      source = "module #{mod_name} {\n  #{golden_decl}\n}"
+      {:ok, tokens} = Lexer.tokenize(source)
+      {:ok, %AST.Module{declarations: [golden]}} = Parser.parse(tokens)
+      assert is_map(golden.meta)
+      assert golden.meta.line >= 1
+      assert golden.meta.col >= 1
+    end
+  end
 end

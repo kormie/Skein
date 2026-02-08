@@ -441,6 +441,29 @@ end
 
 Backed by ETS for ephemeral (fast, lost on restart) or Postgres/SQLite for durable (slower, survives restart). Agents use durable memory by default; the runtime handles serialization.
 
+### 2.8 Replay Engine (`Skein.Runtime.Replay`)
+
+Deterministic replay engine for golden trace tests. Loads recorded trace files (JSON arrays of span objects) and replays them against the current runtime to verify behavior hasn't regressed.
+
+```elixir
+defmodule Skein.Runtime.Replay do
+  # Load a trace file from disk — returns parsed span list or raises
+  @spec load_trace(String.t()) :: list(map())
+  def load_trace(path)
+
+  # Replay spans, returning {span, result} tuples
+  @spec replay(list(map())) :: list({map(), term()})
+  def replay(spans)
+end
+```
+
+Supported span kinds: `handler`, `llm`, `memory`, `http`. Unknown kinds are passed through gracefully.
+
+Used by compiled golden test functions:
+1. `load_trace/1` reads and parses the JSON trace file
+2. Test body runs assertions against the loaded trace data
+3. Future: `replay/1` will re-execute spans against actual runtime modules for full deterministic replay
+
 ---
 
 ## 3. Supervision Tree

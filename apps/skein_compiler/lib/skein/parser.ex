@@ -271,6 +271,14 @@ defmodule Skein.Parser do
     parse_test_decl(tokens, file)
   end
 
+  defp parse_declaration([{:scenario, _} | _] = tokens, file) do
+    parse_scenario_decl(tokens, file)
+  end
+
+  defp parse_declaration([{:golden, _} | _] = tokens, file) do
+    parse_golden_decl(tokens, file)
+  end
+
   defp parse_declaration([{token_type, {line, col}} | _], file) do
     {:error,
      [
@@ -278,7 +286,7 @@ defmodule Skein.Parser do
          code: "E0001",
          severity: :error,
          message:
-           "Unexpected token #{inspect(token_type)}, expected a declaration (fn, type, enum, capability, handler, tool, test)",
+           "Unexpected token #{inspect(token_type)}, expected a declaration (fn, type, enum, capability, handler, tool, test, scenario, golden)",
          location: %{file: file, line: line, col: col},
          fix_hint: "Add a valid declaration keyword"
        }
@@ -292,7 +300,7 @@ defmodule Skein.Parser do
          code: "E0001",
          severity: :error,
          message:
-           "Unexpected token #{inspect(token_type)}, expected a declaration (fn, type, enum, capability, handler, tool, test)",
+           "Unexpected token #{inspect(token_type)}, expected a declaration (fn, type, enum, capability, handler, tool, test, scenario, golden)",
          location: %{file: file, line: line, col: col},
          fix_hint: "Add a valid declaration keyword"
        }
@@ -658,6 +666,130 @@ defmodule Skein.Parser do
       _ ->
         unexpected_token_error(rest, file, "a test description string")
     end
+  end
+
+  # ------------------------------------------------------------------
+  # Scenario declaration
+  # scenario "description" { given { k: v, ... } expect { assertions } }
+  # ------------------------------------------------------------------
+
+  defp parse_scenario_decl([{:scenario, {line, col}} | rest], file) do
+    case rest do
+      [{:string, _, segments} | rest2] ->
+        description =
+          segments
+          |> Enum.map(fn
+            {:literal, text} -> text
+            {:interpolation, _} -> ""
+          end)
+          |> Enum.join()
+
+        with {:ok, _lbrace, rest3} <- expect(:lbrace, rest2, file),
+             {:ok, given_vars, rest3} <- parse_given_block(rest3, file),
+             {:ok, expect_body, rest3} <- parse_expect_block(rest3, file),
+             {:ok, _rbrace, rest3} <- expect(:rbrace, rest3, file) do
+          scenario = %AST.Scenario{
+            description: description,
+            given_vars: given_vars,
+            expect_body: expect_body,
+            meta: %{line: line, col: col, file: file}
+          }
+
+          {:ok, scenario, rest3}
+        end
+
+      _ ->
+        unexpected_token_error(rest, file, "a scenario description string")
+    end
+  end
+
+  # Parse given { key: expr, key: expr, ... }
+  defp parse_given_block([{:given, _}, {:lbrace, _} | rest], file) do
+    parse_given_vars(rest, file, [])
+  end
+
+  defp parse_given_block(tokens, file) do
+    unexpected_token_error(tokens, file, "'given'")
+  end
+
+  defp parse_given_vars([{:rbrace, _} | rest], _file, acc) do
+    {:ok, Enum.reverse(acc), rest}
+  end
+
+  defp parse_given_vars([{:comma, _} | rest], file, acc) do
+    parse_given_vars(rest, file, acc)
+  end
+
+  defp parse_given_vars(tokens, file, acc) do
+    with {:ok, name, rest} <- expect_lower_ident(tokens, file),
+         {:ok, _colon, rest} <- expect(:colon, rest, file),
+         {:ok, value, rest} <- parse_expression(rest, file) do
+      parse_given_vars(rest, file, [{name, value} | acc])
+    end
+  end
+
+  # Parse expect { assert expr, assert expr, ... }
+  defp parse_expect_block([{:expect, _}, {:lbrace, _} | rest], file) do
+    case parse_block_body(rest, file, []) do
+      {:ok, exprs, rest2} ->
+        block = %AST.Block{
+          expressions: exprs,
+          meta: meta_from_tokens(rest, file)
+        }
+
+        {:ok, block, rest2}
+
+      {:error, _} = error ->
+        error
+    end
+  end
+
+  defp parse_expect_block(tokens, file) do
+    unexpected_token_error(tokens, file, "'expect'")
+  end
+
+  # ------------------------------------------------------------------
+  # Golden declaration
+  # golden "description" from trace "file" { body }
+  # ------------------------------------------------------------------
+
+  defp parse_golden_decl([{:golden, {line, col}} | rest], file) do
+    case rest do
+      [{:string, _, segments} | rest2] ->
+        description =
+          segments
+          |> Enum.map(fn
+            {:literal, text} -> text
+            {:interpolation, _} -> ""
+          end)
+          |> Enum.join()
+
+        with {:ok, _from, rest3} <- expect_ident_value(rest2, file, "from"),
+             {:ok, _trace, rest3} <- expect_ident_value(rest3, file, "trace"),
+             {:ok, trace_file, rest3} <- expect_string_literal(rest3, file),
+             {:ok, body, rest3} <- parse_block(rest3, file) do
+          golden = %AST.Golden{
+            description: description,
+            trace_file: trace_file,
+            body: body,
+            meta: %{line: line, col: col, file: file}
+          }
+
+          {:ok, golden, rest3}
+        end
+
+      _ ->
+        unexpected_token_error(rest, file, "a golden test description string")
+    end
+  end
+
+  # Expect a specific identifier value (for parsing contextual keywords like "from", "trace")
+  defp expect_ident_value([{:ident, _, value} | rest], _file, value) do
+    {:ok, value, rest}
+  end
+
+  defp expect_ident_value(tokens, file, expected) do
+    unexpected_token_error(tokens, file, "'#{expected}'")
   end
 
   # ------------------------------------------------------------------

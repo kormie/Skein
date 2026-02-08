@@ -21,6 +21,8 @@ defmodule Skein.AST do
 
   defmodule Supervisor, do: defstruct([:name, :children, :strategy, :max_restarts, :meta])
   defmodule Test, do: defstruct([:description, :body, :meta])
+  defmodule Scenario, do: defstruct([:description, :given_vars, :expect_body, :meta])
+  defmodule Golden, do: defstruct([:description, :trace_file, :body, :meta])
 
   # Type nodes
   defmodule TypeRef, do: defstruct([:name, :params, :meta])
