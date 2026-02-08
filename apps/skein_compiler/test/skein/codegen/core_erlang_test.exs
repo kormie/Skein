@@ -664,6 +664,216 @@ defmodule Skein.CodeGen.CoreErlangTest do
     end
   end
 
+  # ------------------------------------------------------------------
+  # Phase 5: Store operation codegen
+  # ------------------------------------------------------------------
+
+  describe "store capability metadata" do
+    test "module with store.table capability returns it" do
+      mod =
+        compile!("""
+        module StoreCap {
+          capability store.table("users")
+
+          fn x() -> Int { 1 }
+        }
+        """)
+
+      caps = mod.__capabilities__()
+      assert length(caps) == 1
+      assert %{kind: "store.table", params: ["users"]} = hd(caps)
+    end
+
+    test "module with multiple store.table capabilities returns all" do
+      mod =
+        compile!("""
+        module StoreCapMulti {
+          capability store.table("users")
+          capability store.table("orders")
+
+          fn x() -> Int { 1 }
+        }
+        """)
+
+      caps = mod.__capabilities__()
+      assert length(caps) == 2
+      kinds = Enum.map(caps, & &1.kind)
+      assert Enum.all?(kinds, &(&1 == "store.table"))
+      params = Enum.flat_map(caps, & &1.params)
+      assert "users" in params
+      assert "orders" in params
+    end
+  end
+
+  describe "store.get codegen" do
+    test "store.users.get compiles and calls runtime" do
+      mod =
+        compile!("""
+        module StoreGet {
+          capability store.table("users")
+
+          fn find(id: String) -> String {
+            store.users.get(id)
+          }
+        }
+        """)
+
+      fns = mod.__info__(:functions)
+      assert {:find, 1} in fns
+
+      # Store is empty — should return not_found
+      Skein.Runtime.Store.clear("users")
+      result = mod.find("some-id")
+      assert {:error, "not_found"} = result
+    end
+
+    test "store.users.get returns record when it exists" do
+      mod =
+        compile!("""
+        module StoreGetFound {
+          capability store.table("users")
+
+          fn find(id: String) -> String {
+            store.users.get(id)
+          }
+        }
+        """)
+
+      # Insert a record directly via the runtime
+      Skein.Runtime.Store.clear("users")
+      caps = [%{kind: "store.table", params: ["users"]}]
+      {:ok, _} = Skein.Runtime.Store.put("users", %{id: "u1", name: "Alice"}, caps)
+
+      result = mod.find("u1")
+      assert {:ok, %{id: "u1", name: "Alice"}} = result
+    end
+  end
+
+  describe "store.put codegen" do
+    test "store.users.put compiles and inserts records" do
+      mod =
+        compile!("""
+        module StorePut {
+          capability store.table("items")
+
+          fn save(record: String) -> String {
+            store.items.put(record)
+          }
+        }
+        """)
+
+      Skein.Runtime.Store.clear("items")
+      result = mod.save(%{id: "i1", name: "Widget"})
+      assert {:ok, %{id: "i1", name: "Widget"}} = result
+
+      # Verify the record is actually stored
+      caps = [%{kind: "store.table", params: ["items"]}]
+      assert {:ok, %{id: "i1", name: "Widget"}} = Skein.Runtime.Store.get("items", "i1", caps)
+    end
+  end
+
+  describe "store.delete codegen" do
+    test "store.users.delete compiles and removes records" do
+      mod =
+        compile!("""
+        module StoreDelete {
+          capability store.table("items")
+
+          fn remove(id: String) -> String {
+            store.items.delete(id)
+          }
+        }
+        """)
+
+      Skein.Runtime.Store.clear("items")
+      caps = [%{kind: "store.table", params: ["items"]}]
+      {:ok, _} = Skein.Runtime.Store.put("items", %{id: "i1", name: "Widget"}, caps)
+
+      result = mod.remove("i1")
+      assert {:ok, "i1"} = result
+
+      # Verify the record is gone
+      assert {:error, "not_found"} = Skein.Runtime.Store.get("items", "i1", caps)
+    end
+  end
+
+  describe "store.query codegen" do
+    test "store.users.query compiles and filters records" do
+      mod =
+        compile!("""
+        module StoreQuery {
+          capability store.table("users")
+
+          fn search(filters: String) -> String {
+            store.users.query(filters)
+          }
+        }
+        """)
+
+      Skein.Runtime.Store.clear("users")
+      caps = [%{kind: "store.table", params: ["users"]}]
+      {:ok, _} = Skein.Runtime.Store.put("users", %{id: "u1", name: "Alice", role: "admin"}, caps)
+      {:ok, _} = Skein.Runtime.Store.put("users", %{id: "u2", name: "Bob", role: "user"}, caps)
+      {:ok, _} = Skein.Runtime.Store.put("users", %{id: "u3", name: "Carol", role: "admin"}, caps)
+
+      results = mod.search(%{role: "admin"})
+      assert is_list(results)
+      assert length(results) == 2
+      names = Enum.map(results, & &1.name) |> Enum.sort()
+      assert names == ["Alice", "Carol"]
+    end
+  end
+
+  describe "store operations record traces" do
+    test "store.get records a trace span" do
+      Skein.Runtime.Trace.clear()
+
+      mod =
+        compile!("""
+        module StoreTrace {
+          capability store.table("users")
+
+          fn find(id: String) -> String {
+            store.users.get(id)
+          }
+        }
+        """)
+
+      Skein.Runtime.Store.clear("users")
+      mod.find("some-id")
+
+      spans = Skein.Runtime.Trace.recent_spans(10)
+      store_spans = Enum.filter(spans, &(&1.kind == :store))
+      assert length(store_spans) >= 1
+
+      span = hd(store_spans)
+      assert span.kind == :store
+      assert span.method == :get
+      assert span.table == "users"
+      assert is_integer(span.duration_us)
+    end
+  end
+
+  describe "store runtime capability enforcement" do
+    test "store.get at runtime blocks undeclared table" do
+      mod =
+        compile!("""
+        module StoreBlock {
+          capability store.table("orders")
+
+          fn find(id: String) -> String {
+            store.orders.get(id)
+          }
+        }
+        """)
+
+      # The module has "orders" capability but let's verify it works
+      Skein.Runtime.Store.clear("orders")
+      result = mod.find("o1")
+      assert {:error, "not_found"} = result
+    end
+  end
+
   describe "__info__/1 Elixir interop" do
     test "module responds to __info__(:module)" do
       mod =

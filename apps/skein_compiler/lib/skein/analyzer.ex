@@ -55,6 +55,9 @@ defmodule Skein.Analyzer do
     "http" => ["get", "post", "put", "patch", "delete"]
   }
 
+  # Store operations: store.<table>.<method>(...)
+  @store_methods ["get", "put", "delete", "query"]
+
   # Environment tracks types, functions, variables, and capabilities in scope
   @type env :: %{
           types: %{String.t() => :builtin | AST.TypeDecl.t()},
@@ -351,6 +354,10 @@ defmodule Skein.Analyzer do
       }
     ]
   end
+
+  # @primary and @unique are storage annotations — valid on any field type
+  defp validate_annotation(%AST.Annotation{name: "primary"}, _type, _env), do: []
+  defp validate_annotation(%AST.Annotation{name: "unique"}, _type, _env), do: []
 
   defp validate_annotation(_annotation, _type, _env), do: []
 
@@ -994,6 +1001,25 @@ defmodule Skein.Analyzer do
     Enum.flat_map(exprs, &collect_effect_calls(&1, env))
   end
 
+  # Store effect: store.<table>.<method>(...)
+  # This is a three-level field access: Call(FieldAccess(FieldAccess(store, table), method), args)
+  defp collect_effect_calls(
+         %AST.Call{
+           target: %AST.FieldAccess{
+             subject: %AST.FieldAccess{
+               subject: %AST.Identifier{name: "store"},
+               field: table_name
+             },
+             field: method
+           },
+           meta: meta
+         },
+         env
+       )
+       when method in @store_methods do
+    check_store_capability(table_name, method, meta, env)
+  end
+
   defp collect_effect_calls(
          %AST.Call{
            target: %AST.FieldAccess{
@@ -1077,6 +1103,39 @@ defmodule Skein.Analyzer do
           fix_hint:
             "Add a capability declaration to the module: capability #{required_capability}",
           fix_code: "capability #{required_capability}"
+        }
+      ]
+    end
+  end
+
+  # ------------------------------------------------------------------
+  # Store capability checking
+  # ------------------------------------------------------------------
+
+  defp check_store_capability(table_name, _method, meta, env) do
+    has_capability =
+      Enum.any?(env.capabilities, fn %AST.Capability{kind: kind, params: params} ->
+        kind == "store.table" and
+          Enum.any?(params, fn
+            %AST.StringLit{segments: [{:literal, name}]} -> name == table_name
+            _ -> false
+          end)
+      end)
+
+    if has_capability do
+      []
+    else
+      [
+        %Error{
+          code: "E0030",
+          severity: :error,
+          message:
+            "Capability 'store.table(\"#{table_name}\")' required but not declared. " <>
+              "Store operations on '#{table_name}' require this capability.",
+          location: location_from_meta(meta, env.file),
+          fix_hint:
+            "Add a capability declaration to the module: capability store.table(\"#{table_name}\")",
+          fix_code: "capability store.table(\"#{table_name}\")"
         }
       ]
     end
