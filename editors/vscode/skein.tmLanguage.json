@@ -5,13 +5,23 @@
   "fileTypes": ["skein"],
   "patterns": [
     { "include": "#comment" },
+    { "include": "#agent-declaration" },
+    { "include": "#module-declaration" },
+    { "include": "#handler-declaration" },
+    { "include": "#tool-declaration" },
+    { "include": "#supervisor-declaration" },
+    { "include": "#test-declaration" },
+    { "include": "#function-definition" },
+    { "include": "#enum-declaration" },
+    { "include": "#type-declaration" },
+    { "include": "#on-handler" },
     { "include": "#string" },
     { "include": "#number" },
     { "include": "#constant" },
     { "include": "#annotation" },
     { "include": "#keyword" },
     { "include": "#type" },
-    { "include": "#function-definition" },
+    { "include": "#function-call" },
     { "include": "#function-reference" },
     { "include": "#operator" },
     { "include": "#punctuation" },
@@ -66,14 +76,39 @@
           "match": "\\b(true|false)\\b"
         },
         {
-          "name": "constant.language.skein",
-          "match": "\\b(Ok|Err|Some|None)\\b"
+          "name": "constant.language.result.skein",
+          "match": "\\b(Ok|Err)\\b"
+        },
+        {
+          "name": "constant.language.option.skein",
+          "match": "\\b(Some|None)\\b"
         }
       ]
     },
     "annotation": {
       "patterns": [
         {
+          "comment": "Annotation with arguments: @min(0), @description(\"text\")",
+          "name": "meta.annotation.skein",
+          "begin": "(@)(\\w+)(\\()",
+          "beginCaptures": {
+            "1": { "name": "punctuation.definition.annotation.skein" },
+            "2": { "name": "entity.name.decorator.skein" },
+            "3": { "name": "punctuation.definition.arguments.begin.skein" }
+          },
+          "end": "\\)",
+          "endCaptures": {
+            "0": { "name": "punctuation.definition.arguments.end.skein" }
+          },
+          "patterns": [
+            { "include": "#string" },
+            { "include": "#number" },
+            { "include": "#constant" },
+            { "include": "#identifier" }
+          ]
+        },
+        {
+          "comment": "Annotation without arguments: @primary, @unique",
           "name": "meta.annotation.skein",
           "match": "(@)(\\w+)",
           "captures": {
@@ -83,11 +118,186 @@
         }
       ]
     },
+    "module-declaration": {
+      "match": "\\b(module)\\s+([A-Z][a-zA-Z0-9_]*)\\b",
+      "captures": {
+        "1": { "name": "keyword.declaration.module.skein" },
+        "2": { "name": "entity.name.class.module.skein" }
+      }
+    },
+    "agent-declaration": {
+      "match": "\\b(agent)\\s+([A-Z][a-zA-Z0-9_]*)\\b",
+      "captures": {
+        "1": { "name": "keyword.declaration.agent.skein" },
+        "2": { "name": "entity.name.class.agent.skein" }
+      }
+    },
+    "handler-declaration": {
+      "patterns": [
+        {
+          "comment": "HTTP handler: handler http GET \"/path\" (req) ->",
+          "match": "\\b(handler)\\s+(http)\\s+(GET|POST|PUT|PATCH|DELETE)\\s+(\"[^\"]*\")\\s*\\(([a-z][a-z0-9_]*)\\)\\s*(->)",
+          "captures": {
+            "1": { "name": "keyword.declaration.handler.skein" },
+            "2": { "name": "keyword.other.handler-type.skein" },
+            "3": { "name": "keyword.other.http-method.skein" },
+            "4": { "name": "string.quoted.double.route.skein" },
+            "5": { "name": "variable.parameter.skein" },
+            "6": { "name": "keyword.operator.arrow.skein" }
+          }
+        },
+        {
+          "comment": "Queue handler: handler queue \"queue-name\" (msg) ->",
+          "match": "\\b(handler)\\s+(queue)\\s+(\"[^\"]*\")\\s*\\(([a-z][a-z0-9_]*)\\)\\s*(->)",
+          "captures": {
+            "1": { "name": "keyword.declaration.handler.skein" },
+            "2": { "name": "keyword.other.handler-type.skein" },
+            "3": { "name": "string.quoted.double.queue-name.skein" },
+            "4": { "name": "variable.parameter.skein" },
+            "5": { "name": "keyword.operator.arrow.skein" }
+          }
+        },
+        {
+          "comment": "Topic handler: handler topic \"topic-name\" (msg) ->",
+          "match": "\\b(handler)\\s+(topic)\\s+(\"[^\"]*\")\\s*\\(([a-z][a-z0-9_]*)\\)\\s*(->)",
+          "captures": {
+            "1": { "name": "keyword.declaration.handler.skein" },
+            "2": { "name": "keyword.other.handler-type.skein" },
+            "3": { "name": "string.quoted.double.topic-name.skein" },
+            "4": { "name": "variable.parameter.skein" },
+            "5": { "name": "keyword.operator.arrow.skein" }
+          }
+        },
+        {
+          "comment": "Schedule handler: handler schedule \"cron\" () ->",
+          "match": "\\b(handler)\\s+(schedule)\\s+(\"[^\"]*\")\\s*\\(([a-z][a-z0-9_]*)?\\)\\s*(->)",
+          "captures": {
+            "1": { "name": "keyword.declaration.handler.skein" },
+            "2": { "name": "keyword.other.handler-type.skein" },
+            "3": { "name": "string.quoted.double.schedule.skein" },
+            "4": { "name": "variable.parameter.skein" },
+            "5": { "name": "keyword.operator.arrow.skein" }
+          }
+        }
+      ]
+    },
+    "tool-declaration": {
+      "match": "\\b(tool)\\s+([A-Z][a-zA-Z0-9_]*(?:\\.[A-Z][a-zA-Z0-9_]*)*)\\b",
+      "captures": {
+        "1": { "name": "keyword.declaration.tool.skein" },
+        "2": { "name": "entity.name.class.tool.skein" }
+      }
+    },
+    "supervisor-declaration": {
+      "match": "\\b(supervisor)\\s+([A-Z][a-zA-Z0-9_]*)\\b",
+      "captures": {
+        "1": { "name": "keyword.declaration.supervisor.skein" },
+        "2": { "name": "entity.name.class.supervisor.skein" }
+      }
+    },
+    "test-declaration": {
+      "patterns": [
+        {
+          "comment": "test \"description\" { ... }",
+          "match": "\\b(test|scenario)\\s+(\"[^\"]*\")",
+          "captures": {
+            "1": { "name": "keyword.declaration.test.skein" },
+            "2": { "name": "string.quoted.double.test-name.skein" }
+          }
+        },
+        {
+          "comment": "golden \"name\" from trace \"file\" { ... }",
+          "match": "\\b(golden)\\s+(\"[^\"]*\")\\s+(from)\\s+(trace)\\s+(\"[^\"]*\")",
+          "captures": {
+            "1": { "name": "keyword.declaration.test.skein" },
+            "2": { "name": "string.quoted.double.test-name.skein" },
+            "3": { "name": "keyword.control.from.skein" },
+            "4": { "name": "keyword.other.trace.skein" },
+            "5": { "name": "string.quoted.double.trace-file.skein" }
+          }
+        }
+      ]
+    },
+    "enum-declaration": {
+      "match": "\\b(enum)\\s+([A-Z][a-zA-Z0-9_]*)\\b",
+      "captures": {
+        "1": { "name": "keyword.declaration.enum.skein" },
+        "2": { "name": "entity.name.type.enum.skein" }
+      }
+    },
+    "type-declaration": {
+      "match": "\\b(type)\\s+([A-Z][a-zA-Z0-9_]*)\\b",
+      "captures": {
+        "1": { "name": "keyword.declaration.type.skein" },
+        "2": { "name": "entity.name.type.skein" }
+      }
+    },
+    "on-handler": {
+      "patterns": [
+        {
+          "comment": "Agent event handler: on start(...) -> or on phase(Phase.X) ->",
+          "match": "\\b(on)\\s+(start|phase)\\b",
+          "captures": {
+            "1": { "name": "keyword.control.on.skein" },
+            "2": { "name": "keyword.other.event.skein" }
+          }
+        }
+      ]
+    },
+    "function-definition": {
+      "match": "\\b(fn)\\s+([a-z][a-z0-9_]*)",
+      "captures": {
+        "1": { "name": "keyword.declaration.function.skein" },
+        "2": { "name": "entity.name.function.skein" }
+      }
+    },
+    "function-call": {
+      "patterns": [
+        {
+          "comment": "Namespaced function call: Module.function(",
+          "match": "\\b([A-Z][a-zA-Z0-9_]*)\\s*\\.\\s*([a-z][a-z0-9_]*)\\s*(?=\\()",
+          "captures": {
+            "1": { "name": "entity.name.type.skein" },
+            "2": { "name": "entity.name.function.call.skein" }
+          }
+        },
+        {
+          "comment": "Effect operations: llm.chat, memory.put, store.get, etc.",
+          "match": "\\b(llm|memory|store|http|topic|queue|trace|config|secret|stream|task)\\s*\\.\\s*([a-z][a-z0-9_]*)\\s*(?=[\\(\\[])",
+          "captures": {
+            "1": { "name": "support.class.effect.skein" },
+            "2": { "name": "support.function.effect.skein" }
+          }
+        },
+        {
+          "comment": "respond.json, respond.text, etc.",
+          "match": "\\b(respond)\\s*\\.\\s*([a-z][a-z0-9_]*)\\s*(?=\\()",
+          "captures": {
+            "1": { "name": "support.class.respond.skein" },
+            "2": { "name": "support.function.respond.skein" }
+          }
+        },
+        {
+          "comment": "Simple function call: function_name(",
+          "match": "\\b([a-z][a-z0-9_]*)\\s*(?=\\()",
+          "captures": {
+            "1": { "name": "entity.name.function.call.skein" }
+          }
+        }
+      ]
+    },
+    "function-reference": {
+      "match": "(&)([a-z][a-z0-9_]*(?:\\.[a-z][a-z0-9_]*)*)",
+      "captures": {
+        "1": { "name": "punctuation.definition.reference.skein" },
+        "2": { "name": "entity.name.function.reference.skein" }
+      }
+    },
     "keyword": {
       "patterns": [
         {
           "name": "keyword.control.skein",
-          "match": "\\b(match|on|emit|transition|return|stop|suspend|resume|replay|given|expect|assert)\\b"
+          "match": "\\b(match|emit|transition|return|stop|suspend|resume|replay|given|expect|assert)\\b"
         },
         {
           "name": "keyword.declaration.skein",
@@ -98,8 +308,8 @@
           "match": "\\b(GET|POST|PUT|PATCH|DELETE)\\b"
         },
         {
-          "name": "keyword.other.stdlib.skein",
-          "match": "\\b(idempotent|respond|store|memory|event|llm|topic|queue|task|stream|trace|config|secret|http|schedule)\\b"
+          "name": "keyword.other.restart-policy.skein",
+          "match": "\\b(permanent|transient|temporary|one_for_one|one_for_all|rest_for_one)\\b"
         }
       ]
     },
@@ -107,7 +317,11 @@
       "patterns": [
         {
           "name": "support.type.primitive.skein",
-          "match": "\\b(Int|Float|String|Bool|Uuid|Instant|Duration|Email|Url|Option|Result|List|Map|Set)\\b"
+          "match": "\\b(Int|Float|String|Bool|Uuid|Instant|Duration|Email|Url)\\b"
+        },
+        {
+          "name": "support.type.container.skein",
+          "match": "\\b(Option|Result|List|Map|Set)\\b"
         },
         {
           "comment": "User-defined types and enum variants (PascalCase identifiers)",
@@ -115,20 +329,6 @@
           "match": "\\b[A-Z][a-zA-Z0-9_]*\\b"
         }
       ]
-    },
-    "function-definition": {
-      "match": "\\b(fn)\\s+([a-z][a-z0-9_]*)",
-      "captures": {
-        "1": { "name": "keyword.declaration.skein" },
-        "2": { "name": "entity.name.function.skein" }
-      }
-    },
-    "function-reference": {
-      "match": "(&)([a-z][a-z0-9_]*(?:\\.[a-z][a-z0-9_]*)*)",
-      "captures": {
-        "1": { "name": "punctuation.definition.reference.skein" },
-        "2": { "name": "entity.name.function.reference.skein" }
-      }
     },
     "operator": {
       "patterns": [
@@ -162,7 +362,11 @@
         },
         {
           "name": "keyword.operator.unwrap.skein",
-          "match": "[!?]"
+          "match": "!(?!=)"
+        },
+        {
+          "name": "keyword.operator.propagate.skein",
+          "match": "\\?"
         }
       ]
     },
@@ -183,8 +387,18 @@
       ]
     },
     "identifier": {
-      "name": "variable.other.skein",
-      "match": "\\b[a-z][a-z0-9_]*\\b"
+      "patterns": [
+        {
+          "comment": "Wildcard pattern",
+          "name": "variable.language.wildcard.skein",
+          "match": "\\b_\\b"
+        },
+        {
+          "comment": "Snake-case identifiers (variables, parameters, fields)",
+          "name": "variable.other.skein",
+          "match": "\\b[a-z][a-z0-9_]*\\b"
+        }
+      ]
     }
   }
 }

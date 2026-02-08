@@ -32,6 +32,11 @@
       "purpose": "Test strategies — unit tests, property-based tests"
     },
     {
+      "slug": "editor",
+      "label": "Editor Support",
+      "purpose": "Editor integrations — VS Code extension, Language Server Protocol (LSP)"
+    },
+    {
       "slug": "contributing",
       "label": "Contributing",
       "purpose": "Development setup, conventions, and contribution guidelines"
@@ -95,6 +100,14 @@
     {
       "source": "apps/skein_cli/lib/skein_cli.ex",
       "docs": ["language/testing"]
+    },
+    {
+      "source": "apps/skein_lsp/lib/skein/lsp/*.ex",
+      "docs": ["editor/vscode", "editor/language-server"]
+    },
+    {
+      "source": "editors/vscode/*",
+      "docs": ["editor/vscode"]
     }
   ],
   "terminology": {

@@ -21,7 +21,7 @@ description: What's been built, what's next, and the full 7-phase implementation
 | 8f | LLM Streaming | **Complete** | `llm.stream` with chunked responses and trace spans |
 | 8b | Storage Backend | **Complete** | Ecto/SQLite integration, schema + migration generation |
 
-**Current test suite:** 81 properties, 779 tests, 0 failures
+**Current test suite:** 81 properties, 812 tests, 0 failures
 
 ## Phase 1: Hello BEAM (Complete)
 
@@ -330,12 +330,35 @@ Ecto-backed storage with SQLite for local dev.
 - A Skein module with `capability store.table("users")` compiles and performs real CRUD against SQLite
 - 10 schema tests, 7 migration tests, 17 Ecto store tests, 5 Ecto store properties, 3 integration tests
 
+## Editor Tooling (Complete)
+
+**Goal:** VS Code extension with full Language Server Protocol support.
+
+**What was built:**
+
+### VS Code Extension (`editors/vscode/`)
+- TextMate grammar with dedicated scopes for agents, handlers, tools, supervisors, tests, effect operations, and function calls
+- Language configuration with `onEnterRules`, colorized bracket pairs, and smart indentation
+- 30+ snippets for common Skein constructs (modules, agents, handlers, tools, tests, effect calls)
+- TypeScript LSP client that launches the language server via `mix skein.lsp`
+- Configurable settings: LSP enable/disable, project path, mix command, trace level
+
+### Language Server (`apps/skein_lsp/`)
+- Built with [GenLSP](https://github.com/elixir-tools/gen_lsp) v0.11.3
+- **Diagnostics** — Real-time compiler errors from lexer → parser → analyzer, with error codes and fix hints
+- **Document symbols** — Outline view with modules, functions, handlers, types, agents, state fields, phases
+- **Hover** — Type signatures for functions, types, enums, variants, state fields, and built-in primitives
+- **Go-to-definition** — Jump to function and type definitions
+- **Code completion** — Context-aware: keywords, types, effect methods (after dot), annotations, user symbols
+- **Semantic tokens** — Enhanced highlighting via the lexer's token stream
+
+**Tests:** 33 new tests covering diagnostics, symbols, completions, hover, and semantic tokens
+
 ## Post-MVP Backlog
 
 - Erlang/Elixir FFI (`extern`)
 - Hot code upgrades
 - Web IDE (trace viewer)
-- Language Server Protocol (LSP)
 - `llm.embed` and `llm.rerank` for RAG
 - Human-in-the-loop approval workflows
 - Managed deployment platform
