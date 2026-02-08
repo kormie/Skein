@@ -1,11 +1,13 @@
 ---
 title: Type System
-description: Skein's type system -- what's supported today and what's planned.
+description: Skein's type system -- built-in types, type checking, schema derivation, and constraint annotations.
 ---
 
-## Current Type Support (Phase 1)
+## Built-in Types
 
-Phase 1 supports four primitive types. Type annotations are parsed and included in the AST, but **type checking is not yet implemented** -- the analyzer is a pass-through stub.
+Skein has a set of built-in primitive and parameterized types. Type annotations are required on all function parameters and return types.
+
+### Primitive Types
 
 | Type | Skein | Core Erlang / BEAM Representation |
 |------|-------|----------------------------------|
@@ -13,6 +15,32 @@ Phase 1 supports four primitive types. Type annotations are parsed and included 
 | `Float` | Floating-point values | Erlang float |
 | `String` | UTF-8 text | Erlang binary |
 | `Bool` | `true` / `false` | Erlang atoms `true` / `false` |
+| `Uuid` | UUID strings | Erlang binary |
+| `Instant` | Timestamps | Erlang binary |
+| `Duration` | Time durations | Erlang binary |
+| `Email` | Email addresses | Erlang binary |
+| `Url` | URL strings | Erlang binary |
+
+### Parameterized Types
+
+| Type | Description |
+|------|-------------|
+| `Option[T]` | A value that may be absent |
+| `Result[T, E]` | A value or an error |
+| `List[T]` | Ordered collection |
+| `Map[K, V]` | Key-value mapping |
+| `Set[T]` | Unique collection |
+
+Parameterized types use bracket syntax:
+
+```skein
+Option[String]
+Result[User, DbError]
+List[Int]
+Map[String, User]
+```
+
+These parse into `%AST.TypeRef{}` nodes with populated `params` lists.
 
 ## Type Annotations
 
@@ -38,22 +66,60 @@ These annotations are stored in the AST as `%AST.TypeRef{}` nodes:
 %AST.TypeRef{name: "Int", params: [], meta: %{line: 1, col: 15, file: "example.skein"}}
 ```
 
-## Parameterized Types (Parsed, Not Compiled)
+## Type Checking
 
-The parser supports parameterized types with bracket syntax:
+The analyzer's type checking pass (Pass 2) validates types across function boundaries and expressions.
 
-```skein
-Option[String]
-Result[User, DbError]
-List[Int]
-Map[String, User]
+### What Gets Checked
+
+- **Function return types:** The type of the body expression must match the declared return type
+- **Operator types:** Arithmetic operators require numeric operands, comparison operators produce Bool
+- **Match arm consistency:** All arms of a match expression must produce the same type
+- **Function call arity:** The number of arguments must match the function's parameter count
+- **Let binding inference:** Types of local bindings are inferred from their initializer expressions
+
+### Type Errors
+
+When a type mismatch is detected, the analyzer produces a structured error:
+
+```json
+{
+  "code": "E0020",
+  "severity": "error",
+  "message": "Type mismatch: expected String, got Int",
+  "location": {"file": "example.skein", "line": 5, "col": 3},
+  "fix_hint": "Check that the expression matches the expected type"
+}
 ```
 
-These parse into `%AST.TypeRef{}` nodes with populated `params` lists. They are not yet compiled or type-checked.
+### Error Codes
 
-## Type Declarations (Parsed, Not Compiled)
+| Code | Description |
+|------|-------------|
+| E0010 | Unknown identifier |
+| E0011 | Unknown type reference |
+| E0012 | Wrong function call arity |
+| E0020 | Type mismatch |
+| E0021 | Operator type error |
+| E0024 | Non-exhaustive match (warning) |
+| E0025 | Invalid constraint annotation |
 
-Record types:
+### Match Exhaustiveness
+
+The type checker warns when a match on a boolean is not exhaustive:
+
+```skein
+fn check(x: Bool) -> String {
+  match x {
+    true -> "yes"
+    -- warning E0024: missing pattern for 'false'
+  }
+}
+```
+
+## Type Declarations
+
+Record types define structured data:
 
 ```skein
 type User {
@@ -63,7 +129,7 @@ type User {
 }
 ```
 
-Enum types with optional variant data:
+Enum types define variants with optional associated data:
 
 ```skein
 enum Status {
@@ -72,6 +138,76 @@ enum Status {
   Deleted
 }
 ```
+
+## Constraint Annotations
+
+Type fields support constraint annotations that flow through to generated JSON schemas:
+
+```skein
+type Money {
+  amount: Int @min(0)
+  currency: String @one_of(["USD", "CAD", "EUR"])
+}
+
+type Config {
+  max_retries: Int @min(1) @max(10) @default(3)
+}
+```
+
+### Available Annotations
+
+| Annotation | Applies to | JSON Schema |
+|------------|-----------|-------------|
+| `@min(n)` | Int, Float | `"minimum": n` |
+| `@max(n)` | Int, Float | `"maximum": n` |
+| `@one_of([...])` | String | `"enum": [...]` |
+| `@default(v)` | Any | `"default": v` |
+
+## JSON Schema Derivation
+
+Type declarations automatically generate JSON schemas via `Skein.CodeGen.SchemaGen`:
+
+```elixir
+Skein.CodeGen.SchemaGen.generate(%AST.TypeDecl{
+  name: "User",
+  fields: [
+    %AST.Field{name: "id", type: %AST.TypeRef{name: "Uuid"}, annotations: []},
+    %AST.Field{name: "email", type: %AST.TypeRef{name: "String"}, annotations: []},
+    %AST.Field{name: "name", type: %AST.TypeRef{name: "String"}, annotations: []}
+  ]
+})
+```
+
+Produces:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "id": {"type": "string", "format": "uuid"},
+    "email": {"type": "string"},
+    "name": {"type": "string"}
+  },
+  "required": ["id", "email", "name"]
+}
+```
+
+### Type to JSON Schema Mapping
+
+| Skein Type | JSON Schema |
+|------------|-------------|
+| `String` | `{"type": "string"}` |
+| `Int` | `{"type": "integer"}` |
+| `Float` | `{"type": "number"}` |
+| `Bool` | `{"type": "boolean"}` |
+| `Uuid` | `{"type": "string", "format": "uuid"}` |
+| `Email` | `{"type": "string", "format": "email"}` |
+| `Url` | `{"type": "string", "format": "uri"}` |
+| `Instant` | `{"type": "string", "format": "date-time"}` |
+| `Duration` | `{"type": "string"}` |
+| `Option[T]` | Schema for T (not required) |
+| `List[T]` | `{"type": "array", "items": <T>}` |
+| `Map[K, V]` | `{"type": "object", "additionalProperties": <V>}` |
 
 ## How Types Are Represented in the AST
 
@@ -98,15 +234,9 @@ enum Status {
 }
 ```
 
-## What's Coming in Phase 2
+## What's Not Yet Implemented
 
-Phase 2 will add:
-
-- **Type checking** -- verify function arguments match declared parameter types, return expressions match declared return types
-- **Type inference for `let`** -- infer types of local bindings from their initializer expressions
-- **`Option[T]` and `Result[T, E]`** as built-in parameterized types with special handling
-- **`!` operator** -- unwrap a `Result`, crash on `Err`
-- **`?` operator** -- propagate an `Err`, early return from the enclosing function
-- **Match exhaustiveness** -- warn when not all enum variants are covered
-- **Schema derivation** -- automatically generate JSON Schema from type declarations
-- **Constraint annotations** -- `@min(0)`, `@max(100)`, `@one_of(["USD", "EUR"])`, `@default(25)`
+- `!` operator (unwrap a `Result`, crash on `Err`) -- parsed but not compiled
+- `?` operator (propagate an `Err`, early return) -- parsed but not compiled
+- Enum variant matching in codegen
+- Generic type checking for parameterized types (e.g., `List[Int]` vs `List[String]`)

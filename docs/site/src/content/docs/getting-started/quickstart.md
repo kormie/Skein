@@ -24,7 +24,7 @@ The project is an Elixir umbrella with three apps:
 ```
 apps/
   skein_compiler/    # Lexer, parser, analyzer, code generator
-  skein_runtime/     # OTP behaviours and runtime support (stub)
+  skein_runtime/     # HTTP client, handler dispatch, store, trace recording
   skein_cli/         # CLI tooling (stub)
 ```
 
@@ -92,10 +92,8 @@ mix test --trace
 ```
 
 The test suite includes:
-- **69 lexer unit tests** -- token recognition, edge cases, error handling
-- **47 parser unit tests** -- every AST construct, operator precedence, error recovery
-- **18 codegen integration tests** -- full pipeline from source to running BEAM code
-- **28 property-based tests** -- randomized inputs across lexer, parser, and codegen
+- **352 unit tests** across lexer, parser, analyzer, codegen, and runtime
+- **44 property-based tests** -- randomized inputs across lexer, parser, codegen, capability checking, and store operations
 
 ## Compiled Module Naming
 

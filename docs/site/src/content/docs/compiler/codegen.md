@@ -7,7 +7,7 @@ description: How the Skein code generator produces BEAM bytecode via Core Erlang
 
 The code generator (`Skein.CodeGen.CoreErlang`) translates the Skein AST into Core Erlang using Erlang's `:cerl` module, then compiles to BEAM bytecode via `:compile.forms/2`.
 
-**Location:** `apps/skein_compiler/lib/skein/codegen/core_erlang.ex` (~480 lines)
+**Location:** `apps/skein_compiler/lib/skein/codegen/core_erlang.ex` (~935 lines)
 
 ## What is Core Erlang?
 
@@ -289,7 +289,7 @@ The final step compiles the Core Erlang AST to BEAM bytecode:
 
 The `:from_core` flag tells the compiler the input is Core Erlang (not Erlang source). The `:binary` flag returns the bytecode as a binary rather than writing to disk. The `:return_errors` flag returns errors as data rather than printing to stderr.
 
-## Effect Call Generation (Phase 3)
+## Effect Call Generation
 
 When the code generator encounters an effect call like `http.get(url)`, it generates a remote call to the runtime instead of a local apply:
 
@@ -301,17 +301,48 @@ http.get(url)
 call 'Elixir.Skein.Runtime.Http':'get'(Url, Capabilities)
 ```
 
-The generator recognizes effect calls by pattern-matching on `Call{target: FieldAccess{subject: Identifier{name}, field}}` where `name` is a known effect namespace (currently `"http"`).
+The generator recognizes effect calls by pattern-matching on `Call{target: FieldAccess{subject: Identifier{name}, field}}` where `name` is a known effect namespace.
 
 ### Effect namespace to runtime module mapping
 
-| Namespace | Runtime Module |
-|-----------|---------------|
-| `http` | `Skein.Runtime.Http` |
+| Namespace | Runtime Module | Operations |
+|-----------|---------------|------------|
+| `http` | `Skein.Runtime.Http` | `get`, `post`, `put`, `patch`, `delete` |
+| `store.<table>` | `Skein.Runtime.Store` | `get`, `put`, `delete`, `query` |
+
+### Store effect compilation
+
+Store effects have a three-level namespace: `store.<table>.<operation>`. The code generator extracts the table name and operation, then generates a call to `Skein.Runtime.Store`:
+
+```skein
+-- Skein source:
+store.users.get(id)
+
+-- Compiles to (Core Erlang):
+call 'Elixir.Skein.Runtime.Store':'get'("users", Id, Capabilities)
+```
 
 ### Capabilities parameter
 
 The capabilities list is built at compile time from the module's `capability` declarations and passed as a literal argument to every runtime call. This enables the runtime to enforce capability restrictions even without access to the module metadata.
+
+## Handler Generation
+
+Handler declarations compile to regular functions with metadata. Each handler produces:
+
+1. A handler function that takes a request map and returns a response
+2. An entry in `__handlers__/0` with the method, route pattern, and parameter names
+
+```skein
+-- Skein source:
+handler http GET "/users/:id" (req) -> {
+  req.params.id
+}
+
+-- Generates:
+-- 1. A function '__handler_GET_/users/:id'/1
+-- 2. Metadata in __handlers__/0: [%{method: "GET", route: "/users/:id", params: ["id"]}]
+```
 
 ## `__capabilities__/0` Function
 

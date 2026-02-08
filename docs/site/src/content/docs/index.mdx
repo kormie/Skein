@@ -24,15 +24,17 @@ The language sits at the intersection of three ideas:
 
 ## Current Status
 
-**Phase 1 ("Hello BEAM") is complete.** The end-to-end compilation pipeline works:
+**Phases 1-5 are complete.** The full compilation pipeline is operational with type checking, capability-based security, HTTP handlers, and storage:
 
 - Lexer tokenizes Skein source into a token stream
 - Parser builds a full AST via recursive descent
+- Analyzer performs type checking, name resolution, and capability validation
 - Code generator produces Core Erlang via the `:cerl` module
 - OTP's `:compile.forms/2` compiles to BEAM bytecode
 - Modules load into the VM and functions are callable from Elixir
+- Runtime provides HTTP client, handler dispatch, store, and trace recording
 
-The test suite has **162 checks** (134 unit tests + 28 property-based tests) with 0 failures.
+The test suite has **396 checks** (352 unit tests + 44 property-based tests) with 0 failures.
 
 ## Quick Example
 

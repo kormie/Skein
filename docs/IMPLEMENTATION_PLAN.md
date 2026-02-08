@@ -67,9 +67,9 @@ Compiler errors produce JSON output with `code`, `message`, `location`, `fix_hin
 
 ### Key Decisions to Make
 
-- [ ] Exact token representation (tuple vs struct)
-- [ ] How to handle Core Erlang variable naming (Skein names → Erlang-safe names)
-- [ ] String interpolation strategy (compile to binary concatenation or `io_lib:format`)
+- [x] Exact token representation: `{:keyword, {line, col}}` tuples
+- [x] Core Erlang variable naming: snake_case to CamelCase conversion
+- [x] String interpolation: compile to `erlang:iolist_to_binary/1` over iolist
 
 ---
 
@@ -159,7 +159,7 @@ module MyService {
 
 ---
 
-## Phase 4: Handlers and HTTP Server (Weeks 7-8)
+## Phase 4: Handlers and HTTP Server (Complete)
 
 **Goal:** HTTP handlers with routing, request/response handling, and a running web server. This is the first time Skein can serve traffic.
 
@@ -211,7 +211,7 @@ module UserService {
 
 ---
 
-## Phase 5: Storage (Weeks 8-9)
+## Phase 5: Storage (Complete)
 
 **Goal:** `store.table` with typed records, basic queries, and schema migrations.
 
