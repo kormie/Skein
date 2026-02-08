@@ -206,6 +206,102 @@ defmodule Skein.AnalyzerPropertyTest do
     end
   end
 
+  # ------------------------------------------------------------------
+  # Tool capability properties (Phase 6c)
+  # ------------------------------------------------------------------
+
+  @tool_methods ~w(call list schema)
+
+  defp tool_method_gen do
+    StreamData.member_of(@tool_methods)
+  end
+
+  defp tool_name_gen do
+    gen all(
+          parts <-
+            StreamData.list_of(
+              StreamData.string(Enum.to_list(?A..?Z) ++ Enum.to_list(?a..?z),
+                min_length: 3,
+                max_length: 8
+              ),
+              min_length: 1,
+              max_length: 2
+            )
+        ) do
+      parts
+      |> Enum.map(&String.capitalize/1)
+      |> Enum.join(".")
+    end
+  end
+
+  property "any tool method without tool.use capability produces E0030 error" do
+    check all(method <- tool_method_gen()) do
+      {args, params} = tool_method_args(method)
+
+      source = """
+      module TestMod {
+        fn do_tool(#{params}) -> String {
+          tool.#{method}(#{args})
+        }
+      }
+      """
+
+      errors = analyze_errors(source)
+      capability_errors = Enum.filter(errors, &(&1.code == "E0030"))
+
+      assert length(capability_errors) >= 1,
+             "Expected E0030 error for tool.#{method} without capability, got none"
+    end
+  end
+
+  property "any tool method with tool.use capability passes" do
+    check all(
+            method <- tool_method_gen(),
+            tool_name <- tool_name_gen()
+          ) do
+      {args, params} = tool_method_args(method)
+
+      source = """
+      module TestMod {
+        capability tool.use("#{tool_name}")
+
+        fn do_tool(#{params}) -> String {
+          tool.#{method}(#{args})
+        }
+      }
+      """
+
+      result = analyze(source)
+      assert {:ok, _} = result, "Expected ok for tool.#{method} with capability"
+    end
+  end
+
+  property "tool capability errors include fix_code containing 'capability tool.use'" do
+    check all(method <- tool_method_gen()) do
+      {args, params} = tool_method_args(method)
+
+      source = """
+      module TestMod {
+        fn do_tool(#{params}) -> String {
+          tool.#{method}(#{args})
+        }
+      }
+      """
+
+      errors = analyze_errors(source)
+      capability_errors = Enum.filter(errors, &(&1.code == "E0030"))
+
+      for error <- capability_errors do
+        assert error.fix_code =~ "capability tool.use",
+               "fix_code should contain 'capability tool.use', got: #{inspect(error.fix_code)}"
+      end
+    end
+  end
+
+  defp tool_method_args("call"), do: {"name, data", "name: String, data: String"}
+  defp tool_method_args("list"), do: {"", ""}
+  defp tool_method_args("schema"), do: {"name", "name: String"}
+
   property "N distinct effect calls without capability produce N errors" do
     check all(
             methods <-

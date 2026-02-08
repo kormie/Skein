@@ -1554,4 +1554,229 @@ defmodule Skein.CodeGen.CoreErlangTest do
       assert span.model == "claude-sonnet-4-5"
     end
   end
+
+  # ------------------------------------------------------------------
+  # Tool declarations and tool.call (Phase 6c)
+  # ------------------------------------------------------------------
+
+  describe "tool declarations" do
+    test "module with tool declaration compiles successfully" do
+      mod =
+        compile_with_caps!("""
+        module ToolDeclSimple {
+          tool MyTool {
+            input { amount: Int }
+            output { id: String }
+            implement { "ok" }
+          }
+        }
+        """)
+
+      assert is_atom(mod)
+    end
+
+    test "__tools__/0 returns tool metadata" do
+      mod =
+        compile_with_caps!("""
+        module ToolMeta {
+          tool CreateRefund {
+            input { amount: Int }
+            output { id: String }
+            implement { "ok" }
+          }
+        }
+        """)
+
+      tools = mod.__tools__()
+      assert is_list(tools)
+      assert length(tools) == 1
+      [tool] = tools
+      assert tool.name == "CreateRefund"
+      assert is_list(tool.input)
+      assert is_list(tool.output)
+    end
+
+    test "__tools__/0 includes field names and types" do
+      mod =
+        compile_with_caps!("""
+        module ToolFieldInfo {
+          tool MyTool {
+            input {
+              amount: Int
+              customer_id: String
+            }
+            output {
+              id: String
+              status: String
+            }
+            implement { "ok" }
+          }
+        }
+        """)
+
+      [tool] = mod.__tools__()
+      assert length(tool.input) == 2
+      assert length(tool.output) == 2
+
+      [amount, cust] = tool.input
+      assert amount.name == "amount"
+      assert amount.type == "Int"
+      assert cust.name == "customer_id"
+      assert cust.type == "String"
+    end
+
+    test "__tools__/0 returns multiple tools" do
+      mod =
+        compile_with_caps!("""
+        module ToolMulti {
+          tool ToolA {
+            input { x: Int }
+            output { y: Int }
+            implement { 42 }
+          }
+
+          tool ToolB {
+            input { name: String }
+            output { result: String }
+            implement { "ok" }
+          }
+        }
+        """)
+
+      tools = mod.__tools__()
+      assert length(tools) == 2
+      names = Enum.map(tools, & &1.name)
+      assert "ToolA" in names
+      assert "ToolB" in names
+    end
+
+    test "tool with dotted name appears in __tools__/0" do
+      mod =
+        compile_with_caps!("""
+        module ToolDotted {
+          tool Stripe.CreateRefund {
+            input { amount: Int }
+            output { id: String }
+            implement { "ok" }
+          }
+        }
+        """)
+
+      [tool] = mod.__tools__()
+      assert tool.name == "Stripe.CreateRefund"
+    end
+
+    test "tool with description includes it in metadata" do
+      mod =
+        compile_with_caps!("""
+        module ToolDesc {
+          tool MyTool {
+            description: "A helpful tool"
+            input { x: Int }
+            output { y: Int }
+            implement { 42 }
+          }
+        }
+        """)
+
+      [tool] = mod.__tools__()
+      assert tool.description == "A helpful tool"
+    end
+  end
+
+  describe "tool.call codegen" do
+    setup do
+      Skein.Runtime.Tool.clear_registry()
+      Skein.Runtime.Trace.clear()
+
+      # Register a tool that the compiled code can call
+      Skein.Runtime.Tool.register("MyTool", %{}, fn input ->
+        data =
+          cond do
+            is_map(input) -> input[:data] || input["data"] || "unknown"
+            is_binary(input) -> input
+            true -> inspect(input)
+          end
+
+        {:ok, %{result: "processed_#{data}"}}
+      end)
+
+      :ok
+    end
+
+    test "tool.call compiles and dispatches to runtime" do
+      mod =
+        compile_with_caps!("""
+        module ToolCallSimple {
+          capability tool.use("MyTool")
+
+          fn invoke(data: String) -> String {
+            tool.call("MyTool", data)
+          }
+        }
+        """)
+
+      result = mod.invoke("hello")
+      assert {:ok, %{result: "processed_hello"}} = result
+    end
+
+    test "tool.list compiles and dispatches to runtime" do
+      mod =
+        compile_with_caps!("""
+        module ToolListCall {
+          capability tool.use("MyTool")
+
+          fn get_tools() -> String {
+            tool.list()
+          }
+        }
+        """)
+
+      result = mod.get_tools()
+      assert {:ok, tool_list} = result
+      assert is_list(tool_list)
+    end
+
+    test "tool.schema compiles and dispatches to runtime" do
+      mod =
+        compile_with_caps!("""
+        module ToolSchemaCall {
+          capability tool.use("MyTool")
+
+          fn get_schema() -> String {
+            tool.schema("MyTool")
+          }
+        }
+        """)
+
+      result = mod.get_schema()
+      assert {:ok, _schema} = result
+    end
+
+    test "tool.call records a trace span" do
+      Skein.Runtime.Trace.clear()
+
+      mod =
+        compile_with_caps!("""
+        module ToolCallTrace {
+          capability tool.use("MyTool")
+
+          fn invoke(data: String) -> String {
+            tool.call("MyTool", data)
+          }
+        }
+        """)
+
+      mod.invoke("test")
+
+      spans = Skein.Runtime.Trace.recent_spans(10)
+      tool_spans = Enum.filter(spans, &(&1.kind == :tool))
+      assert length(tool_spans) >= 1
+
+      span = hd(tool_spans)
+      assert span.kind == :tool
+      assert span.method == :call
+      assert span.name == "MyTool"
+    end
+  end
 end

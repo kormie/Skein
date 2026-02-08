@@ -263,6 +263,10 @@ defmodule Skein.Parser do
     parse_handler(tokens, file)
   end
 
+  defp parse_declaration([{:tool, _} | _] = tokens, file) do
+    parse_tool_decl(tokens, file)
+  end
+
   defp parse_declaration([{token_type, {line, col}} | _], file) do
     {:error,
      [
@@ -270,7 +274,7 @@ defmodule Skein.Parser do
          code: "E0001",
          severity: :error,
          message:
-           "Unexpected token #{inspect(token_type)}, expected a declaration (fn, type, enum, capability, handler)",
+           "Unexpected token #{inspect(token_type)}, expected a declaration (fn, type, enum, capability, handler, tool)",
          location: %{file: file, line: line, col: col},
          fix_hint: "Add a valid declaration keyword"
        }
@@ -284,7 +288,7 @@ defmodule Skein.Parser do
          code: "E0001",
          severity: :error,
          message:
-           "Unexpected token #{inspect(token_type)}, expected a declaration (fn, type, enum, capability, handler)",
+           "Unexpected token #{inspect(token_type)}, expected a declaration (fn, type, enum, capability, handler, tool)",
          location: %{file: file, line: line, col: col},
          fix_hint: "Add a valid declaration keyword"
        }
@@ -353,6 +357,11 @@ defmodule Skein.Parser do
     parse_dotted_ident_rest(rest, file, name)
   end
 
+  # Handle keywords that can appear as capability kind prefixes (e.g., "tool.use")
+  defp parse_dotted_ident([{:tool, _} | rest], file) do
+    parse_dotted_ident_rest(rest, file, "tool")
+  end
+
   defp parse_dotted_ident(tokens, file) do
     unexpected_token_error(tokens, file, "a capability kind (e.g., http.out)")
   end
@@ -418,6 +427,198 @@ defmodule Skein.Parser do
 
   defp expect_string_literal(tokens, file) do
     unexpected_token_error(tokens, file, "a route string")
+  end
+
+  # ------------------------------------------------------------------
+  # Tool declaration
+  # tool DottedName { description: "..." input { ... } output { ... } errors { ... } implement { ... } }
+  # ------------------------------------------------------------------
+
+  defp parse_tool_decl([{:tool, {line, col}} | rest], file) do
+    with {:ok, name, rest} <- parse_tool_name(rest, file),
+         {:ok, _lbrace, rest} <- expect(:lbrace, rest, file),
+         {:ok, tool_parts, rest} <-
+           parse_tool_body(rest, file, %{
+             description: nil,
+             input: nil,
+             output: nil,
+             errors: [],
+             policy: nil,
+             implement: nil
+           }),
+         {:ok, _rbrace, rest} <- expect(:rbrace, rest, file) do
+      # Validate required blocks
+      cond do
+        tool_parts.input == nil ->
+          {:error,
+           [
+             %Error{
+               code: "E0001",
+               severity: :error,
+               message: "Tool '#{name}' is missing required 'input' block",
+               location: %{file: file, line: line, col: col},
+               fix_hint: "Add an input block: input { field: Type }"
+             }
+           ]}
+
+        tool_parts.output == nil ->
+          {:error,
+           [
+             %Error{
+               code: "E0001",
+               severity: :error,
+               message: "Tool '#{name}' is missing required 'output' block",
+               location: %{file: file, line: line, col: col},
+               fix_hint: "Add an output block: output { field: Type }"
+             }
+           ]}
+
+        tool_parts.implement == nil ->
+          {:error,
+           [
+             %Error{
+               code: "E0001",
+               severity: :error,
+               message: "Tool '#{name}' is missing required 'implement' block",
+               location: %{file: file, line: line, col: col},
+               fix_hint: "Add an implement block: implement { ... }"
+             }
+           ]}
+
+        true ->
+          tool = %AST.ToolDecl{
+            name: name,
+            description: tool_parts.description,
+            input: tool_parts.input,
+            output: tool_parts.output,
+            errors: tool_parts.errors,
+            policy: tool_parts.policy,
+            implement: tool_parts.implement,
+            meta: %{line: line, col: col, file: file}
+          }
+
+          {:ok, tool, rest}
+      end
+    end
+  end
+
+  # Parse dotted tool name: UpperIdent ("." UpperIdent)*
+  defp parse_tool_name([{:upper_ident, _, name} | rest], file) do
+    parse_tool_name_rest(rest, file, name)
+  end
+
+  defp parse_tool_name(tokens, file) do
+    unexpected_token_error(
+      tokens,
+      file,
+      "a tool name (e.g., CreateRefund or Stripe.CreateRefund)"
+    )
+  end
+
+  defp parse_tool_name_rest([{:dot, _}, {:upper_ident, _, part} | rest], file, acc) do
+    parse_tool_name_rest(rest, file, acc <> "." <> part)
+  end
+
+  defp parse_tool_name_rest(rest, _file, acc) do
+    {:ok, acc, rest}
+  end
+
+  # Parse tool body: description, input, output, errors, policy, implement blocks
+  defp parse_tool_body([{:rbrace, _} | _] = tokens, _file, acc) do
+    {:ok, acc, tokens}
+  end
+
+  defp parse_tool_body([{:eof, _} | _] = tokens, _file, acc) do
+    {:ok, acc, tokens}
+  end
+
+  defp parse_tool_body([{:description, _}, {:colon, _} | rest], file, acc) do
+    case rest do
+      [{:string, _, segments} | rest2] ->
+        desc =
+          segments
+          |> Enum.map(fn
+            {:literal, text} -> text
+            {:interpolation, _} -> ""
+          end)
+          |> Enum.join()
+
+        parse_tool_body(rest2, file, %{acc | description: desc})
+
+      _ ->
+        unexpected_token_error(rest, file, "a description string")
+    end
+  end
+
+  defp parse_tool_body([{:input, _}, {:lbrace, _} | rest], file, acc) do
+    case parse_fields(rest, file, []) do
+      {:ok, fields, [{:rbrace, _} | rest2]} ->
+        parse_tool_body(rest2, file, %{acc | input: fields})
+
+      {:ok, _, rest2} ->
+        unexpected_token_error(rest2, file, "'}'")
+
+      {:error, _} = error ->
+        error
+    end
+  end
+
+  defp parse_tool_body([{:output, _}, {:lbrace, _} | rest], file, acc) do
+    case parse_fields(rest, file, []) do
+      {:ok, fields, [{:rbrace, _} | rest2]} ->
+        parse_tool_body(rest2, file, %{acc | output: fields})
+
+      {:ok, _, rest2} ->
+        unexpected_token_error(rest2, file, "'}'")
+
+      {:error, _} = error ->
+        error
+    end
+  end
+
+  defp parse_tool_body([{:errors, _}, {:lbrace, _} | rest], file, acc) do
+    case parse_error_names(rest, file, []) do
+      {:ok, names, rest2} ->
+        parse_tool_body(rest2, file, %{acc | errors: names})
+
+      {:error, _} = error ->
+        error
+    end
+  end
+
+  defp parse_tool_body([{:implement, _} | rest], file, acc) do
+    case parse_block(rest, file) do
+      {:ok, block, rest2} ->
+        parse_tool_body(rest2, file, %{acc | implement: block})
+
+      {:error, _} = error ->
+        error
+    end
+  end
+
+  defp parse_tool_body(tokens, file, _acc) do
+    unexpected_token_error(
+      tokens,
+      file,
+      "a tool section (description, input, output, errors, implement)"
+    )
+  end
+
+  # Parse error names: UpperIdent ("," UpperIdent)* "}"
+  defp parse_error_names([{:rbrace, _} | rest], _file, acc) do
+    {:ok, Enum.reverse(acc), rest}
+  end
+
+  defp parse_error_names([{:comma, _} | rest], file, acc) do
+    parse_error_names(rest, file, acc)
+  end
+
+  defp parse_error_names([{:upper_ident, _, name} | rest], file, acc) do
+    parse_error_names(rest, file, [name | acc])
+  end
+
+  defp parse_error_names(tokens, file, _acc) do
+    unexpected_token_error(tokens, file, "an error type name")
   end
 
   # ------------------------------------------------------------------
@@ -575,6 +776,43 @@ defmodule Skein.Parser do
         end
 
       parse_fields(rest, file, [field | acc])
+    end
+  end
+
+  # Handle keywords used as annotation names (e.g., @description where description is a keyword)
+  defp parse_annotations([{:at, _}, {keyword, {line, col}} | rest], file)
+       when keyword in [:description, :input, :output, :errors, :policy, :implement] do
+    name = Atom.to_string(keyword)
+
+    case rest do
+      [{:lparen, _} | rest2] ->
+        case parse_expression(rest2, file) do
+          {:ok, value, [{:rparen, _} | rest3]} ->
+            annotation = %AST.Annotation{
+              name: name,
+              value: value,
+              meta: %{line: line, col: col, file: file}
+            }
+
+            {more, rest4} = parse_annotations(rest3, file)
+            {[annotation | more], rest4}
+
+          {:ok, _, rest3} ->
+            {[], rest3}
+
+          {:error, _} ->
+            {[], rest}
+        end
+
+      _ ->
+        annotation = %AST.Annotation{
+          name: name,
+          value: nil,
+          meta: %{line: line, col: col, file: file}
+        }
+
+        {more, rest2} = parse_annotations(rest, file)
+        {[annotation | more], rest2}
     end
   end
 
@@ -1455,6 +1693,11 @@ defmodule Skein.Parser do
       {:error, _} = error ->
         error
     end
+  end
+
+  # tool as primary expression (for tool.call, tool.list, tool.schema)
+  defp parse_primary([{:tool, {line, col}} | rest], file) do
+    {:ok, %AST.Identifier{name: "tool", meta: %{line: line, col: col, file: file}}, rest}
   end
 
   # Block as primary expression

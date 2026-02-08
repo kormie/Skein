@@ -49,14 +49,16 @@ defmodule Skein.Analyzer do
   @effect_namespaces %{
     "http" => "http.out",
     "memory" => "memory.kv",
-    "llm" => "model"
+    "llm" => "model",
+    "tool" => "tool.use"
   }
 
   # Known effect methods per namespace
   @effect_methods %{
     "http" => ["get", "post", "put", "patch", "delete"],
     "memory" => ["put", "get", "get!", "delete", "list"],
-    "llm" => ["chat", "json"]
+    "llm" => ["chat", "json"],
+    "tool" => ["call", "list", "schema"]
   }
 
   # Store operations: store.<table>.<method>(...)
@@ -308,6 +310,26 @@ defmodule Skein.Analyzer do
         }
       ]
     end
+  end
+
+  defp validate_declaration(%AST.ToolDecl{input: input, output: output}, env) do
+    # Check input field types are known
+    input_errors =
+      Enum.flat_map(input || [], fn %AST.Field{type: type, annotations: annotations} ->
+        type_errors = validate_type_ref(type, env)
+        annotation_errors = validate_annotations(annotations, type, env)
+        type_errors ++ annotation_errors
+      end)
+
+    # Check output field types are known
+    output_errors =
+      Enum.flat_map(output || [], fn %AST.Field{type: type, annotations: annotations} ->
+        type_errors = validate_type_ref(type, env)
+        annotation_errors = validate_annotations(annotations, type, env)
+        type_errors ++ annotation_errors
+      end)
+
+    input_errors ++ output_errors
   end
 
   defp validate_declaration(%AST.Capability{}, _env), do: []
