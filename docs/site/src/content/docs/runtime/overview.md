@@ -13,7 +13,7 @@ The Skein runtime (`skein_runtime`) provides the libraries that compiled Skein c
 - **Handler dispatch** -- routing HTTP requests to compiled handler functions
 - **Queue dispatch** -- subscribing to named queues and dispatching messages via `Skein.Runtime.Queue`
 - **Schedule dispatch** -- cron-based scheduling and handler triggering via `Skein.Runtime.Schedule`
-- **Store** -- ETS-backed key-value storage with capability enforcement
+- **Store** -- pluggable storage with ETS (default) and Ecto/SQLite backends, capability enforcement
 - **Memory** -- scoped KV storage with namespace isolation via `Skein.Runtime.Memory`
 - **LLM client** -- provider-agnostic LLM calls with schema-constrained JSON via `Skein.Runtime.Llm`
 - **HTTP server** -- Bandit + Plug HTTP server for serving Skein handlers
@@ -177,7 +177,7 @@ Features:
 
 ### `Skein.Runtime.Store`
 
-ETS-backed key-value storage that compiled `store.table` effect calls target.
+ETS-backed key-value storage that compiled `store.table` effect calls target. Used as the default backend for local development and testing.
 
 **API:**
 
@@ -200,6 +200,28 @@ Every operation:
 2. Performs the ETS operation
 3. Records a trace span with timing and outcome
 4. Returns the result as an `{:ok, _}` or `{:error, _}` tuple
+
+### `Skein.Runtime.StoreEcto`
+
+Ecto-backed storage backend that performs real database operations against SQLite (local dev) or Postgres (production). Uses dynamically-generated Ecto schema modules mapped to Skein type declarations.
+
+**API:** Same as `Skein.Runtime.Store` (get, put, delete, query) with identical capability enforcement and tracing.
+
+**Supporting modules:**
+- `Skein.Runtime.EctoSchema` -- generates Ecto schema modules from Skein type fields and annotations (`@primary`, `@unique`)
+- `Skein.Runtime.MigrationGen` -- generates and executes Ecto migrations to create/modify database tables
+- `Skein.Runtime.Repo` -- Ecto Repo configured for SQLite3 via `ecto_sqlite3`
+
+```elixir
+# Generate schema and migration from Skein type info
+{:ok, schema_mod} = EctoSchema.build_schema("users", user_fields)
+{:ok, migration_mod} = MigrationGen.build_migration("users", user_fields)
+:ok = MigrationGen.run_migration(Skein.Runtime.Repo, migration_mod)
+
+# Register and use
+StoreEcto.register_schema("users", schema_mod)
+StoreEcto.put("users", %{id: "u1", email: "alice@test.com", name: "Alice"}, caps)
+```
 
 ### `Skein.Runtime.Memory`
 
@@ -401,18 +423,21 @@ Where `Capabilities` is a literal list built from the module's `capability` decl
 
 ## Dependencies
 
-The runtime minimizes external dependencies:
+The runtime manages its external dependencies carefully:
 
 | Dependency | Purpose |
 |-----------|---------|
 | `:inets` (OTP) | HTTP client (`:httpc`) |
 | `:ssl` (OTP) | HTTPS support |
 | `jason` | JSON encoding/decoding |
-
-No third-party HTTP libraries are required. This keeps the runtime lightweight and avoids transitive dependency issues.
+| `bandit` | HTTP server |
+| `plug` | Web framework |
+| `ecto` | Database abstraction |
+| `ecto_sql` | SQL adapter framework |
+| `ecto_sqlite3` | SQLite3 adapter for local dev |
 
 ## Test Coverage
 
 The runtime has comprehensive test coverage:
-- **21 property tests** covering capability host matching, wildcard behavior, URL extraction, store operations, request validation, and tool operations
-- **204 unit tests** covering agents, HTTP client, capability enforcement, handler dispatch, router, store operations, memory, LLM client, Bandit HTTP server, queue dispatch, schedule dispatch, trace recording, and replay engine
+- **30 property tests** covering capability host matching, wildcard behavior, URL extraction, store operations (ETS and Ecto), request validation, tool operations, and LLM streaming
+- **245 unit tests** covering agents, HTTP client, capability enforcement, handler dispatch, router, store operations (ETS and Ecto), Ecto schema generation, migration generation, memory, LLM client, Bandit HTTP server, queue dispatch, schedule dispatch, trace recording, and replay engine

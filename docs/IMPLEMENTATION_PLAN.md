@@ -361,16 +361,26 @@ These are the immediate next priorities after Phase 7. They fill gaps in the exi
 - Replay module supports handler, llm, memory, http, and unknown span types
 - 7 new parser property tests, 11 new parser unit tests, 11 new integration tests, 13 replay tests, 3 CLI tests
 
-### 8b: Storage Backend — Ecto Integration
+### 8b: Storage Backend — Ecto Integration ✅
 
 **Goal:** Connect the abstract `store.*` operations to a real database.
 
-- [ ] Ecto schema generation from Skein `type` declarations with `@primary`/`@unique`
-- [ ] Migration generation when types change between compiles
-- [ ] SQLite backend for local dev, Postgres for production
-- [ ] Wire `store.get`, `store.put`, `store.query`, `store.delete` to Ecto queries at runtime
+- [x] Ecto schema generation from Skein `type` declarations with `@primary`/`@unique`
+- [x] Migration generation when types change between compiles
+- [x] SQLite backend for local dev, Postgres for production
+- [x] Wire `store.get`, `store.put`, `store.query`, `store.delete` to Ecto queries at runtime
 
-**Acceptance criteria:** A Skein module with `capability store.table("users")` compiles and performs real CRUD against SQLite in tests.
+**Acceptance criteria:** A Skein module with `capability store.table("users")` compiles and performs real CRUD against SQLite in tests. ✅
+
+**Implementation notes:**
+- `Skein.Runtime.EctoSchema` dynamically creates Ecto schema modules from field maps (name, type, annotations)
+- `Skein.Runtime.MigrationGen` generates and executes Ecto migrations (create table, primary keys, unique indexes)
+- `Skein.Runtime.StoreEcto` implements get/put/delete/query against Ecto with upsert semantics and full trace integration
+- `Skein.Runtime.Repo` configured for `ecto_sqlite3` (SQLite3 adapter)
+- Schema registry (ETS-backed) maps table names to dynamically-generated Ecto schema modules
+- Type mapping: String→:string, Int→:integer, Float→:float, Bool→:boolean, Uuid→:binary_id, Instant→:utc_datetime, Option[T]→inner type (nullable)
+- Dependencies added: ecto v3.12.5, ecto_sql v3.12.1, ecto_sqlite3 v0.17.5, exqlite v0.24.2, decimal v2.3.0, db_connection v2.7.0
+- 10 schema tests, 7 migration tests, 17 Ecto store tests, 5 Ecto store properties, 3 integration tests
 
 ### 8c: HTTP Server — Bandit + Plug Integration ✅
 

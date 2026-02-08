@@ -83,10 +83,14 @@ Source (.skein) → Lexer → Parser → Analyzer → CodeGen → BEAM bytecode
 | `Skein.Runtime.Http` | `apps/skein_runtime/lib/skein/runtime/http.ex` | HTTP client with capability enforcement |
 | `Skein.Runtime.Capability` | `apps/skein_runtime/lib/skein/runtime/capability.ex` | Runtime capability validation |
 | `Skein.Runtime.Handler` | `apps/skein_runtime/lib/skein/runtime/handler.ex` | HTTP request dispatch |
-| `Skein.Runtime.Store` | `apps/skein_runtime/lib/skein/runtime/store.ex` | ETS-backed storage |
+| `Skein.Runtime.Store` | `apps/skein_runtime/lib/skein/runtime/store.ex` | ETS-backed storage (default) |
+| `Skein.Runtime.StoreEcto` | `apps/skein_runtime/lib/skein/runtime/store_ecto.ex` | Ecto/SQLite-backed storage |
+| `Skein.Runtime.EctoSchema` | `apps/skein_runtime/lib/skein/runtime/ecto_schema.ex` | Dynamic Ecto schema generation |
+| `Skein.Runtime.MigrationGen` | `apps/skein_runtime/lib/skein/runtime/migration_gen.ex` | Ecto migration generation |
+| `Skein.Runtime.Repo` | `apps/skein_runtime/lib/skein/runtime/repo.ex` | Ecto Repo (SQLite3) |
 | `Skein.Runtime.Memory` | `apps/skein_runtime/lib/skein/runtime/memory.ex` | Scoped KV memory |
 | `Skein.Runtime.Llm` | `apps/skein_runtime/lib/skein/runtime/llm.ex` | LLM client with schema-constrained JSON |
-| `Skein.Runtime.Server` | `apps/skein_runtime/lib/skein/runtime/server.ex` | TCP HTTP server |
+| `Skein.Runtime.Server` | `apps/skein_runtime/lib/skein/runtime/server.ex` | HTTP server |
 | `Skein.Runtime.Trace` | `apps/skein_runtime/lib/skein/runtime/trace.ex` | Trace span recording |
 
 ## Coding Conventions
@@ -126,4 +130,4 @@ Phases 1-5 are complete and Phase 6 is in progress (agents, memory, and LLM done
 - LLM client with pluggable backends and schema-constrained JSON
 - Automatic trace recording for all effect calls
 
-**Test suite:** 34 properties, 340 tests, 0 failures
+**Test suite:** 81 properties, 779 tests, 0 failures
