@@ -1,0 +1,37 @@
+// Skein Runtime Supervision Tree
+// Machine-readable DOT format for LLM consumption
+//
+// Shows how a running Skein application is structured as an OTP
+// supervision tree. The AgentSupervisor dynamically spawns agent
+// instances as gen_statem processes.
+
+digraph supervision_tree {
+    rankdir=TB;
+    node [shape=box, style="rounded,filled", fontname="Helvetica"];
+    edge [fontname="Helvetica", fontsize=10];
+
+    app [label="Skein.Application", fillcolor="#e8e8e8"];
+    runtime_sup [label="Skein.Runtime.Supervisor\n(one_for_one)", fillcolor="#cce5ff"];
+
+    store [label="Store\n(GenServer)", fillcolor="#fff3cd"];
+    memory [label="Memory\n(GenServer)", fillcolor="#fff3cd"];
+    tool_registry [label="Tool.Registry\n(GenServer)", fillcolor="#fff3cd"];
+    trace_collector [label="Trace.Collector\n(GenServer)", fillcolor="#fff3cd"];
+    http_server [label="HTTP.Server\n(Bandit)", fillcolor="#d4edda"];
+    agent_sup [label="AgentSupervisor\n(DynamicSupervisor)", fillcolor="#cce5ff"];
+
+    agent1 [label="Agent instance\n(gen_statem)", fillcolor="#f8d7da"];
+    agent2 [label="Agent instance\n(gen_statem)", fillcolor="#f8d7da"];
+    agent_n [label="...", shape=plaintext, fillcolor=white];
+
+    app -> runtime_sup;
+    runtime_sup -> store;
+    runtime_sup -> memory;
+    runtime_sup -> tool_registry;
+    runtime_sup -> trace_collector;
+    runtime_sup -> http_server;
+    runtime_sup -> agent_sup;
+    agent_sup -> agent1;
+    agent_sup -> agent2;
+    agent_sup -> agent_n;
+}
