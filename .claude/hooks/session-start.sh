@@ -48,8 +48,12 @@ install_build_deps() {
     apt-get install -y -qq \
       build-essential autoconf m4 libncurses5-dev libssl-dev \
       libssh-dev unixodbc-dev xsltproc libxml2-utils \
+      ca-certificates \
       curl git 2>/dev/null || true
   fi
+  
+  # Ensure CA certs are up to date and Erlang can find them
+  update-ca-certificates 2>/dev/null || true
 }
 
 install_build_deps
@@ -148,6 +152,7 @@ if [ -n "${CLAUDE_ENV_FILE:-}" ]; then
     # Locale fix for Elixir (needs UTF-8)
     echo "export LANG=en_US.UTF-8"
     echo "export ELIXIR_ERL_OPTIONS=\"+fnu\""
+    echo "export HEX_CACERTS_PATH=/etc/ssl/certs/ca-certificates.crt"
     # mise environment for the project directory
     mise env --shell bash 2>/dev/null || true
   } >> "$CLAUDE_ENV_FILE"
