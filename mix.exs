@@ -7,13 +7,34 @@ defmodule Skein.MixProject do
       version: "0.1.0",
       start_permanent: Mix.env() == :prod,
       deps: deps(),
-      aliases: aliases()
+      aliases: aliases(),
+      releases: releases()
     ]
   end
 
   defp deps do
     [
-      {:decimal, git: "https://github.com/ericmj/decimal.git", tag: "v2.3.0", override: true}
+      {:decimal, "~> 2.3", override: true}
+    ]
+  end
+
+  defp releases do
+    [
+      skein: [
+        applications: [
+          skein_cli: :permanent,
+          skein_compiler: :permanent,
+          skein_runtime: :permanent
+        ],
+        steps: [:assemble, &Burrito.wrap/1],
+        burrito: [
+          targets: [
+            linux: [os: :linux, cpu: :x86_64],
+            macos: [os: :darwin, cpu: :x86_64],
+            macos_arm: [os: :darwin, cpu: :aarch64]
+          ]
+        ]
+      ]
     ]
   end
 
