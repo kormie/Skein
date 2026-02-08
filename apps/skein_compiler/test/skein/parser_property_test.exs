@@ -24,28 +24,32 @@ defmodule Skein.ParserPropertyTest do
   )
 
   defp lower_ident_gen do
-    gen all first <- StreamData.member_of(Enum.to_list(?a..?z)),
-            rest <-
-              StreamData.list_of(
-                StreamData.member_of(Enum.to_list(?a..?z) ++ Enum.to_list(?0..?9) ++ [?_]),
-                min_length: 0,
-                max_length: 8
-              ) do
+    gen all(
+          first <- StreamData.member_of(Enum.to_list(?a..?z)),
+          rest <-
+            StreamData.list_of(
+              StreamData.member_of(Enum.to_list(?a..?z) ++ Enum.to_list(?0..?9) ++ [?_]),
+              min_length: 0,
+              max_length: 8
+            )
+        ) do
       name = List.to_string([first | rest])
       if name in @keywords, do: "z" <> name, else: name
     end
   end
 
   defp upper_ident_gen do
-    gen all first <- StreamData.member_of(Enum.to_list(?A..?Z)),
-            rest <-
-              StreamData.list_of(
-                StreamData.member_of(
-                  Enum.to_list(?a..?z) ++ Enum.to_list(?A..?Z) ++ Enum.to_list(?0..?9)
-                ),
-                min_length: 0,
-                max_length: 8
-              ) do
+    gen all(
+          first <- StreamData.member_of(Enum.to_list(?A..?Z)),
+          rest <-
+            StreamData.list_of(
+              StreamData.member_of(
+                Enum.to_list(?a..?z) ++ Enum.to_list(?A..?Z) ++ Enum.to_list(?0..?9)
+              ),
+              min_length: 0,
+              max_length: 8
+            )
+        ) do
       List.to_string([first | rest])
     end
   end
@@ -74,9 +78,11 @@ defmodule Skein.ParserPropertyTest do
   end
 
   defp binary_expr_gen do
-    gen all left <- simple_expr_gen(),
-            op <- StreamData.member_of(["+", "-", "*", ">", "<", "==", "!="]),
-            right <- simple_expr_gen() do
+    gen all(
+          left <- simple_expr_gen(),
+          op <- StreamData.member_of(["+", "-", "*", ">", "<", "==", "!="]),
+          right <- simple_expr_gen()
+        ) do
       "#{left} #{op} #{right}"
     end
   end
@@ -89,25 +95,31 @@ defmodule Skein.ParserPropertyTest do
   end
 
   defp param_gen do
-    gen all name <- lower_ident_gen(),
-            type <- type_name_gen() do
+    gen all(
+          name <- lower_ident_gen(),
+          type <- type_name_gen()
+        ) do
       "#{name}: #{type}"
     end
   end
 
   defp fn_gen do
-    gen all name <- lower_ident_gen(),
-            params <- StreamData.list_of(param_gen(), min_length: 0, max_length: 3),
-            ret_type <- type_name_gen(),
-            body <- body_expr_gen() do
+    gen all(
+          name <- lower_ident_gen(),
+          params <- StreamData.list_of(param_gen(), min_length: 0, max_length: 3),
+          ret_type <- type_name_gen(),
+          body <- body_expr_gen()
+        ) do
       params_str = Enum.join(params, ", ")
       "fn #{name}(#{params_str}) -> #{ret_type} {\n    #{body}\n  }"
     end
   end
 
   defp module_gen do
-    gen all mod_name <- upper_ident_gen(),
-            fns <- StreamData.list_of(fn_gen(), min_length: 1, max_length: 4) do
+    gen all(
+          mod_name <- upper_ident_gen(),
+          fns <- StreamData.list_of(fn_gen(), min_length: 1, max_length: 4)
+        ) do
       body = Enum.map_join(fns, "\n  ", & &1)
       "module #{mod_name} {\n  #{body}\n}"
     end
@@ -118,15 +130,17 @@ defmodule Skein.ParserPropertyTest do
   # ------------------------------------------------------------------
 
   property "any generated module source lexes and parses successfully" do
-    check all source <- module_gen() do
+    check all(source <- module_gen()) do
       assert {:ok, tokens} = Lexer.tokenize(source)
       assert {:ok, %AST.Module{}} = Parser.parse(tokens)
     end
   end
 
   property "parsed module name matches the generated name" do
-    check all mod_name <- upper_ident_gen(),
-            fn_decl <- fn_gen() do
+    check all(
+            mod_name <- upper_ident_gen(),
+            fn_decl <- fn_gen()
+          ) do
       source = "module #{mod_name} {\n  #{fn_decl}\n}"
       {:ok, tokens} = Lexer.tokenize(source)
       assert {:ok, %AST.Module{name: ^mod_name}} = Parser.parse(tokens)
@@ -134,8 +148,10 @@ defmodule Skein.ParserPropertyTest do
   end
 
   property "number of parsed fn declarations matches the number generated" do
-    check all mod_name <- upper_ident_gen(),
-            fns <- StreamData.list_of(fn_gen(), min_length: 1, max_length: 4) do
+    check all(
+            mod_name <- upper_ident_gen(),
+            fns <- StreamData.list_of(fn_gen(), min_length: 1, max_length: 4)
+          ) do
       body = Enum.map_join(fns, "\n  ", & &1)
       source = "module #{mod_name} {\n  #{body}\n}"
       {:ok, tokens} = Lexer.tokenize(source)
@@ -147,7 +163,7 @@ defmodule Skein.ParserPropertyTest do
   end
 
   property "every parsed function has a return type" do
-    check all source <- module_gen() do
+    check all(source <- module_gen()) do
       {:ok, tokens} = Lexer.tokenize(source)
       {:ok, %AST.Module{declarations: decls}} = Parser.parse(tokens)
 
@@ -158,7 +174,7 @@ defmodule Skein.ParserPropertyTest do
   end
 
   property "every parsed function has a block body" do
-    check all source <- module_gen() do
+    check all(source <- module_gen()) do
       {:ok, tokens} = Lexer.tokenize(source)
       {:ok, %AST.Module{declarations: decls}} = Parser.parse(tokens)
 
@@ -169,7 +185,7 @@ defmodule Skein.ParserPropertyTest do
   end
 
   property "every AST node carries source location metadata" do
-    check all source <- module_gen() do
+    check all(source <- module_gen()) do
       {:ok, tokens} = Lexer.tokenize(source)
       {:ok, %AST.Module{} = mod} = Parser.parse(tokens)
 
@@ -186,10 +202,12 @@ defmodule Skein.ParserPropertyTest do
   end
 
   property "match expression on booleans always produces exactly 2 arms" do
-    check all mod_name <- upper_ident_gen(),
+    check all(
+            mod_name <- upper_ident_gen(),
             fn_name <- lower_ident_gen(),
             left <- simple_expr_gen(),
-            right <- simple_expr_gen() do
+            right <- simple_expr_gen()
+          ) do
       source = """
       module #{mod_name} {
         fn #{fn_name}(n: Int) -> String {
@@ -209,7 +227,7 @@ defmodule Skein.ParserPropertyTest do
   end
 
   property "empty module parses with zero declarations" do
-    check all mod_name <- upper_ident_gen() do
+    check all(mod_name <- upper_ident_gen()) do
       source = "module #{mod_name} { }"
       {:ok, tokens} = Lexer.tokenize(source)
       assert {:ok, %AST.Module{name: ^mod_name, declarations: []}} = Parser.parse(tokens)

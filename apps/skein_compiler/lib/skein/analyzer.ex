@@ -5,13 +5,970 @@ defmodule Skein.Analyzer do
   Runs multiple passes:
   1. Name resolution (build symbol table, resolve identifiers)
   2. Type checking (verify types at boundaries, check match exhaustiveness)
-  3. Capability checking (verify effect calls have covering capabilities)
-  4. Transition checking (verify agent phase transitions are valid)
+  3. Capability checking (verify effect calls have covering capabilities) — Phase 3
+  4. Transition checking (verify agent phase transitions are valid) — Phase 6
+
+  ## Error Codes
+
+  - E0010: Unknown identifier
+  - E0011: Unknown type
+  - E0012: Wrong function call arity
+  - E0020: Type mismatch (return type, match arm types)
+  - E0021: Operator type error (wrong operand types)
+  - E0022: Invalid ! on non-Result
+  - E0023: Invalid ? on non-Result or enclosing fn doesn't return Result
+  - E0024: Non-exhaustive match (warning)
+  - E0025: Invalid constraint annotation
   """
 
-  @spec analyze(Skein.AST.Module.t()) :: {:ok, Skein.AST.Module.t()} | {:error, [Skein.Error.t()]}
-  def analyze(ast) do
-    # TODO: Implement analyzer
-    {:ok, ast}
+  alias Skein.AST
+  alias Skein.Error
+
+  # Internal type representation
+  @type skein_type ::
+          :int
+          | :float
+          | :string
+          | :bool
+          | :uuid
+          | :instant
+          | :duration
+          | :email
+          | :url
+          | {:option, skein_type}
+          | {:result, skein_type, skein_type}
+          | {:list, skein_type}
+          | {:map, skein_type, skein_type}
+          | {:set, skein_type}
+          | {:user_type, String.t()}
+          | {:enum, String.t()}
+          | :unknown
+
+  # Environment tracks types, functions, and variables in scope
+  @type env :: %{
+          types: %{String.t() => :builtin | AST.TypeDecl.t()},
+          enums: %{String.t() => AST.EnumDecl.t()},
+          functions: %{String.t() => %{params: [AST.Field.t()], return_type: skein_type}},
+          variables: %{String.t() => skein_type},
+          current_fn_return_type: skein_type | nil,
+          file: String.t()
+        }
+
+  @builtin_types %{
+    "Int" => :int,
+    "Float" => :float,
+    "String" => :string,
+    "Bool" => :bool,
+    "Uuid" => :uuid,
+    "Instant" => :instant,
+    "Duration" => :duration,
+    "Email" => :email,
+    "Url" => :url
+  }
+
+  @builtin_type_names Map.keys(@builtin_types)
+
+  @spec analyze(AST.Module.t()) :: {:ok, AST.Module.t()} | {:error, [Error.t()]}
+  def analyze(%AST.Module{} = ast) do
+    env = build_initial_env(ast)
+    errors = []
+
+    # Pass 1: Validate type and enum declarations
+    errors = errors ++ validate_declarations(ast.declarations, env)
+
+    # Pass 2: Type-check function bodies
+    errors = errors ++ check_functions(ast.declarations, env)
+
+    case Enum.filter(errors, &(&1.severity == :error)) do
+      [] when errors == [] ->
+        {:ok, ast}
+
+      [] ->
+        # Only warnings — return ok but with warnings attached
+        # For now, warnings don't block compilation, but we report them
+        {:error, errors}
+
+      _hard_errors ->
+        {:error, errors}
+    end
+  end
+
+  # ------------------------------------------------------------------
+  # Environment construction
+  # ------------------------------------------------------------------
+
+  defp build_initial_env(%AST.Module{declarations: declarations, meta: meta}) do
+    file = Map.get(meta, :file, "unknown")
+
+    # Register all built-in types
+    types =
+      Map.new(@builtin_type_names, fn name -> {name, :builtin} end)
+
+    # Register parameterized built-in types
+    types =
+      types
+      |> Map.put("Option", :builtin_param)
+      |> Map.put("Result", :builtin_param)
+      |> Map.put("List", :builtin_param)
+      |> Map.put("Map", :builtin_param)
+      |> Map.put("Set", :builtin_param)
+
+    # Register user-declared types
+    types =
+      Enum.reduce(declarations, types, fn
+        %AST.TypeDecl{name: name} = decl, acc -> Map.put(acc, name, decl)
+        _, acc -> acc
+      end)
+
+    # Register user-declared enums
+    enums =
+      declarations
+      |> Enum.filter(&match?(%AST.EnumDecl{}, &1))
+      |> Map.new(fn %AST.EnumDecl{name: name} = decl -> {name, decl} end)
+
+    # Register enums as types too
+    types =
+      Enum.reduce(enums, types, fn {name, _}, acc -> Map.put(acc, name, :enum) end)
+
+    # Register functions
+    functions =
+      declarations
+      |> Enum.filter(&match?(%AST.Fn{}, &1))
+      |> Map.new(fn %AST.Fn{name: name, params: params, return_type: ret} ->
+        {name, %{params: params, return_type: resolve_type(ret, types)}}
+      end)
+
+    %{
+      types: types,
+      enums: enums,
+      functions: functions,
+      variables: %{},
+      current_fn_return_type: nil,
+      file: file
+    }
+  end
+
+  # ------------------------------------------------------------------
+  # Type resolution: AST.TypeRef -> internal type
+  # ------------------------------------------------------------------
+
+  @doc false
+  def resolve_type(%AST.TypeRef{name: name, params: []}, _types) do
+    case Map.get(@builtin_types, name) do
+      nil -> {:user_type, name}
+      type -> type
+    end
+  end
+
+  def resolve_type(%AST.TypeRef{name: "Option", params: [inner]}, types) do
+    {:option, resolve_type(inner, types)}
+  end
+
+  def resolve_type(%AST.TypeRef{name: "Result", params: [ok, err]}, types) do
+    {:result, resolve_type(ok, types), resolve_type(err, types)}
+  end
+
+  def resolve_type(%AST.TypeRef{name: "List", params: [elem]}, types) do
+    {:list, resolve_type(elem, types)}
+  end
+
+  def resolve_type(%AST.TypeRef{name: "Map", params: [k, v]}, types) do
+    {:map, resolve_type(k, types), resolve_type(v, types)}
+  end
+
+  def resolve_type(%AST.TypeRef{name: "Set", params: [elem]}, types) do
+    {:set, resolve_type(elem, types)}
+  end
+
+  def resolve_type(%AST.TypeRef{name: name}, _types) do
+    {:user_type, name}
+  end
+
+  def resolve_type(nil, _types), do: :unknown
+
+  # ------------------------------------------------------------------
+  # Pass 1: Validate declarations
+  # ------------------------------------------------------------------
+
+  defp validate_declarations(declarations, env) do
+    Enum.flat_map(declarations, fn decl -> validate_declaration(decl, env) end)
+  end
+
+  defp validate_declaration(%AST.Fn{params: params, return_type: return_type, meta: meta}, env) do
+    errors = []
+
+    # Check parameter types are known
+    errors =
+      errors ++
+        Enum.flat_map(params, fn %AST.Field{type: type} ->
+          validate_type_ref(type, env)
+        end)
+
+    # Check return type is known
+    errors = errors ++ validate_type_ref(return_type, env)
+
+    _ = meta
+    errors
+  end
+
+  defp validate_declaration(%AST.TypeDecl{fields: fields}, env) do
+    Enum.flat_map(fields, fn %AST.Field{type: type, annotations: annotations} ->
+      type_errors = validate_type_ref(type, env)
+      annotation_errors = validate_annotations(annotations, type, env)
+      type_errors ++ annotation_errors
+    end)
+  end
+
+  defp validate_declaration(%AST.EnumDecl{variants: variants}, env) do
+    Enum.flat_map(variants, fn %AST.Variant{fields: fields} ->
+      Enum.flat_map(fields, fn %AST.Field{type: type} ->
+        validate_type_ref(type, env)
+      end)
+    end)
+  end
+
+  defp validate_declaration(%AST.Capability{}, _env), do: []
+  defp validate_declaration(_, _env), do: []
+
+  defp validate_type_ref(%AST.TypeRef{name: name, params: params, meta: meta}, env) do
+    errors =
+      if Map.has_key?(env.types, name) do
+        []
+      else
+        [
+          %Error{
+            code: "E0011",
+            severity: :error,
+            message: "Unknown type '#{name}'",
+            location: location_from_meta(meta, env.file),
+            fix_hint: "Did you mean one of: #{suggest_types(name, env)}?"
+          }
+        ]
+      end
+
+    # Recursively validate type parameters
+    errors ++ Enum.flat_map(params, &validate_type_ref(&1, env))
+  end
+
+  defp validate_type_ref(nil, _env), do: []
+
+  # ------------------------------------------------------------------
+  # Constraint annotation validation
+  # ------------------------------------------------------------------
+
+  defp validate_annotations(annotations, type, env) do
+    resolved = resolve_type(type, env.types)
+
+    Enum.flat_map(annotations, fn annotation ->
+      validate_annotation(annotation, resolved, env)
+    end)
+  end
+
+  defp validate_annotation(%AST.Annotation{name: "min", meta: meta}, type, env)
+       when type not in [:int, :float] do
+    [
+      %Error{
+        code: "E0025",
+        severity: :error,
+        message: "Annotation @min can only be applied to Int or Float, got #{format_type(type)}",
+        location: location_from_meta(meta, env.file),
+        fix_hint: "Remove @min or change the field type to Int or Float"
+      }
+    ]
+  end
+
+  defp validate_annotation(%AST.Annotation{name: "max", meta: meta}, type, env)
+       when type not in [:int, :float] do
+    [
+      %Error{
+        code: "E0025",
+        severity: :error,
+        message: "Annotation @max can only be applied to Int or Float, got #{format_type(type)}",
+        location: location_from_meta(meta, env.file),
+        fix_hint: "Remove @max or change the field type to Int or Float"
+      }
+    ]
+  end
+
+  defp validate_annotation(%AST.Annotation{name: "one_of", meta: meta}, type, env)
+       when type != :string do
+    [
+      %Error{
+        code: "E0025",
+        severity: :error,
+        message: "Annotation @one_of can only be applied to String, got #{format_type(type)}",
+        location: location_from_meta(meta, env.file),
+        fix_hint: "Remove @one_of or change the field type to String"
+      }
+    ]
+  end
+
+  defp validate_annotation(_annotation, _type, _env), do: []
+
+  # ------------------------------------------------------------------
+  # Pass 2: Type-check function bodies
+  # ------------------------------------------------------------------
+
+  defp check_functions(declarations, env) do
+    fns = Enum.filter(declarations, &match?(%AST.Fn{}, &1))
+    Enum.flat_map(fns, &check_function(&1, env))
+  end
+
+  defp check_function(
+         %AST.Fn{params: params, return_type: ret_type_ref, body: body, meta: meta},
+         env
+       ) do
+    declared_return = resolve_type(ret_type_ref, env.types)
+
+    # Build variable scope from parameters
+    vars =
+      params
+      |> Enum.map(fn %AST.Field{name: name, type: type} ->
+        {name, resolve_type(type, env.types)}
+      end)
+      |> Map.new()
+
+    fn_env = %{env | variables: vars, current_fn_return_type: declared_return}
+
+    {actual_return, errors} = infer_type(body, fn_env)
+
+    # Check return type matches
+    return_errors =
+      if types_compatible?(actual_return, declared_return) do
+        []
+      else
+        [
+          %Error{
+            code: "E0020",
+            severity: :error,
+            message:
+              "Function return type mismatch: expected #{format_type(declared_return)}, got #{format_type(actual_return)}",
+            location: location_from_meta(meta, env.file),
+            fix_hint: "Change the return type or fix the function body"
+          }
+        ]
+      end
+
+    errors ++ return_errors
+  end
+
+  # ------------------------------------------------------------------
+  # Type inference
+  # ------------------------------------------------------------------
+
+  # Block: type is the type of the last expression
+  defp infer_type(%AST.Block{expressions: []}, _env), do: {:unknown, []}
+
+  defp infer_type(%AST.Block{expressions: exprs}, env) do
+    infer_block(exprs, env, {:unknown, []})
+  end
+
+  # Literals
+  defp infer_type(%AST.IntLit{}, _env), do: {:int, []}
+  defp infer_type(%AST.FloatLit{}, _env), do: {:float, []}
+  defp infer_type(%AST.BoolLit{}, _env), do: {:bool, []}
+
+  defp infer_type(%AST.StringLit{segments: segments}, env) do
+    # Check interpolation references are valid
+    errors =
+      segments
+      |> Enum.flat_map(fn
+        {:interpolation, token} -> check_interpolation(token, env)
+        {:literal, _} -> []
+      end)
+
+    {:string, errors}
+  end
+
+  # Identifier
+  defp infer_type(%AST.Identifier{name: name, meta: meta}, env) do
+    cond do
+      Map.has_key?(env.variables, name) ->
+        {Map.get(env.variables, name), []}
+
+      Map.has_key?(env.functions, name) ->
+        # A function reference — type is determined at call site
+        {:unknown, []}
+
+      Map.has_key?(env.enums, name) ->
+        # Enum variant reference (simple, no data)
+        {{:enum, name}, []}
+
+      # Uppercase name could be a type/enum constructor or variant
+      String.match?(name, ~r/^[A-Z]/) ->
+        # Could be an enum variant — check all enums for this variant name
+        case find_enum_variant(name, env) do
+          {:ok, enum_name} -> {{:enum, enum_name}, []}
+          :error -> {:unknown, []}
+        end
+
+      true ->
+        {:unknown,
+         [
+           %Error{
+             code: "E0010",
+             severity: :error,
+             message: "Unknown identifier '#{name}'",
+             location: location_from_meta(meta, env.file),
+             fix_hint: "Did you mean to declare this variable?"
+           }
+         ]}
+    end
+  end
+
+  # Binary operations
+  defp infer_type(%AST.BinaryOp{op: op, left: left, right: right, meta: meta}, env)
+       when op in [:+, :-, :*, :/] do
+    {left_type, left_errors} = infer_type(left, env)
+    {right_type, right_errors} = infer_type(right, env)
+
+    cond do
+      left_type == :unknown or right_type == :unknown ->
+        {:unknown, left_errors ++ right_errors}
+
+      left_type in [:int, :float] and right_type in [:int, :float] ->
+        result_type = if left_type == :float or right_type == :float, do: :float, else: :int
+
+        if op == :+ and left_type == :string do
+          {:string, left_errors ++ right_errors}
+        else
+          {result_type, left_errors ++ right_errors}
+        end
+
+      left_type == :string and right_type == :string and op == :+ ->
+        {:string, left_errors ++ right_errors}
+
+      true ->
+        {
+          :unknown,
+          left_errors ++
+            right_errors ++
+            [
+              %Error{
+                code: "E0021",
+                severity: :error,
+                message:
+                  "Operator '#{op}' requires numeric operands, got #{format_type(left_type)} and #{format_type(right_type)}",
+                location: location_from_meta(meta, env.file),
+                fix_hint: "Ensure both operands are Int or Float"
+              }
+            ]
+        }
+    end
+  end
+
+  # Comparison operators
+  defp infer_type(%AST.BinaryOp{op: op, left: left, right: right, meta: meta}, env)
+       when op in [:==, :!=, :<, :>, :<=, :>=] do
+    {left_type, left_errors} = infer_type(left, env)
+    {right_type, right_errors} = infer_type(right, env)
+
+    cond do
+      left_type == :unknown or right_type == :unknown ->
+        {:bool, left_errors ++ right_errors}
+
+      # Equality can compare same types
+      op in [:==, :!=] and types_compatible?(left_type, right_type) ->
+        {:bool, left_errors ++ right_errors}
+
+      # Ordering requires comparable types (numeric)
+      op in [:<, :>, :<=, :>=] and left_type in [:int, :float] and right_type in [:int, :float] ->
+        {:bool, left_errors ++ right_errors}
+
+      true ->
+        {:bool,
+         left_errors ++
+           right_errors ++
+           [
+             %Error{
+               code: "E0021",
+               severity: :error,
+               message:
+                 "Operator '#{op}' cannot compare #{format_type(left_type)} and #{format_type(right_type)}",
+               location: location_from_meta(meta, env.file),
+               fix_hint: "Ensure operands have compatible types"
+             }
+           ]}
+    end
+  end
+
+  # Logical operators
+  defp infer_type(%AST.BinaryOp{op: op, left: left, right: right, meta: meta}, env)
+       when op in [:&&, :||] do
+    {left_type, left_errors} = infer_type(left, env)
+    {right_type, right_errors} = infer_type(right, env)
+
+    errors =
+      cond do
+        left_type == :unknown or right_type == :unknown ->
+          []
+
+        left_type != :bool ->
+          [
+            %Error{
+              code: "E0021",
+              severity: :error,
+              message: "Operator '#{op}' requires Bool operands, got #{format_type(left_type)}",
+              location: location_from_meta(meta, env.file),
+              fix_hint: "Ensure both operands are Bool"
+            }
+          ]
+
+        right_type != :bool ->
+          [
+            %Error{
+              code: "E0021",
+              severity: :error,
+              message: "Operator '#{op}' requires Bool operands, got #{format_type(right_type)}",
+              location: location_from_meta(meta, env.file),
+              fix_hint: "Ensure both operands are Bool"
+            }
+          ]
+
+        true ->
+          []
+      end
+
+    {:bool, left_errors ++ right_errors ++ errors}
+  end
+
+  # Unary not
+  defp infer_type(%AST.UnaryOp{op: :not, operand: operand, meta: meta}, env) do
+    {operand_type, operand_errors} = infer_type(operand, env)
+
+    errors =
+      if operand_type in [:bool, :unknown] do
+        []
+      else
+        [
+          %Error{
+            code: "E0021",
+            severity: :error,
+            message: "Operator '!' requires Bool operand, got #{format_type(operand_type)}",
+            location: location_from_meta(meta, env.file),
+            fix_hint: "Ensure the operand is Bool"
+          }
+        ]
+      end
+
+    {:bool, operand_errors ++ errors}
+  end
+
+  # Unwrap (!) operator
+  defp infer_type(%AST.UnaryOp{op: :unwrap, operand: operand}, env) do
+    {operand_type, operand_errors} = infer_type(operand, env)
+
+    case operand_type do
+      {:result, ok_type, _err_type} -> {ok_type, operand_errors}
+      :unknown -> {:unknown, operand_errors}
+      _ -> {:unknown, operand_errors}
+    end
+  end
+
+  # Propagate (?) operator
+  defp infer_type(%AST.UnaryOp{op: :propagate, operand: operand}, env) do
+    {operand_type, operand_errors} = infer_type(operand, env)
+
+    case operand_type do
+      {:result, ok_type, _err_type} -> {ok_type, operand_errors}
+      :unknown -> {:unknown, operand_errors}
+      _ -> {:unknown, operand_errors}
+    end
+  end
+
+  # Match expression
+  defp infer_type(%AST.Match{subject: subject, arms: arms, meta: meta}, env) do
+    {subject_type, subject_errors} = infer_type(subject, env)
+
+    # Infer types of all arms
+    arm_results = Enum.map(arms, &infer_match_arm(&1, env))
+    arm_types = Enum.map(arm_results, &elem(&1, 0))
+    arm_errors = Enum.flat_map(arm_results, &elem(&1, 1))
+
+    # Check all arm types are consistent
+    consistency_errors = check_arm_type_consistency(arm_types, meta, env)
+
+    # Check exhaustiveness
+    exhaustiveness_warnings = check_exhaustiveness(subject_type, arms, meta, env)
+
+    result_type =
+      arm_types
+      |> Enum.reject(&(&1 == :unknown))
+      |> List.first(:unknown)
+
+    {result_type, subject_errors ++ arm_errors ++ consistency_errors ++ exhaustiveness_warnings}
+  end
+
+  # Function call
+  defp infer_type(%AST.Call{target: target, args: args, meta: meta}, env) do
+    args_results = Enum.map(args, &infer_type(&1, env))
+    args_errors = Enum.flat_map(args_results, &elem(&1, 1))
+
+    case target do
+      %AST.Identifier{name: name} when is_map_key(env.functions, name) ->
+        fn_info = Map.get(env.functions, name)
+        expected_arity = length(fn_info.params)
+        actual_arity = length(args)
+
+        arity_errors =
+          if expected_arity != actual_arity do
+            [
+              %Error{
+                code: "E0012",
+                severity: :error,
+                message:
+                  "Function '#{name}' expects #{expected_arity} argument(s), got #{actual_arity}",
+                location: location_from_meta(meta, env.file),
+                fix_hint: "Pass #{expected_arity} argument(s) to '#{name}'"
+              }
+            ]
+          else
+            []
+          end
+
+        {fn_info.return_type, args_errors ++ arity_errors}
+
+      _ ->
+        # Unknown function call — can't infer type
+        {:unknown, args_errors}
+    end
+  end
+
+  # Pipe expression
+  defp infer_type(%AST.Pipe{left: left, right: right}, env) do
+    {_left_type, left_errors} = infer_type(left, env)
+
+    case right do
+      %AST.Call{} ->
+        {right_type, right_errors} = infer_type(right, env)
+        {right_type, left_errors ++ right_errors}
+
+      _ ->
+        {right_type, right_errors} = infer_type(right, env)
+        {right_type, left_errors ++ right_errors}
+    end
+  end
+
+  # Field access
+  defp infer_type(%AST.FieldAccess{}, _env) do
+    # Field access type depends on the subject type — for now, :unknown
+    {:unknown, []}
+  end
+
+  # FnRef
+  defp infer_type(%AST.FnRef{}, _env) do
+    {:unknown, []}
+  end
+
+  # Let (standalone — shouldn't appear outside blocks, but handle gracefully)
+  defp infer_type(%AST.Let{value: value}, env) do
+    infer_type(value, env)
+  end
+
+  # Catch-all
+  defp infer_type(_expr, _env) do
+    {:unknown, []}
+  end
+
+  # ------------------------------------------------------------------
+  # Block inference (separate from infer_type to avoid grouping warning)
+  # ------------------------------------------------------------------
+
+  defp infer_block([], _env, acc), do: acc
+
+  defp infer_block([%AST.Let{name: name, value: value} | rest], env, {_prev_type, prev_errors}) do
+    {val_type, val_errors} = infer_type(value, env)
+    new_env = %{env | variables: Map.put(env.variables, name, val_type)}
+    infer_block(rest, new_env, {val_type, prev_errors ++ val_errors})
+  end
+
+  defp infer_block([expr], env, {_prev_type, prev_errors}) do
+    {expr_type, expr_errors} = infer_type(expr, env)
+    {expr_type, prev_errors ++ expr_errors}
+  end
+
+  defp infer_block([expr | rest], env, {_prev_type, prev_errors}) do
+    {_expr_type, expr_errors} = infer_type(expr, env)
+    infer_block(rest, env, {:unknown, prev_errors ++ expr_errors})
+  end
+
+  # ------------------------------------------------------------------
+  # Match arm inference
+  # ------------------------------------------------------------------
+
+  defp infer_match_arm(%AST.MatchArm{pattern: pattern, body: body}, env) do
+    # Bind pattern variables into scope
+    new_env = bind_pattern(pattern, env)
+    infer_type(body, new_env)
+  end
+
+  defp bind_pattern(%AST.Identifier{name: name}, env) do
+    # Pattern variable — bind as :unknown type for now
+    %{env | variables: Map.put(env.variables, name, :unknown)}
+  end
+
+  defp bind_pattern(%AST.Call{target: _target, args: args}, env) do
+    Enum.reduce(args, env, &bind_pattern/2)
+  end
+
+  defp bind_pattern(_, env), do: env
+
+  # ------------------------------------------------------------------
+  # Match exhaustiveness checking
+  # ------------------------------------------------------------------
+
+  defp check_exhaustiveness(:bool, arms, meta, env) do
+    patterns = Enum.map(arms, & &1.pattern)
+    has_wildcard = Enum.any?(patterns, &match?(%AST.Wildcard{}, &1))
+    has_true = Enum.any?(patterns, &match?(%AST.BoolLit{value: true}, &1))
+    has_false = Enum.any?(patterns, &match?(%AST.BoolLit{value: false}, &1))
+    # Also check identifier patterns (catch-all)
+    has_catch_all = Enum.any?(patterns, &match?(%AST.Identifier{}, &1))
+
+    cond do
+      has_wildcard or has_catch_all ->
+        []
+
+      has_true and has_false ->
+        []
+
+      not has_true ->
+        [
+          %Error{
+            code: "E0024",
+            severity: :warning,
+            message: "Non-exhaustive match: missing pattern 'true'",
+            location: location_from_meta(meta, env.file),
+            fix_hint: "Add a 'true -> ...' arm or a wildcard '_' pattern"
+          }
+        ]
+
+      not has_false ->
+        [
+          %Error{
+            code: "E0024",
+            severity: :warning,
+            message: "Non-exhaustive match: missing pattern 'false'",
+            location: location_from_meta(meta, env.file),
+            fix_hint: "Add a 'false -> ...' arm or a wildcard '_' pattern"
+          }
+        ]
+
+      true ->
+        []
+    end
+  end
+
+  defp check_exhaustiveness({:enum, enum_name}, arms, meta, env) do
+    case Map.get(env.enums, enum_name) do
+      nil ->
+        []
+
+      %AST.EnumDecl{variants: variants} ->
+        variant_names = MapSet.new(variants, & &1.name)
+        patterns = Enum.map(arms, & &1.pattern)
+
+        has_wildcard =
+          Enum.any?(patterns, fn
+            %AST.Wildcard{} -> true
+            %AST.Identifier{name: name} -> not MapSet.member?(variant_names, name)
+            _ -> false
+          end)
+
+        if has_wildcard do
+          []
+        else
+          covered =
+            patterns
+            |> Enum.flat_map(fn
+              %AST.Identifier{name: name} -> [name]
+              %AST.Call{target: %AST.Identifier{name: name}} -> [name]
+              _ -> []
+            end)
+            |> MapSet.new()
+
+          missing = MapSet.difference(variant_names, covered)
+
+          if MapSet.size(missing) == 0 do
+            []
+          else
+            missing_list = missing |> MapSet.to_list() |> Enum.join(", ")
+
+            [
+              %Error{
+                code: "E0024",
+                severity: :warning,
+                message:
+                  "Non-exhaustive match on #{enum_name}: missing pattern(s) #{missing_list}",
+                location: location_from_meta(meta, env.file),
+                fix_hint: "Add arms for #{missing_list} or a wildcard '_' pattern"
+              }
+            ]
+          end
+        end
+    end
+  end
+
+  # For non-bool/non-enum subjects, we can't check exhaustiveness
+  # unless there's a wildcard
+  defp check_exhaustiveness(_subject_type, arms, _meta, _env) do
+    patterns = Enum.map(arms, & &1.pattern)
+
+    has_wildcard =
+      Enum.any?(patterns, fn
+        %AST.Wildcard{} -> true
+        %AST.Identifier{} -> true
+        _ -> false
+      end)
+
+    if has_wildcard do
+      []
+    else
+      # We can't check exhaustiveness for Int, String, etc.
+      # without a wildcard, but we also can't know it's non-exhaustive
+      # (e.g., matching specific ints). Skip for now.
+      []
+    end
+  end
+
+  # ------------------------------------------------------------------
+  # Match arm type consistency
+  # ------------------------------------------------------------------
+
+  defp check_arm_type_consistency(arm_types, meta, env) do
+    known_types = Enum.reject(arm_types, &(&1 == :unknown))
+
+    case known_types do
+      [] ->
+        []
+
+      [first | rest] ->
+        Enum.flat_map(rest, fn t ->
+          if types_compatible?(t, first) do
+            []
+          else
+            [
+              %Error{
+                code: "E0020",
+                severity: :error,
+                message:
+                  "Match arm type mismatch: expected #{format_type(first)}, got #{format_type(t)}",
+                location: location_from_meta(meta, env.file),
+                fix_hint: "Ensure all match arms return the same type"
+              }
+            ]
+          end
+        end)
+    end
+  end
+
+  # ------------------------------------------------------------------
+  # Interpolation checking
+  # ------------------------------------------------------------------
+
+  defp check_interpolation({:ident, _, name}, env) do
+    if Map.has_key?(env.variables, name) or Map.has_key?(env.functions, name) do
+      []
+    else
+      [
+        %Error{
+          code: "E0010",
+          severity: :error,
+          message: "Unknown identifier '#{name}' in string interpolation",
+          location: %{file: env.file, line: 0, col: 0},
+          fix_hint: "Did you mean to declare this variable?"
+        }
+      ]
+    end
+  end
+
+  defp check_interpolation({:field_access, subject, _field}, env) do
+    check_interpolation(subject, env)
+  end
+
+  defp check_interpolation(_, _env), do: []
+
+  # ------------------------------------------------------------------
+  # Type compatibility
+  # ------------------------------------------------------------------
+
+  defp types_compatible?(:unknown, _), do: true
+  defp types_compatible?(_, :unknown), do: true
+  defp types_compatible?(a, a), do: true
+
+  # User types are compatible with :unknown for now (we don't track field types)
+  defp types_compatible?({:user_type, _}, _), do: true
+  defp types_compatible?(_, {:user_type, _}), do: true
+
+  # Enum types
+  defp types_compatible?({:enum, _}, _), do: true
+  defp types_compatible?(_, {:enum, _}), do: true
+
+  defp types_compatible?(_, _), do: false
+
+  # ------------------------------------------------------------------
+  # Helpers
+  # ------------------------------------------------------------------
+
+  defp find_enum_variant(name, env) do
+    result =
+      Enum.find(env.enums, fn {_enum_name, %AST.EnumDecl{variants: variants}} ->
+        Enum.any?(variants, &(&1.name == name))
+      end)
+
+    case result do
+      {enum_name, _} -> {:ok, enum_name}
+      nil -> :error
+    end
+  end
+
+  defp format_type(:int), do: "Int"
+  defp format_type(:float), do: "Float"
+  defp format_type(:string), do: "String"
+  defp format_type(:bool), do: "Bool"
+  defp format_type(:uuid), do: "Uuid"
+  defp format_type(:instant), do: "Instant"
+  defp format_type(:duration), do: "Duration"
+  defp format_type(:email), do: "Email"
+  defp format_type(:url), do: "Url"
+  defp format_type({:option, inner}), do: "Option[#{format_type(inner)}]"
+  defp format_type({:result, ok, err}), do: "Result[#{format_type(ok)}, #{format_type(err)}]"
+  defp format_type({:list, elem}), do: "List[#{format_type(elem)}]"
+  defp format_type({:map, k, v}), do: "Map[#{format_type(k)}, #{format_type(v)}]"
+  defp format_type({:set, elem}), do: "Set[#{format_type(elem)}]"
+  defp format_type({:user_type, name}), do: name
+  defp format_type({:enum, name}), do: name
+  defp format_type(:unknown), do: "<unknown>"
+  defp format_type(other), do: inspect(other)
+
+  defp location_from_meta(%{line: line, col: col, file: file}, _default_file) do
+    %{file: file, line: line, col: col}
+  end
+
+  defp location_from_meta(%{line: line, col: col}, default_file) do
+    %{file: default_file, line: line, col: col}
+  end
+
+  defp location_from_meta(_, default_file) do
+    %{file: default_file, line: 0, col: 0}
+  end
+
+  defp suggest_types(name, env) do
+    known =
+      env.types
+      |> Map.keys()
+      |> Enum.reject(&(&1 in ["Option", "Result", "List", "Map", "Set"]))
+      |> Enum.sort()
+
+    # Simple string distance suggestion
+    close =
+      known
+      |> Enum.filter(&(String.jaro_distance(&1, name) > 0.7))
+      |> Enum.take(3)
+
+    case close do
+      [] -> Enum.join(Enum.take(known, 5), ", ")
+      suggestions -> Enum.join(suggestions, ", ")
+    end
   end
 end

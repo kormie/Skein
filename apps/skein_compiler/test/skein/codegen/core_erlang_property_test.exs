@@ -20,8 +20,10 @@ defmodule Skein.CodeGen.CoreErlangPropertyTest do
   end
 
   property "integer addition compiles and computes correctly" do
-    check all a <- StreamData.integer(-1000..1000),
-              b <- StreamData.integer(-1000..1000) do
+    check all(
+            a <- StreamData.integer(-1000..1000),
+            b <- StreamData.integer(-1000..1000)
+          ) do
       mod_name = unique_module_name()
 
       source = """
@@ -38,8 +40,10 @@ defmodule Skein.CodeGen.CoreErlangPropertyTest do
   end
 
   property "integer subtraction compiles and computes correctly" do
-    check all a <- StreamData.integer(-1000..1000),
-              b <- StreamData.integer(-1000..1000) do
+    check all(
+            a <- StreamData.integer(-1000..1000),
+            b <- StreamData.integer(-1000..1000)
+          ) do
       mod_name = unique_module_name()
 
       source = """
@@ -56,8 +60,10 @@ defmodule Skein.CodeGen.CoreErlangPropertyTest do
   end
 
   property "integer multiplication compiles and computes correctly" do
-    check all a <- StreamData.integer(-100..100),
-              b <- StreamData.integer(-100..100) do
+    check all(
+            a <- StreamData.integer(-100..100),
+            b <- StreamData.integer(-100..100)
+          ) do
       mod_name = unique_module_name()
 
       source = """
@@ -74,8 +80,10 @@ defmodule Skein.CodeGen.CoreErlangPropertyTest do
   end
 
   property "comparison > produces correct boolean" do
-    check all a <- StreamData.integer(-1000..1000),
-              b <- StreamData.integer(-1000..1000) do
+    check all(
+            a <- StreamData.integer(-1000..1000),
+            b <- StreamData.integer(-1000..1000)
+          ) do
       mod_name = unique_module_name()
 
       source = """
@@ -87,13 +95,15 @@ defmodule Skein.CodeGen.CoreErlangPropertyTest do
       """
 
       {:module, mod} = Compiler.compile_string(source)
-      assert mod.gt(a, b) == (a > b)
+      assert mod.gt(a, b) == a > b
     end
   end
 
   property "equality == produces correct boolean" do
-    check all a <- StreamData.integer(-1000..1000),
-              b <- StreamData.integer(-1000..1000) do
+    check all(
+            a <- StreamData.integer(-1000..1000),
+            b <- StreamData.integer(-1000..1000)
+          ) do
       mod_name = unique_module_name()
 
       source = """
@@ -110,11 +120,13 @@ defmodule Skein.CodeGen.CoreErlangPropertyTest do
   end
 
   property "string interpolation round-trips any alphanumeric input" do
-    check all name <-
-                StreamData.string(Enum.to_list(?a..?z) ++ Enum.to_list(?A..?Z),
-                  min_length: 1,
-                  max_length: 20
-                ) do
+    check all(
+            name <-
+              StreamData.string(Enum.to_list(?a..?z) ++ Enum.to_list(?A..?Z),
+                min_length: 1,
+                max_length: 20
+              )
+          ) do
       mod_name = unique_module_name()
 
       source = """
@@ -131,7 +143,7 @@ defmodule Skein.CodeGen.CoreErlangPropertyTest do
   end
 
   property "let binding preserves computed value" do
-    check all n <- StreamData.integer(0..1000) do
+    check all(n <- StreamData.integer(0..1000)) do
       mod_name = unique_module_name()
 
       source = """
@@ -149,7 +161,7 @@ defmodule Skein.CodeGen.CoreErlangPropertyTest do
   end
 
   property "match on > 0 correctly classifies positive vs non-positive" do
-    check all n <- StreamData.integer(-1000..1000) do
+    check all(n <- StreamData.integer(-1000..1000)) do
       mod_name = unique_module_name()
 
       source = """
@@ -170,11 +182,13 @@ defmodule Skein.CodeGen.CoreErlangPropertyTest do
   end
 
   property "plain string literal returns exact string" do
-    check all text <-
-                StreamData.string(Enum.to_list(?a..?z) ++ [?\s],
-                  min_length: 0,
-                  max_length: 30
-                ) do
+    check all(
+            text <-
+              StreamData.string(Enum.to_list(?a..?z) ++ [?\s],
+                min_length: 0,
+                max_length: 30
+              )
+          ) do
       mod_name = unique_module_name()
       # Escape any special chars for source embedding
       escaped = String.replace(text, "\\", "\\\\") |> String.replace("\"", "\\\"")
