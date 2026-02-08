@@ -335,13 +335,83 @@ module UserService {
 
 ---
 
+## Phase 8: Hardening and Infrastructure (Next Priorities)
+
+These are the immediate next priorities after Phase 7. They fill gaps in the existing implementation and make Skein usable for real projects.
+
+### 8a: Test Infrastructure — `scenario`, `golden`, `replay`
+
+**Goal:** Complete the built-in test constructs so agents can be tested deterministically.
+
+- [ ] `scenario` tests with `given`/`expect` blocks — compile and execute against agent behavior
+- [ ] `golden` trace tests — record a trace, replay it, assert identical outcomes
+- [ ] `replay` engine — re-execute handlers/agents against recorded I/O (deterministic playback)
+- [ ] Integrate with `skein test` CLI command
+
+**Acceptance criteria:** A scenario test for an agent compiles, replays a recorded LLM response, and asserts the agent transitions through expected phases.
+
+### 8b: Storage Backend — Ecto Integration
+
+**Goal:** Connect the abstract `store.*` operations to a real database.
+
+- [ ] Ecto schema generation from Skein `type` declarations with `@primary`/`@unique`
+- [ ] Migration generation when types change between compiles
+- [ ] SQLite backend for local dev, Postgres for production
+- [ ] Wire `store.get`, `store.put`, `store.query`, `store.delete` to Ecto queries at runtime
+
+**Acceptance criteria:** A Skein module with `capability store.table("users")` compiles and performs real CRUD against SQLite in tests.
+
+### 8c: HTTP Server — Bandit + Plug Integration
+
+**Goal:** Replace the dev-only `:gen_tcp` server with production-grade HTTP.
+
+- [ ] Compile Skein handlers to a Plug router
+- [ ] Use Bandit as the HTTP server
+- [ ] Preserve `/__skein/traces` debug endpoint
+- [ ] Support request body validation via `req.json[T]`
+
+**Acceptance criteria:** `skein run` starts a Bandit server that passes all existing handler tests and handles concurrent requests correctly.
+
+### 8d: Canonical Examples
+
+**Goal:** Provide working examples that demonstrate the full language.
+
+- [ ] `examples/hello_http.skein` — HTTP handler with request/response
+- [ ] `examples/refund_agent.skein` — Agent with phases, LLM, tools, events
+- [ ] `examples/incident_triage.skein` — Multi-phase agent with memory
+- [ ] `examples/queue_worker.skein` — Background processing pattern
+- [ ] All examples compile and have corresponding test files
+
+**Acceptance criteria:** `skein build examples/` compiles all examples. Each has a test that exercises its key behavior.
+
+### 8e: Queue and Schedule Handlers
+
+**Goal:** Support event-driven and time-triggered handlers beyond HTTP.
+
+- [ ] `handler queue "queue-name" (msg) -> { ... }` — subscribe to a message queue
+- [ ] `handler schedule "*/5 * * * *" () -> { ... }` — cron-style scheduled execution
+- [ ] Lexer/parser/analyzer/codegen support for both constructs
+- [ ] Runtime dispatch for queue messages and scheduled triggers
+
+**Acceptance criteria:** A queue handler compiles and processes messages from an in-memory queue. A schedule handler compiles and can be triggered by the test harness.
+
+### 8f: LLM Streaming
+
+**Goal:** Support streaming LLM responses for real-time agent output.
+
+- [ ] `llm.stream` API with `on_chunk` callback
+- [ ] Token-level streaming in the runtime LLM client
+- [ ] Trace spans for streaming calls (total duration, chunk count)
+- [ ] Capability checking for `llm.stream` (same as `llm.chat`)
+
+**Acceptance criteria:** An agent calls `llm.stream` and processes chunks via callback. The full response is assembled and a trace span records the streaming call.
+
+---
+
 ## Post-MVP Backlog (Not Prioritized)
 
 These are features that matter but are explicitly out of scope for the initial build:
 
-- [ ] Queue/topic handlers (pub/sub, at-least-once delivery)
-- [ ] Schedule handlers (cron)
-- [ ] Streaming (`llm.stream` with `on_chunk`)
 - [ ] `extern` FFI for Erlang/Elixir interop
 - [ ] Hot code upgrades
 - [ ] Multi-region clustering
