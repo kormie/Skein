@@ -31,9 +31,9 @@ jobs:
           elixir-version: ${{ env.ELIXIR_VERSION }}
 
       - name: Set up Zig
-        uses: goto-bus-stop/setup-zig@v2
+        uses: mlugg/setup-zig@v2
         with:
-          version: 0.13.0
+          version: 0.15.2
 
       - name: Cache deps and build
         uses: actions/cache@v4
