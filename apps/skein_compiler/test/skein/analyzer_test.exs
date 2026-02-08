@@ -947,6 +947,205 @@ defmodule Skein.AnalyzerTest do
     end
   end
 
+  # ------------------------------------------------------------------
+  # Store capability checking
+  # ------------------------------------------------------------------
+
+  describe "store capability checking - missing capabilities" do
+    test "store.users.get without store.table capability produces error" do
+      errors =
+        analyze_errors("""
+        module M {
+          fn find(id: Uuid) -> String {
+            store.users.get(id)
+          }
+        }
+        """)
+
+      error = Enum.find(errors, &(&1.code == "E0030"))
+      assert error != nil
+      assert error.message =~ "store.table"
+      assert error.message =~ "users"
+    end
+
+    test "store.users.put without store.table capability produces error" do
+      errors =
+        analyze_errors("""
+        module M {
+          fn save(record: String) -> String {
+            store.users.put(record)
+          }
+        }
+        """)
+
+      error = Enum.find(errors, &(&1.code == "E0030"))
+      assert error != nil
+      assert error.message =~ "store.table"
+      assert error.message =~ "users"
+    end
+
+    test "store.users.delete without store.table capability produces error" do
+      errors =
+        analyze_errors("""
+        module M {
+          fn remove(id: Uuid) -> String {
+            store.users.delete(id)
+          }
+        }
+        """)
+
+      error = Enum.find(errors, &(&1.code == "E0030"))
+      assert error != nil
+      assert error.message =~ "store.table"
+    end
+
+    test "store.users.query without store.table capability produces error" do
+      errors =
+        analyze_errors("""
+        module M {
+          fn search(email: String) -> String {
+            store.users.query(email)
+          }
+        }
+        """)
+
+      error = Enum.find(errors, &(&1.code == "E0030"))
+      assert error != nil
+    end
+
+    test "store error includes fix_code with table name" do
+      errors =
+        analyze_errors("""
+        module M {
+          fn find(id: Uuid) -> String {
+            store.orders.get(id)
+          }
+        }
+        """)
+
+      error = Enum.find(errors, &(&1.code == "E0030"))
+      assert error.fix_code == "capability store.table(\"orders\")"
+    end
+
+    test "wrong table name still produces error" do
+      errors =
+        analyze_errors("""
+        module M {
+          capability store.table("users")
+
+          fn find(id: Uuid) -> String {
+            store.orders.get(id)
+          }
+        }
+        """)
+
+      error = Enum.find(errors, &(&1.code == "E0030"))
+      assert error != nil
+      assert error.message =~ "orders"
+    end
+  end
+
+  describe "store capability checking - valid capabilities" do
+    test "store.users.get with store.table(\"users\") passes" do
+      assert {:ok, _} =
+               analyze("""
+               module M {
+                 capability store.table("users")
+
+                 fn find(id: Uuid) -> String {
+                   store.users.get(id)
+                 }
+               }
+               """)
+    end
+
+    test "store.users.put with store.table(\"users\") passes" do
+      assert {:ok, _} =
+               analyze("""
+               module M {
+                 capability store.table("users")
+
+                 fn save(record: String) -> String {
+                   store.users.put(record)
+                 }
+               }
+               """)
+    end
+
+    test "store operations on different tables each need their own capability" do
+      assert {:ok, _} =
+               analyze("""
+               module M {
+                 capability store.table("users")
+                 capability store.table("orders")
+
+                 fn find_user(id: Uuid) -> String {
+                   store.users.get(id)
+                 }
+
+                 fn find_order(id: Uuid) -> String {
+                   store.orders.get(id)
+                 }
+               }
+               """)
+    end
+
+    test "multiple store methods on the same table pass with one capability" do
+      assert {:ok, _} =
+               analyze("""
+               module M {
+                 capability store.table("items")
+
+                 fn crud(id: Uuid) -> String {
+                   store.items.get(id)
+                   store.items.put(id)
+                   store.items.delete(id)
+                   store.items.query(id)
+                 }
+               }
+               """)
+    end
+  end
+
+  describe "store annotations" do
+    test "@primary annotation on Uuid field passes" do
+      assert {:ok, _} =
+               analyze("""
+               module M {
+                 type User {
+                   id: Uuid @primary
+                   name: String
+                 }
+               }
+               """)
+    end
+
+    test "@unique annotation on String field passes" do
+      assert {:ok, _} =
+               analyze("""
+               module M {
+                 type User {
+                   id: Uuid @primary
+                   email: String @unique
+                   name: String
+                 }
+               }
+               """)
+    end
+
+    test "@primary and @unique together on same field passes" do
+      assert {:ok, _} =
+               analyze("""
+               module M {
+                 type User {
+                   id: Uuid @primary @unique
+                   name: String
+                 }
+               }
+               """)
+    end
+  end
+
   describe "capability checking - error serialization" do
     test "capability error serializes to JSON with fix_code" do
       errors =

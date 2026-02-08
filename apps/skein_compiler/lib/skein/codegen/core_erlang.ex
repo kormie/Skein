@@ -422,6 +422,36 @@ defmodule Skein.CodeGen.CoreErlang do
     end
   end
 
+  # Store effect: store.<table>.<method>(...)
+  # Pattern: Call(FieldAccess(FieldAccess(Identifier("store"), table), method), args)
+  defp generate_expr(
+         %AST.Call{
+           target: %AST.FieldAccess{
+             subject: %AST.FieldAccess{
+               subject: %AST.Identifier{name: "store"},
+               field: table_name
+             },
+             field: method
+           },
+           args: args
+         },
+         scope
+       )
+       when method in ["get", "put", "delete", "query"] do
+    method_atom = String.to_atom(method)
+    args_exprs = Enum.map(args, &generate_expr(&1, scope))
+
+    capabilities = Map.get(scope, :__capabilities__, [])
+    caps_expr = generate_capabilities_literal(capabilities)
+
+    # Call: Skein.Runtime.Store.method(table_name, args..., capabilities)
+    :cerl.c_call(
+      :cerl.c_atom(:"Elixir.Skein.Runtime.Store"),
+      :cerl.c_atom(method_atom),
+      [:cerl.abstract(table_name) | args_exprs] ++ [caps_expr]
+    )
+  end
+
   # Effect call: http.get(...), http.post(...), etc.
   defp generate_expr(
          %AST.Call{
