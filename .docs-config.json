@@ -50,7 +50,7 @@
   "sourceMappings": [
     {
       "source": "docs/SKEIN_SPEC.md",
-      "docs": ["language/syntax", "language/types", "language/expressions", "language/modules-and-functions", "language/capabilities-and-effects"]
+      "docs": ["language/syntax", "language/types", "language/expressions", "language/modules-and-functions", "language/capabilities-and-effects", "language/tools", "language/testing"]
     },
     {
       "source": "docs/ARCHITECTURE.md",
@@ -87,6 +87,14 @@
     {
       "source": "apps/skein_compiler/lib/skein/error.ex",
       "docs": ["compiler/errors"]
+    },
+    {
+      "source": "apps/skein_runtime/lib/skein/runtime/tool.ex",
+      "docs": ["language/tools", "runtime/overview"]
+    },
+    {
+      "source": "apps/skein_cli/lib/skein_cli.ex",
+      "docs": ["language/testing"]
     }
   ],
   "terminology": {

@@ -12,11 +12,22 @@ description: How the Skein compiler is tested with ExUnit.
 ```
 apps/skein_compiler/test/
   skein/
-    lexer_test.exs           # 69 unit tests
-    parser_test.exs          # 47 unit tests
+    lexer_test.exs                    # 69 unit tests
+    parser_test.exs                   # 62 unit tests
     codegen/
-      core_erlang_test.exs   # 18 integration tests
+      core_erlang_test.exs            # 36 integration tests
+      schema_gen_test.exs             # 22 unit tests
+    integration/
+      memory_llm_test.exs             # 8 integration tests
+      tool_test.exs                   # 14 integration tests
+      test_construct_test.exs         # 7 integration tests
+    analyzer_test.exs                 # 76 unit tests
+apps/skein_runtime/test/              # 141 runtime tests
+apps/skein_cli/test/
+  skein_cli_test.exs                  # 6 CLI tests
 ```
+
+**Total: 560 tests, 57 properties, 0 failures**
 
 ## Lexer Tests (69 tests)
 

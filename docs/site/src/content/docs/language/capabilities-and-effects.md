@@ -42,7 +42,8 @@ capability <namespace>.<kind>(<params>)
 | `http.in` | Inbound HTTP handlers | Route prefix (optional) |
 | `store.table` | Database table access | Table name |
 | `memory.kv` | Scoped KV memory | Namespace name |
-| `model` | LLM model access | Model identifier |
+| `model` | LLM model access | Provider, model identifier |
+| `tool.use` | Tool execution | Tool name |
 
 ### Wildcard Capabilities
 
@@ -97,11 +98,63 @@ Memory is scoped by namespace. Each namespace requires a `capability memory.kv("
 ### LLM Effects
 
 ```skein
-llm.chat("claude-3-5-sonnet", "system prompt", input)
-llm.json("claude-3-5-sonnet", "system prompt", input, schema)
+llm.chat("claude-sonnet-4-5", "system prompt", input)
+llm.json[RefundDecision]("claude-sonnet-4-5", "system prompt", input)
 ```
 
-`llm.chat` returns unstructured text. `llm.json` returns a parsed map constrained by a JSON schema. Both require a `capability model("model-name")` declaration.
+`llm.chat` returns unstructured text. `llm.json[T]` returns a parsed map constrained by a JSON schema derived from type `T` at compile time. Both require a `capability model(...)` declaration.
+
+#### Type-Parameterized JSON (`llm.json[T]`)
+
+The `llm.json[T]` syntax takes a type parameter in square brackets. The compiler looks up the type declaration and generates the corresponding JSON Schema, which is passed to the LLM runtime for schema-constrained decoding:
+
+```skein
+module RefundService {
+  type RefundDecision {
+    action: String @one_of(["approve", "deny", "escalate"])
+    amount: Int @min(0)
+    reason: String
+  }
+
+  capability model("anthropic", "claude-sonnet-4-5")
+
+  fn decide(ticket: String) -> String {
+    llm.json[RefundDecision]("claude-sonnet-4-5", "Decide if this warrants a refund.", ticket)
+  }
+}
+```
+
+The generated schema for `RefundDecision` includes all type information and constraint annotations:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "action": { "type": "string", "enum": ["approve", "deny", "escalate"] },
+    "amount": { "type": "integer", "minimum": 0 },
+    "reason": { "type": "string" }
+  },
+  "required": ["action", "amount", "reason"]
+}
+```
+
+You can also call `llm.json` without a type parameter for untyped JSON responses:
+
+```skein
+llm.json("claude-sonnet-4-5", "Return JSON.", input)
+```
+
+This uses an empty schema (`{}`) which accepts any valid JSON.
+
+### Tool Effects
+
+```skein
+tool.call("CreateRefund", args)
+tool.list()
+tool.schema("CreateRefund")
+```
+
+Tool effects require a `capability tool.use("ToolName")` declaration. See the [Tools](/Skein/language/tools/) page for full documentation on tool declarations and calling.
 
 ### How They Parse
 
@@ -203,10 +256,12 @@ Every effect call is automatically traced. The runtime records:
 
 | Field | Description |
 |-------|-------------|
-| `kind` | Effect type (`:http`) |
-| `method` | Operation (`:get`, `:post`, etc.) |
-| `url` | Target URL |
-| `status` | HTTP status code (when available) |
+| `kind` | Effect type (`:http`, `:memory`, `:llm`, `:store`, `:tool`) |
+| `method` | Operation (`:get`, `:post`, `:put`, `:chat`, `:json`, `:call`, etc.) |
+| `url` | Target URL (HTTP) |
+| `namespace` | Memory namespace (Memory) |
+| `model` | LLM model name (LLM) |
+| `name` | Tool name (Tool) |
 | `duration_us` | Wall-clock duration in microseconds |
 | `outcome` | `:ok` or `:error` |
 | `timestamp` | Monotonic timestamp |

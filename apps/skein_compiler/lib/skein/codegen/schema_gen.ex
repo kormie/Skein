@@ -30,6 +30,17 @@ defmodule Skein.CodeGen.SchemaGen do
 
   @spec to_json_schema(AST.TypeDecl.t()) :: map()
   def to_json_schema(%AST.TypeDecl{fields: fields}) do
+    fields_to_schema(fields)
+  end
+
+  @doc """
+  Generates a JSON Schema object from a list of `AST.Field` structs.
+
+  Used by tool declarations and `llm.json[T]` to derive schemas from
+  field lists without requiring a full `TypeDecl`.
+  """
+  @spec fields_to_schema([AST.Field.t()]) :: map()
+  def fields_to_schema(fields) when is_list(fields) do
     properties =
       fields
       |> Map.new(fn %AST.Field{name: name, type: type, annotations: annotations} ->

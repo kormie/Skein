@@ -267,6 +267,10 @@ defmodule Skein.Parser do
     parse_tool_decl(tokens, file)
   end
 
+  defp parse_declaration([{:test, _} | _] = tokens, file) do
+    parse_test_decl(tokens, file)
+  end
+
   defp parse_declaration([{token_type, {line, col}} | _], file) do
     {:error,
      [
@@ -274,7 +278,7 @@ defmodule Skein.Parser do
          code: "E0001",
          severity: :error,
          message:
-           "Unexpected token #{inspect(token_type)}, expected a declaration (fn, type, enum, capability, handler, tool)",
+           "Unexpected token #{inspect(token_type)}, expected a declaration (fn, type, enum, capability, handler, tool, test)",
          location: %{file: file, line: line, col: col},
          fix_hint: "Add a valid declaration keyword"
        }
@@ -288,7 +292,7 @@ defmodule Skein.Parser do
          code: "E0001",
          severity: :error,
          message:
-           "Unexpected token #{inspect(token_type)}, expected a declaration (fn, type, enum, capability, handler, tool)",
+           "Unexpected token #{inspect(token_type)}, expected a declaration (fn, type, enum, capability, handler, tool, test)",
          location: %{file: file, line: line, col: col},
          fix_hint: "Add a valid declaration keyword"
        }
@@ -619,6 +623,41 @@ defmodule Skein.Parser do
 
   defp parse_error_names(tokens, file, _acc) do
     unexpected_token_error(tokens, file, "an error type name")
+  end
+
+  # ------------------------------------------------------------------
+  # Test declaration
+  # test "description" { body }
+  # ------------------------------------------------------------------
+
+  defp parse_test_decl([{:test, {line, col}} | rest], file) do
+    case rest do
+      [{:string, _, segments} | rest2] ->
+        description =
+          segments
+          |> Enum.map(fn
+            {:literal, text} -> text
+            {:interpolation, _} -> ""
+          end)
+          |> Enum.join()
+
+        case parse_block(rest2, file) do
+          {:ok, body, rest3} ->
+            test_node = %AST.Test{
+              description: description,
+              body: body,
+              meta: %{line: line, col: col, file: file}
+            }
+
+            {:ok, test_node, rest3}
+
+          {:error, _} = error ->
+            error
+        end
+
+      _ ->
+        unexpected_token_error(rest, file, "a test description string")
+    end
   end
 
   # ------------------------------------------------------------------
@@ -1057,6 +1096,23 @@ defmodule Skein.Parser do
         }
 
         {:ok, emit, rest}
+    end
+  end
+
+  # Assert expression: assert expr
+  defp parse_let_or_match_or_pipe([{:assert, {line, col}} | rest], file) do
+    case parse_pipe_expr(rest, file) do
+      {:ok, expr, rest2} ->
+        assert_node = %AST.Call{
+          target: %AST.Identifier{name: "__assert__", meta: %{line: line, col: col, file: file}},
+          args: [expr],
+          meta: %{line: line, col: col, file: file}
+        }
+
+        {:ok, assert_node, rest2}
+
+      {:error, _} = error ->
+        error
     end
   end
 
@@ -1601,6 +1657,39 @@ defmodule Skein.Parser do
     }
 
     parse_postfix_chain(field, rest, file)
+  end
+
+  # Type-parameterized postfix: expr[TypeExpr](args...)
+  # Used for llm.json[T](...) syntax
+  defp parse_postfix_chain(expr, [{:lbracket, _}, {:upper_ident, _, _} | _] = tokens, file) do
+    [{:lbracket, _} | rest] = tokens
+
+    case parse_type_expr(rest, file) do
+      {:ok, type_ref, [{:rbracket, _}, {:lparen, {line, col}} | rest2]} ->
+        # Type-parameterized call: expr[T](args...)
+        case parse_args(rest2, file, []) do
+          {:ok, args, rest3} ->
+            call = %AST.Call{
+              target: expr,
+              args: args,
+              type_param: type_ref,
+              meta: %{line: line, col: col, file: file}
+            }
+
+            parse_postfix_chain(call, rest3, file)
+
+          {:error, _} = error ->
+            error
+        end
+
+      {:ok, _type_ref, [{:rbracket, _} | rest2]} ->
+        # Type parameter without call — continue the chain
+        {:ok, expr, rest2}
+
+      _ ->
+        # Not a valid type parameter, stop the chain
+        {:ok, expr, tokens}
+    end
   end
 
   defp parse_postfix_chain(expr, rest, _file) do

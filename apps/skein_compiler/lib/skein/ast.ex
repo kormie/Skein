@@ -32,7 +32,7 @@ defmodule Skein.AST do
   defmodule Let, do: defstruct([:name, :type, :value, :meta])
   defmodule Match, do: defstruct([:subject, :arms, :meta])
   defmodule MatchArm, do: defstruct([:pattern, :guard, :body, :meta])
-  defmodule Call, do: defstruct([:target, :args, :meta])
+  defmodule Call, do: defstruct([:target, :args, :type_param, :meta])
   defmodule Pipe, do: defstruct([:left, :right, :meta])
   defmodule FieldAccess, do: defstruct([:subject, :field, :meta])
   defmodule BinaryOp, do: defstruct([:op, :left, :right, :meta])

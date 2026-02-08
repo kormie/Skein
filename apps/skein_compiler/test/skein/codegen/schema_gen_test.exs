@@ -20,7 +20,7 @@ defmodule Skein.CodeGen.SchemaGenTest do
   end
 
   # Helper: build an Annotation
-  defp annotation(name, value \\ nil) do
+  defp annotation(name, value) do
     %AST.Annotation{name: name, value: value, meta: %{line: 1, col: 1, file: "test"}}
   end
 
@@ -330,6 +330,76 @@ defmodule Skein.CodeGen.SchemaGenTest do
                "type" => "string",
                "enum" => ["Active", "Completed", "Pending"]
              }
+    end
+  end
+
+  # ------------------------------------------------------------------
+  # fields_to_schema/1 — generate schema from a list of fields
+  # ------------------------------------------------------------------
+
+  describe "fields_to_schema/1" do
+    test "generates JSON Schema object from field list" do
+      fields = [
+        field("name", type_ref("String")),
+        field("age", type_ref("Int"))
+      ]
+
+      schema = SchemaGen.fields_to_schema(fields)
+
+      assert schema == %{
+               "type" => "object",
+               "properties" => %{
+                 "name" => %{"type" => "string"},
+                 "age" => %{"type" => "integer"}
+               },
+               "required" => ["age", "name"]
+             }
+    end
+
+    test "fields with annotations include constraints" do
+      fields = [
+        field("amount", type_ref("Int"), [
+          annotation("min", %AST.IntLit{value: 1, meta: %{}}),
+          annotation("max", %AST.IntLit{value: 100_000, meta: %{}})
+        ]),
+        field("customer_id", type_ref("String"), [
+          annotation("description", %AST.StringLit{segments: [{:literal, "Stripe ID"}], meta: %{}})
+        ])
+      ]
+
+      schema = SchemaGen.fields_to_schema(fields)
+
+      assert schema["properties"]["amount"] == %{
+               "type" => "integer",
+               "minimum" => 1,
+               "maximum" => 100_000
+             }
+
+      assert schema["properties"]["customer_id"] == %{
+               "type" => "string",
+               "description" => "Stripe ID"
+             }
+    end
+
+    test "empty fields list generates empty object schema" do
+      schema = SchemaGen.fields_to_schema([])
+
+      assert schema == %{
+               "type" => "object",
+               "properties" => %{},
+               "required" => []
+             }
+    end
+
+    test "Option fields are excluded from required" do
+      fields = [
+        field("name", type_ref("String")),
+        field("phone", type_ref("Option", [type_ref("String")]))
+      ]
+
+      schema = SchemaGen.fields_to_schema(fields)
+      assert "name" in schema["required"]
+      refute "phone" in schema["required"]
     end
   end
 
