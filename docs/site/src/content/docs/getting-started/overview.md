@@ -18,9 +18,9 @@ Skein is designed around six ranked principles:
 | P5 | Crash Gracefully | OTP's "let it crash" philosophy is the default for agent workloads |
 | P6 | Humans Read, Agents Write | Syntax favors regularity and unambiguous parsing over cleverness |
 
-## What Works Today (Phases 1-8e)
+## What Works Today (Phases 1-8f)
 
-The compilation pipeline is operational through Phase 8e. You can write `.skein` files with modules, functions, types, HTTP/queue/schedule handlers, store operations, and agents -- compile them to BEAM bytecode, and run them on a Bandit + Plug HTTP server. The CLI tooling provides project scaffolding, building, testing, running, and trace inspection. Test constructs include `test`, `scenario` (with `given`/`expect`), and `golden` trace tests with a deterministic replay engine.
+The compilation pipeline is operational through Phase 8f. You can write `.skein` files with modules, functions, types, HTTP/queue/schedule handlers, store operations, and agents -- compile them to BEAM bytecode, and run them on a Bandit + Plug HTTP server. The CLI tooling provides project scaffolding, building, testing, running, and trace inspection. Test constructs include `test`, `scenario` (with `given`/`expect`), and `golden` trace tests with a deterministic replay engine.
 
 **Language constructs:**
 

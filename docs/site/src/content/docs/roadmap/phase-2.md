@@ -214,7 +214,9 @@ description: What's been built, what's next, and the full 7-phase implementation
 - `llm.json` without type parameter still works (backward compatible)
 - All tool operations produce trace spans
 
-### Phase 6: Remaining (Future)
+### Phase 6: Deferred Features (Post-MVP)
+
+These Phase 6 features were intentionally deferred — the core agent runtime is complete:
 
 - Agent pool supervision (`AgentPool` with max concurrency)
 - `suspend()` / `resume()` lifecycle
