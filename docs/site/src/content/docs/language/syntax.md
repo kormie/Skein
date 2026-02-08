@@ -17,7 +17,7 @@ This regularity is a deliberate design choice for agent-writability -- an LLM th
 
 Modules are the top-level organizational unit. Every Skein file contains a single module:
 
-```
+```skein
 module Hello {
   fn greet(name: String) -> String {
     "Hello, ${name}!"
@@ -31,7 +31,7 @@ Module names must start with an uppercase letter (`[A-Z][a-zA-Z0-9]*`).
 
 Functions use `fn`. They are always named (no anonymous lambdas). Parameters have explicit types, and a return type is required.
 
-```
+```skein
 fn calculate(a: Int, b: Int) -> Int {
   let sum = a + b
   sum * 2
@@ -42,7 +42,7 @@ The last expression in the block is the return value. There is no `return` keywo
 
 Zero-parameter functions omit the parens content:
 
-```
+```skein
 fn get_version() -> String {
   "0.1.0"
 }
@@ -52,7 +52,7 @@ fn get_version() -> String {
 
 All bindings use `let`. Bindings are immutable -- there is no `mut`, `var`, or reassignment.
 
-```
+```skein
 fn example(x: Int) -> Int {
   let doubled = x + x
   let result = doubled * 3
@@ -64,7 +64,7 @@ fn example(x: Int) -> Int {
 
 `match` is the **only** conditional construct in Skein. No `if/else`, no ternary, no `cond`.
 
-```
+```skein
 fn classify(n: Int) -> String {
   match n > 0 {
     true  -> "positive"
@@ -75,7 +75,7 @@ fn classify(n: Int) -> String {
 
 Match arms use the `pattern -> expression` syntax. Each arm body can be a single expression or a block:
 
-```
+```skein
 match status {
   "active" -> handle_active()
   "paused" -> {
@@ -89,7 +89,7 @@ match status {
 
 The pipe `|>` threads the result of the left side as the first argument of the right side:
 
-```
+```skein
 fn process(data: String) -> String {
   data |> transform() |> validate() |> format()
 }
@@ -99,7 +99,7 @@ fn process(data: String) -> String {
 
 Strings use double quotes with `${}` for interpolation:
 
-```
+```skein
 fn greet(name: String) -> String {
   "Hello, ${name}!"
 }
@@ -107,7 +107,7 @@ fn greet(name: String) -> String {
 
 Plain strings without interpolation are also supported:
 
-```
+```skein
 fn label() -> String {
   "no interpolation here"
 }
@@ -117,7 +117,7 @@ fn label() -> String {
 
 Comments use `--` (double dash). There are no block comments.
 
-```
+```skein
 -- This is a comment
 fn add(a: Int, b: Int) -> Int {
   a + b  -- inline comment
@@ -175,7 +175,7 @@ fn add(a: Int, b: Int) -> Int {
 
 ## Function Calls and Field Access
 
-```
+```skein
 -- Function call
 let result = compute(x, y)
 
@@ -193,7 +193,7 @@ let ref = &my_function
 
 Blocks use braces. Always. No significant whitespace, no optional braces.
 
-```
+```skein
 {
   let x = compute(y)
   x + 1

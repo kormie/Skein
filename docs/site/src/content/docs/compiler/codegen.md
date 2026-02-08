@@ -100,7 +100,7 @@ end
 
 Each Skein function becomes a Core Erlang function:
 
-```
+```skein
 fn add(a: Int, b: Int) -> Int {
   a + b
 }
@@ -185,7 +185,7 @@ Operator mapping:
 
 ### Let Bindings
 
-```
+```skein
 let x = expr
 body
 ```
@@ -202,7 +202,7 @@ Compiles to:
 
 ### Match Expressions
 
-```
+```skein
 match subject {
   true  -> "yes"
   false -> "no"
@@ -236,7 +236,7 @@ Local function calls use `:cerl.c_apply/2`:
 
 Multi-expression blocks use chained `let` bindings. Each expression except the last is bound to a unique temporary variable:
 
-```
+```skein
 {
   let x = a + b
   let y = x * 2
@@ -293,7 +293,7 @@ The `:from_core` flag tells the compiler the input is Core Erlang (not Erlang so
 
 When the code generator encounters an effect call like `http.get(url)`, it generates a remote call to the runtime instead of a local apply:
 
-```
+```skein
 -- Skein source:
 http.get(url)
 

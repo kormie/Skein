@@ -16,7 +16,7 @@ This design ensures:
 
 Capabilities are declared at the top of a module with the `capability` keyword:
 
-```
+```skein
 module UserService {
   capability http.out("api.example.com")
   capability http.out("auth.example.com")
@@ -29,7 +29,7 @@ module UserService {
 
 ### Syntax
 
-```
+```skein
 capability <namespace>.<kind>
 capability <namespace>.<kind>(<params>)
 ```
@@ -48,7 +48,7 @@ More capabilities will be added in later phases (memory, LLM, tools, events).
 
 A capability without parameters acts as a wildcard:
 
-```
+```skein
 module OpenClient {
   capability http.out  -- allows HTTP to any host
 
@@ -64,7 +64,7 @@ Use wildcard capabilities sparingly -- explicit host lists are preferred for sec
 
 Effect calls look like regular function calls with a namespace prefix:
 
-```
+```skein
 http.get(url)
 http.post(url, body)
 http.put(url, body)
@@ -100,7 +100,7 @@ The analyzer's capability checking pass (Pass 3) walks every function body looki
 
 ### Error: Missing Capability (E0030)
 
-```
+```skein
 module BadService {
   fn fetch(url: String) -> String {
     http.get(url)  -- ERROR: E0030
@@ -137,7 +137,7 @@ Even if the compiler is bypassed, the runtime enforces capabilities as a second 
 
 When compiled code calls `http.get(url)`, the code generator emits a call to `Skein.Runtime.Http.get(url, capabilities)` where `capabilities` is the module's declared capability list. The runtime checks the URL's host against this list before making the request.
 
-```
+```skein
 -- This compiles, but the runtime blocks it:
 -- The URL host "api.blocked.com" doesn't match "api.allowed.com"
 module Service {
@@ -188,7 +188,7 @@ Skein.User.MyService.__capabilities__()
 
 Effect calls in function bodies compile to remote calls:
 
-```
+```skein
 -- Skein source
 http.get(url)
 

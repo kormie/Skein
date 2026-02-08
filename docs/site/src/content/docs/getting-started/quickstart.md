@@ -32,7 +32,7 @@ apps/
 
 Create a file called `hello.skein`:
 
-```
+```skein
 module Hello {
   fn greet(name: String) -> String {
     "Hello, ${name}!"

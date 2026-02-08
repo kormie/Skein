@@ -1,12 +1,22 @@
 import { defineConfig } from 'astro/config';
 import starlight from '@astrojs/starlight';
 import starlightLlmsTxt from 'starlight-llms-txt';
+import { readFileSync } from 'node:fs';
+
+const skeinGrammar = JSON.parse(
+  readFileSync(new URL('./src/grammars/skein.tmLanguage.json', import.meta.url), 'utf-8')
+);
 
 export default defineConfig({
   site: 'https://kormie.github.io',
   base: '/Skein/',
   integrations: [
     starlight({
+      expressiveCode: {
+        shiki: {
+          langs: [skeinGrammar],
+        },
+      },
       title: 'Skein',
       plugins: [
         starlightLlmsTxt({ projectName: 'Skein' }),

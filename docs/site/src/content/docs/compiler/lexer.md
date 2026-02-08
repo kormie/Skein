@@ -42,7 +42,7 @@ Skein.Lexer.tokenize("let x = 42")
 
 Reserved words that cannot be used as identifiers:
 
-```
+```skein
 module  fn       let      match    type     enum
 handler agent    tool     capability supervisor test
 scenario golden  on       emit     transition stop
@@ -151,7 +151,7 @@ Interpolation uses `${}` syntax. Inside the braces, the lexer produces a nested 
 
 Single-line comments start with `--` and run to end of line:
 
-```
+```skein
 -- this is a comment
 let x = 42  -- inline comment
 ```
