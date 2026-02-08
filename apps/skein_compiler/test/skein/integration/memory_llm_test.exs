@@ -287,5 +287,70 @@ defmodule Skein.Integration.MemoryLlmTest do
       assert {:error, errors} = Skein.Analyzer.analyze(ast)
       assert Enum.any?(errors, &(&1.code == "E0030" and &1.message =~ "model"))
     end
+
+    test "llm.stream calls without model capability are rejected at compile time" do
+      source = """
+      module NoCapStream {
+        fn stream_it(data: String) -> String {
+          llm.stream("claude-sonnet-4-5", "system", data)
+        }
+      }
+      """
+
+      {:ok, tokens} = Skein.Lexer.tokenize(source)
+      {:ok, ast} = Skein.Parser.parse(tokens)
+      assert {:error, errors} = Skein.Analyzer.analyze(ast)
+      assert Enum.any?(errors, &(&1.code == "E0030" and &1.message =~ "model"))
+    end
+  end
+
+  # ------------------------------------------------------------------
+  # LLM streaming integration (Phase 8f)
+  # ------------------------------------------------------------------
+
+  describe "llm.stream integration" do
+    test "llm.stream compiles and runs end-to-end" do
+      Skein.Runtime.Llm.set_backend(Skein.Runtime.Llm.StreamingTestBackend)
+
+      {:module, mod} =
+        Skein.Compiler.compile_string("""
+        module StreamIntegration {
+          capability model("anthropic", "claude-sonnet-4-5")
+
+          fn stream_it(data: String) -> String {
+            llm.stream("claude-sonnet-4-5", "You are a helpful assistant.", data)
+          }
+        }
+        """)
+
+      assert {:ok, response} = mod.stream_it("Hello")
+      assert is_binary(response)
+    end
+
+    test "llm.stream uses same model capability as chat and json" do
+      Skein.Runtime.Llm.set_backend(Skein.Runtime.Llm.StreamingTestBackend)
+
+      {:module, mod} =
+        Skein.Compiler.compile_string("""
+        module StreamCaps {
+          capability model("anthropic", "claude-sonnet-4-5")
+
+          fn ask(data: String) -> String {
+            llm.chat("claude-sonnet-4-5", "system", data)
+          }
+
+          fn stream_it(data: String) -> String {
+            llm.stream("claude-sonnet-4-5", "system", data)
+          }
+        }
+        """)
+
+      # Both should work with the same capability
+      Skein.Runtime.Llm.set_backend(Skein.Runtime.Llm.TestBackend)
+      assert {:ok, _} = mod.ask("Hello")
+
+      Skein.Runtime.Llm.set_backend(Skein.Runtime.Llm.StreamingTestBackend)
+      assert {:ok, _} = mod.stream_it("Hello")
+    end
   end
 end

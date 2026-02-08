@@ -214,8 +214,8 @@ Traces can be replayed for testing: fully recorded, live against real services, 
 
 ### Prerequisites
 
-- Erlang/OTP 27+
-- Elixir 1.17+
+- Erlang/OTP 28+
+- Elixir 1.19+
 
 ### Build and test
 
@@ -241,15 +241,21 @@ Skein is in active development. The compiler and runtime are being built in phas
 
 | Phase | Goal | Status |
 |-------|------|--------|
-| **1** | **Hello BEAM** — end-to-end compilation pipeline | In progress |
-| 2 | Type system — named types, enums, type checking, schema derivation | Planned |
-| 3 | Capabilities — declared effects, compile-time + runtime checking | Planned |
-| 4 | HTTP handlers — routing, request/response, running server | Planned |
-| 5 | Storage — typed records, migrations | Planned |
-| 6 | Agents — state machines, LLM calls, tools, memory | Planned |
-| 7 | Testing & CLI — test constructs, replay, golden traces | Planned |
+| **1** | **Hello BEAM** — end-to-end compilation pipeline | Complete |
+| **2** | **Type system** — named types, enums, type checking, schema derivation | Complete |
+| **3** | **Capabilities** — declared effects, compile-time + runtime checking | Complete |
+| **4** | **HTTP handlers** — routing, request/response, Bandit + Plug server | Complete |
+| **5** | **Storage** — typed records, ETS backend, capability enforcement | Complete |
+| **6** | **Agents** — state machines, LLM calls, tools, memory | Complete |
+| **7** | **Testing & CLI** — test constructs, replay, golden traces, CLI tooling | Complete |
+| **8a** | **Test infrastructure** — scenario, golden, replay constructs | Complete |
+| **8c** | **HTTP server** — Bandit + Plug, `req.json[T]` validation | Complete |
+| **8d** | **Canonical examples** — 5 working `.skein` programs with integration tests | Complete |
+| **8e** | **Queue & schedule handlers** — event-driven and cron-triggered execution | Complete |
+| **8f** | **LLM streaming** — `llm.stream` with chunked responses and trace spans | Complete |
+| **8b** | **Storage backend** — Ecto integration, Postgres/SQLite | Next |
 
-Phase 1 target: take a `.skein` file, lex it, parse it, generate Core Erlang, compile to `.beam`, and call the resulting function from Elixir.
+742 tests (76 property-based), 0 failures. The full compilation pipeline works end-to-end — from `.skein` source to running BEAM bytecode.
 
 ---
 

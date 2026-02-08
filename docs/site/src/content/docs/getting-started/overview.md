@@ -18,9 +18,9 @@ Skein is designed around six ranked principles:
 | P5 | Crash Gracefully | OTP's "let it crash" philosophy is the default for agent workloads |
 | P6 | Humans Read, Agents Write | Syntax favors regularity and unambiguous parsing over cleverness |
 
-## What Works Today (Phases 1-7)
+## What Works Today (Phases 1-8f)
 
-The compilation pipeline is operational through Phase 7. You can write `.skein` files with modules, functions, types, handlers, store operations, and agents -- compile them to BEAM bytecode, and run them. The CLI tooling provides project scaffolding, building, testing, running, and trace inspection.
+The compilation pipeline is operational through Phase 8f. You can write `.skein` files with modules, functions, types, HTTP/queue/schedule handlers, store operations, and agents -- compile them to BEAM bytecode, and run them on a Bandit + Plug HTTP server. The CLI tooling provides project scaffolding, building, testing, running, and trace inspection. Test constructs include `test`, `scenario` (with `given`/`expect`), and `golden` trace tests with a deterministic replay engine.
 
 **Language constructs:**
 
@@ -34,6 +34,11 @@ The compilation pipeline is operational through Phase 7. You can write `.skein` 
 - `enum Name { variants }` -- enum type declarations with transitions
 - `capability namespace.kind(params)` -- capability declarations
 - `handler http METHOD "/path" (req) -> { ... }` -- HTTP handler declarations
+- `handler queue "queue-name" (msg) -> { ... }` -- queue handler declarations
+- `handler schedule "cron-expr" () -> { ... }` -- schedule handler declarations
+- `test "description" { ... }` -- inline test declarations
+- `scenario "description" { given { ... } expect { ... } }` -- scenario tests
+- `golden "description" from trace "file" { ... }` -- golden trace tests
 - `agent Name { ... }` -- agent state machines with phases and handlers
 - All arithmetic operators: `+`, `-`, `*`, `/`
 - All comparison operators: `==`, `!=`, `<`, `>`, `<=`, `>=`
@@ -57,7 +62,7 @@ The compilation pipeline is operational through Phase 7. You can write `.skein` 
 - HTTP effect calls: `http.get`, `http.post`, `http.put`, `http.patch`, `http.delete`
 - Store effect calls: `store.<table>.get`, `store.<table>.put`, `store.<table>.delete`, `store.<table>.query`
 - Memory effect calls: `memory.put`, `memory.get`, `memory.delete`, `memory.list`
-- LLM effect calls: `llm.chat`, `llm.json`
+- LLM effect calls: `llm.chat`, `llm.json`, `llm.stream`
 - Runtime capability enforcement (second layer of defense)
 - Automatic trace recording for every effect call
 
@@ -73,12 +78,15 @@ The compilation pipeline is operational through Phase 7. You can write `.skein` 
 
 - HTTP client with capability enforcement and tracing
 - Handler dispatch with route matching and path parameters
+- Queue dispatch with subscribe/publish for event-driven handlers
+- Schedule dispatch with cron expression parsing for time-triggered handlers
 - ETS-backed store with capability-gated CRUD operations
 - Scoped KV memory with namespace isolation and capability enforcement
 - LLM client with pluggable backends and schema-constrained JSON responses
 - Agent runtime wrapping `:gen_statem` for phase-based state machines
-- Lightweight HTTP server for serving handlers
+- Bandit + Plug HTTP server with `req.json[T]` body validation
 - Trace recording with timing and outcome metadata
+- Replay engine for deterministic trace playback in tests
 
 **CLI tooling:**
 
@@ -90,13 +98,10 @@ The compilation pipeline is operational through Phase 7. You can write `.skein` 
 
 ## What's Not Built Yet
 
-- `scenario` and `golden` test constructs -- parsed but not executed end-to-end
-- Replay engine for deterministic trace playback
-- Managed storage backends (Postgres, SQLite) -- currently ETS only
-- `req.json[T]` body validation in handlers -- parsed but schema validation is basic
+- Managed storage backends (Postgres, SQLite via Ecto) -- currently ETS only
 - Agent pool supervision (`AgentPool` with max concurrency)
-- Queue/topic handlers and schedule handlers
-- LLM streaming (`llm.stream` with `on_chunk`)
+- `suspend()` / `resume()` agent lifecycle
+- Tool policies (rate limits, approval workflows)
 
 See the [Roadmap](/Skein/roadmap/phase-2/) for the full plan.
 

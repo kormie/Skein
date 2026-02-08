@@ -229,7 +229,7 @@ Every operation:
 
 ### `Skein.Runtime.Llm`
 
-Provider-agnostic LLM client. Provides unstructured chat and schema-constrained JSON endpoints. Uses a pluggable backend system for testing and production.
+Provider-agnostic LLM client. Provides unstructured chat, schema-constrained JSON, and streaming endpoints. Uses a pluggable backend system for testing and production.
 
 **API:**
 
@@ -239,19 +239,26 @@ Skein.Runtime.Llm.chat("claude-3-5-sonnet", "You are helpful", "What is 2+2?", c
 
 Skein.Runtime.Llm.json("claude-3-5-sonnet", "Evaluate refund", input, schema, capabilities)
 #=> {:ok, %{"action" => "approve", "amount" => 100}}
+
+Skein.Runtime.Llm.stream("claude-3-5-sonnet", "Be helpful", "Hello", on_chunk_fn, capabilities)
+#=> {:ok, "Hello, world!"}  (chunks delivered to on_chunk_fn as they arrive)
 ```
 
 Every operation:
 1. Validates `model` capability for the requested model
 2. Dispatches to the active backend (defaults to `TestBackend` for deterministic testing)
 3. For `json/5`, parses the response as JSON and validates structure
-4. Records a trace span with model, timing, and outcome
-5. Returns `{:ok, _}` or `{:error, %Llm.Error{}}`
+4. For `stream/5`, delivers each chunk to the callback, then returns the assembled text
+5. Records a trace span with model, timing, and outcome
+6. Returns `{:ok, _}` or `{:error, %Llm.Error{}}`
 
 **Backends:**
 - `Skein.Runtime.Llm.TestBackend` -- deterministic responses for testing
+- `Skein.Runtime.Llm.StreamingTestBackend` -- deterministic streaming chunks for testing
 - `Skein.Runtime.Llm.FailingBackend` -- always returns errors (for error-path testing)
+- `Skein.Runtime.Llm.FailingStreamBackend` -- always returns errors during streaming
 - `Skein.Runtime.Llm.InvalidJsonBackend` -- returns invalid JSON (for parse-error testing)
+- `Skein.Runtime.Llm.DynamicStreamBackend` -- configurable chunks via `{module, chunks}` tuple
 - Custom backends implement the `Skein.Runtime.Llm.Backend` behaviour
 
 **Error types (`Skein.Runtime.Llm.Error`):**
@@ -407,5 +414,5 @@ No third-party HTTP libraries are required. This keeps the runtime lightweight a
 ## Test Coverage
 
 The runtime has comprehensive test coverage:
-- **10 property tests** covering capability host matching, wildcard behavior, URL extraction, and store operations
-- **124 unit tests** covering agents, HTTP client, capability enforcement, handler dispatch, store operations, memory, LLM client, HTTP server, and trace recording
+- **21 property tests** covering capability host matching, wildcard behavior, URL extraction, store operations, request validation, and tool operations
+- **204 unit tests** covering agents, HTTP client, capability enforcement, handler dispatch, router, store operations, memory, LLM client, Bandit HTTP server, queue dispatch, schedule dispatch, trace recording, and replay engine

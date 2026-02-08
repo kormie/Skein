@@ -14,9 +14,14 @@ description: What's been built, what's next, and the full 7-phase implementation
 | 5 | Storage | **Complete** | ETS-backed `store.table` with get, put, delete, query |
 | 6 | Agents | **Complete** | Agent skeleton, memory, LLM, tools, events |
 | 7 | Testing, Replay, and CLI | **Complete** | Test constructs, full CLI (new, build, test, run, trace) |
-| 8 | Hardening and Infrastructure | **Next** | Test infrastructure, Ecto backend, Bandit, examples, queue/schedule, streaming |
+| 8a | Test Infrastructure | **Complete** | Scenario, golden, replay test constructs |
+| 8c | HTTP Server | **Complete** | Bandit + Plug, `req.json[T]` body validation |
+| 8d | Canonical Examples | **Complete** | 5 working `.skein` programs with integration tests |
+| 8e | Queue & Schedule Handlers | **Complete** | Event-driven and cron-triggered execution |
+| 8f | LLM Streaming | **Complete** | `llm.stream` with chunked responses and trace spans |
+| 8b | Storage Backend | **Next** | Ecto integration, Postgres/SQLite |
 
-**Current test suite:** 57 properties, 594 tests, 0 failures
+**Current test suite:** 76 properties, 742 tests, 0 failures
 
 ## Phase 1: Hello BEAM (Complete)
 
@@ -209,7 +214,9 @@ description: What's been built, what's next, and the full 7-phase implementation
 - `llm.json` without type parameter still works (backward compatible)
 - All tool operations produce trace spans
 
-### Phase 6: Remaining (Future)
+### Phase 6: Deferred Features (Post-MVP)
+
+These Phase 6 features were intentionally deferred — the core agent runtime is complete:
 
 - Agent pool supervision (`AgentPool` with max concurrency)
 - `suspend()` / `resume()` lifecycle
@@ -280,10 +287,36 @@ All examples compile successfully and have integration tests verifying their beh
 
 **Tests:** 24 new unit tests, 2 new property tests covering all handler types across parser, analyzer, codegen, and runtime.
 
+### Phase 8f: LLM Streaming (Complete)
+
+**Goal:** Support streaming LLM responses for real-time agent output.
+
+**What was built:**
+
+**Compiler:**
+- Added `"stream"` to the analyzer's known LLM effect methods -- uses the same `model` capability as `llm.chat` and `llm.json`
+- CodeGen emits `Skein.Runtime.Llm.stream(model, system, input, noop_callback, capabilities)` for `llm.stream(...)` calls
+- Compiled code passes a no-op callback; runtime callers can pass custom callbacks for chunk processing
+
+**Runtime:**
+- `Skein.Runtime.Llm.stream/5` -- streams chunks via an `on_chunk` callback, assembles and returns full response
+- `Backend` behaviour extended with optional `stream/3` callback
+- 4 new test backends: `StreamingTestBackend`, `EmptyStreamBackend`, `FailingStreamBackend`, `DynamicStreamBackend`
+- Dynamic backends via `{module, config}` tuples for property testing with configurable chunk lists
+- Trace spans with `:stream` method, model, timing, and outcome metadata
+
+**Tests:** 7 new unit tests, 4 new property tests, 2 new analyzer tests, 3 new codegen tests, 3 new integration tests
+
+**Acceptance criteria met:**
+- `llm.stream` compiles and runs end-to-end from `.skein` source
+- Streaming uses the same `model` capability as `llm.chat` and `llm.json`
+- All chunks are delivered in order and the response is correctly assembled
+- Each streaming call produces a trace span
+- Property tests verify: chunk reassembly equals concatenation, chunk ordering, capability enforcement, trace recording
+
 ### Phase 8 Remaining
 
 - **8b: Storage backend** -- Ecto schema generation, migrations
-- **8f: LLM streaming** -- `llm.stream` with `on_chunk` callback
 
 See the [Implementation Plan](https://github.com/kormie/Skein/blob/main/docs/IMPLEMENTATION_PLAN.md) for full acceptance criteria.
 

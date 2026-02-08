@@ -1323,6 +1323,34 @@ defmodule Skein.CodeGen.CoreErlang do
     )
   end
 
+  # LLM effect: llm.stream(model, system, input) — streaming with no-op callback from compiled code
+  defp generate_expr(
+         %AST.Call{
+           target: %AST.FieldAccess{
+             subject: %AST.Identifier{name: "llm"},
+             field: "stream"
+           },
+           args: args
+         },
+         scope
+       ) do
+    args_exprs = Enum.map(args, &generate_expr(&1, scope))
+
+    capabilities = Map.get(scope, :__capabilities__, [])
+    caps_expr = generate_capabilities_literal(capabilities)
+
+    # Build a no-op callback: fun (Chunk) -> Chunk
+    chunk_var = :cerl.c_var(:_StreamChunk)
+    noop_callback = :cerl.c_fun([chunk_var], :cerl.c_atom(:ok))
+
+    # Call: Skein.Runtime.Llm.stream(model, system, input, on_chunk, capabilities)
+    :cerl.c_call(
+      :cerl.c_atom(:"Elixir.Skein.Runtime.Llm"),
+      :cerl.c_atom(:stream),
+      args_exprs ++ [noop_callback, caps_expr]
+    )
+  end
+
   # Tool effect: tool.call(name, args), tool.list(), tool.schema(name)
   defp generate_expr(
          %AST.Call{

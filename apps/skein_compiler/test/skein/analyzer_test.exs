@@ -1643,6 +1643,40 @@ defmodule Skein.AnalyzerTest do
   end
 
   # ------------------------------------------------------------------
+  # llm.stream capability checking (Phase 8f)
+  # ------------------------------------------------------------------
+
+  describe "llm.stream capability checking" do
+    test "llm.stream without model capability produces error" do
+      errors =
+        analyze_errors("""
+        module M {
+          fn stream_it(data: String) -> String {
+            llm.stream("claude-sonnet-4-5", "Be helpful.", data)
+          }
+        }
+        """)
+
+      error = Enum.find(errors, &(&1.code == "E0030"))
+      assert error != nil
+      assert error.message =~ "model"
+    end
+
+    test "llm.stream with model capability passes" do
+      assert {:ok, _} =
+               analyze("""
+               module M {
+                 capability model("anthropic", "claude-sonnet-4-5")
+
+                 fn stream_it(data: String) -> String {
+                   llm.stream("claude-sonnet-4-5", "Be helpful.", data)
+                 }
+               }
+               """)
+    end
+  end
+
+  # ------------------------------------------------------------------
   # Tool validation (Phase 6c)
   # ------------------------------------------------------------------
 

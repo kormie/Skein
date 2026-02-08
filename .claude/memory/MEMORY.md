@@ -1,9 +1,9 @@
 # Skein Project Memory
 
 ## Project State
-- Phases 1-7 + 8a + 8c + 8d + 8e are complete
-- Remaining: 8b (Ecto storage), 8f (LLM streaming)
-- 727 tests + 72 properties, 0 failures
+- Phases 1-7 + 8a + 8c + 8d + 8e + 8f are complete
+- Remaining: 8b (Ecto storage)
+- 742 tests + 76 properties, 0 failures
 - Elixir 1.19.5, OTP 28, managed by mise
 
 ## Key Patterns
@@ -59,4 +59,10 @@
 
 ## What's Next
 - 8b: Storage Backend (Ecto integration)
-- 8f: LLM Streaming
+
+## Streaming Implementation Notes (Phase 8f)
+- `llm.stream` uses same `model` capability as `chat`/`json`
+- Backend behaviour has optional `stream/3` callback returning `{:ok, [chunks]}`
+- `set_backend/1` accepts tuples `{module, config}` for dynamic backends in property tests
+- CodeGen emits a no-op callback (`fun(_StreamChunk) -> ok`) for compiled Skein code
+- DynamicStreamBackend + tuples pattern is useful for property testing any parameterized backend
