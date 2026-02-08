@@ -339,16 +339,27 @@ module UserService {
 
 These are the immediate next priorities after Phase 7. They fill gaps in the existing implementation and make Skein usable for real projects.
 
-### 8a: Test Infrastructure — `scenario`, `golden`, `replay`
+### 8a: Test Infrastructure — `scenario`, `golden`, `replay` ✅
 
 **Goal:** Complete the built-in test constructs so agents can be tested deterministically.
 
-- [ ] `scenario` tests with `given`/`expect` blocks — compile and execute against agent behavior
-- [ ] `golden` trace tests — record a trace, replay it, assert identical outcomes
-- [ ] `replay` engine — re-execute handlers/agents against recorded I/O (deterministic playback)
-- [ ] Integrate with `skein test` CLI command
+- [x] `scenario` tests with `given`/`expect` blocks — compile and execute with variable bindings
+- [x] `golden` trace tests — load trace file, run assertions against recorded data
+- [x] `replay` engine (`Skein.Runtime.Replay`) — load and replay recorded I/O spans deterministically
+- [x] Integrate with `skein test` CLI command — `kind` field tracks test/scenario/golden types
 
-**Acceptance criteria:** A scenario test for an agent compiles, replays a recorded LLM response, and asserts the agent transitions through expected phases.
+**Acceptance criteria:** A scenario test for an agent compiles, replays a recorded LLM response, and asserts the agent transitions through expected phases. ✅
+
+**Implementation notes:**
+- Parser: `parse_scenario_decl` handles `scenario "desc" { given { k: v } expect { assertions } }`
+- Parser: `parse_golden_decl` handles `golden "desc" from trace "file" { assertions }`
+- AST: New `Scenario` (description, given_vars, expect_body) and `Golden` (description, trace_file, body) nodes
+- CodeGen: Scenario tests compile to `__test_N__/0` with `let` bindings from given vars before expect body
+- CodeGen: Golden tests compile to `__test_N__/0` that calls `Skein.Runtime.Replay.load_trace/1` then runs body
+- `__tests__/0` metadata includes `:kind` field (`:test`, `:scenario`, or `:golden`)
+- CLI test runner propagates `kind` through results for reporting
+- Replay module supports handler, llm, memory, http, and unknown span types
+- 7 new parser property tests, 11 new parser unit tests, 11 new integration tests, 13 replay tests, 3 CLI tests
 
 ### 8b: Storage Backend — Ecto Integration
 

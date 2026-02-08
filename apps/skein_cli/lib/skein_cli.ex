@@ -435,13 +435,16 @@ defmodule Skein.CLI do
       end
 
     results =
-      Enum.map(tests, fn %{description: desc, fn: test_fn} ->
+      Enum.map(tests, fn test_meta ->
+        %{description: desc, fn: test_fn} = test_meta
+        kind = Map.get(test_meta, :kind, :test)
+
         try do
           apply(mod, test_fn, [])
-          %{description: desc, status: :passed}
+          %{description: desc, status: :passed, kind: kind}
         rescue
           e ->
-            %{description: desc, status: :failed, error: Exception.message(e)}
+            %{description: desc, status: :failed, kind: kind, error: Exception.message(e)}
         end
       end)
 
@@ -459,13 +462,22 @@ defmodule Skein.CLI do
         []
       end
 
-    Enum.map(tests, fn %{description: desc, fn: test_fn} ->
+    Enum.map(tests, fn test_meta ->
+      %{description: desc, fn: test_fn} = test_meta
+      kind = Map.get(test_meta, :kind, :test)
+
       try do
         apply(mod, test_fn, [])
-        %{description: desc, status: :passed, file: file}
+        %{description: desc, status: :passed, file: file, kind: kind}
       rescue
         e ->
-          %{description: desc, status: :failed, file: file, error: Exception.message(e)}
+          %{
+            description: desc,
+            status: :failed,
+            file: file,
+            kind: kind,
+            error: Exception.message(e)
+          }
       end
     end)
   end

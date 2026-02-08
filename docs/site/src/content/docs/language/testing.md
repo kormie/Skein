@@ -153,29 +153,107 @@ module UserService {
 }
 ```
 
-## Future: Scenario and Golden Tests
+## Scenario Tests
 
-The language spec defines two additional test forms that are planned for future implementation:
+Scenario tests provide structured BDD-style testing with explicit `given`/`expect` blocks. The `given` block establishes variable bindings, and the `expect` block contains assertions that run with those bindings in scope.
 
-**Scenario tests** with `given`/`expect` blocks for structured BDD-style testing:
+### Syntax
 
-```skein
-scenario "refund approval flow" {
+```
+scenario "<description>" {
   given {
-    ticket_id: "T-001"
-    amount: 5000
+    <name>: <expr>
+    ...
   }
   expect {
-    assert decision.action == "approve"
-    assert decision.amount == 5000
+    assert <expr>
+    ...
   }
 }
 ```
 
-**Golden tests** for trace replay:
+### Example
 
 ```skein
-golden "recorded refund flow" from trace "traces/refund_001.json" {
-  assert final_state.phase == "Done"
+module RefundService {
+  fn calculate_refund(amount: Int, rate: Int) -> Int {
+    amount * rate
+  }
+
+  scenario "high-value refund calculation" {
+    given {
+      amount: 50000
+      rate: 2
+    }
+
+    expect {
+      assert calculate_refund(amount, rate) == 100000
+      assert amount > 10000
+    }
+  }
 }
 ```
+
+The `given` variables (`amount`, `rate`) are accessible in the `expect` block. The scenario compiles to a test function just like `test` — it appears in `__tests__/0` with `kind: :scenario`.
+
+### When to Use Scenarios
+
+- Testing with explicit, named inputs for readability
+- BDD-style specifications where setup and assertions are cleanly separated
+- Agent behavior testing with structured initial state
+
+## Golden Tests
+
+Golden tests load a recorded trace file and run assertions against it. They are used for regression testing — recording a known-good execution and verifying it still produces the expected outcomes.
+
+### Syntax
+
+```
+golden "<description>" from trace "<path>" {
+  assert <expr>
+  ...
+}
+```
+
+### Example
+
+```skein
+module ApiTests {
+  fn ok() -> Bool { true }
+
+  golden "refund flow trace" from trace "traces/refund_001.json" {
+    assert ok()
+  }
+}
+```
+
+The trace file must be a JSON array of span objects. At test execution time, the trace is loaded via `Skein.Runtime.Replay.load_trace/1` before the body runs.
+
+Golden tests appear in `__tests__/0` with `kind: :golden`.
+
+### Trace File Format
+
+```json
+[
+  {"kind": "handler", "method": "get", "path": "/refund", "status": 200},
+  {"kind": "llm", "model": "gpt-4", "tokens": 150},
+  {"kind": "memory", "operation": "put", "key": "decision"}
+]
+```
+
+Supported span kinds: `handler`, `llm`, `memory`, `http`.
+
+## Test Kind Field
+
+All three test forms (`test`, `scenario`, `golden`) compile to `__test_N__/0` functions and appear in `__tests__/0` metadata. Each entry includes a `:kind` field:
+
+```elixir
+mod.__tests__()
+#=> [
+#   %{description: "unit test", fn: :__test_0__, kind: :test},
+#   %{description: "scenario", fn: :__test_1__, kind: :scenario},
+#   %{description: "trace check", fn: :__test_2__, kind: :golden}
+# ]
+```
+
+The CLI test runner uses this field to report which type of test passed or failed.

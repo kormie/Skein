@@ -152,4 +152,234 @@ defmodule Skein.Integration.TestConstructTest do
       assert mod.__test_0__() == :ok
     end
   end
+
+  # ------------------------------------------------------------------
+  # Scenario tests (Phase 8a)
+  # ------------------------------------------------------------------
+
+  describe "scenario declaration → compilation and execution" do
+    test "scenario with given bindings and passing assertions" do
+      mod =
+        compile!("""
+        module ScenarioBasic {
+          fn add(a: Int, b: Int) -> Int { a + b }
+
+          scenario "addition works with given values" {
+            given {
+              x: 10
+              y: 20
+            }
+
+            expect {
+              assert add(x, y) == 30
+            }
+          }
+        }
+        """)
+
+      tests = mod.__tests__()
+      assert length(tests) == 1
+      assert %{description: "addition works with given values"} = hd(tests)
+
+      # Execute the scenario test
+      assert mod.__test_0__() == :ok
+    end
+
+    test "scenario with failing assertion raises error" do
+      mod =
+        compile!("""
+        module ScenarioFail {
+          scenario "fails" {
+            given {
+              x: 1
+            }
+
+            expect {
+              assert x == 999
+            }
+          }
+        }
+        """)
+
+      assert_raise RuntimeError, ~r/Assertion failed/, fn ->
+        mod.__test_0__()
+      end
+    end
+
+    test "scenario with multiple given bindings all accessible in expect" do
+      mod =
+        compile!("""
+        module ScenarioMulti {
+          fn multiply(a: Int, b: Int) -> Int { a * b }
+
+          scenario "multi bindings" {
+            given {
+              a: 3
+              b: 7
+            }
+
+            expect {
+              assert multiply(a, b) == 21
+              assert a + b == 10
+            }
+          }
+        }
+        """)
+
+      assert mod.__test_0__() == :ok
+    end
+
+    test "scenario mixed with regular tests" do
+      mod =
+        compile!("""
+        module ScenarioMixed {
+          fn double(x: Int) -> Int { x * 2 }
+
+          test "basic double" {
+            assert double(5) == 10
+          }
+
+          scenario "double with given" {
+            given {
+              n: 7
+            }
+
+            expect {
+              assert double(n) == 14
+            }
+          }
+
+          test "another double" {
+            assert double(0) == 0
+          }
+        }
+        """)
+
+      tests = mod.__tests__()
+      assert length(tests) == 3
+      assert Enum.at(tests, 0).description == "basic double"
+      assert Enum.at(tests, 1).description == "double with given"
+      assert Enum.at(tests, 2).description == "another double"
+
+      # All tests should pass
+      assert mod.__test_0__() == :ok
+      assert mod.__test_1__() == :ok
+      assert mod.__test_2__() == :ok
+    end
+
+    test "scenario with string given values" do
+      mod =
+        compile!("""
+        module ScenarioStrings {
+          fn greet(name: String) -> String {
+            "Hello, ${name}!"
+          }
+
+          scenario "greeting scenario" {
+            given {
+              who: "World"
+            }
+
+            expect {
+              assert greet(who) == "Hello, World!"
+            }
+          }
+        }
+        """)
+
+      assert mod.__test_0__() == :ok
+    end
+  end
+
+  # ------------------------------------------------------------------
+  # Golden tests (Phase 8a)
+  # ------------------------------------------------------------------
+
+  describe "golden declaration → compilation and execution" do
+    @tmp_dir Path.expand("../../tmp/golden_test", __DIR__)
+
+    setup do
+      File.mkdir_p!(@tmp_dir)
+      on_exit(fn -> File.rm_rf!(@tmp_dir) end)
+      %{tmp_dir: @tmp_dir}
+    end
+
+    test "golden test compiles and runs assertions", %{tmp_dir: tmp_dir} do
+      trace_path = Path.join(tmp_dir, "test_trace.json")
+
+      File.write!(
+        trace_path,
+        Jason.encode!([
+          %{kind: "handler", method: "get", path: "/hello", status: 200, duration_us: 150}
+        ])
+      )
+
+      mod =
+        compile!("""
+        module GoldenBasic {
+          golden "simple trace" from trace "#{trace_path}" {
+            assert true
+          }
+        }
+        """)
+
+      tests = mod.__tests__()
+      assert length(tests) == 1
+      assert %{description: "simple trace"} = hd(tests)
+
+      # Execute the golden test
+      assert mod.__test_0__() == :ok
+    end
+
+    test "golden test with failing assertion", %{tmp_dir: tmp_dir} do
+      trace_path = Path.join(tmp_dir, "test_trace2.json")
+      File.write!(trace_path, "[]")
+
+      mod =
+        compile!("""
+        module GoldenFail {
+          golden "failing trace" from trace "#{trace_path}" {
+            assert false
+          }
+        }
+        """)
+
+      assert_raise RuntimeError, ~r/Assertion failed/, fn ->
+        mod.__test_0__()
+      end
+    end
+
+    test "golden mixed with tests and scenarios", %{tmp_dir: tmp_dir} do
+      trace_path = Path.join(tmp_dir, "test_trace3.json")
+      File.write!(trace_path, "[]")
+
+      mod =
+        compile!("""
+        module GoldenMixed {
+          fn ok() -> Bool { true }
+
+          test "basic" { assert ok() }
+
+          scenario "scenario" {
+            given { x: 1 }
+            expect { assert x == 1 }
+          }
+
+          golden "trace" from trace "#{trace_path}" {
+            assert ok()
+          }
+        }
+        """)
+
+      tests = mod.__tests__()
+      assert length(tests) == 3
+      assert Enum.at(tests, 0).description == "basic"
+      assert Enum.at(tests, 1).description == "scenario"
+      assert Enum.at(tests, 2).description == "trace"
+
+      assert mod.__test_0__() == :ok
+      assert mod.__test_1__() == :ok
+      assert mod.__test_2__() == :ok
+    end
+  end
 end

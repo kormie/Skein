@@ -1482,4 +1482,208 @@ defmodule Skein.ParserTest do
       assert [%AST.Fn{}, %AST.Test{}, %AST.Fn{}, %AST.Test{}] = decls
     end
   end
+
+  # ------------------------------------------------------------------
+  # Scenario declarations (Phase 8a)
+  # ------------------------------------------------------------------
+
+  describe "parse/1 - scenario declarations" do
+    test "parses a basic scenario with given and expect" do
+      source = """
+      module M {
+        scenario "high-value refund" {
+          given {
+            amount: 50000
+          }
+
+          expect {
+            assert amount > 100
+          }
+        }
+      }
+      """
+
+      assert {:ok, %AST.Module{declarations: [scenario]}} = parse(source)
+      assert %AST.Scenario{description: "high-value refund"} = scenario
+      assert [{"amount", %AST.IntLit{value: 50000}}] = scenario.given_vars
+      assert %AST.Block{expressions: [_assert]} = scenario.expect_body
+    end
+
+    test "parses a scenario with multiple given bindings" do
+      source = """
+      module M {
+        scenario "multiple bindings" {
+          given {
+            x: 10
+            y: 20
+          }
+
+          expect {
+            assert x + y == 30
+          }
+        }
+      }
+      """
+
+      assert {:ok, %AST.Module{declarations: [scenario]}} = parse(source)
+      assert %AST.Scenario{} = scenario
+      assert length(scenario.given_vars) == 2
+      assert {"x", %AST.IntLit{value: 10}} = Enum.at(scenario.given_vars, 0)
+      assert {"y", %AST.IntLit{value: 20}} = Enum.at(scenario.given_vars, 1)
+    end
+
+    test "parses a scenario with multiple assertions" do
+      source = """
+      module M {
+        scenario "many checks" {
+          given {
+            n: 42
+          }
+
+          expect {
+            assert n > 0
+            assert n == 42
+          }
+        }
+      }
+      """
+
+      assert {:ok, %AST.Module{declarations: [scenario]}} = parse(source)
+      assert %AST.Block{expressions: [_, _]} = scenario.expect_body
+    end
+
+    test "parses a scenario with string values in given" do
+      source = """
+      module M {
+        scenario "string inputs" {
+          given {
+            name: "world"
+          }
+
+          expect {
+            assert name == "world"
+          }
+        }
+      }
+      """
+
+      assert {:ok, %AST.Module{declarations: [scenario]}} = parse(source)
+      {"name", %AST.StringLit{}} = hd(scenario.given_vars)
+    end
+
+    test "scenario preserves source location" do
+      source = """
+      module M {
+        scenario "located" {
+          given {
+            x: 1
+          }
+
+          expect {
+            assert x == 1
+          }
+        }
+      }
+      """
+
+      assert {:ok, %AST.Module{declarations: [scenario]}} = parse(source)
+      assert scenario.meta.line == 2
+    end
+
+    test "scenario mixed with functions and tests" do
+      source = """
+      module M {
+        fn add(a: Int, b: Int) -> Int { a + b }
+
+        test "basic test" {
+          assert add(1, 2) == 3
+        }
+
+        scenario "scenario test" {
+          given {
+            x: 5
+          }
+
+          expect {
+            assert add(x, 1) == 6
+          }
+        }
+      }
+      """
+
+      assert {:ok, %AST.Module{declarations: [fn_decl, test_decl, scenario_decl]}} = parse(source)
+      assert %AST.Fn{} = fn_decl
+      assert %AST.Test{} = test_decl
+      assert %AST.Scenario{} = scenario_decl
+    end
+  end
+
+  # ------------------------------------------------------------------
+  # Golden declarations (Phase 8a)
+  # ------------------------------------------------------------------
+
+  describe "parse/1 - golden declarations" do
+    test "parses a basic golden test" do
+      source = """
+      module M {
+        golden "refund flow" from trace "traces/refund.json" {
+          assert true
+        }
+      }
+      """
+
+      assert {:ok, %AST.Module{declarations: [golden]}} = parse(source)
+      assert %AST.Golden{description: "refund flow"} = golden
+      assert golden.trace_file == "traces/refund.json"
+      assert %AST.Block{expressions: [_assert]} = golden.body
+    end
+
+    test "parses a golden test with multiple assertions" do
+      source = """
+      module M {
+        golden "trace check" from trace "data/trace.json" {
+          assert true
+          assert 1 == 1
+        }
+      }
+      """
+
+      assert {:ok, %AST.Module{declarations: [golden]}} = parse(source)
+      assert %AST.Golden{description: "trace check"} = golden
+      assert golden.trace_file == "data/trace.json"
+      assert %AST.Block{expressions: [_, _]} = golden.body
+    end
+
+    test "golden preserves source location" do
+      source = """
+      module M {
+        golden "located" from trace "t.json" {
+          assert true
+        }
+      }
+      """
+
+      assert {:ok, %AST.Module{declarations: [golden]}} = parse(source)
+      assert golden.meta.line == 2
+    end
+
+    test "golden mixed with other declarations" do
+      source = """
+      module M {
+        fn ok() -> Bool { true }
+
+        test "unit" { assert ok() }
+
+        golden "trace" from trace "t.json" {
+          assert ok()
+        }
+      }
+      """
+
+      assert {:ok, %AST.Module{declarations: [fn_decl, test_decl, golden_decl]}} = parse(source)
+      assert %AST.Fn{} = fn_decl
+      assert %AST.Test{} = test_decl
+      assert %AST.Golden{} = golden_decl
+    end
+  end
 end

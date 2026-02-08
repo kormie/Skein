@@ -15,7 +15,7 @@ Unit tests verify specific examples. Property tests verify **invariants across l
 
 | Library | Purpose | Status |
 |---------|---------|--------|
-| `StreamData` / `ExUnitProperties` | Generator-based property testing | Active, 28 properties |
+| `StreamData` / `ExUnitProperties` | Generator-based property testing | Active, 49 properties |
 | `PropCheck` (PropEr) | Stateful/state-machine testing | Installed, not yet used |
 
 `StreamData` is used for all current property tests. `PropCheck` is available for future stateful testing of the runtime (agent lifecycle, store operations).
@@ -25,9 +25,15 @@ Unit tests verify specific examples. Property tests verify **invariants across l
 ```
 apps/skein_compiler/test/skein/
   lexer_property_test.exs          # 11 properties
-  parser_property_test.exs         # 8 properties
+  parser_property_test.exs         # 20 properties (incl. scenario/golden)
   codegen/
     core_erlang_property_test.exs  # 9 properties
+  analyzer_property_test.exs       # 9 properties
+apps/skein_runtime/test/skein/runtime/
+  capability_property_test.exs     # 5 properties
+  request_property_test.exs        # 6 properties
+  store_property_test.exs          # 5 properties
+  tool_property_test.exs           # 5 properties
 ```
 
 ## Lexer Properties (11 tests)
@@ -66,9 +72,9 @@ Note the keyword avoidance -- if a random identifier happens to match a keyword,
 - Newlines increment line numbers correctly
 - String interpolation preserves the identifier name
 
-## Parser Properties (8 tests)
+## Parser Properties (20 tests)
 
-The parser properties generate **valid Skein source programs** and verify structural invariants.
+The parser properties generate **valid Skein source programs** and verify structural invariants. This includes functions, tool declarations, scenario tests, and golden tests.
 
 ### Source Generators
 
@@ -106,6 +112,13 @@ end
 - Every AST node carries source location metadata (line >= 1, col >= 1)
 - Match on booleans always produces exactly 2 arms
 - Empty modules parse with zero declarations
+- Any generated scenario lexes and parses successfully
+- Scenario description matches generated description
+- Scenario given var count matches generated bindings
+- Scenario preserves source location metadata
+- Any generated golden declaration lexes and parses successfully
+- Golden trace file matches generated path
+- Golden preserves source location metadata
 
 ## CodeGen Properties (9 tests)
 

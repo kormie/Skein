@@ -67,10 +67,15 @@ defmodule Skein.CodeGen.CoreErlang do
       ast.declarations
       |> Enum.filter(&match?(%AST.ToolDecl{}, &1))
 
-    # Collect test declarations
+    # Collect test declarations (test, scenario, golden)
     tests =
       ast.declarations
-      |> Enum.filter(&match?(%AST.Test{}, &1))
+      |> Enum.filter(fn
+        %AST.Test{} -> true
+        %AST.Scenario{} -> true
+        %AST.Golden{} -> true
+        _ -> false
+      end)
       |> Enum.with_index()
 
     # Build exports and function definitions for regular functions
@@ -785,7 +790,10 @@ defmodule Skein.CodeGen.CoreErlang do
   defp generate_tests_meta_fn(tests) do
     tests_list =
       tests
-      |> Enum.map(fn {%AST.Test{description: desc}, index} ->
+      |> Enum.map(fn {test_decl, index} ->
+        desc = test_description(test_decl)
+        kind = test_kind(test_decl)
+
         desc_pair =
           :cerl.c_map_pair(
             :cerl.c_atom(:description),
@@ -798,12 +806,26 @@ defmodule Skein.CodeGen.CoreErlang do
             :cerl.c_atom(test_fn_name(index))
           )
 
-        :cerl.c_map([desc_pair, fn_pair])
+        kind_pair =
+          :cerl.c_map_pair(
+            :cerl.c_atom(:kind),
+            :cerl.c_atom(kind)
+          )
+
+        :cerl.c_map([desc_pair, fn_pair, kind_pair])
       end)
       |> :cerl.make_list()
 
     :cerl.c_fun([], tests_list)
   end
+
+  defp test_description(%AST.Test{description: d}), do: d
+  defp test_description(%AST.Scenario{description: d}), do: d
+  defp test_description(%AST.Golden{description: d}), do: d
+
+  defp test_kind(%AST.Test{}), do: :test
+  defp test_kind(%AST.Scenario{}), do: :scenario
+  defp test_kind(%AST.Golden{}), do: :golden
 
   defp test_fn_name(index) do
     String.to_atom("__test_#{index}__")
@@ -822,6 +844,78 @@ defmodule Skein.CodeGen.CoreErlang do
     # Wrap: run body, then return :ok (body raises on assertion failure)
     discard_var = :cerl.c_var(gen_var())
     wrapped = :cerl.c_let([discard_var], body_expr, :cerl.c_atom(:ok))
+    :cerl.c_fun([], wrapped)
+  end
+
+  # Generate a __test_N__/0 function for a scenario declaration
+  # Scenario tests bind given vars, then execute expect body assertions
+  defp generate_test_fn(
+         %AST.Scenario{given_vars: given_vars, expect_body: expect_body},
+         capabilities,
+         fn_arities,
+         type_decls
+       ) do
+    base_scope =
+      %{}
+      |> Map.put(:__capabilities__, capabilities)
+      |> Map.put(:__fn_arities__, fn_arities)
+      |> Map.put(:__type_decls__, type_decls)
+
+    # Build scope with all given variable names so the expect body can reference them
+    scope_with_given =
+      Enum.reduce(given_vars, base_scope, fn {name, _}, sc ->
+        Map.put(sc, name, var_name(name))
+      end)
+
+    # Generate the expect body expression with given vars in scope
+    body_expr = generate_expr(expect_body, scope_with_given)
+
+    # Wrap with let bindings for given vars (innermost first, so reverse)
+    wrapped =
+      Enum.reduce(Enum.reverse(given_vars), body_expr, fn {name, value_ast}, acc ->
+        vname = var_name(name)
+        value_expr = generate_expr(value_ast, base_scope)
+        :cerl.c_let([:cerl.c_var(vname)], value_expr, acc)
+      end)
+
+    # Final wrap: discard result, return :ok
+    discard_var = :cerl.c_var(gen_var())
+    final = :cerl.c_let([discard_var], wrapped, :cerl.c_atom(:ok))
+    :cerl.c_fun([], final)
+  end
+
+  # Generate a __test_N__/0 function for a golden declaration
+  # Golden tests load a trace file, make it available, then run assertions
+  defp generate_test_fn(
+         %AST.Golden{trace_file: trace_file, body: body},
+         capabilities,
+         fn_arities,
+         type_decls
+       ) do
+    scope =
+      %{}
+      |> Map.put(:__capabilities__, capabilities)
+      |> Map.put(:__fn_arities__, fn_arities)
+      |> Map.put(:__type_decls__, type_decls)
+
+    # Load the trace file at test execution time
+    # Call: Skein.Runtime.Replay.load_trace(trace_file)
+    trace_var = :cerl.c_var(gen_var())
+
+    load_trace =
+      :cerl.c_call(
+        :cerl.c_atom(:"Elixir.Skein.Runtime.Replay"),
+        :cerl.c_atom(:load_trace),
+        [:cerl.abstract(trace_file)]
+      )
+
+    body_expr = generate_expr(body, scope)
+
+    # Wrap: load trace, run body, return :ok
+    discard_var = :cerl.c_var(gen_var())
+
+    inner = :cerl.c_let([discard_var], body_expr, :cerl.c_atom(:ok))
+    wrapped = :cerl.c_let([trace_var], load_trace, inner)
     :cerl.c_fun([], wrapped)
   end
 

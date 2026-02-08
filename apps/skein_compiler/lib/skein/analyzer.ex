@@ -332,6 +332,8 @@ defmodule Skein.Analyzer do
     input_errors ++ output_errors
   end
 
+  defp validate_declaration(%AST.Scenario{}, _env), do: []
+  defp validate_declaration(%AST.Golden{}, _env), do: []
   defp validate_declaration(%AST.Capability{}, _env), do: []
   defp validate_declaration(_, _env), do: []
 

@@ -133,4 +133,87 @@ defmodule Skein.CLI.TestRunnerTest do
       assert message =~ "No .skein files"
     end
   end
+
+  describe "test_all/1 with scenario and golden tests (Phase 8a)" do
+    test "discovers and runs scenario tests", %{tmp_dir: tmp, test_dir: test_dir} do
+      File.write!(Path.join(test_dir, "scenario_test.skein"), """
+      module ScenarioRunner {
+        fn add(a: Int, b: Int) -> Int { a + b }
+
+        scenario "addition scenario" {
+          given {
+            x: 5
+            y: 10
+          }
+
+          expect {
+            assert add(x, y) == 15
+          }
+        }
+      }
+      """)
+
+      assert {:ok, result} = CLI.test_all([tmp])
+      assert result.total == 1
+      assert result.passed == 1
+      assert result.failed == 0
+
+      [test_result] = result.results
+      assert test_result.kind == :scenario
+    end
+
+    test "discovers and runs golden tests", %{tmp_dir: tmp, test_dir: test_dir} do
+      trace_path = Path.join(test_dir, "trace.json")
+      File.write!(trace_path, "[]")
+
+      File.write!(Path.join(test_dir, "golden_test.skein"), """
+      module GoldenRunner {
+        golden "empty trace" from trace "#{trace_path}" {
+          assert true
+        }
+      }
+      """)
+
+      assert {:ok, result} = CLI.test_all([tmp])
+      assert result.total == 1
+      assert result.passed == 1
+
+      [test_result] = result.results
+      assert test_result.kind == :golden
+    end
+
+    test "runs mixed test/scenario/golden and aggregates results", %{
+      tmp_dir: tmp,
+      test_dir: test_dir
+    } do
+      trace_path = Path.join(test_dir, "mix_trace.json")
+      File.write!(trace_path, "[]")
+
+      File.write!(Path.join(test_dir, "mixed_test.skein"), """
+      module MixedTests {
+        fn ok() -> Bool { true }
+
+        test "unit test" { assert ok() }
+
+        scenario "scenario test" {
+          given { n: 42 }
+          expect { assert n == 42 }
+        }
+
+        golden "golden test" from trace "#{trace_path}" {
+          assert ok()
+        }
+      }
+      """)
+
+      assert {:ok, result} = CLI.test_all([tmp])
+      assert result.total == 3
+      assert result.passed == 3
+
+      kinds = Enum.map(result.results, & &1.kind)
+      assert :test in kinds
+      assert :scenario in kinds
+      assert :golden in kinds
+    end
+  end
 end
