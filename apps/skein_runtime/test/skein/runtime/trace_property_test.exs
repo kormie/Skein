@@ -95,9 +95,7 @@ defmodule Skein.Runtime.TracePropertyTest do
   end
 
   property "recent_spans returns newest first" do
-    check all(
-            spans <- StreamData.list_of(span_gen(), min_length: 2, max_length: 10)
-          ) do
+    check all(spans <- StreamData.list_of(span_gen(), min_length: 2, max_length: 10)) do
       Trace.clear()
 
       for span <- spans do
