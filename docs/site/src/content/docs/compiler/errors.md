@@ -130,6 +130,7 @@ The `fix_code` field is especially useful for LLM agents -- it provides the exac
 | E0032 | error | Phase handler missing |
 | E0033 | error | `transition()` called outside agent handler |
 | E0034 | error | `suspend()` called outside agent handler |
+| E0035 | error | `idempotent()` called outside handler body |
 
 ### Future Error Codes
 

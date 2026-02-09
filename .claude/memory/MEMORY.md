@@ -114,7 +114,8 @@
 - **UP_NEXT.md** (`docs/UP_NEXT.md`) is the canonical prioritized backlog
 - **Stdlib is COMPLETE** — all 11 modules, 101 functions
 - **Error Code Alignment is COMPLETE** — all 21 + 3 warning codes
-- Next priority: idempotent(key), then trace.annotate, llm.embed
+- **idempotent(key) is COMPLETE** — lexer + parser + analyzer (E0035) + codegen + runtime
+- Next priority: trace.annotate, then llm.embed
 - Distribution work is unblocked — all three prerequisites are done
 - LSP (`apps/skein_lsp/`) is implemented — remove from backlog lists
 
@@ -126,6 +127,18 @@
 - `topic.publish(name, data)` is the effect call; `topic.consume` capability for handlers
 - Example: `examples/pubsub_notifications.skein`
 - Runtime Topic: `apps/skein_runtime/lib/skein/runtime/topic.ex`
+
+## Idempotent(key) (Priority 6 — COMPLETE)
+- `idempotent(key)` parsed as `AST.Idempotent` node with `:key` and `:meta` fields
+- Analyzer: E0035 error for `idempotent()` outside handler body (valid in handlers only, not fns)
+- Codegen: generates `Skein.Runtime.Idempotent.check!(key)` call
+- Runtime: ETS-backed key tracking with configurable TTL (default 1 hour)
+- `check!/1` throws `{:idempotent_skip}` for duplicate keys; Handler/Queue/Topic catch it
+- Handler dispatch returns `{:ok, 200, "already processed", :json}` on skip
+- Queue/Topic dispatch silently drops the message on skip
+- Runtime Idempotent: `apps/skein_runtime/lib/skein/runtime/idempotent.ex`
+- Example: `examples/queue_worker.skein` uses `idempotent(msg.id)`
+- Can't use `ttl_ms()` in guard clauses — must bind to variable first
 
 ## Streaming Implementation Notes (Phase 8f)
 - `llm.stream` uses same `model` capability as `chat`/`json`

@@ -14,7 +14,9 @@ module QueueWorker {
   }
 
   -- Process incoming job messages from the queue
+  -- idempotent guard ensures each message is processed exactly once
   handler queue "jobs" (msg) -> {
+    idempotent(msg.id)
     let result = 1 + 1
     respond.json(200, result)
   }

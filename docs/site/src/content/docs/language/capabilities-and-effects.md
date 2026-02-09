@@ -345,3 +345,16 @@ http.get(url)
 -- Compiles to (conceptually):
 Skein.Runtime.Http.get(url, [%{kind: "http.out", params: ["api.example.com"]}])
 ```
+
+## Idempotency
+
+The `idempotent(key)` expression is a built-in guard for handler bodies that ensures exactly-once processing. It does not require a capability declaration — it is available in any handler.
+
+```skein
+handler queue "events" (msg) -> {
+  idempotent(msg.id)
+  -- rest of handler only runs once per unique msg.id
+}
+```
+
+The idempotency guard is backed by `Skein.Runtime.Idempotent`, which tracks processed keys in an ETS table with a configurable TTL (default: 1 hour). See the [Handlers](/language/handlers/#idempotent-handlers) page for full details.

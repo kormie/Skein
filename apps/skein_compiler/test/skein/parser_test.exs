@@ -2318,4 +2318,93 @@ defmodule Skein.ParserTest do
       assert Enum.any?(errors, fn e -> e.message =~ "Unknown handler source" end)
     end
   end
+
+  describe "parse/1 - idempotent expression" do
+    test "parses idempotent with string literal" do
+      source = """
+      module M {
+        capability queue.in
+        handler queue "jobs" (msg) -> {
+          idempotent("unique-key-123")
+          respond.json(200, "ok")
+        }
+      }
+      """
+
+      assert {:ok, %AST.Module{declarations: [_cap, handler]}} = parse(source)
+
+      assert %AST.Block{
+               expressions: [
+                 %AST.Idempotent{
+                   key: %AST.StringLit{segments: [{:literal, "unique-key-123"}]}
+                 },
+                 _respond
+               ]
+             } = handler.body
+    end
+
+    test "parses idempotent with variable reference" do
+      source = """
+      module M {
+        capability queue.in
+        handler queue "jobs" (msg) -> {
+          let key = "abc"
+          idempotent(key)
+          respond.json(200, "ok")
+        }
+      }
+      """
+
+      assert {:ok, %AST.Module{declarations: [_cap, handler]}} = parse(source)
+
+      assert %AST.Block{
+               expressions: [
+                 %AST.Let{name: "key"},
+                 %AST.Idempotent{key: %AST.Identifier{name: "key"}},
+                 _respond
+               ]
+             } = handler.body
+    end
+
+    test "parses idempotent with field access" do
+      source = """
+      module M {
+        capability queue.in
+        handler queue "jobs" (msg) -> {
+          idempotent(msg.id)
+          respond.json(200, "ok")
+        }
+      }
+      """
+
+      assert {:ok, %AST.Module{declarations: [_cap, handler]}} = parse(source)
+
+      assert %AST.Block{
+               expressions: [
+                 %AST.Idempotent{
+                   key: %AST.FieldAccess{
+                     subject: %AST.Identifier{name: "msg"},
+                     field: "id"
+                   }
+                 },
+                 _respond
+               ]
+             } = handler.body
+    end
+
+    test "preserves source location for idempotent" do
+      source = """
+      module M {
+        capability queue.in
+        handler queue "jobs" (msg) -> {
+          idempotent("key")
+        }
+      }
+      """
+
+      assert {:ok, %AST.Module{declarations: [_cap, handler]}} = parse(source)
+      assert %AST.Block{expressions: [%AST.Idempotent{meta: meta}]} = handler.body
+      assert meta.line == 4
+    end
+  end
 end

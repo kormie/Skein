@@ -40,6 +40,7 @@ defmodule Skein.Analyzer do
   - E0032: Phase handler missing
   - E0033: `transition()` outside agent
   - E0034: `suspend()` outside agent
+  - E0035: `idempotent()` outside handler
 
   ### Supervisor (E004x)
   - E0040: Invalid supervisor strategy
@@ -314,6 +315,9 @@ defmodule Skein.Analyzer do
     # Pass 7: suspend() outside agent check
     errors = errors ++ check_suspend_outside_agent(ast.declarations, env)
 
+    # Pass 8: idempotent() outside handler check
+    errors = errors ++ check_idempotent_outside_handler(ast.declarations, env)
+
     filter_result(errors, ast)
   end
 
@@ -343,6 +347,9 @@ defmodule Skein.Analyzer do
       end)
 
     errors = errors ++ check_unreachable_after_stop(ast.fns ++ handler_decls)
+
+    # idempotent() in agent fns (not handlers) is invalid
+    errors = errors ++ check_idempotent_in_agent_fns(ast.fns, env)
 
     filter_result(errors, ast)
   end
@@ -2468,4 +2475,59 @@ defmodule Skein.Analyzer do
 
   defp collect_suspends(%AST.Let{value: value}), do: collect_suspends(value)
   defp collect_suspends(_), do: []
+
+  # ------------------------------------------------------------------
+  # E0035: idempotent() outside handler
+  # ------------------------------------------------------------------
+
+  defp check_idempotent_outside_handler(declarations, env) do
+    # idempotent() is only valid inside handler bodies, not in regular functions
+    fn_idempotents =
+      declarations
+      |> Enum.filter(&match?(%AST.Fn{}, &1))
+      |> Enum.flat_map(fn %AST.Fn{body: body} ->
+        collect_idempotents(body)
+      end)
+
+    fn_idempotents
+    |> Enum.map(fn meta ->
+      %Error{
+        code: "E0035",
+        severity: :error,
+        message: "idempotent() can only be used in handler bodies, not in regular functions",
+        location: location_from_meta(meta, env.file),
+        fix_hint: "Move this to a handler body (handler queue/schedule/http/topic)",
+        fix_code: nil
+      }
+    end)
+  end
+
+  defp check_idempotent_in_agent_fns(fns, env) do
+    fns
+    |> Enum.flat_map(fn %AST.Fn{body: body} ->
+      collect_idempotents(body)
+    end)
+    |> Enum.map(fn meta ->
+      %Error{
+        code: "E0035",
+        severity: :error,
+        message: "idempotent() can only be used in handler bodies, not in agent functions",
+        location: location_from_meta(meta, env.file),
+        fix_hint: "Move this to a handler body (handler queue/schedule/http/topic)",
+        fix_code: nil
+      }
+    end)
+  end
+
+  defp collect_idempotents(%AST.Idempotent{meta: meta}), do: [meta]
+
+  defp collect_idempotents(%AST.Block{expressions: exprs}),
+    do: Enum.flat_map(exprs, &collect_idempotents/1)
+
+  defp collect_idempotents(%AST.Match{arms: arms}) do
+    Enum.flat_map(arms, fn %AST.MatchArm{body: body} -> collect_idempotents(body) end)
+  end
+
+  defp collect_idempotents(%AST.Let{value: value}), do: collect_idempotents(value)
+  defp collect_idempotents(_), do: []
 end
