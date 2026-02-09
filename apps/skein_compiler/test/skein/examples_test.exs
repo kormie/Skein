@@ -242,6 +242,59 @@ defmodule Skein.ExamplesTest do
   end
 
   # ------------------------------------------------------------------
+  # stdlib_demo.skein
+  # ------------------------------------------------------------------
+
+  describe "stdlib_demo.skein" do
+    test "compiles successfully" do
+      assert {:module, mod} =
+               Compiler.compile_file(Path.join(project_root(), "examples/stdlib_demo.skein"))
+
+      assert is_atom(mod)
+    end
+
+    test "format_greeting trims and upcases name" do
+      {:module, mod} =
+        Compiler.compile_file(Path.join(project_root(), "examples/stdlib_demo.skein"))
+
+      assert mod.format_greeting("  alice  ") == "Hello, ALICE!"
+      assert mod.format_greeting("Bob") == "Hello, BOB!"
+    end
+
+    test "classify_number clamps absolute values" do
+      {:module, mod} =
+        Compiler.compile_file(Path.join(project_root(), "examples/stdlib_demo.skein"))
+
+      assert mod.classify_number(-42) == "42"
+      assert mod.classify_number(200) == "100"
+      assert mod.classify_number(50) == "50"
+    end
+
+    test "safe_parse returns Result tuples" do
+      {:module, mod} =
+        Compiler.compile_file(Path.join(project_root(), "examples/stdlib_demo.skein"))
+
+      assert mod.safe_parse("42") == {:ok, 42}
+      assert {:error, _} = mod.safe_parse("abc")
+    end
+
+    test "round_price rounds floats" do
+      {:module, mod} =
+        Compiler.compile_file(Path.join(project_root(), "examples/stdlib_demo.skein"))
+
+      assert mod.round_price(19.999, 2) == 20.0
+      assert mod.round_price(3.14159, 3) == 3.142
+    end
+
+    test "normalize lowercases, trims, and deduplicates spaces" do
+      {:module, mod} =
+        Compiler.compile_file(Path.join(project_root(), "examples/stdlib_demo.skein"))
+
+      assert mod.normalize("  Hello  WORLD  ") == "hello world"
+    end
+  end
+
+  # ------------------------------------------------------------------
   # incident_triage.skein — compilation test
   # ------------------------------------------------------------------
 

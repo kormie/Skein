@@ -66,6 +66,166 @@ defmodule Skein.Analyzer do
   # Store operations: store.<table>.<method>(...)
   @store_methods ["get", "put", "delete", "query"]
 
+  # Standard library function registry: {Module, function} -> {param_types, return_type}
+  @stdlib_registry %{
+    "String" => %{
+      "length" => %{params: [:string], return_type: :int},
+      "slice" => %{params: [:string, :int, :int], return_type: :string},
+      "contains" => %{params: [:string, :string], return_type: :bool},
+      "split" => %{params: [:string, :string], return_type: {:list, :string}},
+      "trim" => %{params: [:string], return_type: :string},
+      "upcase" => %{params: [:string], return_type: :string},
+      "downcase" => %{params: [:string], return_type: :string},
+      "starts_with" => %{params: [:string, :string], return_type: :bool},
+      "ends_with" => %{params: [:string, :string], return_type: :bool},
+      "replace" => %{params: [:string, :string, :string], return_type: :string}
+    },
+    "Int" => %{
+      "parse" => %{params: [:string], return_type: {:result, :int, :string}},
+      "to_string" => %{params: [:int], return_type: :string},
+      "abs" => %{params: [:int], return_type: :int},
+      "min" => %{params: [:int, :int], return_type: :int},
+      "max" => %{params: [:int, :int], return_type: :int},
+      "clamp" => %{params: [:int, :int, :int], return_type: :int}
+    },
+    "Float" => %{
+      "parse" => %{params: [:string], return_type: {:result, :float, :string}},
+      "to_string" => %{params: [:float], return_type: :string},
+      "round" => %{params: [:float, :int], return_type: :float},
+      "ceil" => %{params: [:float], return_type: :int},
+      "floor" => %{params: [:float], return_type: :int}
+    },
+    "List" => %{
+      "length" => %{params: [{:list, :unknown}], return_type: :int},
+      "map" => %{params: [{:list, :unknown}, :unknown], return_type: {:list, :unknown}},
+      "filter" => %{params: [{:list, :unknown}, :unknown], return_type: {:list, :unknown}},
+      "reduce" => %{params: [{:list, :unknown}, :unknown, :unknown], return_type: :unknown},
+      "find" => %{params: [{:list, :unknown}, :unknown], return_type: {:option, :unknown}},
+      "first" => %{params: [{:list, :unknown}], return_type: {:option, :unknown}},
+      "last" => %{params: [{:list, :unknown}], return_type: {:option, :unknown}},
+      "head" => %{params: [{:list, :unknown}], return_type: {:option, :unknown}},
+      "tail" => %{params: [{:list, :unknown}], return_type: {:list, :unknown}},
+      "take" => %{params: [{:list, :unknown}, :int], return_type: {:list, :unknown}},
+      "drop" => %{params: [{:list, :unknown}, :int], return_type: {:list, :unknown}},
+      "sort" => %{params: [{:list, :unknown}], return_type: {:list, :unknown}},
+      "sort_by" => %{params: [{:list, :unknown}, :unknown], return_type: {:list, :unknown}},
+      "reverse" => %{params: [{:list, :unknown}], return_type: {:list, :unknown}},
+      "flatten" => %{params: [{:list, :unknown}], return_type: {:list, :unknown}},
+      "concat" => %{
+        params: [{:list, :unknown}, {:list, :unknown}],
+        return_type: {:list, :unknown}
+      },
+      "contains" => %{params: [{:list, :unknown}, :unknown], return_type: :bool},
+      "any" => %{params: [{:list, :unknown}, :unknown], return_type: :bool},
+      "all" => %{params: [{:list, :unknown}, :unknown], return_type: :bool},
+      "none" => %{params: [{:list, :unknown}, :unknown], return_type: :bool},
+      "zip" => %{params: [{:list, :unknown}, {:list, :unknown}], return_type: {:list, :unknown}},
+      "uniq" => %{params: [{:list, :unknown}], return_type: {:list, :unknown}},
+      "count" => %{params: [{:list, :unknown}, :unknown], return_type: :int},
+      "group_by" => %{
+        params: [{:list, :unknown}, :unknown],
+        return_type: {:map, :unknown, {:list, :unknown}}
+      }
+    },
+    "Map" => %{
+      "get" => %{params: [{:map, :unknown, :unknown}, :unknown], return_type: {:option, :unknown}},
+      "get!" => %{params: [{:map, :unknown, :unknown}, :unknown], return_type: :unknown},
+      "put" => %{
+        params: [{:map, :unknown, :unknown}, :unknown, :unknown],
+        return_type: {:map, :unknown, :unknown}
+      },
+      "delete" => %{
+        params: [{:map, :unknown, :unknown}, :unknown],
+        return_type: {:map, :unknown, :unknown}
+      },
+      "keys" => %{params: [{:map, :unknown, :unknown}], return_type: {:list, :unknown}},
+      "values" => %{params: [{:map, :unknown, :unknown}], return_type: {:list, :unknown}},
+      "entries" => %{params: [{:map, :unknown, :unknown}], return_type: {:list, :unknown}},
+      "size" => %{params: [{:map, :unknown, :unknown}], return_type: :int},
+      "has" => %{params: [{:map, :unknown, :unknown}, :unknown], return_type: :bool},
+      "merge" => %{
+        params: [{:map, :unknown, :unknown}, {:map, :unknown, :unknown}],
+        return_type: {:map, :unknown, :unknown}
+      },
+      "map_values" => %{
+        params: [{:map, :unknown, :unknown}, :unknown],
+        return_type: {:map, :unknown, :unknown}
+      },
+      "filter" => %{
+        params: [{:map, :unknown, :unknown}, :unknown],
+        return_type: {:map, :unknown, :unknown}
+      }
+    },
+    "Set" => %{
+      "from" => %{params: [{:list, :unknown}], return_type: {:set, :unknown}},
+      "add" => %{params: [{:set, :unknown}, :unknown], return_type: {:set, :unknown}},
+      "remove" => %{params: [{:set, :unknown}, :unknown], return_type: {:set, :unknown}},
+      "contains" => %{params: [{:set, :unknown}, :unknown], return_type: :bool},
+      "size" => %{params: [{:set, :unknown}], return_type: :int},
+      "union" => %{params: [{:set, :unknown}, {:set, :unknown}], return_type: {:set, :unknown}},
+      "intersection" => %{
+        params: [{:set, :unknown}, {:set, :unknown}],
+        return_type: {:set, :unknown}
+      },
+      "difference" => %{
+        params: [{:set, :unknown}, {:set, :unknown}],
+        return_type: {:set, :unknown}
+      },
+      "to_list" => %{params: [{:set, :unknown}], return_type: {:list, :unknown}}
+    },
+    "Option" => %{
+      "unwrap" => %{params: [{:option, :unknown}], return_type: :unknown},
+      "map" => %{params: [{:option, :unknown}, :unknown], return_type: {:option, :unknown}},
+      "flat_map" => %{params: [{:option, :unknown}, :unknown], return_type: {:option, :unknown}},
+      "is_some" => %{params: [{:option, :unknown}], return_type: :bool},
+      "is_none" => %{params: [{:option, :unknown}], return_type: :bool}
+    },
+    "Result" => %{
+      "unwrap" => %{params: [{:result, :unknown, :unknown}], return_type: :unknown},
+      "map" => %{
+        params: [{:result, :unknown, :unknown}, :unknown],
+        return_type: {:result, :unknown, :unknown}
+      },
+      "map_err" => %{
+        params: [{:result, :unknown, :unknown}, :unknown],
+        return_type: {:result, :unknown, :unknown}
+      },
+      "flat_map" => %{
+        params: [{:result, :unknown, :unknown}, :unknown],
+        return_type: {:result, :unknown, :unknown}
+      },
+      "is_ok" => %{params: [{:result, :unknown, :unknown}], return_type: :bool},
+      "is_err" => %{params: [{:result, :unknown, :unknown}], return_type: :bool},
+      "ok" => %{params: [:unknown], return_type: {:result, :unknown, :unknown}},
+      "err" => %{params: [:unknown], return_type: {:result, :unknown, :unknown}}
+    },
+    "Uuid" => %{
+      "new" => %{params: [], return_type: :uuid},
+      "parse" => %{params: [:string], return_type: {:result, :uuid, :string}},
+      "to_string" => %{params: [:uuid], return_type: :string}
+    },
+    "Instant" => %{
+      "now" => %{params: [], return_type: :instant},
+      "parse" => %{params: [:string], return_type: {:result, :instant, :string}},
+      "to_string" => %{params: [:instant], return_type: :string},
+      "add" => %{params: [:instant, :duration], return_type: :instant},
+      "subtract" => %{params: [:instant, :duration], return_type: :instant},
+      "diff" => %{params: [:instant, :instant], return_type: :int},
+      "is_before" => %{params: [:instant, :instant], return_type: :bool},
+      "is_after" => %{params: [:instant, :instant], return_type: :bool}
+    },
+    "Duration" => %{
+      "seconds" => %{params: [:int], return_type: :duration},
+      "minutes" => %{params: [:int], return_type: :duration},
+      "hours" => %{params: [:int], return_type: :duration},
+      "days" => %{params: [:int], return_type: :duration},
+      "to_seconds" => %{params: [:duration], return_type: :int},
+      "to_string" => %{params: [:duration], return_type: :string}
+    }
+  }
+
+  @stdlib_modules Map.keys(@stdlib_registry)
+
   # Environment tracks types, functions, variables, and capabilities in scope
   @type env :: %{
           types: %{String.t() => :builtin | AST.TypeDecl.t()},
@@ -838,6 +998,76 @@ defmodule Skein.Analyzer do
 
         {fn_info.return_type, args_errors ++ arity_errors}
 
+      # Stdlib call: Module.function(args)
+      %AST.FieldAccess{subject: %AST.Identifier{name: mod_name}, field: fn_name}
+      when mod_name in @stdlib_modules ->
+        mod_registry = Map.get(@stdlib_registry, mod_name)
+
+        case Map.get(mod_registry, fn_name) do
+          nil ->
+            {
+              :unknown,
+              args_errors ++
+                [
+                  %Error{
+                    code: "E0010",
+                    severity: :error,
+                    message: "Unknown function '#{mod_name}.#{fn_name}'",
+                    location: location_from_meta(meta, env.file),
+                    fix_hint: "Available functions: #{Enum.join(Map.keys(mod_registry), ", ")}"
+                  }
+                ]
+            }
+
+          fn_info ->
+            expected_arity = length(fn_info.params)
+            actual_arity = length(args)
+
+            arity_errors =
+              if expected_arity != actual_arity do
+                [
+                  %Error{
+                    code: "E0012",
+                    severity: :error,
+                    message:
+                      "Function '#{mod_name}.#{fn_name}' expects #{expected_arity} argument(s), got #{actual_arity}",
+                    location: location_from_meta(meta, env.file),
+                    fix_hint: "Pass #{expected_arity} argument(s) to '#{mod_name}.#{fn_name}'"
+                  }
+                ]
+              else
+                []
+              end
+
+            # Type-check arguments against expected parameter types
+            arg_types = Enum.map(args_results, &elem(&1, 0))
+
+            type_errors =
+              if expected_arity == actual_arity do
+                Enum.zip([fn_info.params, arg_types, 0..max(actual_arity - 1, 0)//1])
+                |> Enum.flat_map(fn {expected, actual, _idx} ->
+                  if actual != :unknown and not types_compatible?(expected, actual) do
+                    [
+                      %Error{
+                        code: "E0020",
+                        severity: :error,
+                        message:
+                          "Type mismatch in call to '#{mod_name}.#{fn_name}': expected #{format_type(expected)}, got #{format_type(actual)}",
+                        location: location_from_meta(meta, env.file),
+                        fix_hint: "Pass a value of type #{format_type(expected)}"
+                      }
+                    ]
+                  else
+                    []
+                  end
+                end)
+              else
+                []
+              end
+
+            {fn_info.return_type, args_errors ++ arity_errors ++ type_errors}
+        end
+
       _ ->
         # Unknown function call — can't infer type
         {:unknown, args_errors}
@@ -1105,6 +1335,17 @@ defmodule Skein.Analyzer do
   defp types_compatible?(:unknown, _), do: true
   defp types_compatible?(_, :unknown), do: true
   defp types_compatible?(a, a), do: true
+
+  # Parameterized types — recurse into inner types
+  defp types_compatible?({:list, a}, {:list, b}), do: types_compatible?(a, b)
+  defp types_compatible?({:set, a}, {:set, b}), do: types_compatible?(a, b)
+  defp types_compatible?({:option, a}, {:option, b}), do: types_compatible?(a, b)
+
+  defp types_compatible?({:result, a1, a2}, {:result, b1, b2}),
+    do: types_compatible?(a1, b1) and types_compatible?(a2, b2)
+
+  defp types_compatible?({:map, k1, v1}, {:map, k2, v2}),
+    do: types_compatible?(k1, k2) and types_compatible?(v1, v2)
 
   # User types are compatible with :unknown for now (we don't track field types)
   defp types_compatible?({:user_type, _}, _), do: true

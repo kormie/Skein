@@ -27,6 +27,23 @@ defmodule Skein.CodeGen.CoreErlang do
     "http" => :"Elixir.Skein.Runtime.Http"
   }
 
+  # Standard library module mapping: Skein module name -> Elixir runtime module
+  @stdlib_modules %{
+    "String" => :"Elixir.Skein.Runtime.Stdlib.String",
+    "Int" => :"Elixir.Skein.Runtime.Stdlib.Int",
+    "Float" => :"Elixir.Skein.Runtime.Stdlib.Float",
+    "List" => :"Elixir.Skein.Runtime.Stdlib.List",
+    "Map" => :"Elixir.Skein.Runtime.Stdlib.Map",
+    "Set" => :"Elixir.Skein.Runtime.Stdlib.Set",
+    "Option" => :"Elixir.Skein.Runtime.Stdlib.Option",
+    "Result" => :"Elixir.Skein.Runtime.Stdlib.Result",
+    "Uuid" => :"Elixir.Skein.Runtime.Stdlib.Uuid",
+    "Instant" => :"Elixir.Skein.Runtime.Stdlib.Instant",
+    "Duration" => :"Elixir.Skein.Runtime.Stdlib.Duration"
+  }
+
+  @stdlib_module_names Map.keys(@stdlib_modules)
+
   @spec generate(AST.Module.t() | AST.Agent.t()) :: {:ok, binary()} | {:error, [Error.t()]}
   def generate(%AST.Agent{} = ast) do
     generate_agent(ast)
@@ -1236,6 +1253,29 @@ defmodule Skein.CodeGen.CoreErlang do
     end
   end
 
+  # Standard library call: Module.function(args) where Module is a stdlib module
+  defp generate_expr(
+         %AST.Call{
+           target: %AST.FieldAccess{
+             subject: %AST.Identifier{name: mod_name},
+             field: fn_name
+           },
+           args: args
+         },
+         scope
+       )
+       when mod_name in @stdlib_module_names do
+    runtime_module = Map.fetch!(@stdlib_modules, mod_name)
+    method_atom = String.to_atom(fn_name)
+    args_exprs = Enum.map(args, &generate_expr(&1, scope))
+
+    :cerl.c_call(
+      :cerl.c_atom(runtime_module),
+      :cerl.c_atom(method_atom),
+      args_exprs
+    )
+  end
+
   # respond.json(status, body) — generates a response tuple
   defp generate_expr(
          %AST.Call{
@@ -1683,9 +1723,25 @@ defmodule Skein.CodeGen.CoreErlang do
     end
   end
 
-  # FnRef
-  defp generate_expr(%AST.FnRef{name: name}, _scope) do
-    :cerl.c_var(var_name(name))
+  # FnRef — generate a proper function reference (lambda wrapper around local function)
+  defp generate_expr(%AST.FnRef{name: name}, scope) do
+    fn_arities = Map.get(scope, :__fn_arities__, %{})
+
+    case Map.get(fn_arities, name) do
+      nil ->
+        # Unknown function — fall back to variable reference
+        :cerl.c_var(var_name(name))
+
+      arity ->
+        # Known local function — wrap in a lambda so it's a passable function value
+        args =
+          for i <- 0..max(arity - 1, 0)//1,
+              arity > 0,
+              do: :cerl.c_var(String.to_atom("_FnRef_#{i}"))
+
+        fname = :cerl.c_fname(String.to_atom(name), arity)
+        :cerl.c_fun(args, :cerl.c_apply(fname, args))
+    end
   end
 
   # ------------------------------------------------------------------
