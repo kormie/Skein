@@ -89,7 +89,8 @@
 ## What's Next
 - Distribution work is unblocked — all three prerequisites are done
 - Next priorities: Escript, OTP release generation, Burrito binaries, Hex.pm packages
-- Post-MVP backlog: FFI, hot code upgrades, Web IDE, LSP, llm.embed, managed deployment
+- Post-MVP backlog: FFI, hot code upgrades, Web IDE, llm.embed, managed deployment
+- LSP (`apps/skein_lsp/`) is implemented — remove from backlog lists
 
 ## Streaming Implementation Notes (Phase 8f)
 - `llm.stream` uses same `model` capability as `chat`/`json`
