@@ -30,3 +30,8 @@ erl_crash.dump
 
 # Test artifacts
 **/test/tmp/
+
+# Docs site build artifacts
+.astro/
+node_modules/
+docs/site/dist/
