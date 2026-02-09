@@ -21,7 +21,7 @@ Pick the top incomplete item. Follow the checklist for that item. Mark it done w
 
 **Why first:** Blocks the canonical examples from running. `Uuid.new()`, `Instant.now()`, `List.map()`, `Result.map()` etc. appear throughout spec examples but have no dispatch in the compiler or runtime. This is the single biggest gap.
 
-**Status:** NOT IMPLEMENTED
+**Status:** COMPLETE (all 11 modules, 101 functions)
 
 ### Scope
 
@@ -391,3 +391,7 @@ For each capability kind:
 _Move items here as they are finished, with date and session link._
 
 - [x] **Standard Library 1a: String, Int, Float** — 2026-02-09 — session_01Dv2MiJcMip17YGdajaMDs5
+- [x] **Standard Library 1b: List** (24 functions, FnRef fix for higher-order) — 2026-02-09 — session_01Dv2MiJcMip17YGdajaMDs5
+- [x] **Standard Library 1c: Map, Set** — 2026-02-09 — session_01Dv2MiJcMip17YGdajaMDs5
+- [x] **Standard Library 1d: Option, Result** — 2026-02-09 — session_01Dv2MiJcMip17YGdajaMDs5
+- [x] **Standard Library 1e: Uuid, Instant, Duration** — 2026-02-09 — session_01Dv2MiJcMip17YGdajaMDs5

@@ -31,7 +31,15 @@ defmodule Skein.CodeGen.CoreErlang do
   @stdlib_modules %{
     "String" => :"Elixir.Skein.Runtime.Stdlib.String",
     "Int" => :"Elixir.Skein.Runtime.Stdlib.Int",
-    "Float" => :"Elixir.Skein.Runtime.Stdlib.Float"
+    "Float" => :"Elixir.Skein.Runtime.Stdlib.Float",
+    "List" => :"Elixir.Skein.Runtime.Stdlib.List",
+    "Map" => :"Elixir.Skein.Runtime.Stdlib.Map",
+    "Set" => :"Elixir.Skein.Runtime.Stdlib.Set",
+    "Option" => :"Elixir.Skein.Runtime.Stdlib.Option",
+    "Result" => :"Elixir.Skein.Runtime.Stdlib.Result",
+    "Uuid" => :"Elixir.Skein.Runtime.Stdlib.Uuid",
+    "Instant" => :"Elixir.Skein.Runtime.Stdlib.Instant",
+    "Duration" => :"Elixir.Skein.Runtime.Stdlib.Duration"
   }
 
   @stdlib_module_names Map.keys(@stdlib_modules)
@@ -1715,9 +1723,25 @@ defmodule Skein.CodeGen.CoreErlang do
     end
   end
 
-  # FnRef
-  defp generate_expr(%AST.FnRef{name: name}, _scope) do
-    :cerl.c_var(var_name(name))
+  # FnRef — generate a proper function reference (lambda wrapper around local function)
+  defp generate_expr(%AST.FnRef{name: name}, scope) do
+    fn_arities = Map.get(scope, :__fn_arities__, %{})
+
+    case Map.get(fn_arities, name) do
+      nil ->
+        # Unknown function — fall back to variable reference
+        :cerl.c_var(var_name(name))
+
+      arity ->
+        # Known local function — wrap in a lambda so it's a passable function value
+        args =
+          for i <- 0..max(arity - 1, 0)//1,
+              arity > 0,
+              do: :cerl.c_var(String.to_atom("_FnRef_#{i}"))
+
+        fname = :cerl.c_fname(String.to_atom(name), arity)
+        :cerl.c_fun(args, :cerl.c_apply(fname, args))
+    end
   end
 
   # ------------------------------------------------------------------

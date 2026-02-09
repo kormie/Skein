@@ -86,20 +86,24 @@
 - `variant_pattern_atom/1` strips enum prefix from dotted names (e.g., "Event.Charge" -> :charge)
 - `decimal` dependency needed override at umbrella root level (`mix.exs`), not just in child app
 
-## Standard Library (Stdlib)
-- **String, Int, Float** implemented (stdlib 1a) — remaining: List, Map, Set, Option, Result, Uuid, Instant, Duration
+## Standard Library (Stdlib) — COMPLETE
+- All 11 modules implemented: String, Int, Float, List, Map, Set, Option, Result, Uuid, Instant, Duration (101 functions)
 - Stdlib registry: `@stdlib_registry` in analyzer maps `{Module, function}` -> `{params, return_type}`
 - Stdlib codegen: `@stdlib_modules` in codegen maps Skein module name -> runtime Elixir module
-- Runtime modules: `apps/skein_runtime/lib/skein/runtime/stdlib/{string,int,float}.ex`
+- Runtime modules: `apps/skein_runtime/lib/skein/runtime/stdlib/*.ex`
 - Stdlib calls don't require capabilities — `collect_effect_calls` naturally skips them (not in `@effect_namespaces`)
 - Codegen clause for stdlib must appear BEFORE `respond.json` and other effect clauses in `generate_expr`
-- Pattern: `%AST.Call{target: %AST.FieldAccess{subject: %AST.Identifier{name: mod_name}, field: fn_name}}`
-- Tests: `apps/skein_compiler/test/skein/stdlib_test.exs`, example: `examples/stdlib_demo.skein`
+- `types_compatible?` extended for parameterized types: `{:list, :unknown}` matches `{:list, :int}` etc.
+- FnRef codegen fixed: generates lambda wrapper for known local functions so `&fn_name` works with higher-order List functions
+- Tests: `stdlib_test.exs` (1a), `stdlib_collections_test.exs` (1b+1c), `stdlib_types_test.exs` (1d+1e)
+- Option: `{:some, value}` / `:none`; Result: `{:ok, value}` / `{:error, reason}`
+- Set backed by MapSet; Uuid uses `:crypto.strong_rand_bytes` + Bitwise; Duration is integer seconds
+- Instant is ISO 8601 string backed by DateTime
 
 ## What's Next
 - **UP_NEXT.md** (`docs/UP_NEXT.md`) is the canonical prioritized backlog
-- Stdlib 1a (String, Int, Float) complete — next: 1b (List), 1c (Map, Set), 1d (Option, Result), 1e (Uuid, Instant, Duration)
-- Post-stdlib priorities: Error code alignment, suspend/resume, respond.text/html, topics, idempotent
+- **Stdlib is COMPLETE** — all 11 modules, 101 functions
+- Next priorities: Error code alignment, suspend/resume, respond.text/html, topics, idempotent
 - Distribution work is unblocked — all three prerequisites are done
 - LSP (`apps/skein_lsp/`) is implemented — remove from backlog lists
 
