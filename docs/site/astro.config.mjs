@@ -48,6 +48,7 @@ export default defineConfig({
             { label: 'Modules & Functions', slug: 'language/modules-and-functions' },
             { label: 'Capabilities & Effects', slug: 'language/capabilities-and-effects' },
             { label: 'Handlers', slug: 'language/handlers' },
+            { label: 'Agents', slug: 'language/agents' },
             { label: 'Tools', slug: 'language/tools' },
             { label: 'Supervisors', slug: 'language/supervisors' },
             { label: 'Testing', slug: 'language/testing' },
@@ -68,6 +69,7 @@ export default defineConfig({
           items: [
             { label: 'Overview', slug: 'runtime/overview' },
             { label: 'Agents', slug: 'runtime/agents' },
+            { label: 'Storage', slug: 'runtime/storage' },
           ],
         },
         {

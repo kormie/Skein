@@ -443,7 +443,70 @@ end
 
 Backed by ETS for ephemeral (fast, lost on restart) or Postgres/SQLite for durable (slower, survives restart). Agents use durable memory by default; the runtime handles serialization.
 
-### 2.8 Replay Engine (`Skein.Runtime.Replay`)
+### 2.8 Queue Dispatch (`Skein.Runtime.Queue`)
+
+GenServer-based in-memory message queue for compiled `handler queue` declarations. Manages subscriptions between queue names and handler functions, dispatching published messages asynchronously.
+
+```elixir
+defmodule Skein.Runtime.Queue do
+  def subscribe(queue_name, module, handler_fn)
+  def subscribe_fn(queue_name, fun)  # for testing
+  def publish(queue_name, message)
+  def list_queues()
+  def reset_all()
+end
+```
+
+**How it works:**
+1. At startup, compiled queue handlers register via `subscribe/3`
+2. `publish/2` dispatches messages to all subscribers asynchronously via GenServer cast
+3. Each dispatch is wrapped in a trace span
+4. Messages are delivered in order within a single queue
+5. Messages to unsubscribed queues are silently dropped
+
+### 2.9 Schedule Dispatch (`Skein.Runtime.Schedule`)
+
+GenServer-based cron-style scheduling for compiled `handler schedule` declarations.
+
+```elixir
+defmodule Skein.Runtime.Schedule do
+  def register(cron_expr, module, handler_fn)
+  def register_fn(cron_expr, fun)  # for testing
+  def trigger(cron_expr)
+  def parse_cron(expr)
+  def list_schedules()
+  def reset_all()
+end
+```
+
+**How it works:**
+1. At startup, compiled schedule handlers register with their cron expression
+2. `trigger/1` fires all handlers registered for a given expression (used in tests)
+3. `parse_cron/1` validates 5-field cron expressions (minute, hour, day, month, weekday)
+4. Each triggered handler is wrapped in a trace span
+
+### 2.10 HTTP Server (`Skein.Runtime.Router` + Bandit)
+
+Production-grade HTTP serving using Bandit + Plug.
+
+- `Skein.Runtime.Router` dynamically builds a Plug module from compiled handler metadata (`__handlers__/0`)
+- Routes HTTP requests to `__handler_N__/1` functions with parameter extraction
+- Catches handler exceptions and returns 500 for graceful error handling
+- Serves trace data at `GET /__skein/traces`
+- `Skein.Runtime.Request.json/2` parses and validates request bodies against compile-time JSON Schema
+
+### 2.11 LLM Streaming (`Skein.Runtime.Llm.stream/5`)
+
+Streaming extension to the LLM client. Uses a callback-based API where chunks are delivered to the caller as they arrive, then assembled into the final response.
+
+```elixir
+Skein.Runtime.Llm.stream(model, system, input, on_chunk_fn, capabilities)
+#=> {:ok, "assembled response text"}
+```
+
+The backend behaviour defines an optional `stream/3` callback returning `{:ok, [chunks]}`. For testing, pluggable backends (`StreamingTestBackend`, `DynamicStreamBackend`) return deterministic chunk sequences.
+
+### 2.12 Replay Engine (`Skein.Runtime.Replay`)
 
 Deterministic replay engine for golden trace tests. Loads recorded trace files (JSON arrays of span objects) and replays them against the current runtime to verify behavior hasn't regressed.
 
@@ -478,6 +541,8 @@ Skein.Application (Application)
 │   ├── Skein.Runtime.Tool.Registry (GenServer — tool registration)
 │   ├── Skein.Runtime.Trace.Collector (GenServer — trace storage)
 │   ├── Skein.Runtime.Capability.Store (ETS-backed capability cache)
+│   ├── Skein.Runtime.Queue (GenServer — queue dispatch)
+│   ├── Skein.Runtime.Schedule (GenServer — cron dispatch)
 │   ├── Skein.Runtime.HTTP.Server (Bandit — HTTP listener)
 │   └── Skein.Runtime.AgentSupervisor (DynamicSupervisor — agent pool)
 │       ├── Agent instance 1 (gen_statem)
@@ -505,3 +570,79 @@ _build/
 │               ├── sys.config
 │               └── vm.args
 ```
+
+---
+
+## 5. Test Infrastructure
+
+Skein supports three built-in test constructs that compile to BEAM alongside application code:
+
+### 5.1 Unit Tests (`test`)
+
+```skein
+test "addition works" {
+  assert 1 + 1 == 2
+}
+```
+
+Compiles to `__test_N__/0` functions. The `__tests__/0` metadata includes description and kind (`:test`).
+
+### 5.2 Scenario Tests (`scenario`)
+
+```skein
+scenario "refund flow" {
+  given {
+    ticket_id: "t-123"
+    amount: 100
+  }
+  expect {
+    assert ticket_id == "t-123"
+    assert amount == 100
+  }
+}
+```
+
+Variables from the `given` block are in scope during the `expect` block. Kind: `:scenario`.
+
+### 5.3 Golden Trace Tests (`golden`)
+
+```skein
+golden "payment trace" from trace "traces/payment.json" {
+  assert true == true
+}
+```
+
+Loads a JSON trace file via `Skein.Runtime.Replay.load_trace/1`, then runs assertions. Kind: `:golden`.
+
+### 5.4 CLI Integration
+
+`skein test` discovers all compiled test functions, runs them, and reports results grouped by kind with pass/fail counts.
+
+---
+
+## 6. Language Server (`skein_lsp`)
+
+The `skein_lsp` application provides IDE integration via the Language Server Protocol:
+
+| Feature | Description |
+|---------|-------------|
+| Diagnostics | Real-time error reporting from the compiler pipeline |
+| Completions | Keyword, type, function, and capability completions |
+| Hover | Type information and documentation on hover |
+| Semantic Tokens | Syntax highlighting via semantic token classification |
+| Document Symbols | Outline view of modules, functions, types, agents, etc. |
+
+Built on the `gen_lsp` library. The server re-compiles on document change and pushes diagnostics to the editor.
+
+---
+
+## 7. Distribution
+
+The CLI (`skein_cli`) supports building standalone binaries via Burrito, a cross-compilation framework that packages BEAM releases into single executables.
+
+**Supported targets:**
+- Linux x86_64
+- macOS x86_64
+- macOS aarch64 (Apple Silicon)
+
+Build workflow: `mix release` + Burrito wrapping → single binary per platform. CI (GitHub Actions) automates this on version tags.
