@@ -15,7 +15,8 @@ skein/
 ├── docs/
 │   ├── SKEIN_SPEC.md            # Complete language specification
 │   ├── ARCHITECTURE.md          # Compiler and runtime architecture
-│   └── IMPLEMENTATION_PLAN.md   # Phased build plan with acceptance criteria
+│   ├── IMPLEMENTATION_PLAN.md   # Phased build plan with acceptance criteria
+│   └── site/                    # Astro + Starlight documentation site
 ├── apps/
 │   ├── skein_compiler/          # Lexer, parser, analyzer, code generator
 │   │   ├── lib/
@@ -23,10 +24,7 @@ skein/
 │   │   │   │   ├── lexer.ex         # Tokenizer (NimbleParsec-based)
 │   │   │   │   ├── parser.ex        # AST construction
 │   │   │   │   ├── ast.ex           # AST node type definitions
-│   │   │   │   ├── analyzer/
-│   │   │   │   │   ├── type_checker.ex
-│   │   │   │   │   ├── capability_checker.ex
-│   │   │   │   │   └── transition_checker.ex
+│   │   │   │   ├── analyzer.ex      # Type, capability, and transition checking
 │   │   │   │   ├── codegen/
 │   │   │   │   │   ├── core_erlang.ex   # AST -> Core Erlang
 │   │   │   │   │   └── schema_gen.ex    # Type -> JSON Schema
@@ -36,34 +34,46 @@ skein/
 │   ├── skein_runtime/           # OTP behaviours and runtime support
 │   │   ├── lib/
 │   │   │   ├── skein/
-│   │   │   │   ├── agent.ex         # Agent behaviour (GenStateMachine-based)
-│   │   │   │   ├── handler.ex       # Handler dispatch
-│   │   │   │   ├── tool.ex          # Tool registry and execution
-│   │   │   │   ├── capability.ex    # Runtime capability enforcement
-│   │   │   │   ├── memory.ex        # Scoped KV memory
-│   │   │   │   ├── trace.ex         # Trace capture and storage
-│   │   │   │   ├── llm/
-│   │   │   │   │   ├── client.ex    # Provider-agnostic LLM client
-│   │   │   │   │   ├── json.ex      # Constrained JSON decoding
-│   │   │   │   │   └── stream.ex    # Token streaming
-│   │   │   │   └── store.ex         # Storage abstraction
+│   │   │   │   └── runtime/
+│   │   │   │       ├── agent.ex         # Agent behaviour (gen_statem-based)
+│   │   │   │       ├── handler.ex       # Handler dispatch
+│   │   │   │       ├── tool.ex          # Tool registry and execution
+│   │   │   │       ├── capability.ex    # Runtime capability enforcement
+│   │   │   │       ├── memory.ex        # Scoped KV memory
+│   │   │   │       ├── trace.ex         # Trace capture and storage
+│   │   │   │       ├── llm.ex           # LLM client, JSON decoding, streaming
+│   │   │   │       ├── store.ex         # Storage abstraction
+│   │   │   │       ├── store_ecto.ex    # Ecto-backed storage implementation
+│   │   │   │       ├── ecto_schema.ex   # Dynamic Ecto schema creation
+│   │   │   │       ├── migration_gen.ex # Database migration generation
+│   │   │   │       ├── repo.ex          # Ecto repository (SQLite3)
+│   │   │   │       ├── http.ex          # HTTP support
+│   │   │   │       ├── router.ex        # HTTP routing
+│   │   │   │       ├── server.ex        # Server infrastructure
+│   │   │   │       ├── request.ex       # HTTP request handling
+│   │   │   │       ├── queue.ex         # Queue implementation
+│   │   │   │       ├── schedule.ex      # Scheduling/timing
+│   │   │   │       └── replay.ex        # Event replay
 │   │   │   └── skein_runtime.ex
 │   │   └── test/
-│   └── skein_cli/               # CLI tooling (skein new, build, test, deploy)
+│   ├── skein_cli/               # CLI tooling (skein new, build, test, deploy)
+│   │   ├── lib/
+│   │   │   ├── skein_cli.ex
+│   │   │   └── skein/
+│   │   │       └── cli/
+│   │   │           └── main.ex
+│   │   └── test/
+│   └── skein_lsp/               # Language Server Protocol implementation
 │       ├── lib/
-│       │   └── skein/
-│       │       └── cli.ex
 │       └── test/
 ├── examples/                    # Canonical Skein programs
+│   ├── hello.skein
 │   ├── hello_http.skein
 │   ├── refund_agent.skein
 │   ├── incident_triage.skein
-│   └── queue_worker.skein
-└── spec/                        # Language test suite (Skein source -> expected output)
-    ├── lexer/
-    ├── parser/
-    ├── analyzer/
-    └── codegen/
+│   ├── queue_worker.skein
+│   └── supervisor_pool.skein
+└── .docs-config.json            # Documentation site configuration
 ```
 
 ## Technology Choices
@@ -74,10 +84,11 @@ skein/
 | Lexer | NimbleParsec | Fast, composable, well-maintained PEG parser combinator |
 | Parser | Hand-written recursive descent | More control over error messages than parser generators; better for structured error recovery |
 | IR target | Core Erlang | Standard BEAM compilation target; used by Elixir, LFE, Gleam |
-| Agent runtime | gen_statem (via GenStateMachine) | OTP's state machine behaviour; direct fit for Skein agents |
+| Agent runtime | gen_statem (OTP built-in) | OTP's state machine behaviour; direct fit for Skein agents |
 | HTTP server | Bandit + Plug | Modern, pure-Elixir HTTP; Plug for routing |
-| Storage | Ecto + Postgres | Standard Elixir data layer; SQLite for local dev |
+| Storage | Ecto + SQLite3 | Elixir data layer; SQLite via ecto_sqlite3 |
 | Testing | ExUnit | Standard Elixir; extended with Skein-specific assertions |
+| LSP | GenLSP | Language Server Protocol implementation |
 | CLI | Optimus | Elixir CLI argument parser |
 
 ## Key Dependencies
@@ -88,17 +99,19 @@ skein/
 {:jason, "~> 1.4"},           # JSON for structured errors and schema gen
 {:stream_data, "~> 1.1", only: [:test, :dev]},   # Property-based testing
 {:propcheck, "~> 1.4", only: [:test, :dev]},      # Stateful property testing
+{:libgraph, "~> 0.13", only: [:test, :dev]},      # Graph algorithms for testing
 
 # skein_runtime/mix.exs
-{:gen_state_machine, "~> 3.0"},
+{:jason, "~> 1.4"},
+{:bandit, "~> 1.6"},
 {:plug, "~> 1.16"},
-{:bandit, "~> 1.5"},
 {:ecto, "~> 3.12"},
 {:ecto_sql, "~> 3.12"},
-{:postgrex, "~> 0.19"},
-{:req, "~> 0.5"},             # HTTP client for outbound calls
-{:opentelemetry, "~> 1.4"},   # Trace foundation
-{:jason, "~> 1.4"},
+{:ecto_sqlite3, "~> 0.17"},   # SQLite3 storage backend
+{:exqlite, "~> 0.24"},
+{:decimal, "~> 2.3"},
+{:stream_data, "~> 1.1", only: [:test, :dev]},
+{:propcheck, "~> 1.4", only: [:test, :dev]},
 ```
 
 ## Coding Conventions
@@ -295,7 +308,9 @@ Use the `:cerl` module in Erlang to programmatically construct Core Erlang AST n
 
 6. **Agent transitions are compile-time checked.** The `Phase` enum with `->` transition declarations must be validated by the analyzer. Invalid transitions are compiler errors.
 
-## Phase 1 Acceptance Criteria (Start Here)
+## Phase 1 Acceptance Criteria (Reference)
+
+> **Note:** All phases (1-8f) are complete. This section is retained as a reference for the foundational compilation pipeline.
 
 Phase 1 is "Hello BEAM" — prove the compilation pipeline works end-to-end.
 
@@ -369,4 +384,3 @@ Accumulated learnings, gotchas, and project state are stored in `.claude/memory/
 - Don't implement `extern`/FFI yet. Get the core language working first.
 - Don't implement the managed deployment platform. Local dev only for now.
 - Don't implement hot code upgrades. Standard restart-based deployment is fine initially.
-- Don't build a language server (LSP) yet. That's a post-MVP concern.
