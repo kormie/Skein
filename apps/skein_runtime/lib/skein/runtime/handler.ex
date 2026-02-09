@@ -27,10 +27,11 @@ defmodule Skein.Runtime.Handler do
   @doc """
   Dispatches an HTTP request to the appropriate handler in the given module.
 
-  Returns `{:ok, status, body}` or `{:error, reason}`.
+  Returns `{:ok, status, body, content_type}` or `{:error, reason}`.
+  The `content_type` is one of `:json`, `:text`, or `:html`.
   """
   @spec dispatch(module(), atom(), String.t(), map(), String.t()) ::
-          {:ok, non_neg_integer(), String.t()} | {:error, String.t()}
+          {:ok, non_neg_integer(), String.t(), :json | :text | :html} | {:error, String.t()}
   def dispatch(module, method, path, headers, body) do
     handlers = module.__handlers__()
 
@@ -52,10 +53,18 @@ defmodule Skein.Runtime.Handler do
             case apply(module, handler_fn, [req]) do
               {:respond_json, status, response_body} ->
                 json_body = encode_json(response_body)
-                {:ok, status, json_body}
+                {:ok, status, json_body, :json}
+
+              {:respond_text, status, response_body} ->
+                text_body = to_string(response_body)
+                {:ok, status, text_body, :text}
+
+              {:respond_html, status, response_body} ->
+                html_body = to_string(response_body)
+                {:ok, status, html_body, :html}
 
               other ->
-                {:ok, 200, encode_json(other)}
+                {:ok, 200, encode_json(other), :json}
             end
           end
         )

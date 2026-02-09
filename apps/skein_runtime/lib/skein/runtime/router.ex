@@ -106,10 +106,10 @@ defmodule Skein.Runtime.Router do
 
     try do
       case Handler.dispatch(skein_module, method, path, headers, body) do
-        {:ok, status, json_body} ->
+        {:ok, status, resp_body, content_type} ->
           conn
-          |> Plug.Conn.put_resp_content_type("application/json")
-          |> Plug.Conn.send_resp(status, json_body)
+          |> Plug.Conn.put_resp_content_type(content_type_string(content_type))
+          |> Plug.Conn.send_resp(status, resp_body)
 
         {:error, _reason} ->
           conn
@@ -123,6 +123,10 @@ defmodule Skein.Runtime.Router do
         |> Plug.Conn.send_resp(500, ~s({"error":"Internal Server Error"}))
     end
   end
+
+  defp content_type_string(:json), do: "application/json"
+  defp content_type_string(:text), do: "text/plain"
+  defp content_type_string(:html), do: "text/html"
 
   # ------------------------------------------------------------------
   # Helpers

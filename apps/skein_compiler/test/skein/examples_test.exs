@@ -52,18 +52,18 @@ defmodule Skein.ExamplesTest do
         Compiler.compile_file(Path.join(project_root(), "examples/hello_http.skein"))
 
       handlers = mod.__handlers__()
-      assert length(handlers) == 4
+      assert length(handlers) == 5
 
       sources = Enum.map(handlers, & &1.source)
       assert Enum.all?(sources, &(&1 == :http))
     end
 
-    test "health handler returns ok" do
+    test "health handler returns ok as text" do
       {:module, mod} =
         Compiler.compile_file(Path.join(project_root(), "examples/hello_http.skein"))
 
       result = mod.__handler_0__(%{})
-      assert {:respond_json, 200, "ok"} = result
+      assert {:respond_text, 200, "ok"} = result
     end
 
     test "greet handler is callable" do
@@ -80,6 +80,14 @@ defmodule Skein.ExamplesTest do
 
       result = mod.__handler_2__(%{body: "test data"})
       assert {:respond_json, 200, "received"} = result
+    end
+
+    test "page handler returns HTML" do
+      {:module, mod} =
+        Compiler.compile_file(Path.join(project_root(), "examples/hello_http.skein"))
+
+      result = mod.__handler_4__(%{})
+      assert {:respond_html, 200, "<h1>Hello from Skein</h1>"} = result
     end
   end
 

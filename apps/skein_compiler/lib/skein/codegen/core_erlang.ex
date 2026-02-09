@@ -1313,6 +1313,58 @@ defmodule Skein.CodeGen.CoreErlang do
     end
   end
 
+  # respond.text(status, body) — generates a text response tuple
+  defp generate_expr(
+         %AST.Call{
+           target: %AST.FieldAccess{
+             subject: %AST.Identifier{name: "respond"},
+             field: "text"
+           },
+           args: args
+         },
+         scope
+       ) do
+    args_exprs = Enum.map(args, &generate_expr(&1, scope))
+
+    case args_exprs do
+      [status_expr, body_expr] ->
+        :cerl.c_tuple([
+          :cerl.c_atom(:respond_text),
+          status_expr,
+          body_expr
+        ])
+
+      _ ->
+        :cerl.c_tuple([:cerl.c_atom(:respond_text) | args_exprs])
+    end
+  end
+
+  # respond.html(status, body) — generates an HTML response tuple
+  defp generate_expr(
+         %AST.Call{
+           target: %AST.FieldAccess{
+             subject: %AST.Identifier{name: "respond"},
+             field: "html"
+           },
+           args: args
+         },
+         scope
+       ) do
+    args_exprs = Enum.map(args, &generate_expr(&1, scope))
+
+    case args_exprs do
+      [status_expr, body_expr] ->
+        :cerl.c_tuple([
+          :cerl.c_atom(:respond_html),
+          status_expr,
+          body_expr
+        ])
+
+      _ ->
+        :cerl.c_tuple([:cerl.c_atom(:respond_html) | args_exprs])
+    end
+  end
+
   # Store effect: store.<table>.<method>(...)
   # Pattern: Call(FieldAccess(FieldAccess(Identifier("store"), table), method), args)
   defp generate_expr(
