@@ -27,3 +27,6 @@ erl_crash.dump
 
 # Burrito standalone binary output
 /burrito_out/
+
+# Test artifacts
+**/test/tmp/
