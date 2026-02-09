@@ -16,6 +16,7 @@ defmodule Skein.Runtime.Trace do
   """
 
   @table :skein_trace_spans
+  @annotations_key :skein_trace_annotations
 
   @doc """
   Ensures the trace ETS table exists. Called automatically by the application.
@@ -57,7 +58,7 @@ defmodule Skein.Runtime.Trace do
     @table
     |> :ets.tab2list()
     |> Enum.map(fn {_key, span} -> span end)
-    |> Enum.sort_by(& &1.timestamp, :desc)
+    |> Enum.sort_by(& &1._key, :desc)
     |> Enum.take(count)
   end
 
@@ -68,6 +69,39 @@ defmodule Skein.Runtime.Trace do
   def clear do
     init()
     :ets.delete_all_objects(@table)
+    :ok
+  end
+
+  @doc """
+  Adds a key-value annotation to the current trace context.
+
+  Annotations are accumulated in the process dictionary and attached to
+  the next span recorded by `with_span/2`. If called outside a `with_span`,
+  annotations can be retrieved with `get_annotations/0`.
+  """
+  @spec annotate(String.t(), String.t(), list()) :: :ok
+  def annotate(key, value, _capabilities \\ []) when is_binary(key) and is_binary(value) do
+    current = Process.get(@annotations_key, %{})
+    Process.put(@annotations_key, Map.put(current, key, value))
+    :ok
+  end
+
+  @doc """
+  Returns all accumulated annotations and clears the accumulator.
+  """
+  @spec get_annotations() :: map()
+  def get_annotations do
+    annotations = Process.get(@annotations_key, %{})
+    Process.put(@annotations_key, %{})
+    annotations
+  end
+
+  @doc """
+  Clears any accumulated annotations without returning them.
+  """
+  @spec clear_annotations() :: :ok
+  def clear_annotations do
+    Process.put(@annotations_key, %{})
     :ok
   end
 
@@ -84,11 +118,14 @@ defmodule Skein.Runtime.Trace do
   """
   @spec with_span(map(), (-> any())) :: any()
   def with_span(metadata, fun) when is_map(metadata) and is_function(fun, 0) do
+    # Clear any stale annotations from previous spans
+    clear_annotations()
     start = System.monotonic_time(:microsecond)
 
     try do
       result = fun.()
       duration = System.monotonic_time(:microsecond) - start
+      annotations = get_annotations()
 
       {outcome, status} =
         case result do
@@ -99,7 +136,7 @@ defmodule Skein.Runtime.Trace do
 
       span =
         metadata
-        |> Map.merge(%{duration_us: duration, outcome: outcome})
+        |> Map.merge(%{duration_us: duration, outcome: outcome, annotations: annotations})
         |> then(fn s -> if status, do: Map.put(s, :status, status), else: s end)
 
       record_span(span)
@@ -107,12 +144,14 @@ defmodule Skein.Runtime.Trace do
     rescue
       exception ->
         duration = System.monotonic_time(:microsecond) - start
+        annotations = get_annotations()
 
         span =
           Map.merge(metadata, %{
             duration_us: duration,
             outcome: :error,
-            error: Exception.message(exception)
+            error: Exception.message(exception),
+            annotations: annotations
           })
 
         record_span(span)

@@ -137,6 +137,80 @@ defmodule Skein.Runtime.TraceTest do
   # Timed execution
   # ------------------------------------------------------------------
 
+  # ------------------------------------------------------------------
+  # Annotations
+  # ------------------------------------------------------------------
+
+  describe "annotate/3" do
+    test "stores key-value annotation in process dictionary" do
+      Trace.annotate("user_id", "abc123", [])
+      annotations = Trace.get_annotations()
+      assert annotations == %{"user_id" => "abc123"}
+    end
+
+    test "multiple annotations accumulate" do
+      Trace.annotate("user_id", "abc123", [])
+      Trace.annotate("action", "refund", [])
+      annotations = Trace.get_annotations()
+      assert annotations == %{"user_id" => "abc123", "action" => "refund"}
+    end
+
+    test "later annotation with same key overwrites earlier one" do
+      Trace.annotate("status", "pending", [])
+      Trace.annotate("status", "approved", [])
+      annotations = Trace.get_annotations()
+      assert annotations == %{"status" => "approved"}
+    end
+
+    test "get_annotations clears the accumulator" do
+      Trace.annotate("key", "value", [])
+      _first = Trace.get_annotations()
+      second = Trace.get_annotations()
+      assert second == %{}
+    end
+
+    test "annotate returns :ok" do
+      assert :ok = Trace.annotate("key", "value", [])
+    end
+  end
+
+  describe "with_span/2 includes annotations" do
+    test "annotations made during span are included in recorded span" do
+      Trace.with_span(%{kind: :http, method: :get, url: "test"}, fn ->
+        Trace.annotate("user", "alice", [])
+        Trace.annotate("request_id", "req-123", [])
+        {:ok, "done"}
+      end)
+
+      [span] = Trace.recent_spans(1)
+      assert span.annotations == %{"user" => "alice", "request_id" => "req-123"}
+    end
+
+    test "span without annotations has empty annotations map" do
+      Trace.with_span(%{kind: :http, method: :get, url: "test"}, fn ->
+        {:ok, "done"}
+      end)
+
+      [span] = Trace.recent_spans(1)
+      assert span.annotations == %{}
+    end
+
+    test "annotations from previous span don't leak into next span" do
+      Trace.with_span(%{kind: :http, method: :get, url: "first"}, fn ->
+        Trace.annotate("from", "first", [])
+        {:ok, "done"}
+      end)
+
+      Trace.with_span(%{kind: :http, method: :get, url: "second"}, fn ->
+        {:ok, "done"}
+      end)
+
+      spans = Trace.recent_spans(2)
+      second_span = Enum.find(spans, &(&1.url == "second"))
+      assert second_span.annotations == %{}
+    end
+  end
+
   describe "with_span/2" do
     test "executes function and records span with timing" do
       result =

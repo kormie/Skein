@@ -158,6 +158,84 @@ defmodule Skein.Runtime.TracePropertyTest do
     end
   end
 
+  # ------------------------------------------------------------------
+  # Annotation properties
+  # ------------------------------------------------------------------
+
+  property "annotate stores arbitrary key-value strings" do
+    check all(
+            key <- StreamData.string(:alphanumeric, min_length: 1, max_length: 50),
+            value <- StreamData.string(:alphanumeric, min_length: 1, max_length: 100)
+          ) do
+      Trace.clear()
+      Trace.clear_annotations()
+      Trace.annotate(key, value, [])
+      annotations = Trace.get_annotations()
+      assert annotations[key] == value
+    end
+  end
+
+  property "multiple annotations all appear in with_span span" do
+    check all(
+            kvs <-
+              StreamData.list_of(
+                StreamData.tuple({
+                  StreamData.string(:alphanumeric, min_length: 1, max_length: 20),
+                  StreamData.string(:alphanumeric, min_length: 1, max_length: 20)
+                }),
+                min_length: 1,
+                max_length: 10
+              ),
+            kind <- kind_gen(),
+            method <- method_gen()
+          ) do
+      Trace.clear()
+      Trace.clear_annotations()
+      metadata = %{kind: kind, method: method}
+
+      Trace.with_span(metadata, fn ->
+        for {k, v} <- kvs do
+          Trace.annotate(k, v, [])
+        end
+
+        :ok
+      end)
+
+      [span] = Trace.recent_spans(1)
+      expected = Map.new(kvs)
+      assert span.annotations == expected
+    end
+  end
+
+  property "annotations don't leak between with_span calls" do
+    check all(
+            key <- StreamData.string(:alphanumeric, min_length: 1, max_length: 20),
+            value <- StreamData.string(:alphanumeric, min_length: 1, max_length: 20),
+            kind <- kind_gen(),
+            method <- method_gen()
+          ) do
+      Trace.clear()
+      Trace.clear_annotations()
+      metadata = %{kind: kind, method: method}
+
+      # First span with annotation
+      Trace.with_span(metadata, fn ->
+        Trace.annotate(key, value, [])
+        :ok
+      end)
+
+      # Second span without annotation
+      Trace.with_span(metadata, fn ->
+        :ok
+      end)
+
+      spans = Trace.recent_spans(2)
+      # The most recent span (second) should have no annotations
+      most_recent = hd(spans)
+      assert most_recent.annotations == %{}
+    end
+  end
+
   property "with_span records non-negative duration" do
     check all(
             kind <- kind_gen(),

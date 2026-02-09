@@ -2228,6 +2228,95 @@ defmodule Skein.CodeGen.CoreErlangTest do
   end
 
   # ------------------------------------------------------------------
+  # trace.annotate codegen
+  # ------------------------------------------------------------------
+
+  describe "trace.annotate codegen" do
+    setup do
+      Skein.Runtime.Trace.clear()
+      :ok
+    end
+
+    test "trace.annotate compiles to callable function" do
+      mod =
+        compile!("""
+        module TraceAnnotateBasic {
+          capability trace
+
+          fn annotate_something(key: String, value: String) -> String {
+            trace.annotate(key, value)
+          }
+        }
+        """)
+
+      assert function_exported?(mod, :annotate_something, 2)
+    end
+
+    test "trace.annotate stores annotations accessible via Trace" do
+      mod =
+        compile!("""
+        module TraceAnnotateStore {
+          capability trace
+
+          fn annotate_and_return(key: String, value: String) -> String {
+            trace.annotate(key, value)
+            "done"
+          }
+        }
+        """)
+
+      Skein.Runtime.Trace.clear_annotations()
+      mod.annotate_and_return("user_id", "abc123")
+      annotations = Skein.Runtime.Trace.get_annotations()
+      assert annotations == %{"user_id" => "abc123"}
+    end
+
+    test "trace.annotate in handler with http produces annotated span" do
+      mod =
+        compile!("""
+        module TraceAnnotateHandler {
+          capability http.in
+          capability trace
+
+          handler http GET "/test" (req) -> {
+            trace.annotate("endpoint", "/test")
+            respond.json(200, "ok")
+          }
+        }
+        """)
+
+      # The handler function should be callable
+      Skein.Runtime.Trace.clear_annotations()
+      result = mod.__handler_0__(%{})
+      assert {:respond_json, 200, "ok"} = result
+
+      # Annotations should be in the process dictionary until a span collects them
+      annotations = Skein.Runtime.Trace.get_annotations()
+      assert annotations == %{"endpoint" => "/test"}
+    end
+
+    test "multiple trace.annotate calls accumulate" do
+      mod =
+        compile!("""
+        module TraceAnnotateMulti {
+          capability trace
+
+          fn annotate_multi() -> String {
+            trace.annotate("key1", "val1")
+            trace.annotate("key2", "val2")
+            "done"
+          }
+        }
+        """)
+
+      Skein.Runtime.Trace.clear_annotations()
+      mod.annotate_multi()
+      annotations = Skein.Runtime.Trace.get_annotations()
+      assert annotations == %{"key1" => "val1", "key2" => "val2"}
+    end
+  end
+
+  # ------------------------------------------------------------------
   # Tool identifier references codegen (capability-as-import)
   # ------------------------------------------------------------------
 

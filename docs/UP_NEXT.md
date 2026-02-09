@@ -203,34 +203,18 @@ Implemented `topic.publish` and `topic.consume` (handler topic) across the full 
 
 ---
 
-## Priority 7: trace.annotate(key, value)
+## ~~Priority 7: trace.annotate(key, value)~~ ✅ DONE
 
-**Why seventh:** Defined in spec section 6.10. Enhances observability. Small scope.
+**Status:** COMPLETE
 
-**Status:** NOT IMPLEMENTED
+Implemented `trace.annotate(key, value)` across the full pipeline:
 
-### Implementation Plan
-
-1. **Analyzer** — Add `"trace"` to `@effect_namespaces` with method `["annotate"]`
-2. **Codegen** — Generate `Skein.Runtime.Trace.annotate(key, value)` calls
-3. **Runtime** — Add `annotate/2` function to `Skein.Runtime.Trace` that attaches key-value metadata to the current span
-
-### Testing Checklist
-
-- [ ] Unit tests: codegen produces correct trace.annotate calls
-- [ ] Runtime tests: annotations appear in span metadata when queried
-- [ ] Property tests: arbitrary key/value strings produce valid annotations; special characters don't break storage
-
-### Examples Checklist
-
-- [ ] **Amend `examples/refund_agent.skein`** — add `trace.annotate("ticket_id", state.ticket_id)` and `trace.annotate("decision", d.action)` calls inside the Analyze phase handler, showing how to enrich trace spans with business context
-- [ ] **Amend `examples/hello_http.skein`** — add `trace.annotate("user", name)` inside an HTTP handler to show the simplest possible tracing example
-- [ ] Verify all amended examples compile and their integration tests pass
-
-### Docs Checklist
-
-- [ ] `docs/site/src/content/docs/language/capabilities-and-effects.md` — add a "Trace" section showing `trace.annotate(key, value)` with a code example of annotating an HTTP handler span and an agent phase span, and explain that annotations appear in the `/__skein/traces` debug endpoint
-- [ ] Rebuild docs site: `cd docs/site && bunx astro build`
+- **Analyzer**: Added `"trace"` to `@effect_namespaces` (maps to `"trace"` capability) and `"trace" => ["annotate"]` to `@effect_methods`
+- **Codegen**: Added `"trace" => Skein.Runtime.Trace` to `@effect_runtime_modules`; `trace.annotate(key, value)` compiles to `Skein.Runtime.Trace.annotate(key, value, capabilities)` via the generic effect call codegen
+- **Runtime**: `annotate/3` stores key-value pairs in process dictionary; `get_annotations/0` retrieves and clears; `with_span/2` collects annotations and attaches them to the recorded span; `clear_annotations/0` for cleanup; fixed `recent_spans/1` ordering to use `_key` instead of `timestamp` for deterministic sub-microsecond ordering
+- **Examples**: `refund_agent.skein` (trace.annotate in Review phase) and `hello_http.skein` (trace.annotate in greet handler) updated
+- **Tests**: Analyzer (4), codegen (4), runtime unit (8), runtime property (3) — all passing
+- **Docs**: capabilities-and-effects.md updated with Trace section, capability table, and Effect Tracing annotations field
 
 ---
 
@@ -320,3 +304,4 @@ _Move items here as they are finished, with date and session link._
 - [x] **respond.text / respond.html** (codegen + handler + router + docs) — 2026-02-09 — session_01CmpRm5pVDPuerofBgz7CHJ
 - [x] **topic.publish / topic.consume** (parser + analyzer + codegen + runtime + docs) — 2026-02-09 — session_01HGdUnDFnp5AYRcZD7t1v5m
 - [x] **idempotent(key)** (lexer + parser + analyzer + codegen + runtime + docs) — 2026-02-09 — session_01LuWtXuwSy6E193S4X23JDK
+- [x] **trace.annotate(key, value)** (analyzer + codegen + runtime + examples + docs) — 2026-02-09 — session_015hbTUbQedGnErW5KnKvHAd

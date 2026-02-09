@@ -115,7 +115,8 @@
 - **Stdlib is COMPLETE** — all 11 modules, 101 functions
 - **Error Code Alignment is COMPLETE** — all 21 + 3 warning codes
 - **idempotent(key) is COMPLETE** — lexer + parser + analyzer (E0035) + codegen + runtime
-- Next priority: trace.annotate, then llm.embed
+- **trace.annotate is COMPLETE** — analyzer + codegen + runtime + examples + docs
+- Next priority: llm.embed
 - Distribution work is unblocked — all three prerequisites are done
 - LSP (`apps/skein_lsp/`) is implemented — remove from backlog lists
 
@@ -139,6 +140,16 @@
 - Runtime Idempotent: `apps/skein_runtime/lib/skein/runtime/idempotent.ex`
 - Example: `examples/queue_worker.skein` uses `idempotent(msg.id)`
 - Can't use `ttl_ms()` in guard clauses — must bind to variable first
+
+## Trace Annotate (Priority 7 — COMPLETE)
+- `trace.annotate(key, value)` requires `capability trace` declaration
+- Analyzer: `"trace" => "trace"` in `@effect_namespaces`, `"trace" => ["annotate"]` in `@effect_methods`
+- Codegen: `"trace" => Skein.Runtime.Trace` in `@effect_runtime_modules`, uses generic effect call pattern
+- Runtime: Process dictionary (`@annotations_key :skein_trace_annotations`) for annotation accumulation
+- `annotate/3` stores to process dict, `get_annotations/0` retrieves and clears, `clear_annotations/0` clears
+- `with_span/2` clears annotations at start, collects at end, attaches to recorded span as `:annotations` field
+- Fixed `recent_spans/1` ordering: sort by `_key` (not `timestamp`) for deterministic sub-microsecond ordering
+- Examples: `refund_agent.skein` (Review phase), `hello_http.skein` (greet handler)
 
 ## Streaming Implementation Notes (Phase 8f)
 - `llm.stream` uses same `model` capability as `chat`/`json`

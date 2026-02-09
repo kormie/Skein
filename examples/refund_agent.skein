@@ -6,6 +6,7 @@
 agent RefundAgent {
   capability model("gpt-4")
   capability memory.kv
+  capability trace
 
   state {
     order_id: String
@@ -28,7 +29,9 @@ agent RefundAgent {
 
   on phase(Phase.Review) -> {
     let order = memory.get("order_id")
+    trace.annotate("ticket_id", order)
     let decision = llm.chat("gpt-4", "Evaluate refund", order)
+    trace.annotate("decision", decision)
     memory.put("decision", decision)
     transition(Phase.Approved)
   }

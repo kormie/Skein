@@ -2111,6 +2111,87 @@ defmodule Skein.AnalyzerTest do
   end
 
   # ------------------------------------------------------------------
+  # trace.annotate capability checking
+  # ------------------------------------------------------------------
+
+  describe "trace.annotate capability checking" do
+    test "trace.annotate without trace capability produces E0012 error" do
+      errors =
+        analyze_errors("""
+        module M {
+          fn track(key: String, value: String) -> String {
+            trace.annotate(key, value)
+          }
+        }
+        """)
+
+      assert length(errors) >= 1
+      error = Enum.find(errors, &(&1.code == "E0012"))
+      assert error != nil
+      assert error.message =~ "trace"
+    end
+
+    test "trace.annotate with trace capability passes" do
+      assert {:ok, _} =
+               analyze("""
+               module M {
+                 capability trace
+
+                 fn track(key: String, value: String) -> String {
+                   trace.annotate(key, value)
+                 }
+               }
+               """)
+    end
+
+    test "trace.annotate in handler with trace capability passes" do
+      assert {:ok, _} =
+               analyze("""
+               module M {
+                 capability http.in
+                 capability trace
+
+                 handler http GET "/test" (req) -> {
+                   trace.annotate("endpoint", "/test")
+                   respond.json(200, "ok")
+                 }
+               }
+               """)
+    end
+
+    test "trace.annotate in agent with trace capability passes" do
+      assert {:ok, _} =
+               analyze("""
+               agent A {
+                 capability trace
+
+                 state {
+                   value: String
+                 }
+
+                 enum Phase {
+                   Review -> [Done]
+                   Done -> []
+                 }
+
+                 on start(value: String) -> {
+                   transition(Phase.Review)
+                 }
+
+                 on phase(Phase.Review) -> {
+                   trace.annotate("phase", "review")
+                   transition(Phase.Done)
+                 }
+
+                 on phase(Phase.Done) -> {
+                   stop()
+                 }
+               }
+               """)
+    end
+  end
+
+  # ------------------------------------------------------------------
   # Tool identifier references — capability-as-import (Phase 9)
   # ------------------------------------------------------------------
 

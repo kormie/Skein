@@ -48,6 +48,7 @@ capability <namespace>.<kind>(<params>)
 | `topic.publish` | Publish to a named topic | Topic name |
 | `topic.consume` | Subscribe to a named topic | Topic name |
 | `schedule.in` | Cron-based schedule handlers | Cron expression (optional) |
+| `trace` | Trace annotation | None |
 
 ### Wildcard Capabilities
 
@@ -209,6 +210,56 @@ handler topic "order.events" (msg) -> {
 
 See the [Handlers](/Skein/language/handlers/) page for full topic handler documentation.
 
+### Trace
+
+The `trace.annotate(key, value)` effect adds key-value metadata to the current trace span. This is useful for enriching traces with business context.
+
+```skein
+capability trace
+
+fn process_order(order_id: String) -> String {
+  trace.annotate("order_id", order_id)
+  -- ... processing logic ...
+}
+```
+
+Annotations are attached to the enclosing span (recorded by `with_span`). In HTTP handlers, annotations appear on the HTTP span:
+
+```skein
+module OrderService {
+  capability http.in
+  capability trace
+
+  handler http POST "/orders" (req) -> {
+    trace.annotate("endpoint", "/orders")
+    trace.annotate("method", "POST")
+    respond.json(200, "created")
+  }
+}
+```
+
+In agents, annotations enrich phase-handling spans with business context:
+
+```skein
+agent RefundAgent {
+  capability model("gpt-4")
+  capability memory.kv
+  capability trace
+
+  -- ...
+
+  on phase(Phase.Review) -> {
+    let order = memory.get("order_id")
+    trace.annotate("ticket_id", order)
+    let decision = llm.chat("gpt-4", "Evaluate refund", order)
+    trace.annotate("decision", decision)
+    -- ...
+  }
+}
+```
+
+Annotations appear in the `/__skein/traces` debug endpoint alongside timing and outcome data.
+
 ### How They Parse
 
 Effect calls use existing Skein syntax -- no special grammar is needed. `http.get(url)` parses as:
@@ -319,6 +370,7 @@ Every effect call is automatically traced. The runtime records:
 | `duration_us` | Wall-clock duration in microseconds |
 | `outcome` | `:ok` or `:error` |
 | `timestamp` | Monotonic timestamp |
+| `annotations` | Key-value metadata added via `trace.annotate()` |
 
 Traces are stored in an ETS table and can be queried via `Skein.Runtime.Trace.recent_spans/1`.
 

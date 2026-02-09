@@ -82,7 +82,8 @@ defmodule Skein.Analyzer do
     "memory" => "memory.kv",
     "llm" => "model",
     "tool" => "tool.use",
-    "topic" => "topic.publish"
+    "topic" => "topic.publish",
+    "trace" => "trace"
   }
 
   # Known effect methods per namespace
@@ -91,7 +92,8 @@ defmodule Skein.Analyzer do
     "memory" => ["put", "get", "get!", "delete", "list"],
     "llm" => ["chat", "json", "stream"],
     "tool" => ["call", "list", "schema"],
-    "topic" => ["publish"]
+    "topic" => ["publish"],
+    "trace" => ["annotate"]
   }
 
   # Store operations: store.<table>.<method>(...)
