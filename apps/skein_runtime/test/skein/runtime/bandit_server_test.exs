@@ -8,12 +8,16 @@ defmodule Skein.Runtime.BanditServerTest do
   defp compile_module!(source) do
     {:ok, tokens} = Skein.Lexer.tokenize(source)
     {:ok, ast} = Skein.Parser.parse(tokens)
-    {:ok, analyzed} = Skein.Analyzer.analyze(ast)
+    analyzed = analyze_ok!(Skein.Analyzer.analyze(ast))
     {:ok, beam} = Skein.CodeGen.CoreErlang.generate(analyzed)
     module_name = String.to_atom("Elixir.Skein.User.#{ast.name}")
     {:module, mod} = :code.load_binary(module_name, ~c"nofile", beam)
     mod
   end
+
+  defp analyze_ok!({:ok, ast}), do: ast
+  defp analyze_ok!({:ok, ast, _warnings}), do: ast
+  defp analyze_ok!({:error, errors}), do: raise("Compilation failed: #{inspect(errors)}")
 
   # Use a unique port per test to avoid conflicts
   defp unique_port do

@@ -35,6 +35,9 @@ defmodule Skein.Lsp.Diagnostics do
               {:error, errors} ->
                 {errors_to_diagnostics(errors), ast}
 
+              {:ok, analyzed_ast, warnings} ->
+                {errors_to_diagnostics(warnings), analyzed_ast}
+
               {:ok, analyzed_ast} ->
                 {[], analyzed_ast}
             end

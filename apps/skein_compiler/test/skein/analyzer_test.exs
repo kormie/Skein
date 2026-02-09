@@ -6,15 +6,25 @@ defmodule Skein.AnalyzerTest do
   alias Skein.Analyzer
 
   # Helper: lex, parse, then analyze
+  # Normalizes {ok, ast, warnings} to {:ok, ast} for simple assertion matching
   defp analyze(source) do
     {:ok, tokens} = Lexer.tokenize(source)
     {:ok, ast} = Parser.parse(tokens)
-    Analyzer.analyze(ast)
+
+    case Analyzer.analyze(ast) do
+      {:ok, analyzed_ast, _warnings} -> {:ok, analyzed_ast}
+      other -> other
+    end
   end
 
+  # Returns all errors and warnings from analysis
   defp analyze_errors(source) do
-    case analyze(source) do
+    {:ok, tokens} = Lexer.tokenize(source)
+    {:ok, ast} = Parser.parse(tokens)
+
+    case Analyzer.analyze(ast) do
       {:error, errors} -> errors
+      {:ok, _, warnings} -> warnings
       {:ok, _} -> []
     end
   end
@@ -246,7 +256,7 @@ defmodule Skein.AnalyzerTest do
         """)
 
       assert length(errors) >= 1
-      assert hd(errors).code == "E0021"
+      assert hd(errors).code == "E0020"
     end
 
     test "comparison with mismatched types" do
@@ -260,7 +270,7 @@ defmodule Skein.AnalyzerTest do
         """)
 
       assert length(errors) >= 1
-      assert hd(errors).code == "E0021"
+      assert hd(errors).code == "E0020"
     end
 
     test "logical AND with non-Bool operand" do
@@ -274,7 +284,7 @@ defmodule Skein.AnalyzerTest do
         """)
 
       assert length(errors) >= 1
-      assert hd(errors).code == "E0021"
+      assert hd(errors).code == "E0020"
     end
 
     test "negation of non-Bool" do
@@ -288,7 +298,7 @@ defmodule Skein.AnalyzerTest do
         """)
 
       assert length(errors) >= 1
-      assert hd(errors).code == "E0021"
+      assert hd(errors).code == "E0020"
     end
   end
 
@@ -310,7 +320,7 @@ defmodule Skein.AnalyzerTest do
         """)
 
       assert Enum.any?(errors, fn e ->
-               e.code == "E0024" and e.severity == :warning
+               e.code == "E0021" and e.severity == :warning
              end)
     end
 
@@ -327,7 +337,7 @@ defmodule Skein.AnalyzerTest do
         """)
 
       assert Enum.any?(errors, fn e ->
-               e.code == "E0024" and e.severity == :warning
+               e.code == "E0021" and e.severity == :warning
              end)
     end
 
@@ -424,7 +434,7 @@ defmodule Skein.AnalyzerTest do
         """)
 
       assert length(errors) >= 1
-      assert hd(errors).code == "E0011"
+      assert hd(errors).code == "E0024"
     end
 
     test "function with unknown return type" do
@@ -438,7 +448,7 @@ defmodule Skein.AnalyzerTest do
         """)
 
       assert length(errors) >= 1
-      assert hd(errors).code == "E0011"
+      assert hd(errors).code == "E0024"
     end
 
     test "user-declared type is valid in function signatures" do
@@ -554,7 +564,7 @@ defmodule Skein.AnalyzerTest do
         """)
 
       assert length(errors) >= 1
-      assert hd(errors).code == "E0012"
+      assert hd(errors).code == "E0020"
     end
 
     test "calling function with correct arity passes" do
@@ -628,7 +638,7 @@ defmodule Skein.AnalyzerTest do
         """)
 
       assert length(errors) >= 1
-      error = Enum.find(errors, &(&1.code == "E0030"))
+      error = Enum.find(errors, &(&1.code == "E0012"))
       assert error != nil
       assert error.severity == :error
       assert error.message =~ "http.out"
@@ -646,7 +656,7 @@ defmodule Skein.AnalyzerTest do
         """)
 
       assert length(errors) >= 1
-      error = Enum.find(errors, &(&1.code == "E0030"))
+      error = Enum.find(errors, &(&1.code == "E0012"))
       assert error != nil
       assert error.message =~ "http.out"
     end
@@ -662,7 +672,7 @@ defmodule Skein.AnalyzerTest do
         """)
 
       assert length(errors) >= 1
-      assert Enum.any?(errors, &(&1.code == "E0030"))
+      assert Enum.any?(errors, &(&1.code == "E0012"))
     end
 
     test "http.delete without capability http.out produces error" do
@@ -676,7 +686,7 @@ defmodule Skein.AnalyzerTest do
         """)
 
       assert length(errors) >= 1
-      assert Enum.any?(errors, &(&1.code == "E0030"))
+      assert Enum.any?(errors, &(&1.code == "E0012"))
     end
 
     test "error includes fix_code with capability declaration" do
@@ -689,7 +699,7 @@ defmodule Skein.AnalyzerTest do
         }
         """)
 
-      error = Enum.find(errors, &(&1.code == "E0030"))
+      error = Enum.find(errors, &(&1.code == "E0012"))
       assert error.fix_code != nil
       assert error.fix_code =~ "capability http.out"
     end
@@ -704,7 +714,7 @@ defmodule Skein.AnalyzerTest do
         }
         """)
 
-      error = Enum.find(errors, &(&1.code == "E0030"))
+      error = Enum.find(errors, &(&1.code == "E0012"))
       assert error.fix_hint != nil
       assert error.fix_hint =~ "capability"
     end
@@ -791,7 +801,7 @@ defmodule Skein.AnalyzerTest do
         }
         """)
 
-      assert Enum.any?(errors, &(&1.code == "E0030"))
+      assert Enum.any?(errors, &(&1.code == "E0012"))
     end
 
     test "effect call in match arm is checked" do
@@ -807,7 +817,7 @@ defmodule Skein.AnalyzerTest do
         }
         """)
 
-      assert Enum.any?(errors, &(&1.code == "E0030"))
+      assert Enum.any?(errors, &(&1.code == "E0012"))
     end
 
     test "effect call in pipe is checked" do
@@ -820,7 +830,7 @@ defmodule Skein.AnalyzerTest do
         }
         """)
 
-      assert Enum.any?(errors, &(&1.code == "E0030"))
+      assert Enum.any?(errors, &(&1.code == "E0012"))
     end
 
     test "multiple effect calls produce multiple errors" do
@@ -835,7 +845,7 @@ defmodule Skein.AnalyzerTest do
         }
         """)
 
-      capability_errors = Enum.filter(errors, &(&1.code == "E0030"))
+      capability_errors = Enum.filter(errors, &(&1.code == "E0012"))
       assert length(capability_errors) >= 2
     end
   end
@@ -856,7 +866,7 @@ defmodule Skein.AnalyzerTest do
         """)
 
       assert length(errors) >= 1
-      error = Enum.find(errors, &(&1.code == "E0030"))
+      error = Enum.find(errors, &(&1.code == "E0012"))
       assert error != nil
       assert error.message =~ "http.in"
       assert error.fix_code == "capability http.in"
@@ -884,7 +894,7 @@ defmodule Skein.AnalyzerTest do
         }
         """)
 
-      capability_errors = Enum.filter(errors, &(&1.code == "E0030"))
+      capability_errors = Enum.filter(errors, &(&1.code == "E0012"))
       assert length(capability_errors) >= 2
     end
 
@@ -929,7 +939,7 @@ defmodule Skein.AnalyzerTest do
         }
         """)
 
-      assert Enum.any?(errors, &(&1.code == "E0030" and &1.message =~ "http.out"))
+      assert Enum.any?(errors, &(&1.code == "E0012" and &1.message =~ "http.out"))
     end
 
     test "handler with both http.in and http.out capabilities passes" do
@@ -962,7 +972,7 @@ defmodule Skein.AnalyzerTest do
         }
         """)
 
-      error = Enum.find(errors, &(&1.code == "E0030"))
+      error = Enum.find(errors, &(&1.code == "E0012"))
       assert error != nil
       assert error.message =~ "store.table"
       assert error.message =~ "users"
@@ -978,7 +988,7 @@ defmodule Skein.AnalyzerTest do
         }
         """)
 
-      error = Enum.find(errors, &(&1.code == "E0030"))
+      error = Enum.find(errors, &(&1.code == "E0012"))
       assert error != nil
       assert error.message =~ "store.table"
       assert error.message =~ "users"
@@ -994,7 +1004,7 @@ defmodule Skein.AnalyzerTest do
         }
         """)
 
-      error = Enum.find(errors, &(&1.code == "E0030"))
+      error = Enum.find(errors, &(&1.code == "E0012"))
       assert error != nil
       assert error.message =~ "store.table"
     end
@@ -1009,7 +1019,7 @@ defmodule Skein.AnalyzerTest do
         }
         """)
 
-      error = Enum.find(errors, &(&1.code == "E0030"))
+      error = Enum.find(errors, &(&1.code == "E0012"))
       assert error != nil
     end
 
@@ -1023,7 +1033,7 @@ defmodule Skein.AnalyzerTest do
         }
         """)
 
-      error = Enum.find(errors, &(&1.code == "E0030"))
+      error = Enum.find(errors, &(&1.code == "E0012"))
       assert error.fix_code == "capability store.table(\"orders\")"
     end
 
@@ -1039,7 +1049,7 @@ defmodule Skein.AnalyzerTest do
         }
         """)
 
-      error = Enum.find(errors, &(&1.code == "E0030"))
+      error = Enum.find(errors, &(&1.code == "E0012"))
       assert error != nil
       assert error.message =~ "orders"
     end
@@ -1157,10 +1167,10 @@ defmodule Skein.AnalyzerTest do
         }
         """)
 
-      error = Enum.find(errors, &(&1.code == "E0030"))
+      error = Enum.find(errors, &(&1.code == "E0012"))
       json = Skein.Error.to_json(error)
       decoded = Jason.decode!(json)
-      assert decoded["code"] == "E0030"
+      assert decoded["code"] == "E0012"
       assert decoded["fix_code"] =~ "capability http.out"
     end
   end
@@ -1391,7 +1401,7 @@ defmodule Skein.AnalyzerTest do
         }
         """)
 
-      assert Enum.any?(errors, &(&1.code == "E0011" and &1.message =~ "UnknownType"))
+      assert Enum.any?(errors, &(&1.code == "E0024" and &1.message =~ "UnknownType"))
     end
   end
 
@@ -1445,7 +1455,7 @@ defmodule Skein.AnalyzerTest do
         }
         """)
 
-      error = Enum.find(errors, &(&1.code == "E0030"))
+      error = Enum.find(errors, &(&1.code == "E0012"))
       assert error != nil
       assert error.message =~ "memory.kv"
     end
@@ -1460,7 +1470,7 @@ defmodule Skein.AnalyzerTest do
         }
         """)
 
-      error = Enum.find(errors, &(&1.code == "E0030"))
+      error = Enum.find(errors, &(&1.code == "E0012"))
       assert error != nil
       assert error.message =~ "memory.kv"
     end
@@ -1475,7 +1485,7 @@ defmodule Skein.AnalyzerTest do
         }
         """)
 
-      error = Enum.find(errors, &(&1.code == "E0030"))
+      error = Enum.find(errors, &(&1.code == "E0012"))
       assert error != nil
       assert error.message =~ "memory.kv"
     end
@@ -1490,7 +1500,7 @@ defmodule Skein.AnalyzerTest do
         }
         """)
 
-      error = Enum.find(errors, &(&1.code == "E0030"))
+      error = Enum.find(errors, &(&1.code == "E0012"))
       assert error != nil
       assert error.message =~ "memory.kv"
     end
@@ -1505,7 +1515,7 @@ defmodule Skein.AnalyzerTest do
         }
         """)
 
-      error = Enum.find(errors, &(&1.code == "E0030"))
+      error = Enum.find(errors, &(&1.code == "E0012"))
       assert error.fix_code =~ "capability memory.kv"
     end
   end
@@ -1579,7 +1589,7 @@ defmodule Skein.AnalyzerTest do
         }
         """)
 
-      error = Enum.find(errors, &(&1.code == "E0030"))
+      error = Enum.find(errors, &(&1.code == "E0012"))
       assert error != nil
       assert error.message =~ "model"
     end
@@ -1594,7 +1604,7 @@ defmodule Skein.AnalyzerTest do
         }
         """)
 
-      error = Enum.find(errors, &(&1.code == "E0030"))
+      error = Enum.find(errors, &(&1.code == "E0012"))
       assert error != nil
       assert error.message =~ "model"
     end
@@ -1609,7 +1619,7 @@ defmodule Skein.AnalyzerTest do
         }
         """)
 
-      error = Enum.find(errors, &(&1.code == "E0030"))
+      error = Enum.find(errors, &(&1.code == "E0012"))
       assert error.fix_code =~ "capability model"
     end
   end
@@ -1657,7 +1667,7 @@ defmodule Skein.AnalyzerTest do
         }
         """)
 
-      error = Enum.find(errors, &(&1.code == "E0030"))
+      error = Enum.find(errors, &(&1.code == "E0012"))
       assert error != nil
       assert error.message =~ "model"
     end
@@ -1694,7 +1704,7 @@ defmodule Skein.AnalyzerTest do
                """)
     end
 
-    test "tool with unknown input type produces E0011" do
+    test "tool with unknown input type produces E0024" do
       errors =
         analyze_errors("""
         module M {
@@ -1706,11 +1716,11 @@ defmodule Skein.AnalyzerTest do
         }
         """)
 
-      assert Enum.any?(errors, &(&1.code == "E0011"))
+      assert Enum.any?(errors, &(&1.code == "E0024"))
       assert Enum.any?(errors, &String.contains?(&1.message, "Foo"))
     end
 
-    test "tool with unknown output type produces E0011" do
+    test "tool with unknown output type produces E0024" do
       errors =
         analyze_errors("""
         module M {
@@ -1722,7 +1732,7 @@ defmodule Skein.AnalyzerTest do
         }
         """)
 
-      assert Enum.any?(errors, &(&1.code == "E0011"))
+      assert Enum.any?(errors, &(&1.code == "E0024"))
       assert Enum.any?(errors, &String.contains?(&1.message, "Bar"))
     end
 
@@ -1759,7 +1769,7 @@ defmodule Skein.AnalyzerTest do
   end
 
   describe "tool.call capability checking" do
-    test "tool.call without tool.use capability produces E0030" do
+    test "tool.call without tool.use capability produces E0012" do
       errors =
         analyze_errors("""
         module M {
@@ -1769,7 +1779,7 @@ defmodule Skein.AnalyzerTest do
         }
         """)
 
-      assert Enum.any?(errors, &(&1.code == "E0030"))
+      assert Enum.any?(errors, &(&1.code == "E0012"))
       assert Enum.any?(errors, &String.contains?(&1.message, "tool.use"))
     end
 
@@ -1786,7 +1796,7 @@ defmodule Skein.AnalyzerTest do
                """)
     end
 
-    test "tool.list without tool.use capability produces E0030" do
+    test "tool.list without tool.use capability produces E0012" do
       errors =
         analyze_errors("""
         module M {
@@ -1796,7 +1806,7 @@ defmodule Skein.AnalyzerTest do
         }
         """)
 
-      assert Enum.any?(errors, &(&1.code == "E0030"))
+      assert Enum.any?(errors, &(&1.code == "E0012"))
     end
 
     test "tool.list with tool.use capability passes" do
@@ -1812,7 +1822,7 @@ defmodule Skein.AnalyzerTest do
                """)
     end
 
-    test "tool.schema without tool.use capability produces E0030" do
+    test "tool.schema without tool.use capability produces E0012" do
       errors =
         analyze_errors("""
         module M {
@@ -1822,7 +1832,7 @@ defmodule Skein.AnalyzerTest do
         }
         """)
 
-      assert Enum.any?(errors, &(&1.code == "E0030"))
+      assert Enum.any?(errors, &(&1.code == "E0012"))
     end
 
     test "tool.schema with tool.use capability passes" do
@@ -1852,7 +1862,7 @@ defmodule Skein.AnalyzerTest do
                """)
     end
 
-    test "tool.call in handler without tool.use capability produces E0030" do
+    test "tool.call in handler without tool.use capability produces E0012" do
       errors =
         analyze_errors("""
         module M {
@@ -1864,7 +1874,7 @@ defmodule Skein.AnalyzerTest do
         }
         """)
 
-      assert Enum.any?(errors, &(&1.code == "E0030"))
+      assert Enum.any?(errors, &(&1.code == "E0012"))
     end
   end
 
@@ -1884,7 +1894,7 @@ defmodule Skein.AnalyzerTest do
         """)
 
       assert length(errors) >= 1
-      error = Enum.find(errors, &(&1.code == "E0030"))
+      error = Enum.find(errors, &(&1.code == "E0012"))
       assert error != nil
       assert error.message =~ "queue.in"
       assert error.fix_code == "capability queue.in"
@@ -1912,7 +1922,7 @@ defmodule Skein.AnalyzerTest do
         }
         """)
 
-      capability_errors = Enum.filter(errors, &(&1.code == "E0030"))
+      capability_errors = Enum.filter(errors, &(&1.code == "E0012"))
       assert length(capability_errors) >= 2
     end
   end
@@ -1933,7 +1943,7 @@ defmodule Skein.AnalyzerTest do
         """)
 
       assert length(errors) >= 1
-      error = Enum.find(errors, &(&1.code == "E0030"))
+      error = Enum.find(errors, &(&1.code == "E0012"))
       assert error != nil
       assert error.message =~ "schedule.in"
       assert error.fix_code == "capability schedule.in"
@@ -1963,7 +1973,7 @@ defmodule Skein.AnalyzerTest do
         """)
 
       # Should produce errors for all three missing capabilities
-      capability_errors = Enum.filter(errors, &(&1.code == "E0030"))
+      capability_errors = Enum.filter(errors, &(&1.code == "E0012"))
       assert length(capability_errors) >= 3
 
       messages = Enum.map(capability_errors, & &1.message)
@@ -2006,7 +2016,7 @@ defmodule Skein.AnalyzerTest do
                """)
     end
 
-    test "tool.call with identifier NOT matching declared capability produces E0031" do
+    test "tool.call with identifier NOT matching declared capability produces E0014" do
       errors =
         analyze_errors("""
         module M {
@@ -2018,11 +2028,11 @@ defmodule Skein.AnalyzerTest do
         }
         """)
 
-      assert Enum.any?(errors, &(&1.code == "E0031"))
+      assert Enum.any?(errors, &(&1.code == "E0014"))
       assert Enum.any?(errors, &String.contains?(&1.message, "OtherTool"))
     end
 
-    test "tool.call with identifier but no capability at all produces E0030" do
+    test "tool.call with identifier but no capability at all produces E0012" do
       errors =
         analyze_errors("""
         module M {
@@ -2032,7 +2042,7 @@ defmodule Skein.AnalyzerTest do
         }
         """)
 
-      assert Enum.any?(errors, &(&1.code == "E0030"))
+      assert Enum.any?(errors, &(&1.code == "E0012"))
     end
 
     test "tool.schema with identifier matching declared capability passes" do
@@ -2048,7 +2058,7 @@ defmodule Skein.AnalyzerTest do
                """)
     end
 
-    test "tool.schema with identifier NOT matching declared capability produces E0031" do
+    test "tool.schema with identifier NOT matching declared capability produces E0014" do
       errors =
         analyze_errors("""
         module M {
@@ -2060,7 +2070,7 @@ defmodule Skein.AnalyzerTest do
         }
         """)
 
-      assert Enum.any?(errors, &(&1.code == "E0031"))
+      assert Enum.any?(errors, &(&1.code == "E0014"))
     end
 
     test "tool.list with any tool.use capability passes (no specific tool needed)" do
@@ -2089,7 +2099,7 @@ defmodule Skein.AnalyzerTest do
                """)
     end
 
-    test "tool.call with dotted identifier NOT matching produces E0031" do
+    test "tool.call with dotted identifier NOT matching produces E0014" do
       errors =
         analyze_errors("""
         module M {
@@ -2101,7 +2111,7 @@ defmodule Skein.AnalyzerTest do
         }
         """)
 
-      assert Enum.any?(errors, &(&1.code == "E0031"))
+      assert Enum.any?(errors, &(&1.code == "E0014"))
     end
 
     test "multiple tools declared in capability, correct one referenced passes" do
@@ -2132,7 +2142,7 @@ defmodule Skein.AnalyzerTest do
                """)
     end
 
-    test "duplicate short tool name across capabilities produces E0032" do
+    test "duplicate short tool name across capabilities produces E0015" do
       errors =
         analyze_errors("""
         module M {
@@ -2140,11 +2150,11 @@ defmodule Skein.AnalyzerTest do
         }
         """)
 
-      assert Enum.any?(errors, &(&1.code == "E0032"))
+      assert Enum.any?(errors, &(&1.code == "E0015"))
       assert Enum.any?(errors, &String.contains?(&1.message, "CreateRefund"))
     end
 
-    test "duplicate short tool name across separate capability lines produces E0032" do
+    test "duplicate short tool name across separate capability lines produces E0015" do
       errors =
         analyze_errors("""
         module M {
@@ -2153,7 +2163,7 @@ defmodule Skein.AnalyzerTest do
         }
         """)
 
-      assert Enum.any?(errors, &(&1.code == "E0032"))
+      assert Enum.any?(errors, &(&1.code == "E0015"))
     end
 
     test "tool.call identifier fix_hint suggests adding capability" do
@@ -2168,7 +2178,7 @@ defmodule Skein.AnalyzerTest do
         }
         """)
 
-      tool_errors = Enum.filter(errors, &(&1.code == "E0031"))
+      tool_errors = Enum.filter(errors, &(&1.code == "E0014"))
       assert length(tool_errors) >= 1
       error = hd(tool_errors)
       assert error.fix_hint =~ "capability tool.use"
@@ -2245,6 +2255,251 @@ defmodule Skein.AnalyzerTest do
                  }
                }
                """)
+    end
+  end
+
+  # ------------------------------------------------------------------
+  # E0011: Duplicate definitions
+  # ------------------------------------------------------------------
+
+  describe "duplicate definitions" do
+    test "duplicate function names produce E0011" do
+      errors =
+        analyze_errors("""
+        module M {
+          fn greet() -> String { "hello" }
+          fn greet() -> Int { 42 }
+        }
+        """)
+
+      assert Enum.any?(errors, &(&1.code == "E0011" and &1.message =~ "greet"))
+    end
+
+    test "duplicate type names produce E0011" do
+      errors =
+        analyze_errors("""
+        module M {
+          type User { name: String }
+          type User { age: Int }
+        }
+        """)
+
+      assert Enum.any?(errors, &(&1.code == "E0011" and &1.message =~ "User"))
+    end
+
+    test "different names do not produce E0011" do
+      assert {:ok, _} =
+               analyze("""
+               module M {
+                 fn greet() -> String { "hello" }
+                 fn farewell() -> String { "bye" }
+               }
+               """)
+    end
+  end
+
+  # ------------------------------------------------------------------
+  # E0022: Invalid ! on non-Result
+  # ------------------------------------------------------------------
+
+  describe "E0022: invalid ! on non-Result" do
+    test "! on Int literal produces E0022" do
+      errors =
+        analyze_errors("""
+        module M {
+          fn bad() -> Int {
+            42!
+          }
+        }
+        """)
+
+      assert Enum.any?(errors, &(&1.code == "E0022"))
+    end
+
+    test "! on String literal produces E0022" do
+      errors =
+        analyze_errors("""
+        module M {
+          fn bad() -> String {
+            "hello"!
+          }
+        }
+        """)
+
+      assert Enum.any?(errors, &(&1.code == "E0022"))
+    end
+
+    test "! on Bool produces E0022" do
+      errors =
+        analyze_errors("""
+        module M {
+          fn bad() -> Bool {
+            true!
+          }
+        }
+        """)
+
+      assert Enum.any?(errors, &(&1.code == "E0022"))
+    end
+  end
+
+  # ------------------------------------------------------------------
+  # E0023: Invalid ? on non-Result
+  # ------------------------------------------------------------------
+
+  describe "E0023: invalid ? on non-Result" do
+    test "? on Int literal produces E0023" do
+      errors =
+        analyze_errors("""
+        module M {
+          fn bad() -> Int {
+            42?
+          }
+        }
+        """)
+
+      assert Enum.any?(errors, &(&1.code == "E0023"))
+    end
+
+    test "? in function that doesn't return Result produces E0023" do
+      errors =
+        analyze_errors("""
+        module M {
+          fn bad() -> Int {
+            get_value()?
+          }
+        }
+        """)
+
+      assert Enum.any?(errors, fn e ->
+               e.code == "E0023" and e.message =~ "enclosing function"
+             end)
+    end
+  end
+
+  # ------------------------------------------------------------------
+  # W0001: Unused binding
+  # ------------------------------------------------------------------
+
+  describe "W0001: unused binding" do
+    test "unused let binding produces W0001 warning" do
+      errors =
+        analyze_errors("""
+        module M {
+          fn bad() -> Int {
+            let unused = 42
+            0
+          }
+        }
+        """)
+
+      assert Enum.any?(errors, fn e ->
+               e.code == "W0001" and e.severity == :warning and e.message =~ "unused"
+             end)
+    end
+
+    test "used let binding does not produce W0001" do
+      result =
+        analyze("""
+        module M {
+          fn good() -> Int {
+            let x = 42
+            x
+          }
+        }
+        """)
+
+      case result do
+        {:ok, _} ->
+          :ok
+
+        {:error, errors} ->
+          refute Enum.any?(errors, &(&1.code == "W0001"))
+      end
+    end
+
+    test "_ prefixed binding does not produce W0001" do
+      result =
+        analyze("""
+        module M {
+          fn good() -> Int {
+            let _ignored = 42
+            0
+          }
+        }
+        """)
+
+      case result do
+        {:ok, _} ->
+          :ok
+
+        {:error, errors} ->
+          refute Enum.any?(errors, &(&1.code == "W0001"))
+      end
+    end
+  end
+
+  # ------------------------------------------------------------------
+  # W0002: Unused capability
+  # ------------------------------------------------------------------
+
+  describe "W0002: unused capability" do
+    test "unused capability produces W0002 warning" do
+      errors =
+        analyze_errors("""
+        module M {
+          capability http.out("example.com")
+
+          fn pure() -> Int { 42 }
+        }
+        """)
+
+      assert Enum.any?(errors, fn e ->
+               e.code == "W0002" and e.severity == :warning and e.message =~ "http.out"
+             end)
+    end
+
+    test "used capability does not produce W0002" do
+      result =
+        analyze("""
+        module M {
+          capability http.out("example.com")
+
+          fn fetch(url: String) -> String {
+            http.get(url)
+          }
+        }
+        """)
+
+      case result do
+        {:ok, _} ->
+          :ok
+
+        {:error, errors} ->
+          refute Enum.any?(errors, &(&1.code == "W0002"))
+      end
+    end
+  end
+
+  # ------------------------------------------------------------------
+  # W0003: Unreachable code after stop()
+  # ------------------------------------------------------------------
+
+  describe "W0003: unreachable code after stop()" do
+    test "code after stop() in function body produces W0003" do
+      errors =
+        analyze_errors("""
+        module M {
+          fn bad() -> String {
+            stop()
+            "never reached"
+          }
+        }
+        """)
+
+      assert Enum.any?(errors, fn e ->
+               e.code == "W0003" and e.severity == :warning
+             end)
     end
   end
 end

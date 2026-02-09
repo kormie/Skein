@@ -270,7 +270,7 @@ defmodule Skein.Integration.MemoryLlmTest do
       {:ok, tokens} = Skein.Lexer.tokenize(source)
       {:ok, ast} = Skein.Parser.parse(tokens)
       assert {:error, errors} = Skein.Analyzer.analyze(ast)
-      assert Enum.any?(errors, &(&1.code == "E0030" and &1.message =~ "memory.kv"))
+      assert Enum.any?(errors, &(&1.code == "E0012" and &1.message =~ "memory.kv"))
     end
 
     test "llm calls without model capability are rejected at compile time" do
@@ -285,7 +285,7 @@ defmodule Skein.Integration.MemoryLlmTest do
       {:ok, tokens} = Skein.Lexer.tokenize(source)
       {:ok, ast} = Skein.Parser.parse(tokens)
       assert {:error, errors} = Skein.Analyzer.analyze(ast)
-      assert Enum.any?(errors, &(&1.code == "E0030" and &1.message =~ "model"))
+      assert Enum.any?(errors, &(&1.code == "E0012" and &1.message =~ "model"))
     end
 
     test "llm.stream calls without model capability are rejected at compile time" do
@@ -300,7 +300,7 @@ defmodule Skein.Integration.MemoryLlmTest do
       {:ok, tokens} = Skein.Lexer.tokenize(source)
       {:ok, ast} = Skein.Parser.parse(tokens)
       assert {:error, errors} = Skein.Analyzer.analyze(ast)
-      assert Enum.any?(errors, &(&1.code == "E0030" and &1.message =~ "model"))
+      assert Enum.any?(errors, &(&1.code == "E0012" and &1.message =~ "model"))
     end
   end
 

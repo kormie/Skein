@@ -16,7 +16,7 @@ defmodule Skein.Compiler do
     with {:ok, source} <- File.read(path),
          {:ok, tokens} <- Lexer.tokenize(source),
          {:ok, ast} <- Parser.parse(tokens),
-         {:ok, annotated_ast} <- Analyzer.analyze(ast),
+         {:ok, annotated_ast} <- normalize_analyze(Analyzer.analyze(ast)),
          {:ok, beam_binary} <- CoreErlang.generate(annotated_ast) do
       module_name = module_name_from_ast(annotated_ast)
       :code.load_binary(module_name, ~c"#{path}", beam_binary)
@@ -27,7 +27,7 @@ defmodule Skein.Compiler do
   def compile_string(source) do
     with {:ok, tokens} <- Lexer.tokenize(source),
          {:ok, ast} <- Parser.parse(tokens),
-         {:ok, annotated_ast} <- Analyzer.analyze(ast),
+         {:ok, annotated_ast} <- normalize_analyze(Analyzer.analyze(ast)),
          {:ok, beam_binary} <- CoreErlang.generate(annotated_ast) do
       module_name = module_name_from_ast(annotated_ast)
       :code.load_binary(module_name, ~c"nofile", beam_binary)
@@ -45,12 +45,16 @@ defmodule Skein.Compiler do
     with {:ok, source} <- File.read(path),
          {:ok, tokens} <- Lexer.tokenize(source),
          {:ok, ast} <- Parser.parse(tokens),
-         {:ok, annotated_ast} <- Analyzer.analyze(ast),
+         {:ok, annotated_ast} <- normalize_analyze(Analyzer.analyze(ast)),
          {:ok, beam_binary} <- CoreErlang.generate(annotated_ast) do
       module_name = module_name_from_ast(annotated_ast)
       {:ok, module_name, beam_binary}
     end
   end
+
+  # Normalize analyzer results: {:ok, ast, warnings} -> {:ok, ast}
+  defp normalize_analyze({:ok, ast, _warnings}), do: {:ok, ast}
+  defp normalize_analyze(other), do: other
 
   defp module_name_from_ast(%Skein.AST.Module{name: name}),
     do: String.to_atom("Elixir.Skein.User.#{name}")
