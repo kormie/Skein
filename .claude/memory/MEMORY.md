@@ -100,10 +100,21 @@
 - Set backed by MapSet; Uuid uses `:crypto.strong_rand_bytes` + Bitwise; Duration is integer seconds
 - Instant is ISO 8601 string backed by DateTime
 
+## Error Code Alignment — COMPLETE
+- All 21 error codes + 3 warning codes aligned with SKEIN_SPEC.md section 7
+- Key renumberings: E0011→E0024, E0012→E0020, E0021→E0020, E0024→E0021, capability E0030→E0012, tool E0031→E0014, tool E0032→E0015
+- New codes: E0011 (duplicate def), E0022 (!on non-Result), E0023 (?on non-Result), W0001 (unused binding), W0002 (unused capability), W0003 (unreachable after stop)
+- Analyzer now returns `{:ok, ast, warnings}` for warnings-only (previously `{:error, warnings}`)
+- All callers of `Analyzer.analyze/1` must handle the 3-tuple `{:ok, ast, warnings}` return shape
+- Test helpers use `analyze_ok!` pattern: `defp analyze_ok!({:ok, ast}), do: ast; defp analyze_ok!({:ok, ast, _}), do: ast`
+- AST.Block uses `expressions` field, NOT `exprs`
+- `stop()` is parsed as `AST.Stop` node, NOT `AST.Call`
+
 ## What's Next
 - **UP_NEXT.md** (`docs/UP_NEXT.md`) is the canonical prioritized backlog
 - **Stdlib is COMPLETE** — all 11 modules, 101 functions
-- Next priorities: Error code alignment, suspend/resume, respond.text/html, topics, idempotent
+- **Error Code Alignment is COMPLETE** — all 21 + 3 warning codes
+- Next priority: suspend/resume, then respond.text/html, topics, idempotent
 - Distribution work is unblocked — all three prerequisites are done
 - LSP (`apps/skein_lsp/`) is implemented — remove from backlog lists
 
