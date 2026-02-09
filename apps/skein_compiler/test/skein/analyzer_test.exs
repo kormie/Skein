@@ -1999,6 +1999,118 @@ defmodule Skein.AnalyzerTest do
   end
 
   # ------------------------------------------------------------------
+  # Topic handler capability checking
+  # ------------------------------------------------------------------
+
+  describe "topic handler checking - topic.consume capability" do
+    test "topic handler without topic.consume capability produces error" do
+      errors =
+        analyze_errors("""
+        module M {
+          handler topic "order.events" (msg) -> {
+            respond.json(200, "ok")
+          }
+        }
+        """)
+
+      assert length(errors) >= 1
+      error = Enum.find(errors, &(&1.code == "E0012"))
+      assert error != nil
+      assert error.message =~ "topic.consume"
+      assert error.fix_code == "capability topic.consume"
+    end
+
+    test "topic handler with topic.consume capability passes" do
+      assert {:ok, _} =
+               analyze("""
+               module M {
+                 capability topic.consume("order.events")
+
+                 handler topic "order.events" (msg) -> {
+                   respond.json(200, "ok")
+                 }
+               }
+               """)
+    end
+
+    test "multiple topic handlers all require topic.consume" do
+      errors =
+        analyze_errors("""
+        module M {
+          handler topic "events-a" (msg) -> { respond.json(200, "a") }
+          handler topic "events-b" (msg) -> { respond.json(200, "b") }
+        }
+        """)
+
+      capability_errors = Enum.filter(errors, &(&1.code == "E0012"))
+      assert length(capability_errors) >= 2
+    end
+
+    test "topic.publish effect requires topic.publish capability" do
+      errors =
+        analyze_errors("""
+        module M {
+          fn send_event() -> String {
+            topic.publish("order.events", "data")
+          }
+        }
+        """)
+
+      assert length(errors) >= 1
+      error = Enum.find(errors, &(&1.code == "E0012"))
+      assert error != nil
+      assert error.message =~ "topic.publish"
+    end
+
+    test "topic.publish with topic.publish capability passes" do
+      assert {:ok, _} =
+               analyze("""
+               module M {
+                 capability topic.publish("order.events")
+
+                 fn send_event() -> String {
+                   topic.publish("order.events", "data")
+                 }
+               }
+               """)
+    end
+
+    test "mixed handler types including topic require respective capabilities" do
+      errors =
+        analyze_errors("""
+        module M {
+          handler http GET "/test" (req) -> { respond.json(200, "ok") }
+          handler queue "events" (msg) -> { respond.json(200, "ok") }
+          handler topic "notifications" (msg) -> { respond.json(200, "ok") }
+        }
+        """)
+
+      capability_errors = Enum.filter(errors, &(&1.code == "E0012"))
+      assert length(capability_errors) >= 3
+
+      messages = Enum.map(capability_errors, & &1.message)
+      assert Enum.any?(messages, &(&1 =~ "http.in"))
+      assert Enum.any?(messages, &(&1 =~ "queue.in"))
+      assert Enum.any?(messages, &(&1 =~ "topic.consume"))
+    end
+
+    test "all capabilities declared passes for mixed handlers with topic" do
+      assert {:ok, _} =
+               analyze("""
+               module M {
+                 capability http.in
+                 capability queue.in
+                 capability topic.consume("notifications")
+
+                 handler http GET "/test" (req) -> { respond.json(200, "ok") }
+                 handler queue "events" (msg) -> { respond.json(200, "ok") }
+                 handler topic "notifications" (msg) -> { respond.json(200, "ok") }
+               }
+               """)
+    end
+  end
+
+  # ------------------------------------------------------------------
   # Tool identifier references — capability-as-import (Phase 9)
   # ------------------------------------------------------------------
 

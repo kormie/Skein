@@ -415,6 +415,9 @@ defmodule Skein.Parser do
         "schedule" ->
           parse_schedule_handler(rest, file, line, col)
 
+        "topic" ->
+          parse_topic_handler(rest, file, line, col)
+
         _ ->
           {:error,
            [
@@ -422,9 +425,9 @@ defmodule Skein.Parser do
                code: "E0001",
                severity: :error,
                message:
-                 "Unknown handler source '#{source}', expected 'http', 'queue', or 'schedule'",
+                 "Unknown handler source '#{source}', expected 'http', 'queue', 'schedule', or 'topic'",
                location: %{file: file, line: line, col: col},
-               fix_hint: "Use 'http', 'queue', or 'schedule'"
+               fix_hint: "Use 'http', 'queue', 'schedule', or 'topic'"
              }
            ]}
       end
@@ -512,6 +515,27 @@ defmodule Skein.Parser do
             {:ok, handler, rest2}
           end
       end
+    end
+  end
+
+  # handler topic "topic-name" (param) -> { body }
+  defp parse_topic_handler(rest, file, line, col) do
+    with {:ok, topic_name, rest} <- expect_string_literal(rest, file),
+         {:ok, _lparen, rest} <- expect(:lparen, rest, file),
+         {:ok, param, rest} <- expect_lower_ident(rest, file),
+         {:ok, _rparen, rest} <- expect(:rparen, rest, file),
+         {:ok, _arrow, rest} <- expect(:arrow, rest, file),
+         {:ok, body, rest} <- parse_block(rest, file) do
+      handler = %AST.Handler{
+        source: "topic",
+        method: nil,
+        route: topic_name,
+        param: param,
+        body: body,
+        meta: %{line: line, col: col, file: file}
+      }
+
+      {:ok, handler, rest}
     end
   end
 

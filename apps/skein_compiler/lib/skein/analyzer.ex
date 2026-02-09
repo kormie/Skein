@@ -80,7 +80,8 @@ defmodule Skein.Analyzer do
     "http" => "http.out",
     "memory" => "memory.kv",
     "llm" => "model",
-    "tool" => "tool.use"
+    "tool" => "tool.use",
+    "topic" => "topic.publish"
   }
 
   # Known effect methods per namespace
@@ -88,7 +89,8 @@ defmodule Skein.Analyzer do
     "http" => ["get", "post", "put", "patch", "delete"],
     "memory" => ["put", "get", "get!", "delete", "list"],
     "llm" => ["chat", "json", "stream"],
-    "tool" => ["call", "list", "schema"]
+    "tool" => ["call", "list", "schema"],
+    "topic" => ["publish"]
   }
 
   # Store operations: store.<table>.<method>(...)
@@ -626,11 +628,13 @@ defmodule Skein.Analyzer do
   defp handler_required_capability("http"), do: "http.in"
   defp handler_required_capability("queue"), do: "queue.in"
   defp handler_required_capability("schedule"), do: "schedule.in"
+  defp handler_required_capability("topic"), do: "topic.consume"
   defp handler_required_capability(_), do: "unknown"
 
   defp handler_source_label("http"), do: "HTTP"
   defp handler_source_label("queue"), do: "Queue"
   defp handler_source_label("schedule"), do: "Schedule"
+  defp handler_source_label("topic"), do: "Topic"
   defp handler_source_label(source), do: source
 
   defp validate_type_ref(%AST.TypeRef{name: name, params: params, meta: meta}, env) do

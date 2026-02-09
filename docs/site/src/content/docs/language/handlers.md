@@ -9,12 +9,13 @@ Handlers are the primary way Skein programs receive external input. They declare
 
 ## Handler Types
 
-Skein supports three handler types:
+Skein supports four handler types:
 
 | Type | Capability | Trigger | Example |
 |------|-----------|---------|---------|
 | HTTP | `http.in` | Incoming HTTP request | `handler http GET "/users" (req) -> { ... }` |
 | Queue | `queue.in` | Message from a named queue | `handler queue "events" (msg) -> { ... }` |
+| Topic | `topic.consume` | Broadcast message from a named topic | `handler topic "order.events" (msg) -> { ... }` |
 | Schedule | `schedule.in` | Cron-triggered timer | `handler schedule "*/5 * * * *" () -> { ... }` |
 
 ## HTTP Handlers
@@ -162,6 +163,55 @@ module Maintenance {
 
 At startup, schedule handlers are registered with `Skein.Runtime.Schedule`. The runtime triggers handlers at the appropriate times. For testing, handlers can be triggered manually with `Skein.Runtime.Schedule.trigger/1`.
 
+## Topic Handlers
+
+Topic handlers subscribe to named topics and receive every message published to that topic. Unlike queue handlers (which deliver each message to a single consumer), topic handlers use **fan-out semantics**: every subscriber receives every message.
+
+### Syntax
+
+```skein
+handler topic "topic-name" (param) -> {
+  -- body
+}
+```
+
+- **topic-name**: A string identifier for the topic (e.g., `"order.events"`)
+- **param**: The message parameter name, bound to the published data
+
+### Example
+
+```skein
+module PubsubNotifications {
+  capability topic.consume("order.events")
+  capability topic.publish("order.events")
+
+  -- Email notification: receives every order event
+  handler topic "order.events" (msg) -> {
+    let event = msg
+    respond.json(200, "email-sent")
+  }
+
+  -- Analytics: also receives every order event (fan-out)
+  handler topic "order.events" (msg) -> {
+    let event = msg
+    respond.json(200, "analytics-recorded")
+  }
+}
+```
+
+### Topic vs Queue
+
+| | Queue | Topic |
+|---|-------|-------|
+| Delivery | Single consumer | All subscribers (fan-out) |
+| Capability | `queue.in` | `topic.consume` |
+| Use case | Job processing | Notifications, events |
+| Publish | `queue.publish(name, data)` | `topic.publish(name, data)` |
+
+### Runtime Behavior
+
+At startup, topic handlers are registered with `Skein.Runtime.Topic`. Messages published via `topic.publish(name, data)` are dispatched asynchronously to ALL subscribers. Messages are delivered in order within each subscriber.
+
 ## Mixed Handler Types
 
 A module can declare handlers of multiple types. Each type requires its own capability:
@@ -192,7 +242,7 @@ All handler types compile to the same pattern:
 
 1. Each handler becomes a `__handler_N__/1` function in the compiled module
 2. Handler metadata is returned by `__handlers__/0` with fields: `source`, `method`, `route`, `handler`
-3. The `source` field distinguishes handler types: `:http`, `:queue`, `:schedule`
+3. The `source` field distinguishes handler types: `:http`, `:queue`, `:topic`, `:schedule`
 
 ```elixir
 # Example __handlers__/0 output for mixed types
@@ -244,10 +294,10 @@ For `respond.json`, the body is JSON-encoded before sending. For `respond.text` 
 
 ## Capability Requirements
 
-The analyzer checks that each handler type has its required capability declared. Missing capabilities produce error `E0030`:
+The analyzer checks that each handler type has its required capability declared. Missing capabilities produce error `E0012`:
 
 ```
-Error E0030: Capability 'queue.in' required but not declared.
+Error E0012: Capability 'queue.in' required but not declared.
 Queue handlers require this capability.
 Fix: capability queue.in
 ```

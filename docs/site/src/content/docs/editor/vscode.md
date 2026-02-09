@@ -45,7 +45,7 @@ The extension includes a comprehensive TextMate grammar with specialized scoping
 
 Real-time compiler errors and warnings appear as you type. The language server runs the full Skein compilation pipeline (lexer → parser → analyzer) and reports all errors with:
 
-- Error codes (e.g., `E0001`, `E0020`, `E0030`)
+- Error codes (e.g., `E0001`, `E0020`, `E0012`)
 - Source locations with underline highlights
 - Fix hints explaining how to resolve the error
 
@@ -53,7 +53,7 @@ Real-time compiler errors and warnings appear as you type. The language server r
 module Hello {
   fn greet() -> String {
     http.get("https://example.com")
-    -- ^^^^^ [E0030] Missing capability for effect call
+    -- ^^^^^ [E0012] Missing capability for effect call
     -- Hint: Add 'capability http.out' to the module
   }
 }

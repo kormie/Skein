@@ -2217,4 +2217,105 @@ defmodule Skein.ParserTest do
       assert sup.strategy == :rest_for_one
     end
   end
+
+  # ------------------------------------------------------------------
+  # Topic handler declarations
+  # ------------------------------------------------------------------
+
+  describe "parse/1 - topic handler declarations" do
+    test "parses a topic handler" do
+      source = """
+      module M {
+        capability topic.consume("order.events")
+        handler topic "order.events" (msg) -> {
+          let data = msg
+          respond.json(200, data)
+        }
+      }
+      """
+
+      assert {:ok, %AST.Module{declarations: [_cap, handler]}} = parse(source)
+
+      assert %AST.Handler{source: "topic", method: nil, route: "order.events", param: "msg"} =
+               handler
+
+      assert %AST.Block{} = handler.body
+    end
+
+    test "parses topic handler with different topic name" do
+      source = """
+      module M {
+        capability topic.consume("user.signups")
+        handler topic "user.signups" (event) -> {
+          respond.json(200, "ok")
+        }
+      }
+      """
+
+      assert {:ok, %AST.Module{declarations: [_cap, handler]}} = parse(source)
+      assert handler.source == "topic"
+      assert handler.route == "user.signups"
+      assert handler.param == "event"
+    end
+
+    test "parses multiple topic handlers" do
+      source = """
+      module M {
+        capability topic.consume("events-a")
+
+        handler topic "events-a" (msg) -> {
+          respond.json(200, "a")
+        }
+
+        handler topic "events-b" (msg) -> {
+          respond.json(200, "b")
+        }
+      }
+      """
+
+      assert {:ok, %AST.Module{declarations: [_cap, h1, h2]}} = parse(source)
+      assert %AST.Handler{source: "topic", route: "events-a"} = h1
+      assert %AST.Handler{source: "topic", route: "events-b"} = h2
+    end
+
+    test "parses topic handler alongside other handler types" do
+      source = """
+      module M {
+        capability http.in
+        capability queue.in
+        capability topic.consume("notifications")
+
+        handler http GET "/status" (req) -> {
+          respond.json(200, "ok")
+        }
+
+        handler queue "jobs" (msg) -> {
+          respond.json(200, msg)
+        }
+
+        handler topic "notifications" (event) -> {
+          respond.json(200, event)
+        }
+      }
+      """
+
+      assert {:ok, %AST.Module{declarations: [_c1, _c2, _c3, h1, h2, h3]}} = parse(source)
+      assert h1.source == "http"
+      assert h2.source == "queue"
+      assert h3.source == "topic"
+    end
+
+    test "rejects unknown handler source" do
+      source = """
+      module M {
+        handler unknown "test" (msg) -> {
+          respond.json(200, "ok")
+        }
+      }
+      """
+
+      assert {:error, errors} = parse(source)
+      assert Enum.any?(errors, fn e -> e.message =~ "Unknown handler source" end)
+    end
+  end
 end

@@ -114,9 +114,18 @@
 - **UP_NEXT.md** (`docs/UP_NEXT.md`) is the canonical prioritized backlog
 - **Stdlib is COMPLETE** — all 11 modules, 101 functions
 - **Error Code Alignment is COMPLETE** — all 21 + 3 warning codes
-- Next priority: suspend/resume, then respond.text/html, topics, idempotent
+- Next priority: idempotent(key), then trace.annotate, llm.embed
 - Distribution work is unblocked — all three prerequisites are done
 - LSP (`apps/skein_lsp/`) is implemented — remove from backlog lists
+
+## Topic Pub/Sub (Priority 5 — COMPLETE)
+- `handler topic "name" (msg) -> { ... }` parsed by `parse_topic_handler`
+- Analyzer: `handler_required_capability("topic") -> "topic.consume"`, `@effect_namespaces["topic"] -> "topic.publish"`, `@effect_methods["topic"] -> ["publish"]`
+- Codegen: `@effect_runtime_modules["topic"] -> Skein.Runtime.Topic`, generates `Topic.publish(name, data, capabilities)`
+- Runtime: `Skein.Runtime.Topic` GenServer, fan-out to all subscribers (broadcast), same pattern as Queue
+- `topic.publish(name, data)` is the effect call; `topic.consume` capability for handlers
+- Example: `examples/pubsub_notifications.skein`
+- Runtime Topic: `apps/skein_runtime/lib/skein/runtime/topic.ex`
 
 ## Streaming Implementation Notes (Phase 8f)
 - `llm.stream` uses same `model` capability as `chat`/`json`

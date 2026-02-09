@@ -104,13 +104,13 @@ The compiler's `with` chain short-circuits on the first error list.
 
 | Code | Severity | Description |
 |------|----------|-------------|
-| E0030 | error | Missing capability for effect call |
+| E0012 | error | Missing capability for effect call |
 
 Example:
 
 ```json
 {
-  "code": "E0030",
+  "code": "E0012",
   "severity": "error",
   "message": "Capability 'http.out' required but not declared. Effect calls to 'http' require this capability.",
   "location": {"file": "service.skein", "line": 5, "col": 5},

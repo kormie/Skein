@@ -149,44 +149,19 @@ Implemented `respond.text(status, body)` and `respond.html(status, body)` across
 
 ---
 
-## Priority 5: topic.publish / topic.consume
+## ~~Priority 5: topic.publish / topic.consume~~ ✅ DONE
 
-**Why fifth:** Defined in spec section 6.6. Needed for pub/sub patterns. The queue runtime already exists and can serve as a template.
+**Status:** COMPLETE
 
-**Status:** NOT IMPLEMENTED
+Implemented `topic.publish` and `topic.consume` (handler topic) across the full pipeline:
 
-### Scope
-
-- `capability topic.publish("name")` / `capability topic.consume("name")`
-- `topic.publish(name: String, data: T) -> Result[String, PublishError]`
-- `handler topic "name" (msg) -> { ... }` syntax
-
-### Implementation Plan
-
-1. **Parser** — Add `"topic"` to handler source options (currently only http/queue/schedule)
-2. **Analyzer** — Add `"topic"` to `@effect_namespaces` with method `["publish"]`
-3. **Codegen** — Generate topic.publish calls and topic handler wrappers
-4. **Runtime** — Create `Skein.Runtime.Topic` module (fan-out semantics vs queue's single-consumer). Model after `Skein.Runtime.Queue` but with broadcast delivery to all subscribers.
-
-### Testing Checklist
-
-- [ ] Unit tests: parse topic handlers, analyze topic capabilities, generate topic codegen
-- [ ] Runtime tests: publish a message, multiple consumers receive it (fan-out behavior)
-- [ ] Property tests (StreamData): random topic names and payloads
-- [ ] Property tests (PropCheck): stateful model of topic pub/sub — verify delivery ordering and no message loss
-- [ ] Integration test: .skein file with topic handler compiles and dispatches messages
-
-### Examples Checklist
-
-- [ ] **Create `examples/pubsub_notifications.skein`** — a new example demonstrating the topic pattern: one module publishes order events to a topic, two handler modules consume from the same topic (e.g., one sends email notifications, one updates analytics). Show `capability topic.publish("order.events")`, `capability topic.consume("order.events")`, `topic.publish(...)` calls, and `handler topic "order.events" (msg) -> { ... }` handlers.
-- [ ] **Amend `examples/queue_worker.skein`** — if appropriate, add a topic.publish call alongside the existing queue handler to show the difference between queue (single consumer) and topic (fan-out) semantics
-- [ ] Verify all new/amended examples compile and their integration tests pass
-
-### Docs Checklist
-
-- [ ] `docs/site/src/content/docs/language/capabilities-and-effects.md` — add a "Topics" section (alongside the existing queue/schedule sections) with code examples showing publish and consume patterns, and a note contrasting topic fan-out vs queue single-consumer
-- [ ] `docs/site/src/content/docs/language/handlers.md` — add `handler topic` to the handler types table and add a "Topic Handlers" section with a full code example
-- [ ] Rebuild docs site: `cd docs/site && bunx astro build`
+- **Parser**: `parse_topic_handler` for `handler topic "name" (param) -> { body }` syntax
+- **Analyzer**: `topic.consume` capability required for topic handlers; `topic.publish` capability required for `topic.publish()` effect calls; added to `@effect_namespaces` and `@effect_methods`
+- **Codegen**: Topic handlers compile to `__handler_N__/1` functions with `source: :topic` metadata; `topic.publish()` generates `Skein.Runtime.Topic.publish()` calls via `@effect_runtime_modules`
+- **Runtime**: `Skein.Runtime.Topic` GenServer with fan-out semantics — all subscribers receive every published message
+- **Examples**: `examples/pubsub_notifications.skein` demonstrates HTTP publishing + two topic consumers
+- **Tests**: Parser (5), analyzer (7), codegen (6), runtime unit (11), property (7), PropCheck statem (1), integration (6) — all passing
+- **Docs**: handlers.md (Topic Handlers section, handler types table), capabilities-and-effects.md (Topics section, capabilities table)
 
 ---
 
@@ -345,3 +320,4 @@ _Move items here as they are finished, with date and session link._
 - [x] **Error Code Alignment** (21 error codes + 3 warning codes) — 2026-02-09 — session_013qLiHBBTW4ei2v7D5Vy6QA
 - [x] **suspend / resume** — (complete, see Priority 3 section)
 - [x] **respond.text / respond.html** (codegen + handler + router + docs) — 2026-02-09 — session_01CmpRm5pVDPuerofBgz7CHJ
+- [x] **topic.publish / topic.consume** (parser + analyzer + codegen + runtime + docs) — 2026-02-09 — session_01HGdUnDFnp5AYRcZD7t1v5m

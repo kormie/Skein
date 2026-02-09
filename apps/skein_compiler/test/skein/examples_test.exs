@@ -336,4 +336,66 @@ defmodule Skein.ExamplesTest do
       assert info == mod
     end
   end
+
+  # ------------------------------------------------------------------
+  # pubsub_notifications.skein
+  # ------------------------------------------------------------------
+
+  describe "pubsub_notifications.skein" do
+    test "compiles successfully" do
+      assert {:module, mod} =
+               Compiler.compile_file(
+                 Path.join(project_root(), "examples/pubsub_notifications.skein")
+               )
+
+      assert is_atom(mod)
+    end
+
+    test "has mixed handler types including topic" do
+      {:module, mod} =
+        Compiler.compile_file(Path.join(project_root(), "examples/pubsub_notifications.skein"))
+
+      handlers = mod.__handlers__()
+      assert length(handlers) == 3
+
+      sources = Enum.map(handlers, & &1.source)
+      assert Enum.count(sources, &(&1 == :http)) == 1
+      assert Enum.count(sources, &(&1 == :topic)) == 2
+    end
+
+    test "handler metadata includes topic names" do
+      {:module, mod} =
+        Compiler.compile_file(Path.join(project_root(), "examples/pubsub_notifications.skein"))
+
+      handlers = mod.__handlers__()
+
+      topic_handlers = Enum.filter(handlers, &(&1.source == :topic))
+      topic_names = Enum.map(topic_handlers, & &1.route)
+      assert Enum.all?(topic_names, &(&1 == "order.events"))
+    end
+
+    test "http handler publishes and returns response" do
+      {:module, mod} =
+        Compiler.compile_file(Path.join(project_root(), "examples/pubsub_notifications.skein"))
+
+      result = mod.__handler_0__(%{body: "order-data"})
+      assert {:respond_json, 200, "published"} = result
+    end
+
+    test "email topic handler returns response" do
+      {:module, mod} =
+        Compiler.compile_file(Path.join(project_root(), "examples/pubsub_notifications.skein"))
+
+      result = mod.__handler_1__(%{body: "order-event"})
+      assert {:respond_json, 200, "email-sent"} = result
+    end
+
+    test "analytics topic handler returns response" do
+      {:module, mod} =
+        Compiler.compile_file(Path.join(project_root(), "examples/pubsub_notifications.skein"))
+
+      result = mod.__handler_2__(%{body: "order-event"})
+      assert {:respond_json, 200, "analytics-recorded"} = result
+    end
+  end
 end
