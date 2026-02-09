@@ -203,6 +203,45 @@ All handler types compile to the same pattern:
 ]
 ```
 
+## Response Helpers
+
+Handlers return responses using one of three built-in helpers. Each sets the appropriate HTTP `Content-Type` header automatically.
+
+| Helper | Content-Type | Use When |
+|--------|-------------|----------|
+| `respond.json(status, body)` | `application/json` | Returning structured data (maps, lists, values) |
+| `respond.text(status, body)` | `text/plain` | Returning plain text (health checks, simple strings) |
+| `respond.html(status, body)` | `text/html` | Returning HTML pages or fragments |
+
+### Examples
+
+```skein
+module HelloHttp {
+  capability http.in
+
+  -- JSON API endpoint
+  handler http GET "/api/users" (req) -> {
+    respond.json(200, "users")
+  }
+
+  -- Plain text health check
+  handler http GET "/health" (req) -> {
+    respond.text(200, "ok")
+  }
+
+  -- HTML page
+  handler http GET "/page" (req) -> {
+    respond.html(200, "<h1>Hello from Skein</h1>")
+  }
+}
+```
+
+All three helpers take two arguments:
+- **status**: An integer HTTP status code (e.g., `200`, `201`, `404`, `500`)
+- **body**: A string value to send as the response body
+
+For `respond.json`, the body is JSON-encoded before sending. For `respond.text` and `respond.html`, the body string is sent as-is.
+
 ## Capability Requirements
 
 The analyzer checks that each handler type has its required capability declared. Missing capabilities produce error `E0030`:

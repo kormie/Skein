@@ -240,7 +240,7 @@ defmodule Skein.Runtime.RouterTest do
   # ------------------------------------------------------------------
 
   describe "response headers" do
-    test "responses have application/json content type" do
+    test "respond.json responses have application/json content type" do
       mod =
         compile_module!("""
         module RouterHeaders {
@@ -255,6 +255,126 @@ defmodule Skein.Runtime.RouterTest do
       conn = call_router(mod, :get, "/json")
       [content_type] = Plug.Conn.get_resp_header(conn, "content-type")
       assert content_type =~ "application/json"
+    end
+
+    test "respond.text responses have text/plain content type" do
+      mod =
+        compile_module!("""
+        module RouterTextHeaders {
+          capability http.in
+
+          handler http GET "/health" (req) -> {
+            respond.text(200, "ok")
+          }
+        }
+        """)
+
+      conn = call_router(mod, :get, "/health")
+      assert conn.status == 200
+      assert conn.resp_body == "ok"
+      [content_type] = Plug.Conn.get_resp_header(conn, "content-type")
+      assert content_type =~ "text/plain"
+    end
+
+    test "respond.html responses have text/html content type" do
+      mod =
+        compile_module!("""
+        module RouterHtmlHeaders {
+          capability http.in
+
+          handler http GET "/page" (req) -> {
+            respond.html(200, "<h1>Hello</h1>")
+          }
+        }
+        """)
+
+      conn = call_router(mod, :get, "/page")
+      assert conn.status == 200
+      assert conn.resp_body == "<h1>Hello</h1>"
+      [content_type] = Plug.Conn.get_resp_header(conn, "content-type")
+      assert content_type =~ "text/html"
+    end
+  end
+
+  # ------------------------------------------------------------------
+  # Mixed response types
+  # ------------------------------------------------------------------
+
+  describe "mixed response types" do
+    test "module with all three respond types routes correctly" do
+      mod =
+        compile_module!("""
+        module RouterMixed {
+          capability http.in
+
+          handler http GET "/api/data" (req) -> {
+            respond.json(200, "data")
+          }
+
+          handler http GET "/health" (req) -> {
+            respond.text(200, "ok")
+          }
+
+          handler http GET "/page" (req) -> {
+            respond.html(200, "<h1>Hello</h1>")
+          }
+        }
+        """)
+
+      # JSON response
+      conn_json = call_router(mod, :get, "/api/data")
+      assert conn_json.status == 200
+      assert Jason.decode!(conn_json.resp_body) == "data"
+      [ct_json] = Plug.Conn.get_resp_header(conn_json, "content-type")
+      assert ct_json =~ "application/json"
+
+      # Text response
+      conn_text = call_router(mod, :get, "/health")
+      assert conn_text.status == 200
+      assert conn_text.resp_body == "ok"
+      [ct_text] = Plug.Conn.get_resp_header(conn_text, "content-type")
+      assert ct_text =~ "text/plain"
+
+      # HTML response
+      conn_html = call_router(mod, :get, "/page")
+      assert conn_html.status == 200
+      assert conn_html.resp_body == "<h1>Hello</h1>"
+      [ct_html] = Plug.Conn.get_resp_header(conn_html, "content-type")
+      assert ct_html =~ "text/html"
+    end
+
+    test "respond.text with non-200 status codes" do
+      mod =
+        compile_module!("""
+        module RouterTextStatus {
+          capability http.in
+
+          handler http GET "/not-found" (req) -> {
+            respond.text(404, "not found")
+          }
+        }
+        """)
+
+      conn = call_router(mod, :get, "/not-found")
+      assert conn.status == 404
+      assert conn.resp_body == "not found"
+    end
+
+    test "respond.html with non-200 status codes" do
+      mod =
+        compile_module!("""
+        module RouterHtmlStatus {
+          capability http.in
+
+          handler http GET "/error" (req) -> {
+            respond.html(500, "<h1>Error</h1>")
+          }
+        }
+        """)
+
+      conn = call_router(mod, :get, "/error")
+      assert conn.status == 500
+      assert conn.resp_body == "<h1>Error</h1>"
     end
   end
 

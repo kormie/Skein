@@ -662,6 +662,63 @@ defmodule Skein.CodeGen.CoreErlangTest do
       assert {:respond_json, 200, "a"} = mod.__handler_0__(%{})
       assert {:respond_json, 201, "b"} = mod.__handler_1__(%{})
     end
+
+    test "respond.text produces {:respond_text, status, body} tuple" do
+      mod =
+        compile!("""
+        module HandlerText {
+          capability http.in
+
+          handler http GET "/health" (req) -> {
+            respond.text(200, "ok")
+          }
+        }
+        """)
+
+      result = mod.__handler_0__(%{})
+      assert {:respond_text, 200, "ok"} = result
+    end
+
+    test "respond.html produces {:respond_html, status, body} tuple" do
+      mod =
+        compile!("""
+        module HandlerHtml {
+          capability http.in
+
+          handler http GET "/page" (req) -> {
+            respond.html(200, "<h1>Hello</h1>")
+          }
+        }
+        """)
+
+      result = mod.__handler_0__(%{})
+      assert {:respond_html, 200, "<h1>Hello</h1>"} = result
+    end
+
+    test "multiple respond types in separate handlers" do
+      mod =
+        compile!("""
+        module HandlerMixed {
+          capability http.in
+
+          handler http GET "/api" (req) -> {
+            respond.json(200, "data")
+          }
+
+          handler http GET "/health" (req) -> {
+            respond.text(200, "ok")
+          }
+
+          handler http GET "/page" (req) -> {
+            respond.html(200, "<h1>Hi</h1>")
+          }
+        }
+        """)
+
+      assert {:respond_json, 200, "data"} = mod.__handler_0__(%{})
+      assert {:respond_text, 200, "ok"} = mod.__handler_1__(%{})
+      assert {:respond_html, 200, "<h1>Hi</h1>"} = mod.__handler_2__(%{})
+    end
   end
 
   # ------------------------------------------------------------------

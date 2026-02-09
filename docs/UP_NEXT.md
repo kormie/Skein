@@ -134,33 +134,18 @@ Implemented `suspend(reason)` across the full pipeline:
 
 ---
 
-## Priority 4: respond.text / respond.html
+## ~~Priority 4: respond.text / respond.html~~ ✅ DONE
 
-**Why fourth:** Small gap, easy win. Only `respond.json` is implemented; spec examples imply text and html should work.
+**Status:** COMPLETE
 
-**Status:** NOT IMPLEMENTED (respond.json works)
+Implemented `respond.text(status, body)` and `respond.html(status, body)` across the full pipeline:
 
-### Implementation Plan
-
-1. **Codegen** — Add `respond.text(status, body)` and `respond.html(status, body)` handlers in `core_erlang.ex` alongside existing `respond.json`
-2. **Runtime** — Extend handler dispatch in `Skein.Runtime.Handler` to recognize `{:respond_text, status, body}` and `{:respond_html, status, body}` tuples
-3. **Router** — Set appropriate Content-Type headers (`text/plain`, `text/html`) in the Plug response
-
-### Testing Checklist
-
-- [ ] Unit tests: codegen produces correct tuples for respond.text and respond.html
-- [ ] Integration tests: HTTP handler returns text/plain and text/html responses with correct headers
-- [ ] Property tests: arbitrary status codes and body strings produce valid responses
-
-### Examples Checklist
-
-- [ ] **Amend `examples/hello_http.skein`** — add a `handler http GET "/health" (req) -> { respond.text(200, "ok") }` endpoint and a `handler http GET "/page" (req) -> { respond.html(200, "<h1>Hello</h1>") }` endpoint to showcase all three respond variants side-by-side
-- [ ] Verify the amended example compiles and its integration tests pass
-
-### Docs Checklist
-
-- [ ] `docs/site/src/content/docs/language/handlers.md` — add a "Response Helpers" section showing all three variants (`respond.json`, `respond.text`, `respond.html`) with code examples, expected Content-Type headers, and when to use each
-- [ ] Rebuild docs site: `cd docs/site && bunx astro build`
+- **Codegen**: `respond.text` generates `{:respond_text, status, body}` tuples; `respond.html` generates `{:respond_html, status, body}` tuples
+- **Handler**: Dispatch matches all three respond types, returning `{:ok, status, body, content_type}` where content_type is `:json`, `:text`, or `:html`
+- **Router**: Sets `Content-Type` headers based on content type: `application/json`, `text/plain`, or `text/html`
+- **Examples**: `hello_http.skein` updated with `/health` (text) and `/page` (html) endpoints
+- **Tests**: Codegen (3), router (5), property (3) — all passing
+- **Docs**: handlers.md updated with "Response Helpers" section
 
 ---
 
@@ -358,3 +343,5 @@ _Move items here as they are finished, with date and session link._
 - [x] **Standard Library 1d: Option, Result** — 2026-02-09 — session_01Dv2MiJcMip17YGdajaMDs5
 - [x] **Standard Library 1e: Uuid, Instant, Duration** — 2026-02-09 — session_01Dv2MiJcMip17YGdajaMDs5
 - [x] **Error Code Alignment** (21 error codes + 3 warning codes) — 2026-02-09 — session_013qLiHBBTW4ei2v7D5Vy6QA
+- [x] **suspend / resume** — (complete, see Priority 3 section)
+- [x] **respond.text / respond.html** (codegen + handler + router + docs) — 2026-02-09 — session_01CmpRm5pVDPuerofBgz7CHJ
