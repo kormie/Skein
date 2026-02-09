@@ -2332,4 +2332,123 @@ defmodule Skein.CodeGen.CoreErlangTest do
       assert child.options.restart == "transient"
     end
   end
+
+  # ------------------------------------------------------------------
+  # Agent suspend codegen
+  # ------------------------------------------------------------------
+
+  describe "agent codegen - suspend" do
+    test "agent with suspend compiles successfully" do
+      mod =
+        compile!("""
+        agent SuspendAgent {
+          enum Phase {
+            Active -> []
+          }
+
+          on start() -> {
+            transition(Phase.Active)
+          }
+
+          on phase(Phase.Active) -> {
+            suspend("Waiting for human review")
+          }
+        }
+        """)
+
+      assert mod.__info__(:module) == mod
+    end
+
+    test "agent suspend handler returns suspend tuple" do
+      mod =
+        compile!("""
+        agent SuspendTupleAgent {
+          enum Phase {
+            Working -> []
+          }
+
+          on start() -> {
+            transition(Phase.Working)
+          }
+
+          on phase(Phase.Working) -> {
+            suspend("Need more data")
+          }
+        }
+        """)
+
+      # Call the phase handler directly to verify the returned tuple
+      result = mod.__phase_handler__(:working, %{}, [])
+      assert {:suspend, "Need more data", %{}, []} = result
+    end
+
+    test "agent suspend in match arm" do
+      mod =
+        compile!("""
+        agent SuspendMatchAgent {
+          enum Phase {
+            Review -> [Done]
+            Done -> []
+          }
+
+          on start() -> {
+            transition(Phase.Review)
+          }
+
+          on phase(Phase.Review) -> {
+            match 1 {
+              1 -> suspend("Needs escalation")
+              _ -> transition(Phase.Done)
+            }
+          }
+
+          on phase(Phase.Done) -> {
+            stop()
+          }
+        }
+        """)
+
+      result = mod.__phase_handler__(:review, %{}, [])
+      assert {:suspend, "Needs escalation", %{}, []} = result
+    end
+
+    test "full suspend/resume lifecycle via runtime" do
+      mod =
+        compile!("""
+        agent LifecycleSuspendAgent {
+          enum Phase {
+            Active -> [Done]
+            Done -> []
+          }
+
+          on start() -> {
+            transition(Phase.Active)
+          }
+
+          on phase(Phase.Active) -> {
+            suspend("Paused for input")
+          }
+
+          on phase(Phase.Done) -> {
+            stop()
+          }
+        }
+        """)
+
+      # Start the agent — it transitions to Active, then suspends
+      {:ok, pid} = Skein.Runtime.Agent.start_link(mod, %{})
+      Process.sleep(50)
+
+      # Agent is alive and suspended
+      assert Process.alive?(pid)
+      assert Skein.Runtime.Agent.get_phase(pid) == :suspended
+      assert Skein.Runtime.Agent.is_suspended?(pid) == true
+      assert Skein.Runtime.Agent.get_suspend_reason(pid) == "Paused for input"
+
+      # Resume to Done phase — agent should stop
+      :ok = Skein.Runtime.Agent.resume(pid, :done)
+      Process.sleep(50)
+      refute Process.alive?(pid)
+    end
+  end
 end

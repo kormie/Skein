@@ -519,6 +519,15 @@ defmodule Skein.CodeGen.CoreErlang do
     ])
   end
 
+  defp generate_agent_expr(%AST.Suspend{reason: reason}, scope) do
+    :cerl.c_tuple([
+      :cerl.c_atom(:suspend),
+      generate_expr(reason, scope),
+      :cerl.c_map([]),
+      :cerl.make_list([])
+    ])
+  end
+
   defp generate_agent_expr(%AST.Emit{event_name: name, fields: fields}, scope) do
     # Build event map
     field_pairs =

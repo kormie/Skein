@@ -71,7 +71,8 @@ The compilation pipeline is operational through Phase 8. You can write `.skein` 
 - `agent` declarations with `Phase` enums and `->` transitions
 - `on start(params)` and `on phase(Phase)` handlers
 - Compile-time phase transition validation
-- `transition(Phase)`, `stop()`, `emit(event)`, `state.field` access
+- `transition(Phase)`, `stop()`, `suspend(reason)`, `emit(event)`, `state.field` access
+- `suspend(reason)` / `resume(pid, phase)` for human-in-the-loop workflows
 - GenStateMachine-based runtime with automatic phase handler dispatch
 
 **Runtime:**
@@ -107,7 +108,6 @@ See the [Editor Support](/Skein/editor/vscode/) docs for setup instructions.
 ## What's Not Built Yet
 
 - Agent pool supervision (`AgentPool` with max concurrency)
-- `suspend()` / `resume()` agent lifecycle
 - Tool policies (rate limits, approval workflows)
 
 See the [Roadmap](/Skein/roadmap/phase-2/) for the full plan.

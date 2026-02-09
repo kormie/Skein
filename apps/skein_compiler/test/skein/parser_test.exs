@@ -962,6 +962,65 @@ defmodule Skein.ParserTest do
     end
   end
 
+  describe "parse/1 - suspend expression" do
+    test "parses suspend expression with string literal" do
+      source = """
+      agent A {
+        on phase(Phase.Failed) -> {
+          suspend("Requires human review")
+        }
+      }
+      """
+
+      assert {:ok, %AST.Agent{handlers: [handler]}} = parse(source)
+
+      assert %AST.Block{
+               expressions: [
+                 %AST.Suspend{
+                   reason: %AST.StringLit{segments: [{:literal, "Requires human review"}]}
+                 }
+               ]
+             } = handler.body
+    end
+
+    test "parses suspend expression with variable" do
+      source = """
+      agent A {
+        on phase(Phase.Failed) -> {
+          let reason = "Too many retries"
+          suspend(reason)
+        }
+      }
+      """
+
+      assert {:ok, %AST.Agent{handlers: [handler]}} = parse(source)
+
+      assert %AST.Block{
+               expressions: [
+                 %AST.Let{name: "reason"},
+                 %AST.Suspend{reason: %AST.Identifier{name: "reason"}}
+               ]
+             } = handler.body
+    end
+
+    test "parses suspend inside match arm" do
+      source = """
+      agent A {
+        on start(severity: String) -> {
+          match severity {
+            "high" -> suspend("Needs escalation")
+            _ -> stop()
+          }
+        }
+      }
+      """
+
+      assert {:ok, %AST.Agent{handlers: [handler]}} = parse(source)
+      assert %AST.Block{expressions: [%AST.Match{arms: [arm1, _arm2]}]} = handler.body
+      assert %AST.Suspend{reason: %AST.StringLit{}} = arm1.body
+    end
+  end
+
   describe "parse/1 - agent with match and transition" do
     test "parses transition inside match arms" do
       source = """

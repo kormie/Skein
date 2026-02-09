@@ -121,7 +121,16 @@ Example:
 
 The `fix_code` field is especially useful for LLM agents -- it provides the exact text to insert to resolve the error.
 
+### Agent Error Codes
+
+| Code | Severity | Description |
+|------|----------|-------------|
+| E0030 | error | Invalid phase transition |
+| E0031 | warning | Unreachable phase |
+| E0032 | error | Phase handler missing |
+| E0033 | error | `transition()` called outside agent handler |
+| E0034 | error | `suspend()` called outside agent handler |
+
 ### Future Error Codes
 
-- **Transition errors:** "Invalid transition from Done to Analyze" (Phase 6)
 - **Store errors:** Missing `store.table` capability (Phase 5)

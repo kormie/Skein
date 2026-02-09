@@ -1,6 +1,7 @@
 -- refund_agent.skein
 -- An agent that processes refund requests through multiple phases.
--- Demonstrates agent lifecycle, phase transitions, memory, and LLM integration.
+-- Demonstrates agent lifecycle, phase transitions, memory, LLM integration,
+-- and suspend/resume for human-in-the-loop review.
 
 agent RefundAgent {
   capability model("gpt-4")
@@ -13,9 +14,10 @@ agent RefundAgent {
   }
 
   enum Phase {
-    Review -> [Approved, Denied]
+    Review -> [Approved, Denied, Failed]
     Approved -> [Complete]
     Denied -> [Complete]
+    Failed -> [Review]
     Complete -> []
   }
 
@@ -41,6 +43,10 @@ agent RefundAgent {
     let order = memory.get("order_id")
     emit RefundDenied { order_id: order }
     transition(Phase.Complete)
+  }
+
+  on phase(Phase.Failed) -> {
+    suspend("Requires human review")
   }
 
   on phase(Phase.Complete) -> {

@@ -165,6 +165,116 @@ defmodule Skein.Runtime.AgentTest do
     end
   end
 
+  describe "agent suspend and resume" do
+    test "agent enters suspended state" do
+      mod =
+        compile!("""
+        agent SuspendableAgent {
+          enum Phase {
+            Active -> []
+          }
+
+          on start() -> {
+            transition(Phase.Active)
+          }
+
+          on phase(Phase.Active) -> {
+            suspend("Waiting for human review")
+          }
+        }
+        """)
+
+      {:ok, pid} = RuntimeAgent.start_link(mod, %{})
+      Process.sleep(50)
+      # Agent should be alive but suspended
+      assert Process.alive?(pid)
+      assert RuntimeAgent.get_phase(pid) == :suspended
+      :gen_statem.stop(pid)
+    end
+
+    test "suspended agent reports suspension reason" do
+      mod =
+        compile!("""
+        agent ReasonAgent {
+          enum Phase {
+            Working -> []
+          }
+
+          on start() -> {
+            transition(Phase.Working)
+          }
+
+          on phase(Phase.Working) -> {
+            suspend("Need more data")
+          }
+        }
+        """)
+
+      {:ok, pid} = RuntimeAgent.start_link(mod, %{})
+      Process.sleep(50)
+      assert RuntimeAgent.is_suspended?(pid) == true
+      assert RuntimeAgent.get_suspend_reason(pid) == "Need more data"
+      :gen_statem.stop(pid)
+    end
+
+    test "suspended agent can be resumed" do
+      mod =
+        compile!("""
+        agent ResumableAgent {
+          enum Phase {
+            Review -> [Done]
+            Done -> []
+          }
+
+          on start() -> {
+            transition(Phase.Review)
+          }
+
+          on phase(Phase.Review) -> {
+            suspend("Awaiting approval")
+          }
+
+          on phase(Phase.Done) -> {
+            stop()
+          }
+        }
+        """)
+
+      {:ok, pid} = RuntimeAgent.start_link(mod, %{})
+      Process.sleep(50)
+      assert RuntimeAgent.is_suspended?(pid) == true
+
+      # Resume the agent to the Done phase
+      :ok = RuntimeAgent.resume(pid, :done)
+      Process.sleep(50)
+      refute Process.alive?(pid)
+    end
+
+    test "agent is not suspended when in normal phase" do
+      mod =
+        compile!("""
+        agent NormalAgent {
+          enum Phase {
+            Waiting -> []
+          }
+
+          on start() -> {
+            transition(Phase.Waiting)
+          }
+
+          on phase(Phase.Waiting) -> {
+            42
+          }
+        }
+        """)
+
+      {:ok, pid} = RuntimeAgent.start_link(mod, %{})
+      Process.sleep(50)
+      assert RuntimeAgent.is_suspended?(pid) == false
+      :gen_statem.stop(pid)
+    end
+  end
+
   describe "agent user functions" do
     test "user functions are callable from outside the agent" do
       mod =

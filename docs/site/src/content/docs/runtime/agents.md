@@ -162,14 +162,38 @@ Agent handlers communicate via tagged tuples:
 | Return | Meaning |
 |--------|---------|
 | `{:transition, phase, state, events}` | Move to `phase`, merge `state`, append `events`, then execute phase handler |
+| `{:suspend, reason, state, events}` | Pause the agent with a reason string; agent enters `:suspended` state |
 | `{:stop, state, events}` | Terminate the agent normally |
 | `{:keep, state, events}` | Stay in current phase, merge state and events |
 
 The code generator maps Skein constructs to these tuples:
 - `transition(Phase)` → `{:transition, :phase, state_updates, new_events}`
+- `suspend(reason)` → `{:suspend, reason_string, state_updates, new_events}`
 - `stop()` → `{:stop, state_updates, new_events}`
 - `emit(event)` → appends to the events list
 - `state.field = value` → adds to state updates map
+
+### Suspending and Resuming
+
+When a handler returns `{:suspend, reason, state, events}`, the agent enters the `:suspended` state. The agent process stays alive but does not execute any phase handlers.
+
+**Runtime API for suspended agents:**
+
+```elixir
+# Check if an agent is suspended
+Skein.Runtime.Agent.is_suspended?(pid)
+#=> true
+
+# Get the suspension reason
+Skein.Runtime.Agent.get_suspend_reason(pid)
+#=> "Requires human review"
+
+# Resume the agent to a specific phase
+Skein.Runtime.Agent.resume(pid, :done)
+#=> :ok
+```
+
+Resume transitions the agent from `:suspended` to the specified phase and executes the phase handler. If the agent is not suspended, `resume/2` returns `{:error, :not_suspended}`.
 
 ## Memory Integration
 
