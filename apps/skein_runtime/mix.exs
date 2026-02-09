@@ -42,7 +42,8 @@ defmodule SkeinRuntime.MixProject do
       {:db_connection, "~> 2.7"},
       {:elixir_make, "~> 0.9"},
       {:cc_precompiler, "~> 0.1.9"},
-      {:stream_data, "~> 1.1", only: [:test, :dev]}
+      {:stream_data, "~> 1.1", only: [:test, :dev]},
+      {:propcheck, "~> 1.4", only: [:test, :dev]}
     ]
   end
 end

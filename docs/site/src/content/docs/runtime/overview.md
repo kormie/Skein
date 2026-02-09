@@ -439,5 +439,6 @@ The runtime manages its external dependencies carefully:
 ## Test Coverage
 
 The runtime has comprehensive test coverage:
-- **30 property tests** covering capability host matching, wildcard behavior, URL extraction, store operations (ETS and Ecto), request validation, tool operations, and LLM streaming
-- **245 unit tests** covering agents, HTTP client, capability enforcement, handler dispatch, router, store operations (ETS and Ecto), Ecto schema generation, migration generation, memory, LLM client, Bandit HTTP server, queue dispatch, schedule dispatch, trace recording, and replay engine
+- **57 property tests** (StreamData) covering capability host matching, wildcard behavior, URL extraction, store operations (ETS and Ecto), request validation, tool operations, LLM streaming, memory KV operations, queue dispatch, schedule cron parsing, and trace recording
+- **4 stateful property tests** (PropCheck) modeling memory, queue, schedule, and agent lifecycle as abstract state machines with random command sequences
+- **555 unit tests** covering agents, HTTP client, capability enforcement, handler dispatch, router, store operations (ETS and Ecto), Ecto schema generation, migration generation, memory, LLM client, Bandit HTTP server, queue dispatch, schedule dispatch, trace recording, and replay engine

@@ -15,25 +15,35 @@ Unit tests verify specific examples. Property tests verify **invariants across l
 
 | Library | Purpose | Status |
 |---------|---------|--------|
-| `StreamData` / `ExUnitProperties` | Generator-based property testing | Active, 49 properties |
-| `PropCheck` (PropEr) | Stateful/state-machine testing | Installed, not yet used |
+| `StreamData` / `ExUnitProperties` | Generator-based property testing | Active, 88 properties |
+| `PropCheck` (PropEr) | Stateful/state-machine testing | Active, 4 stateful properties |
 
-`StreamData` is used for all current property tests. `PropCheck` is available for future stateful testing of the runtime (agent lifecycle, store operations).
+`StreamData` is used for stateless property tests (data-in/data-out). `PropCheck` is used for stateful testing where a model tracks expected system state across command sequences.
 
 ## Test Files
 
 ```
 apps/skein_compiler/test/skein/
-  lexer_property_test.exs          # 11 properties
-  parser_property_test.exs         # 20 properties (incl. scenario/golden)
+  lexer_property_test.exs          # 11 properties (StreamData)
+  parser_property_test.exs         # 20 properties (StreamData)
   codegen/
-    core_erlang_property_test.exs  # 9 properties
-  analyzer_property_test.exs       # 9 properties
+    core_erlang_property_test.exs  # 9 properties (StreamData)
+  analyzer_property_test.exs       # 9 properties (StreamData)
 apps/skein_runtime/test/skein/runtime/
-  capability_property_test.exs     # 5 properties
-  request_property_test.exs        # 6 properties
-  store_property_test.exs          # 5 properties
-  tool_property_test.exs           # 5 properties
+  capability_property_test.exs     # 5 properties (StreamData)
+  request_property_test.exs        # 6 properties (StreamData)
+  store_property_test.exs          # 5 properties (StreamData)
+  store_ecto_property_test.exs     # 5 properties (StreamData)
+  tool_property_test.exs           # 5 properties (StreamData)
+  llm_stream_property_test.exs     # 4 properties (StreamData)
+  memory_property_test.exs         # 9 properties (StreamData)
+  queue_property_test.exs          # 6 properties (StreamData)
+  schedule_property_test.exs       # 7 properties (StreamData)
+  trace_property_test.exs          # 7 properties (StreamData)
+  memory_statem_test.exs           # 1 property  (PropCheck stateful)
+  queue_statem_test.exs            # 1 property  (PropCheck stateful)
+  schedule_statem_test.exs         # 1 property  (PropCheck stateful)
+  agent_statem_test.exs            # 1 property  (PropCheck stateful)
 ```
 
 ## Lexer Properties (11 tests)
@@ -170,6 +180,59 @@ This generates random integer pairs, compiles a Skein `add` function for each, a
 - Let bindings preserve computed values
 - Match on `> 0` correctly classifies positive vs non-positive
 - Plain string literals return exact strings
+
+## PropCheck Stateful Tests (4 tests)
+
+PropCheck stateful tests use the `:proper_statem` behaviour to model a system as an abstract state machine. PropEr generates random **command sequences**, runs them against the real system, and checks that postconditions hold after each command. On failure, it shrinks to the minimal reproducing sequence.
+
+### Architecture
+
+Each stateful test defines:
+
+| Callback | Purpose |
+|----------|---------|
+| `initial_state/0` | Starting model state |
+| `command/1` | Generate next command based on current model state |
+| `precondition/2` | Can this command run in this state? |
+| `postcondition/3` | Does the real result match the model? |
+| `next_state/3` | Update model after command execution |
+
+### Memory State Machine
+
+Models the ETS-backed memory store as a plain map. Verifies put/get/delete/list operations are consistent:
+
+```elixir
+# Model: %{key => value}
+def initial_state, do: %{}
+
+def postcondition(state, {:call, _, :do_get, [key]}, result) do
+  case Map.fetch(state, key) do
+    {:ok, expected} -> result == {:ok, expected}
+    :error -> result == {:error, "not_found"}
+  end
+end
+
+def next_state(state, _result, {:call, _, :do_put, [key, value]}) do
+  Map.put(state, key, value)
+end
+```
+
+### Queue State Machine
+
+Models queue subscriptions as `%{queue_name => subscriber_count}`. Verifies subscribe/publish/list/reset maintain consistency.
+
+### Schedule State Machine
+
+Models schedule registrations as `%{cron_expr => handler_count}`. Verifies register/trigger/list/reset maintain consistency.
+
+### Agent Lifecycle State Machine
+
+Tests the agent query API against compiled agents with known phase behavior:
+- **ParkingAgent** — parks in `:waiting` phase (allows queries)
+- **TwoPhaseAgent** — transitions `Init -> Active`, parks in `:active`
+- **StoppingAgent** — transitions to `:done` and stops immediately
+
+The model tracks `{pid, expected_phase, alive?}` tuples and verifies `get_phase/1`, `get_state/1`, and `get_events/1` return consistent results.
 
 ## Writing New Properties
 
