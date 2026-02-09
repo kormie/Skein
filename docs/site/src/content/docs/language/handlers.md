@@ -292,6 +292,44 @@ All three helpers take two arguments:
 
 For `respond.json`, the body is JSON-encoded before sending. For `respond.text` and `respond.html`, the body string is sent as-is.
 
+## Idempotent Handlers
+
+The `idempotent(key)` guard prevents duplicate processing of messages. Place it at the top of a handler body — if the key has already been processed, the handler skips execution silently.
+
+```skein
+module BillingWorker {
+  capability queue.in
+
+  handler queue "billing.events" (msg) -> {
+    idempotent(msg.id)
+
+    -- This code only runs once per unique msg.id
+    let amount = msg.body
+    respond.json(200, amount)
+  }
+}
+```
+
+**How it works:**
+
+1. On first call with a given key, `idempotent()` records the key and continues execution
+2. On subsequent calls with the same key, the handler is skipped entirely
+3. Keys expire after a configurable TTL (default: 1 hour), allowing reprocessing after expiry
+
+**Constraints:**
+
+- `idempotent()` can only be used inside handler bodies (not in regular functions or agent handlers). Using it elsewhere produces error `E0035`.
+- The key argument must be a `String` expression.
+
+**Dispatch behavior on skip:**
+
+| Handler Type | Skip Response |
+|-------------|--------------|
+| HTTP | Returns `200 "already processed"` |
+| Queue | Silently drops the message |
+| Topic | Silently drops the message |
+| Schedule | Silently skips the invocation |
+
 ## Capability Requirements
 
 The analyzer checks that each handler type has its required capability declared. Missing capabilities produce error `E0012`:

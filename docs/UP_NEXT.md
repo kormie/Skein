@@ -165,11 +165,9 @@ Implemented `topic.publish` and `topic.consume` (handler topic) across the full 
 
 ---
 
-## Priority 6: idempotent(key)
+## ~~Priority 6: idempotent(key)~~ ✅ DONE
 
-**Why sixth:** Defined in spec section 6.9. Used in the canonical queue worker example (spec section 8.3, line 628). Important for reliable message processing.
-
-**Status:** NOT IMPLEMENTED
+**Status:** COMPLETE
 
 ### Scope
 
@@ -321,3 +319,4 @@ _Move items here as they are finished, with date and session link._
 - [x] **suspend / resume** — (complete, see Priority 3 section)
 - [x] **respond.text / respond.html** (codegen + handler + router + docs) — 2026-02-09 — session_01CmpRm5pVDPuerofBgz7CHJ
 - [x] **topic.publish / topic.consume** (parser + analyzer + codegen + runtime + docs) — 2026-02-09 — session_01HGdUnDFnp5AYRcZD7t1v5m
+- [x] **idempotent(key)** (lexer + parser + analyzer + codegen + runtime + docs) — 2026-02-09 — session_01LuWtXuwSy6E193S4X23JDK

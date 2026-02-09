@@ -1286,6 +1286,15 @@ defmodule Skein.CodeGen.CoreErlang do
     )
   end
 
+  # idempotent(key) — generates call to Skein.Runtime.Idempotent.check!(key)
+  defp generate_expr(%AST.Idempotent{key: key}, scope) do
+    :cerl.c_call(
+      :cerl.c_atom(:"Elixir.Skein.Runtime.Idempotent"),
+      :cerl.c_atom(:check!),
+      [generate_expr(key, scope)]
+    )
+  end
+
   # respond.json(status, body) — generates a response tuple
   defp generate_expr(
          %AST.Call{

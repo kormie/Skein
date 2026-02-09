@@ -2699,4 +2699,84 @@ defmodule Skein.AnalyzerTest do
                """)
     end
   end
+
+  # ------------------------------------------------------------------
+  # E0035: idempotent() outside handler
+  # ------------------------------------------------------------------
+
+  describe "idempotent validation" do
+    test "reports error for idempotent in module function" do
+      errors =
+        analyze_errors("""
+        module M {
+          fn process() -> String {
+            idempotent("key-1")
+            "done"
+          }
+        }
+        """)
+
+      assert Enum.any?(errors, fn e ->
+               e.code == "E0035" and e.severity == :error and
+                 e.message =~ "idempotent()"
+             end)
+    end
+
+    test "accepts idempotent inside module handler" do
+      assert {:ok, _} =
+               analyze("""
+               module M {
+                 capability queue.in
+                 handler queue "jobs" (msg) -> {
+                   idempotent("key-1")
+                   respond.json(200, "ok")
+                 }
+               }
+               """)
+    end
+
+    test "accepts idempotent inside http handler" do
+      assert {:ok, _} =
+               analyze("""
+               module M {
+                 capability http.in
+                 handler http GET "/test" (req) -> {
+                   idempotent("key-1")
+                   respond.json(200, "ok")
+                 }
+               }
+               """)
+    end
+
+    test "reports error for idempotent in agent function" do
+      errors =
+        analyze_errors("""
+        agent A {
+          state { ticket_id: String }
+          enum Phase {
+            Review -> [Done]
+            Done -> []
+          }
+          on start(ticket_id: String) -> {
+            transition(Phase.Review)
+          }
+          on phase(Phase.Review) -> {
+            transition(Phase.Done)
+          }
+          on phase(Phase.Done) -> {
+            stop()
+          }
+          fn helper() -> String {
+            idempotent("key")
+            "done"
+          }
+        }
+        """)
+
+      assert Enum.any?(errors, fn e ->
+               e.code == "E0035" and e.severity == :error and
+                 e.message =~ "idempotent()"
+             end)
+    end
+  end
 end

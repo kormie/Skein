@@ -134,11 +134,19 @@ defmodule Skein.Runtime.Queue do
   # ------------------------------------------------------------------
 
   defp dispatch_handler({:module, module, handler_fn}, message) do
-    apply(module, handler_fn, [message])
+    try do
+      apply(module, handler_fn, [message])
+    catch
+      {:idempotent_skip} -> :ok
+    end
   end
 
   defp dispatch_handler({:fn, fun}, message) do
-    fun.(message)
+    try do
+      fun.(message)
+    catch
+      {:idempotent_skip} -> :ok
+    end
   end
 
   defp ensure_started do

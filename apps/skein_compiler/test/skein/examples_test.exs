@@ -128,8 +128,23 @@ defmodule Skein.ExamplesTest do
       {:module, mod} =
         Compiler.compile_file(Path.join(project_root(), "examples/queue_worker.skein"))
 
-      result = mod.__handler_1__(%{body: "job-data"})
+      Skein.Runtime.Idempotent.reset_all()
+      result = mod.__handler_1__(%{body: "job-data", id: "msg-001"})
       assert {:respond_json, 200, 2} = result
+    end
+
+    test "queue handler skips duplicate messages via idempotent" do
+      {:module, mod} =
+        Compiler.compile_file(Path.join(project_root(), "examples/queue_worker.skein"))
+
+      Skein.Runtime.Idempotent.reset_all()
+      # First call succeeds
+      result = mod.__handler_1__(%{body: "job-data", id: "msg-dup"})
+      assert {:respond_json, 200, 2} = result
+
+      # Second call with same id throws idempotent_skip
+      assert catch_throw(mod.__handler_1__(%{body: "job-data", id: "msg-dup"})) ==
+               {:idempotent_skip}
     end
 
     test "priority queue handler processes messages" do

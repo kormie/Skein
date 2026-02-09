@@ -50,21 +50,26 @@ defmodule Skein.Runtime.Handler do
 
             handler_fn = handler_info.handler
 
-            case apply(module, handler_fn, [req]) do
-              {:respond_json, status, response_body} ->
-                json_body = encode_json(response_body)
-                {:ok, status, json_body, :json}
+            try do
+              case apply(module, handler_fn, [req]) do
+                {:respond_json, status, response_body} ->
+                  json_body = encode_json(response_body)
+                  {:ok, status, json_body, :json}
 
-              {:respond_text, status, response_body} ->
-                text_body = to_string(response_body)
-                {:ok, status, text_body, :text}
+                {:respond_text, status, response_body} ->
+                  text_body = to_string(response_body)
+                  {:ok, status, text_body, :text}
 
-              {:respond_html, status, response_body} ->
-                html_body = to_string(response_body)
-                {:ok, status, html_body, :html}
+                {:respond_html, status, response_body} ->
+                  html_body = to_string(response_body)
+                  {:ok, status, html_body, :html}
 
-              other ->
-                {:ok, 200, encode_json(other), :json}
+                other ->
+                  {:ok, 200, encode_json(other), :json}
+              end
+            catch
+              {:idempotent_skip} ->
+                {:ok, 200, encode_json("already processed"), :json}
             end
           end
         )

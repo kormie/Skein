@@ -26,7 +26,7 @@ defmodule Skein.Lexer do
     module fn let match type enum handler agent tool capability
     supervisor test scenario golden on emit transition stop suspend
     resume true false implement input output errors policy description
-    state strategy child replay given expect assert
+    state strategy child replay given expect assert idempotent
   )a
 
   @keyword_strings Enum.map(@keywords, &Atom.to_string/1)
