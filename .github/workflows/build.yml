@@ -55,7 +55,7 @@ jobs:
         run: mix compile --warnings-as-errors
 
       - name: Build release
-        run: mix release skein
+        run: mix release skein --overwrite
 
       - name: List build artifacts
         run: ls -lah burrito_out/
