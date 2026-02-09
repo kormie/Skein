@@ -27,6 +27,15 @@ defmodule Skein.CodeGen.CoreErlang do
     "http" => :"Elixir.Skein.Runtime.Http"
   }
 
+  # Standard library module mapping: Skein module name -> Elixir runtime module
+  @stdlib_modules %{
+    "String" => :"Elixir.Skein.Runtime.Stdlib.String",
+    "Int" => :"Elixir.Skein.Runtime.Stdlib.Int",
+    "Float" => :"Elixir.Skein.Runtime.Stdlib.Float"
+  }
+
+  @stdlib_module_names Map.keys(@stdlib_modules)
+
   @spec generate(AST.Module.t() | AST.Agent.t()) :: {:ok, binary()} | {:error, [Error.t()]}
   def generate(%AST.Agent{} = ast) do
     generate_agent(ast)
@@ -1234,6 +1243,29 @@ defmodule Skein.CodeGen.CoreErlang do
         right_expr = generate_expr(right, scope)
         :cerl.c_apply(right_expr, [left_expr])
     end
+  end
+
+  # Standard library call: Module.function(args) where Module is a stdlib module
+  defp generate_expr(
+         %AST.Call{
+           target: %AST.FieldAccess{
+             subject: %AST.Identifier{name: mod_name},
+             field: fn_name
+           },
+           args: args
+         },
+         scope
+       )
+       when mod_name in @stdlib_module_names do
+    runtime_module = Map.fetch!(@stdlib_modules, mod_name)
+    method_atom = String.to_atom(fn_name)
+    args_exprs = Enum.map(args, &generate_expr(&1, scope))
+
+    :cerl.c_call(
+      :cerl.c_atom(runtime_module),
+      :cerl.c_atom(method_atom),
+      args_exprs
+    )
   end
 
   # respond.json(status, body) — generates a response tuple

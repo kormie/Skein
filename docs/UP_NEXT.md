@@ -390,6 +390,4 @@ For each capability kind:
 
 _Move items here as they are finished, with date and session link._
 
-<!-- Example:
-- [x] **Standard Library: String, Int, Float** — 2026-02-15 — session_abc123
--->
+- [x] **Standard Library 1a: String, Int, Float** — 2026-02-09 — session_01Dv2MiJcMip17YGdajaMDs5

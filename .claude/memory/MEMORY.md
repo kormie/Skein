@@ -86,10 +86,21 @@
 - `variant_pattern_atom/1` strips enum prefix from dotted names (e.g., "Event.Charge" -> :charge)
 - `decimal` dependency needed override at umbrella root level (`mix.exs`), not just in child app
 
+## Standard Library (Stdlib)
+- **String, Int, Float** implemented (stdlib 1a) — remaining: List, Map, Set, Option, Result, Uuid, Instant, Duration
+- Stdlib registry: `@stdlib_registry` in analyzer maps `{Module, function}` -> `{params, return_type}`
+- Stdlib codegen: `@stdlib_modules` in codegen maps Skein module name -> runtime Elixir module
+- Runtime modules: `apps/skein_runtime/lib/skein/runtime/stdlib/{string,int,float}.ex`
+- Stdlib calls don't require capabilities — `collect_effect_calls` naturally skips them (not in `@effect_namespaces`)
+- Codegen clause for stdlib must appear BEFORE `respond.json` and other effect clauses in `generate_expr`
+- Pattern: `%AST.Call{target: %AST.FieldAccess{subject: %AST.Identifier{name: mod_name}, field: fn_name}}`
+- Tests: `apps/skein_compiler/test/skein/stdlib_test.exs`, example: `examples/stdlib_demo.skein`
+
 ## What's Next
+- **UP_NEXT.md** (`docs/UP_NEXT.md`) is the canonical prioritized backlog
+- Stdlib 1a (String, Int, Float) complete — next: 1b (List), 1c (Map, Set), 1d (Option, Result), 1e (Uuid, Instant, Duration)
+- Post-stdlib priorities: Error code alignment, suspend/resume, respond.text/html, topics, idempotent
 - Distribution work is unblocked — all three prerequisites are done
-- Next priorities: Escript, OTP release generation, Burrito binaries, Hex.pm packages
-- Post-MVP backlog: FFI, hot code upgrades, Web IDE, llm.embed, managed deployment
 - LSP (`apps/skein_lsp/`) is implemented — remove from backlog lists
 
 ## Streaming Implementation Notes (Phase 8f)

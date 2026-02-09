@@ -1,0 +1,33 @@
+module StdlibDemo {
+  fn format_greeting(name: String) -> String {
+    let upper_name = String.upcase(name)
+    let trimmed = String.trim(upper_name)
+    "Hello, ${trimmed}!"
+  }
+
+  fn word_count(text: String) -> Int {
+    let words = String.split(text, " ")
+    String.length(text)
+  }
+
+  fn classify_number(n: Int) -> String {
+    let absolute = Int.abs(n)
+    let clamped = Int.clamp(absolute, 0, 100)
+    Int.to_string(clamped)
+  }
+
+  fn safe_parse(text: String) -> Result[Int, String] {
+    Int.parse(text)
+  }
+
+  fn round_price(amount: Float, decimals: Int) -> Float {
+    Float.round(amount, decimals)
+  }
+
+  fn normalize(text: String) -> String {
+    let lower = String.downcase(text)
+    let cleaned = String.trim(lower)
+    let result = String.replace(cleaned, "  ", " ")
+    result
+  }
+}

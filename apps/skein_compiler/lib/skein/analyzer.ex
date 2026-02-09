@@ -66,6 +66,39 @@ defmodule Skein.Analyzer do
   # Store operations: store.<table>.<method>(...)
   @store_methods ["get", "put", "delete", "query"]
 
+  # Standard library function registry: {Module, function} -> {param_types, return_type}
+  @stdlib_registry %{
+    "String" => %{
+      "length" => %{params: [:string], return_type: :int},
+      "slice" => %{params: [:string, :int, :int], return_type: :string},
+      "contains" => %{params: [:string, :string], return_type: :bool},
+      "split" => %{params: [:string, :string], return_type: {:list, :string}},
+      "trim" => %{params: [:string], return_type: :string},
+      "upcase" => %{params: [:string], return_type: :string},
+      "downcase" => %{params: [:string], return_type: :string},
+      "starts_with" => %{params: [:string, :string], return_type: :bool},
+      "ends_with" => %{params: [:string, :string], return_type: :bool},
+      "replace" => %{params: [:string, :string, :string], return_type: :string}
+    },
+    "Int" => %{
+      "parse" => %{params: [:string], return_type: {:result, :int, :string}},
+      "to_string" => %{params: [:int], return_type: :string},
+      "abs" => %{params: [:int], return_type: :int},
+      "min" => %{params: [:int, :int], return_type: :int},
+      "max" => %{params: [:int, :int], return_type: :int},
+      "clamp" => %{params: [:int, :int, :int], return_type: :int}
+    },
+    "Float" => %{
+      "parse" => %{params: [:string], return_type: {:result, :float, :string}},
+      "to_string" => %{params: [:float], return_type: :string},
+      "round" => %{params: [:float, :int], return_type: :float},
+      "ceil" => %{params: [:float], return_type: :int},
+      "floor" => %{params: [:float], return_type: :int}
+    }
+  }
+
+  @stdlib_modules Map.keys(@stdlib_registry)
+
   # Environment tracks types, functions, variables, and capabilities in scope
   @type env :: %{
           types: %{String.t() => :builtin | AST.TypeDecl.t()},
@@ -837,6 +870,76 @@ defmodule Skein.Analyzer do
           end
 
         {fn_info.return_type, args_errors ++ arity_errors}
+
+      # Stdlib call: Module.function(args)
+      %AST.FieldAccess{subject: %AST.Identifier{name: mod_name}, field: fn_name}
+      when mod_name in @stdlib_modules ->
+        mod_registry = Map.get(@stdlib_registry, mod_name)
+
+        case Map.get(mod_registry, fn_name) do
+          nil ->
+            {
+              :unknown,
+              args_errors ++
+                [
+                  %Error{
+                    code: "E0010",
+                    severity: :error,
+                    message: "Unknown function '#{mod_name}.#{fn_name}'",
+                    location: location_from_meta(meta, env.file),
+                    fix_hint: "Available functions: #{Enum.join(Map.keys(mod_registry), ", ")}"
+                  }
+                ]
+            }
+
+          fn_info ->
+            expected_arity = length(fn_info.params)
+            actual_arity = length(args)
+
+            arity_errors =
+              if expected_arity != actual_arity do
+                [
+                  %Error{
+                    code: "E0012",
+                    severity: :error,
+                    message:
+                      "Function '#{mod_name}.#{fn_name}' expects #{expected_arity} argument(s), got #{actual_arity}",
+                    location: location_from_meta(meta, env.file),
+                    fix_hint: "Pass #{expected_arity} argument(s) to '#{mod_name}.#{fn_name}'"
+                  }
+                ]
+              else
+                []
+              end
+
+            # Type-check arguments against expected parameter types
+            arg_types = Enum.map(args_results, &elem(&1, 0))
+
+            type_errors =
+              if expected_arity == actual_arity do
+                Enum.zip([fn_info.params, arg_types, 0..(actual_arity - 1)])
+                |> Enum.flat_map(fn {expected, actual, _idx} ->
+                  if actual != :unknown and not types_compatible?(expected, actual) do
+                    [
+                      %Error{
+                        code: "E0020",
+                        severity: :error,
+                        message:
+                          "Type mismatch in call to '#{mod_name}.#{fn_name}': expected #{format_type(expected)}, got #{format_type(actual)}",
+                        location: location_from_meta(meta, env.file),
+                        fix_hint: "Pass a value of type #{format_type(expected)}"
+                      }
+                    ]
+                  else
+                    []
+                  end
+                end)
+              else
+                []
+              end
+
+            {fn_info.return_type, args_errors ++ arity_errors ++ type_errors}
+        end
 
       _ ->
         # Unknown function call — can't infer type
