@@ -7,21 +7,48 @@ defmodule Skein.Analyzer do
   2. Type checking (verify types at boundaries, check match exhaustiveness)
   3. Capability checking (verify effect calls have covering capabilities)
   4. Transition checking (verify agent phase transitions are valid) — Phase 6
+  5. Unused binding/capability/unreachable code detection
 
-  ## Error Codes
+  ## Error Codes (aligned with SKEIN_SPEC.md section 7)
 
-  - E0010: Unknown identifier
-  - E0011: Unknown type
-  - E0012: Wrong function call arity
-  - E0020: Type mismatch (return type, match arm types)
-  - E0021: Operator type error (wrong operand types)
-  - E0022: Invalid ! on non-Result
-  - E0023: Invalid ? on non-Result or enclosing fn doesn't return Result
-  - E0024: Non-exhaustive match (warning)
-  - E0025: Invalid constraint annotation
-  - E0030: Missing capability for effect call
-  - E0031: Tool name not declared in capability tool.use params
-  - E0032: Duplicate short tool name in capability tool.use params
+  ### Syntax (E000x) — emitted by lexer/parser
+  - E0001: Unexpected token
+  - E0002: Unterminated string
+  - E0003: Invalid number literal
+
+  ### Name Resolution (E001x)
+  - E0010: Undefined identifier
+  - E0011: Duplicate definition (same name declared twice in a scope)
+  - E0012: Missing capability declaration
+  - E0013: Capability parameter mismatch
+
+  ### Tool (E001x)
+  - E0014: Tool name not declared in `capability tool.use` params
+  - E0015: Duplicate short tool name in `capability tool.use` params
+
+  ### Type Checking (E002x)
+  - E0020: Type mismatch (return type, match arm types, operator types, arity)
+  - E0021: Non-exhaustive match (warning)
+  - E0022: Invalid `!` on non-Result type
+  - E0023: Invalid `?` on non-Result type (or enclosing fn doesn't return Result)
+  - E0024: Unknown type name
+  - E0025: Constraint annotation on wrong type
+
+  ### Agent (E003x)
+  - E0030: Invalid phase transition
+  - E0031: Unreachable phase (warning)
+  - E0032: Phase handler missing
+  - E0033: `transition()` outside agent
+
+  ### Supervisor (E004x)
+  - E0040: Invalid supervisor strategy
+  - E0041: Invalid max_restarts value
+  - E0042: Supervisor has no children (warning)
+
+  ### Warnings (W000x)
+  - W0001: Unused binding
+  - W0002: Unused capability
+  - W0003: Unreachable code after `stop()`
   """
 
   alias Skein.AST
@@ -257,6 +284,9 @@ defmodule Skein.Analyzer do
     env = build_initial_env(ast)
     errors = []
 
+    # Pass 0: Check for duplicate definitions
+    errors = errors ++ check_duplicate_definitions(ast.declarations, env)
+
     # Pass 1: Validate type and enum declarations
     errors = errors ++ validate_declarations(ast.declarations, env)
 
@@ -268,6 +298,15 @@ defmodule Skein.Analyzer do
 
     # Pass 3: Capability checking — verify effect calls have covering capabilities
     errors = errors ++ check_capabilities(ast.declarations, env)
+
+    # Pass 4: Unused binding warnings
+    errors = errors ++ check_unused_bindings_in_declarations(ast.declarations, env)
+
+    # Pass 5: Unused capability warnings
+    errors = errors ++ check_unused_capabilities(ast.declarations, env)
+
+    # Pass 6: Unreachable code after stop() warnings
+    errors = errors ++ check_unreachable_after_stop(ast.declarations)
 
     filter_result(errors, ast)
   end
@@ -291,20 +330,30 @@ defmodule Skein.Analyzer do
     # Pass 5: Type-check agent function bodies
     errors = errors ++ check_functions(ast.fns, env)
 
+    # Pass 6: Unreachable code after stop() warnings
+    handler_decls =
+      Enum.map(ast.handlers, fn h ->
+        %AST.Fn{name: "__handler__", params: [], return_type: nil, body: h.body, meta: h.meta}
+      end)
+
+    errors = errors ++ check_unreachable_after_stop(ast.fns ++ handler_decls)
+
     filter_result(errors, ast)
   end
 
   defp filter_result(errors, ast) do
-    case Enum.filter(errors, &(&1.severity == :error)) do
-      [] when errors == [] ->
+    hard_errors = Enum.filter(errors, &(&1.severity == :error))
+    warnings = Enum.filter(errors, &(&1.severity == :warning))
+
+    case hard_errors do
+      [] when warnings == [] ->
         {:ok, ast}
 
       [] ->
-        # Only warnings — return ok but with warnings attached
-        # For now, warnings don't block compilation, but we report them
-        {:error, errors}
+        # Only warnings — compilation succeeds, but report warnings
+        {:ok, ast, warnings}
 
-      _hard_errors ->
+      _ ->
         {:error, errors}
     end
   end
@@ -464,7 +513,7 @@ defmodule Skein.Analyzer do
 
       [
         %Error{
-          code: "E0030",
+          code: "E0012",
           severity: :error,
           message:
             "Capability '#{required_capability}' required but not declared. " <>
@@ -587,7 +636,7 @@ defmodule Skein.Analyzer do
       else
         [
           %Error{
-            code: "E0011",
+            code: "E0024",
             severity: :error,
             message: "Unknown type '#{name}'",
             location: location_from_meta(meta, env.file),
@@ -815,7 +864,7 @@ defmodule Skein.Analyzer do
             right_errors ++
             [
               %Error{
-                code: "E0021",
+                code: "E0020",
                 severity: :error,
                 message:
                   "Operator '#{op}' requires numeric operands, got #{format_type(left_type)} and #{format_type(right_type)}",
@@ -851,7 +900,7 @@ defmodule Skein.Analyzer do
            right_errors ++
            [
              %Error{
-               code: "E0021",
+               code: "E0020",
                severity: :error,
                message:
                  "Operator '#{op}' cannot compare #{format_type(left_type)} and #{format_type(right_type)}",
@@ -876,7 +925,7 @@ defmodule Skein.Analyzer do
         left_type != :bool ->
           [
             %Error{
-              code: "E0021",
+              code: "E0020",
               severity: :error,
               message: "Operator '#{op}' requires Bool operands, got #{format_type(left_type)}",
               location: location_from_meta(meta, env.file),
@@ -887,7 +936,7 @@ defmodule Skein.Analyzer do
         right_type != :bool ->
           [
             %Error{
-              code: "E0021",
+              code: "E0020",
               severity: :error,
               message: "Operator '#{op}' requires Bool operands, got #{format_type(right_type)}",
               location: location_from_meta(meta, env.file),
@@ -912,7 +961,7 @@ defmodule Skein.Analyzer do
       else
         [
           %Error{
-            code: "E0021",
+            code: "E0020",
             severity: :error,
             message: "Operator '!' requires Bool operand, got #{format_type(operand_type)}",
             location: location_from_meta(meta, env.file),
@@ -925,25 +974,89 @@ defmodule Skein.Analyzer do
   end
 
   # Unwrap (!) operator
-  defp infer_type(%AST.UnaryOp{op: :unwrap, operand: operand}, env) do
+  defp infer_type(%AST.UnaryOp{op: :unwrap, operand: operand, meta: meta}, env) do
     {operand_type, operand_errors} = infer_type(operand, env)
 
     case operand_type do
-      {:result, ok_type, _err_type} -> {ok_type, operand_errors}
-      :unknown -> {:unknown, operand_errors}
-      _ -> {:unknown, operand_errors}
+      {:result, ok_type, _err_type} ->
+        {ok_type, operand_errors}
+
+      :unknown ->
+        {:unknown, operand_errors}
+
+      other ->
+        {:unknown,
+         operand_errors ++
+           [
+             %Error{
+               code: "E0022",
+               severity: :error,
+               message: "Operator '!' (unwrap) requires a Result type, got #{format_type(other)}",
+               location: location_from_meta(meta, env.file),
+               fix_hint: "Use '!' only on Result values, or wrap the value in Result.ok()"
+             }
+           ]}
     end
   end
 
   # Propagate (?) operator
-  defp infer_type(%AST.UnaryOp{op: :propagate, operand: operand}, env) do
+  defp infer_type(%AST.UnaryOp{op: :propagate, operand: operand, meta: meta}, env) do
     {operand_type, operand_errors} = infer_type(operand, env)
 
-    case operand_type do
-      {:result, ok_type, _err_type} -> {ok_type, operand_errors}
-      :unknown -> {:unknown, operand_errors}
-      _ -> {:unknown, operand_errors}
-    end
+    type_errors =
+      case operand_type do
+        {:result, _, _} ->
+          []
+
+        :unknown ->
+          []
+
+        other ->
+          [
+            %Error{
+              code: "E0023",
+              severity: :error,
+              message:
+                "Operator '?' (propagate) requires a Result type, got #{format_type(other)}",
+              location: location_from_meta(meta, env.file),
+              fix_hint: "Use '?' only on Result values"
+            }
+          ]
+      end
+
+    # Check that the enclosing function returns a Result type
+    fn_return_errors =
+      case env.current_fn_return_type do
+        {:result, _, _} ->
+          []
+
+        nil ->
+          []
+
+        :unknown ->
+          []
+
+        other_ret ->
+          [
+            %Error{
+              code: "E0023",
+              severity: :error,
+              message:
+                "Operator '?' used in function that returns #{format_type(other_ret)}, " <>
+                  "but '?' requires the enclosing function to return a Result type",
+              location: location_from_meta(meta, env.file),
+              fix_hint: "Change the function return type to Result or use '!' to unwrap instead"
+            }
+          ]
+      end
+
+    ok_type =
+      case operand_type do
+        {:result, ok, _} -> ok
+        _ -> :unknown
+      end
+
+    {ok_type, operand_errors ++ type_errors ++ fn_return_errors}
   end
 
   # Match expression
@@ -984,7 +1097,7 @@ defmodule Skein.Analyzer do
           if expected_arity != actual_arity do
             [
               %Error{
-                code: "E0012",
+                code: "E0020",
                 severity: :error,
                 message:
                   "Function '#{name}' expects #{expected_arity} argument(s), got #{actual_arity}",
@@ -1027,7 +1140,7 @@ defmodule Skein.Analyzer do
               if expected_arity != actual_arity do
                 [
                   %Error{
-                    code: "E0012",
+                    code: "E0020",
                     severity: :error,
                     message:
                       "Function '#{mod_name}.#{fn_name}' expects #{expected_arity} argument(s), got #{actual_arity}",
@@ -1175,7 +1288,7 @@ defmodule Skein.Analyzer do
       not has_true ->
         [
           %Error{
-            code: "E0024",
+            code: "E0021",
             severity: :warning,
             message: "Non-exhaustive match: missing pattern 'true'",
             location: location_from_meta(meta, env.file),
@@ -1186,7 +1299,7 @@ defmodule Skein.Analyzer do
       not has_false ->
         [
           %Error{
-            code: "E0024",
+            code: "E0021",
             severity: :warning,
             message: "Non-exhaustive match: missing pattern 'false'",
             location: location_from_meta(meta, env.file),
@@ -1500,7 +1613,7 @@ defmodule Skein.Analyzer do
     else
       [
         %Error{
-          code: "E0030",
+          code: "E0012",
           severity: :error,
           message:
             "Capability '#{required_capability}' required but not declared. " <>
@@ -1533,7 +1646,7 @@ defmodule Skein.Analyzer do
     else
       [
         %Error{
-          code: "E0030",
+          code: "E0012",
           severity: :error,
           message:
             "Capability 'store.table(\"#{table_name}\")' required but not declared. " <>
@@ -1590,10 +1703,10 @@ defmodule Skein.Analyzer do
 
     cond do
       declared_names == [] ->
-        # No tool.use capability at all — produce E0030
+        # No tool.use capability at all — produce E0012
         [
           %Error{
-            code: "E0030",
+            code: "E0012",
             severity: :error,
             message:
               "Capability 'tool.use' required but not declared. " <>
@@ -1610,10 +1723,10 @@ defmodule Skein.Analyzer do
         []
 
       true ->
-        # Has tool.use but this specific tool is not listed
+        # Has tool.use but this specific tool is not listed — E0014
         [
           %Error{
-            code: "E0031",
+            code: "E0014",
             severity: :error,
             message:
               "Tool '#{tool_name}' is not declared in any capability tool.use. " <>
@@ -1648,7 +1761,7 @@ defmodule Skein.Analyzer do
 
         [
           %Error{
-            code: "E0032",
+            code: "E0015",
             severity: :error,
             message:
               "Duplicate short tool name '#{short_name}'. " <>
@@ -2012,4 +2125,293 @@ defmodule Skein.Analyzer do
       suggestions -> Enum.join(suggestions, ", ")
     end
   end
+
+  # ------------------------------------------------------------------
+  # E0011: Duplicate definition detection
+  # ------------------------------------------------------------------
+
+  defp check_duplicate_definitions(declarations, env) do
+    # Collect all named definitions with their locations
+    named =
+      Enum.flat_map(declarations, fn
+        %AST.Fn{name: name, meta: meta} -> [{:fn, name, meta}]
+        %AST.TypeDecl{name: name, meta: meta} -> [{:type, name, meta}]
+        %AST.EnumDecl{name: name, meta: meta} -> [{:enum, name, meta}]
+        _ -> []
+      end)
+
+    # Group by name and find duplicates
+    named
+    |> Enum.group_by(fn {_kind, name, _meta} -> name end)
+    |> Enum.flat_map(fn {name, entries} ->
+      if length(entries) > 1 do
+        # Report error for each duplicate after the first
+        entries
+        |> Enum.drop(1)
+        |> Enum.map(fn {kind, _name, meta} ->
+          %Error{
+            code: "E0011",
+            severity: :error,
+            message: "Duplicate definition: #{kind} '#{name}' is already defined in this scope",
+            location: location_from_meta(meta, env.file),
+            fix_hint: "Rename this #{kind} or remove the duplicate definition"
+          }
+        end)
+      else
+        []
+      end
+    end)
+  end
+
+  # ------------------------------------------------------------------
+  # W0001: Unused binding detection
+  # ------------------------------------------------------------------
+
+  defp check_unused_bindings_in_declarations(declarations, _env) do
+    fns = Enum.filter(declarations, &match?(%AST.Fn{}, &1))
+    Enum.flat_map(fns, &check_unused_bindings_in_fn/1)
+  end
+
+  defp check_unused_bindings_in_fn(%AST.Fn{body: body, meta: fn_meta}) do
+    # Collect all let-binding names from the body
+    let_bindings = collect_let_bindings(body)
+    # Collect all referenced identifiers in the body
+    referenced = collect_referenced_identifiers(body)
+
+    # Find unused bindings (ignore _ prefixed names)
+    Enum.flat_map(let_bindings, fn {name, meta} ->
+      if name in referenced or String.starts_with?(name, "_") do
+        []
+      else
+        [
+          %Error{
+            code: "W0001",
+            severity: :warning,
+            message: "Unused binding '#{name}'",
+            location: location_from_meta(meta, Map.get(fn_meta, :file, "unknown")),
+            fix_hint:
+              "Remove this binding or prefix with _ to indicate it is intentionally unused",
+            fix_code: "_#{name}"
+          }
+        ]
+      end
+    end)
+  end
+
+  defp collect_let_bindings(%AST.Block{expressions: exprs}) do
+    Enum.flat_map(exprs, &collect_let_bindings/1)
+  end
+
+  defp collect_let_bindings(%AST.Let{name: name, meta: meta, value: value}) do
+    [{name, meta} | collect_let_bindings(value)]
+  end
+
+  defp collect_let_bindings(%AST.Match{arms: arms}) do
+    Enum.flat_map(arms, fn %AST.MatchArm{body: body} ->
+      collect_let_bindings(body)
+    end)
+  end
+
+  defp collect_let_bindings(_), do: []
+
+  defp collect_referenced_identifiers(%AST.Block{expressions: exprs}) do
+    exprs |> Enum.flat_map(&collect_referenced_identifiers/1) |> MapSet.new()
+  end
+
+  defp collect_referenced_identifiers(%AST.Identifier{name: name}) do
+    [name]
+  end
+
+  defp collect_referenced_identifiers(%AST.Let{value: value}) do
+    collect_referenced_identifiers(value)
+  end
+
+  defp collect_referenced_identifiers(%AST.Call{target: target, args: args}) do
+    collect_referenced_identifiers(target) ++
+      Enum.flat_map(args, &collect_referenced_identifiers/1)
+  end
+
+  defp collect_referenced_identifiers(%AST.BinaryOp{left: left, right: right}) do
+    collect_referenced_identifiers(left) ++ collect_referenced_identifiers(right)
+  end
+
+  defp collect_referenced_identifiers(%AST.UnaryOp{operand: operand}) do
+    collect_referenced_identifiers(operand)
+  end
+
+  defp collect_referenced_identifiers(%AST.Match{subject: subject, arms: arms}) do
+    collect_referenced_identifiers(subject) ++
+      Enum.flat_map(arms, fn %AST.MatchArm{body: body} ->
+        collect_referenced_identifiers(body)
+      end)
+  end
+
+  defp collect_referenced_identifiers(%AST.Pipe{left: left, right: right}) do
+    collect_referenced_identifiers(left) ++ collect_referenced_identifiers(right)
+  end
+
+  defp collect_referenced_identifiers(%AST.FieldAccess{subject: subject}) do
+    collect_referenced_identifiers(subject)
+  end
+
+  defp collect_referenced_identifiers(%AST.StringLit{segments: segments}) do
+    Enum.flat_map(segments, fn
+      {:interpolation, expr} -> collect_referenced_identifiers(expr)
+      _ -> []
+    end)
+  end
+
+  defp collect_referenced_identifiers(_), do: []
+
+  # ------------------------------------------------------------------
+  # W0002: Unused capability detection
+  # ------------------------------------------------------------------
+
+  defp check_unused_capabilities(declarations, env) do
+    # Collect all effect calls/handlers to determine which capabilities are exercised
+    used_capabilities = collect_used_capabilities(declarations, env)
+
+    env.capabilities
+    |> Enum.flat_map(fn %AST.Capability{kind: kind, meta: meta} ->
+      if kind in used_capabilities do
+        []
+      else
+        [
+          %Error{
+            code: "W0002",
+            severity: :warning,
+            message: "Unused capability '#{kind}' — declared but never exercised",
+            location: location_from_meta(meta, env.file),
+            fix_hint: "Remove this capability declaration if it is no longer needed"
+          }
+        ]
+      end
+    end)
+  end
+
+  defp collect_used_capabilities(declarations, _env) do
+    # Check effect calls in function bodies
+    fn_caps =
+      declarations
+      |> Enum.filter(&match?(%AST.Fn{}, &1))
+      |> Enum.flat_map(fn %AST.Fn{body: body} ->
+        collect_effect_namespaces(body)
+      end)
+      |> Enum.map(fn namespace ->
+        Map.get(@effect_namespaces, namespace)
+      end)
+      |> Enum.reject(&is_nil/1)
+
+    # Check handlers (they require http.in/queue.in/schedule.in)
+    handler_caps =
+      declarations
+      |> Enum.filter(&match?(%AST.Handler{}, &1))
+      |> Enum.flat_map(fn %AST.Handler{source: source, body: body} ->
+        cap = handler_required_capability(source)
+
+        body_caps =
+          body
+          |> collect_effect_namespaces()
+          |> Enum.map(&Map.get(@effect_namespaces, &1))
+          |> Enum.reject(&is_nil/1)
+
+        [cap | body_caps]
+      end)
+      |> Enum.reject(&is_nil/1)
+
+    MapSet.new(fn_caps ++ handler_caps)
+  end
+
+  defp collect_effect_namespaces(%AST.Block{expressions: exprs}) do
+    Enum.flat_map(exprs, &collect_effect_namespaces/1)
+  end
+
+  defp collect_effect_namespaces(%AST.Call{
+         target: %AST.FieldAccess{
+           subject: %AST.Identifier{name: namespace},
+           field: method
+         },
+         args: args
+       }) do
+    ns =
+      if effect_namespace?(namespace) and effect_method?(namespace, method) do
+        [namespace]
+      else
+        []
+      end
+
+    ns ++ Enum.flat_map(args, &collect_effect_namespaces/1)
+  end
+
+  defp collect_effect_namespaces(%AST.Call{args: args}) do
+    Enum.flat_map(args, &collect_effect_namespaces/1)
+  end
+
+  defp collect_effect_namespaces(%AST.Let{value: value}) do
+    collect_effect_namespaces(value)
+  end
+
+  defp collect_effect_namespaces(%AST.Match{subject: subject, arms: arms}) do
+    collect_effect_namespaces(subject) ++
+      Enum.flat_map(arms, fn %AST.MatchArm{body: body} ->
+        collect_effect_namespaces(body)
+      end)
+  end
+
+  defp collect_effect_namespaces(%AST.Pipe{left: left, right: right}) do
+    collect_effect_namespaces(left) ++ collect_effect_namespaces(right)
+  end
+
+  defp collect_effect_namespaces(%AST.BinaryOp{left: left, right: right}) do
+    collect_effect_namespaces(left) ++ collect_effect_namespaces(right)
+  end
+
+  defp collect_effect_namespaces(%AST.UnaryOp{operand: operand}) do
+    collect_effect_namespaces(operand)
+  end
+
+  defp collect_effect_namespaces(_), do: []
+
+  # ------------------------------------------------------------------
+  # W0003: Unreachable code after stop()
+  # ------------------------------------------------------------------
+
+  defp check_unreachable_after_stop(declarations) do
+    declarations
+    |> Enum.filter(&match?(%AST.Fn{}, &1))
+    |> Enum.flat_map(fn %AST.Fn{body: body, meta: fn_meta} ->
+      check_block_for_unreachable(body, Map.get(fn_meta, :file, "unknown"))
+    end)
+  end
+
+  defp check_block_for_unreachable(%AST.Block{expressions: exprs}, file) do
+    exprs
+    |> Enum.chunk_every(2, 1, :discard)
+    |> Enum.flat_map(fn [expr, next_expr] ->
+      if is_stop_call?(expr) do
+        next_meta = extract_meta(next_expr)
+
+        [
+          %Error{
+            code: "W0003",
+            severity: :warning,
+            message: "Unreachable code after stop()",
+            location: location_from_meta(next_meta, file),
+            fix_hint: "Remove the code after stop() — it will never be executed"
+          }
+        ]
+      else
+        []
+      end
+    end)
+  end
+
+  defp check_block_for_unreachable(_, _file), do: []
+
+  defp is_stop_call?(%AST.Stop{}), do: true
+  defp is_stop_call?(%AST.Call{target: %AST.Identifier{name: "stop"}, args: []}), do: true
+  defp is_stop_call?(_), do: false
+
+  defp extract_meta(%{meta: meta}), do: meta
+  defp extract_meta(_), do: %{line: 0, col: 0}
 end

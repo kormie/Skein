@@ -15,12 +15,20 @@ defmodule Skein.StdlibTest do
   defp analyze(source) do
     {:ok, tokens} = Skein.Lexer.tokenize(source)
     {:ok, ast} = Skein.Parser.parse(tokens)
-    Skein.Analyzer.analyze(ast)
+
+    case Skein.Analyzer.analyze(ast) do
+      {:ok, analyzed_ast, _warnings} -> {:ok, analyzed_ast}
+      other -> other
+    end
   end
 
   defp analyze_errors(source) do
-    case analyze(source) do
+    {:ok, tokens} = Skein.Lexer.tokenize(source)
+    {:ok, ast} = Skein.Parser.parse(tokens)
+
+    case Skein.Analyzer.analyze(ast) do
       {:error, errors} -> errors
+      {:ok, _, warnings} -> warnings
       {:ok, _} -> []
     end
   end
@@ -462,7 +470,7 @@ defmodule Skein.StdlibTest do
         """)
 
       assert length(errors) >= 1
-      assert Enum.any?(errors, fn e -> e.code == "E0012" end)
+      assert Enum.any?(errors, fn e -> e.code == "E0020" end)
     end
 
     test "unknown stdlib function produces error" do

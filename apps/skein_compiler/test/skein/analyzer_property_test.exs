@@ -37,12 +37,20 @@ defmodule Skein.AnalyzerPropertyTest do
   defp analyze(source) do
     {:ok, tokens} = Lexer.tokenize(source)
     {:ok, ast} = Parser.parse(tokens)
-    Analyzer.analyze(ast)
+
+    case Analyzer.analyze(ast) do
+      {:ok, analyzed_ast, _warnings} -> {:ok, analyzed_ast}
+      other -> other
+    end
   end
 
   defp analyze_errors(source) do
-    case analyze(source) do
+    {:ok, tokens} = Lexer.tokenize(source)
+    {:ok, ast} = Parser.parse(tokens)
+
+    case Analyzer.analyze(ast) do
       {:error, errors} -> errors
+      {:ok, _, warnings} -> warnings
       {:ok, _} -> []
     end
   end
@@ -51,7 +59,7 @@ defmodule Skein.AnalyzerPropertyTest do
   # Properties
   # ------------------------------------------------------------------
 
-  property "any http method without capability produces E0030 error" do
+  property "any http method without capability produces E0012 error" do
     check all(method <- http_method_gen()) do
       # Build args based on method — post/put/patch need a body arg
       args =
@@ -77,10 +85,10 @@ defmodule Skein.AnalyzerPropertyTest do
       """
 
       errors = analyze_errors(source)
-      capability_errors = Enum.filter(errors, &(&1.code == "E0030"))
+      capability_errors = Enum.filter(errors, &(&1.code == "E0012"))
 
       assert length(capability_errors) >= 1,
-             "Expected E0030 error for http.#{method} without capability, got none"
+             "Expected E0012 error for http.#{method} without capability, got none"
     end
   end
 
@@ -143,7 +151,7 @@ defmodule Skein.AnalyzerPropertyTest do
       """
 
       errors = analyze_errors(source)
-      capability_errors = Enum.filter(errors, &(&1.code == "E0030"))
+      capability_errors = Enum.filter(errors, &(&1.code == "E0012"))
 
       for error <- capability_errors do
         assert error.fix_code =~ "capability http.out",
@@ -170,12 +178,12 @@ defmodule Skein.AnalyzerPropertyTest do
       """
 
       errors = analyze_errors(source)
-      capability_errors = Enum.filter(errors, &(&1.code == "E0030"))
+      capability_errors = Enum.filter(errors, &(&1.code == "E0012"))
 
       for error <- capability_errors do
         json = Skein.Error.to_json(error)
         decoded = Jason.decode!(json)
-        assert decoded["code"] == "E0030"
+        assert decoded["code"] == "E0012"
         assert is_binary(decoded["message"])
         assert is_binary(decoded["fix_code"])
         assert is_binary(decoded["fix_hint"])
@@ -183,7 +191,7 @@ defmodule Skein.AnalyzerPropertyTest do
     end
   end
 
-  property "modules without effect calls never produce E0030 errors" do
+  property "modules without effect calls never produce E0012 errors" do
     check all(
             a <- StreamData.positive_integer(),
             b <- StreamData.positive_integer()
@@ -201,8 +209,8 @@ defmodule Skein.AnalyzerPropertyTest do
       """
 
       errors = analyze_errors(source)
-      capability_errors = Enum.filter(errors, &(&1.code == "E0030"))
-      assert capability_errors == [], "Pure module should never get E0030 errors"
+      capability_errors = Enum.filter(errors, &(&1.code == "E0012"))
+      assert capability_errors == [], "Pure module should never get E0012 errors"
     end
   end
 
@@ -234,7 +242,7 @@ defmodule Skein.AnalyzerPropertyTest do
     end
   end
 
-  property "any tool method without tool.use capability produces E0030 error" do
+  property "any tool method without tool.use capability produces E0012 error" do
     check all(method <- tool_method_gen()) do
       {args, params} = tool_method_args(method)
 
@@ -247,10 +255,10 @@ defmodule Skein.AnalyzerPropertyTest do
       """
 
       errors = analyze_errors(source)
-      capability_errors = Enum.filter(errors, &(&1.code == "E0030"))
+      capability_errors = Enum.filter(errors, &(&1.code == "E0012"))
 
       assert length(capability_errors) >= 1,
-             "Expected E0030 error for tool.#{method} without capability, got none"
+             "Expected E0012 error for tool.#{method} without capability, got none"
     end
   end
 
@@ -289,7 +297,7 @@ defmodule Skein.AnalyzerPropertyTest do
       """
 
       errors = analyze_errors(source)
-      capability_errors = Enum.filter(errors, &(&1.code == "E0030"))
+      capability_errors = Enum.filter(errors, &(&1.code == "E0012"))
 
       for error <- capability_errors do
         assert error.fix_code =~ "capability tool.use",
@@ -336,7 +344,7 @@ defmodule Skein.AnalyzerPropertyTest do
     end
   end
 
-  property "tool.call/schema with non-matching identifier produces E0031" do
+  property "tool.call/schema with non-matching identifier produces E0014" do
     check all(
             method <- StreamData.member_of(["call", "schema"]),
             declared <- tool_name_gen(),
@@ -357,14 +365,14 @@ defmodule Skein.AnalyzerPropertyTest do
       """
 
       errors = analyze_errors(source)
-      tool_name_errors = Enum.filter(errors, &(&1.code == "E0031"))
+      tool_name_errors = Enum.filter(errors, &(&1.code == "E0014"))
 
       assert length(tool_name_errors) >= 1,
-             "Expected E0031 for tool.#{method}(#{called}) when only #{declared} declared"
+             "Expected E0014 for tool.#{method}(#{called}) when only #{declared} declared"
     end
   end
 
-  property "duplicate short tool names across dotted capabilities produce E0032" do
+  property "duplicate short tool names across dotted capabilities produce E0015" do
     check all(
             prefix1 <-
               StreamData.string(Enum.to_list(?A..?Z) ++ Enum.to_list(?a..?z),
@@ -394,10 +402,10 @@ defmodule Skein.AnalyzerPropertyTest do
       """
 
       errors = analyze_errors(source)
-      dup_errors = Enum.filter(errors, &(&1.code == "E0032"))
+      dup_errors = Enum.filter(errors, &(&1.code == "E0015"))
 
       assert length(dup_errors) >= 1,
-             "Expected E0032 for duplicate short name '#{s}' from #{p1}.#{s} and #{p2}.#{s}"
+             "Expected E0015 for duplicate short name '#{s}' from #{p1}.#{s} and #{p2}.#{s}"
     end
   end
 
@@ -432,10 +440,10 @@ defmodule Skein.AnalyzerPropertyTest do
       """
 
       errors = analyze_errors(source)
-      capability_errors = Enum.filter(errors, &(&1.code == "E0030"))
+      capability_errors = Enum.filter(errors, &(&1.code == "E0012"))
 
       assert length(capability_errors) == length(methods),
-             "Expected #{length(methods)} E0030 errors, got #{length(capability_errors)}"
+             "Expected #{length(methods)} E0012 errors, got #{length(capability_errors)}"
     end
   end
 end

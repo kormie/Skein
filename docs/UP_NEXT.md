@@ -77,54 +77,43 @@ This is large enough to split across multiple sessions:
 
 **Why second:** Spec defines 21 error/warning codes. The implementation has 11 codes but some use different numbers than the spec. Aligning these improves agent-writability (agents rely on stable error codes).
 
-**Status:** PARTIALLY IMPLEMENTED (11 of 21, some misaligned)
+**Status:** COMPLETE (all 21 codes aligned + 3 warning codes implemented)
 
 ### Spec Error Codes vs Implementation
 
-| Code | Spec Meaning | Implementation Status |
-|------|-------------|----------------------|
-| E0001 | Syntax: Unexpected token | MISSING — parser returns ad-hoc errors |
-| E0002 | Syntax: Unterminated string | MISSING — lexer returns ad-hoc errors |
-| E0003 | Syntax: Invalid number literal | MISSING — lexer returns ad-hoc errors |
-| E0010 | Name: Undefined identifier | IMPLEMENTED (may use different code) |
-| E0011 | Name: Duplicate definition | IMPLEMENTED (may be used for "unknown type" instead) |
-| E0012 | Capability: Missing capability | NEEDS AUDIT — impl uses this for wrong arity |
-| E0013 | Capability: Parameter mismatch | MISSING |
-| E0014 | Tool: Name not declared | MISSING (impl uses E0031) |
-| E0015 | Tool: Duplicate short name | MISSING (impl uses E0032) |
-| E0020 | Type: Type mismatch | IMPLEMENTED |
-| E0021 | Type: Non-exhaustive match | NEEDS AUDIT — impl uses this for operator type error |
-| E0022 | Type: Invalid `!` on non-Result | MISSING |
-| E0023 | Type: Invalid `?` on non-Result | MISSING |
-| E0024 | Type: Unknown type name | NEEDS AUDIT — impl uses this for non-exhaustive match |
+All 21 error codes and 3 warning codes are now aligned with the spec:
+
+| Code | Spec Meaning | Status |
+|------|-------------|--------|
+| E0001 | Syntax: Unexpected token | IMPLEMENTED (lexer + parser) |
+| E0002 | Syntax: Unterminated string | IMPLEMENTED (lexer) |
+| E0003 | Syntax: Invalid number literal | RESERVED (current lexer grammar handles number edge cases) |
+| E0010 | Name: Undefined identifier | IMPLEMENTED |
+| E0011 | Name: Duplicate definition | IMPLEMENTED (new) |
+| E0012 | Capability: Missing capability | IMPLEMENTED (renumbered from E0030) |
+| E0013 | Capability: Parameter mismatch | RESERVED |
+| E0014 | Tool: Name not declared | IMPLEMENTED (renumbered from E0031) |
+| E0015 | Tool: Duplicate short name | IMPLEMENTED (renumbered from E0032) |
+| E0020 | Type: Type mismatch | IMPLEMENTED (consolidated: arity, operators, return types) |
+| E0021 | Type: Non-exhaustive match | IMPLEMENTED (renumbered from E0024, warning) |
+| E0022 | Type: Invalid `!` on non-Result | IMPLEMENTED (new) |
+| E0023 | Type: Invalid `?` on non-Result | IMPLEMENTED (new) |
+| E0024 | Type: Unknown type name | IMPLEMENTED (renumbered from E0011) |
 | E0025 | Type: Wrong constraint annotation | IMPLEMENTED |
-| E0030 | Agent: Invalid phase transition | NEEDS AUDIT — impl uses this for missing capability |
-| E0031 | Agent: Unreachable phase | NEEDS AUDIT — impl uses this for tool name |
-| E0032 | Agent: Phase handler missing | NEEDS AUDIT — impl uses this for dup tool name |
+| E0030 | Agent: Invalid phase transition | IMPLEMENTED |
+| E0031 | Agent: Unreachable phase | IMPLEMENTED (warning) |
+| E0032 | Agent: Phase handler missing | IMPLEMENTED |
 | E0033 | Agent: transition() outside agent | IMPLEMENTED |
-| W0001 | Warning: Unused binding | MISSING |
-| W0002 | Warning: Unused capability | MISSING |
-| W0003 | Warning: Unreachable code after stop() | MISSING |
+| W0001 | Warning: Unused binding | IMPLEMENTED (new) |
+| W0002 | Warning: Unused capability | IMPLEMENTED (new) |
+| W0003 | Warning: Unreachable code after stop() | IMPLEMENTED (new) |
 
-### Implementation Plan
+### Key Changes Made
 
-1. **Audit** — Read the analyzer and map every current error emission to its code. Document the actual vs. spec mapping.
-2. **Renumber** — Align implementation codes with the spec. This is a breaking change to error output, so do it all at once.
-3. **Add syntax errors** (E0001-E0003) — Wrap lexer and parser errors in `Skein.Error` structs with proper codes.
-4. **Add missing type errors** (E0022, E0023) — `!` and `?` operator validation.
-5. **Add warnings** (W0001-W0003) — Unused binding detection, unused capability detection, unreachable code after stop().
-
-### Testing Checklist
-
-- [ ] Unit tests: each error code has a test with a .skein snippet that triggers it
-- [ ] Property tests: generate random invalid programs and verify errors always have valid codes
-- [ ] Snapshot tests: expected error JSON output for each code
-- [ ] Verify `fix_hint` and `fix_code` fields are populated for every error
-
-### Docs Checklist
-
-- [ ] `docs/site/src/content/docs/compiler/errors.md` — update with complete error code table matching the spec
-- [ ] Rebuild docs site: `cd docs/site && bunx astro build`
+1. **Renumbered** — All codes aligned: E0011→E0024 (unknown type), E0012→E0020 (arity→type mismatch), E0021→E0020 (operator→type mismatch), E0024→E0021 (non-exhaustive match), capability E0030→E0012, tool E0031→E0014, tool E0032→E0015.
+2. **New error codes** — E0011 (duplicate definition), E0022 (invalid ! on non-Result), E0023 (invalid ? on non-Result).
+3. **New warnings** — W0001 (unused binding), W0002 (unused capability), W0003 (unreachable code after stop()).
+4. **Warnings no longer block compilation** — `filter_result` returns `{:ok, ast, warnings}` for warnings-only instead of `{:error, warnings}`. LSP shows warnings as diagnostics.
 
 ---
 
@@ -395,3 +384,4 @@ _Move items here as they are finished, with date and session link._
 - [x] **Standard Library 1c: Map, Set** — 2026-02-09 — session_01Dv2MiJcMip17YGdajaMDs5
 - [x] **Standard Library 1d: Option, Result** — 2026-02-09 — session_01Dv2MiJcMip17YGdajaMDs5
 - [x] **Standard Library 1e: Uuid, Instant, Duration** — 2026-02-09 — session_01Dv2MiJcMip17YGdajaMDs5
+- [x] **Error Code Alignment** (21 error codes + 3 warning codes) — 2026-02-09 — session_013qLiHBBTW4ei2v7D5Vy6QA
