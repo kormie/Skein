@@ -147,7 +147,7 @@ module AgentService {
 
 ### Capability Required
 
-Tool calls require a `capability tool.use(ToolName)` declaration. Without it, the analyzer produces error E0030.
+Tool calls require a `capability tool.use(ToolName)` declaration. Without it, the analyzer produces error E0012.
 
 ### Tracing
 

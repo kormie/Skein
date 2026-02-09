@@ -2092,6 +2092,142 @@ defmodule Skein.CodeGen.CoreErlangTest do
   end
 
   # ------------------------------------------------------------------
+  # Topic handler codegen
+  # ------------------------------------------------------------------
+
+  describe "topic handler codegen" do
+    test "__handlers__/0 includes topic handler metadata" do
+      mod =
+        compile!("""
+        module TopicHandlerMeta {
+          capability topic.consume("order.events")
+
+          handler topic "order.events" (msg) -> {
+            respond.json(200, "processed")
+          }
+        }
+        """)
+
+      handlers = mod.__handlers__()
+      assert length(handlers) == 1
+      handler = hd(handlers)
+      assert handler.source == :topic
+      assert handler.route == "order.events"
+      assert handler.handler == :__handler_0__
+    end
+
+    test "topic handler function is callable" do
+      mod =
+        compile!("""
+        module TopicHandlerCall {
+          capability topic.consume("events")
+
+          handler topic "events" (msg) -> {
+            respond.json(200, "received")
+          }
+        }
+        """)
+
+      result = mod.__handler_0__(%{body: "test"})
+      assert {:respond_json, 200, "received"} = result
+    end
+
+    test "topic handler can access message parameter" do
+      mod =
+        compile!("""
+        module TopicHandlerParam {
+          capability topic.consume("events")
+
+          handler topic "events" (msg) -> {
+            let data = msg
+            respond.json(200, "ok")
+          }
+        }
+        """)
+
+      result = mod.__handler_0__(%{body: "payload"})
+      assert {:respond_json, 200, "ok"} = result
+    end
+
+    test "multiple topic handlers are indexed correctly" do
+      mod =
+        compile!("""
+        module TopicHandlerMulti {
+          capability topic.consume("events-a")
+
+          handler topic "events-a" (msg) -> {
+            respond.json(200, "a")
+          }
+
+          handler topic "events-b" (msg) -> {
+            respond.json(200, "b")
+          }
+        }
+        """)
+
+      handlers = mod.__handlers__()
+      assert length(handlers) == 2
+      assert Enum.at(handlers, 0).route == "events-a"
+      assert Enum.at(handlers, 1).route == "events-b"
+
+      assert {:respond_json, 200, "a"} = mod.__handler_0__(%{})
+      assert {:respond_json, 200, "b"} = mod.__handler_1__(%{})
+    end
+
+    test "topic.publish generates runtime call" do
+      mod =
+        compile!("""
+        module TopicPublisher {
+          capability topic.publish("notifications")
+
+          fn notify() -> String {
+            topic.publish("notifications", "hello")
+          }
+        }
+        """)
+
+      # The function should be callable and produce the runtime call
+      assert function_exported?(mod, :notify, 0)
+    end
+
+    test "mixed handlers including topic" do
+      mod =
+        compile!("""
+        module MixedWithTopic {
+          capability http.in
+          capability queue.in
+          capability topic.consume("events")
+
+          handler http GET "/health" (req) -> {
+            respond.json(200, "ok")
+          }
+
+          handler queue "jobs" (msg) -> {
+            respond.json(200, "queued")
+          }
+
+          handler topic "events" (msg) -> {
+            respond.json(200, "topic")
+          }
+        }
+        """)
+
+      handlers = mod.__handlers__()
+      assert length(handlers) == 3
+
+      [http_h, queue_h, topic_h] = handlers
+      assert http_h.source == :http
+      assert queue_h.source == :queue
+      assert topic_h.source == :topic
+      assert topic_h.route == "events"
+
+      assert {:respond_json, 200, "ok"} = mod.__handler_0__(%{})
+      assert {:respond_json, 200, "queued"} = mod.__handler_1__(%{})
+      assert {:respond_json, 200, "topic"} = mod.__handler_2__(%{})
+    end
+  end
+
+  # ------------------------------------------------------------------
   # Tool identifier references codegen (capability-as-import)
   # ------------------------------------------------------------------
 

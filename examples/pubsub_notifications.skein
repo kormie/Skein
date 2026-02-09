@@ -1,0 +1,29 @@
+-- pubsub_notifications.skein
+-- Demonstrates topic pub/sub with fan-out semantics.
+-- One module publishes order events; two topic handlers consume
+-- from the same topic (one for email, one for analytics).
+-- Contrasts with queue (single consumer) by showing fan-out delivery.
+
+module PubsubNotifications {
+  capability http.in
+  capability topic.publish("order.events")
+  capability topic.consume("order.events")
+
+  -- HTTP endpoint that publishes an order event to the topic
+  handler http POST "/orders" (req) -> {
+    topic.publish("order.events", "new-order")
+    respond.json(200, "published")
+  }
+
+  -- Email notification handler: sends email when order event arrives
+  handler topic "order.events" (msg) -> {
+    let event = msg
+    respond.json(200, "email-sent")
+  }
+
+  -- Analytics handler: records metrics when order event arrives
+  handler topic "order.events" (msg) -> {
+    let event = msg
+    respond.json(200, "analytics-recorded")
+  }
+}

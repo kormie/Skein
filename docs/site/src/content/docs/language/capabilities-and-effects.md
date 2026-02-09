@@ -44,6 +44,10 @@ capability <namespace>.<kind>(<params>)
 | `memory.kv` | Scoped KV memory | Namespace name |
 | `model` | LLM model access | Provider, model identifier |
 | `tool.use` | Tool execution | Tool name |
+| `queue.in` | Inbound queue handlers | Queue name (optional) |
+| `topic.publish` | Publish to a named topic | Topic name |
+| `topic.consume` | Subscribe to a named topic | Topic name |
+| `schedule.in` | Cron-based schedule handlers | Cron expression (optional) |
 
 ### Wildcard Capabilities
 
@@ -179,6 +183,32 @@ tool.schema(CreateRefund)
 
 Tool effects require a `capability tool.use(ToolName)` declaration. See the [Tools](/Skein/language/tools/) page for full documentation on tool declarations and calling.
 
+### Topics
+
+Topics provide pub/sub messaging with fan-out delivery. Every subscriber to a topic receives every published message.
+
+```skein
+-- Publishing requires topic.publish capability
+capability topic.publish("order.events")
+
+topic.publish("order.events", data)
+```
+
+The `topic.publish(name, data)` effect publishes `data` to all handlers subscribed to the named topic. Unlike queues (which deliver to a single consumer), topics broadcast to every subscriber.
+
+To consume from a topic, declare a `topic.consume` capability and a `handler topic` block:
+
+```skein
+capability topic.consume("order.events")
+
+handler topic "order.events" (msg) -> {
+  -- Every subscriber receives every message
+  respond.json(200, "processed")
+}
+```
+
+See the [Handlers](/Skein/language/handlers/) page for full topic handler documentation.
+
 ### How They Parse
 
 Effect calls use existing Skein syntax -- no special grammar is needed. `http.get(url)` parses as:
@@ -216,12 +246,12 @@ The analyzer recognizes this pattern and checks it against declared capabilities
 
 The analyzer's capability checking pass (Pass 3) walks every function body looking for effect calls. When it finds one, it checks that the module declares the required capability.
 
-### Error: Missing Capability (E0030)
+### Error: Missing Capability (E0012)
 
 ```skein
 module BadService {
   fn fetch(url: String) -> String {
-    http.get(url)  -- ERROR: E0030
+    http.get(url)  -- ERROR: E0012
   }
 }
 ```
@@ -230,7 +260,7 @@ Produces:
 
 ```json
 {
-  "code": "E0030",
+  "code": "E0012",
   "severity": "error",
   "message": "Capability 'http.out' required but not declared. Effect calls to 'http' require this capability.",
   "fix_hint": "Add a capability declaration to the module: capability http.out",
