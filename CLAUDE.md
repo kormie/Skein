@@ -372,6 +372,31 @@ Published documentation lives at https://kormie.github.io/Skein/ and is built wi
 - **Build:** `cd docs/site && bun install && bunx astro build`
 - **Dev server:** `cd docs/site && bunx astro dev`
 
+## Claude Plugins and Skills
+
+The `github-pages-astro` plugin (`.claude/plugins/github-pages-astro/`) provides documentation site tooling:
+
+### Slash Commands
+
+| Command | Description |
+|---------|-------------|
+| `/docs-init` | Scaffold an Astro + Starlight site and generate `.docs-config.json` |
+| `/docs-build` | Build the docs site and validate `llms.txt` output |
+| `/docs-dev` | Start the Astro dev server for live preview |
+| `/docs-sync` | Audit documentation freshness against the codebase |
+
+### Skills (auto-activated)
+
+| Skill | Description |
+|-------|-------------|
+| `docs-site` | Authoring and maintaining Astro + Starlight pages using `.docs-config.json` |
+| `dual-docs` | Writing documentation that serves both human readers and AI agents |
+
+### Hooks
+
+- **Stop:** Runs `docs-freshness-check.sh` (warns about stale docs on session end)
+- **SessionEnd:** Runs `stop-dev-server.sh` (cleans up any running Astro dev server)
+
 ## Session Memory
 
 Accumulated learnings, gotchas, and project state are stored in `.claude/memory/MEMORY.md`. Consult this file at the start of each session for up-to-date context on completed phases, known pitfalls (e.g., `input` is a keyword, `stop()` needs parens, GenServer race conditions in tests), architecture notes, and user preferences.
