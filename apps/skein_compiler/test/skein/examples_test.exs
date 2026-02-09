@@ -192,6 +192,20 @@ defmodule Skein.ExamplesTest do
       info = mod.__info__(:module)
       assert info == mod
     end
+
+    test "has Failed phase with suspend" do
+      {:module, mod} =
+        Compiler.compile_file(Path.join(project_root(), "examples/refund_agent.skein"))
+
+      phases = mod.__phases__()
+      failed = Enum.find(phases, &(&1.name == :failed))
+      assert failed != nil
+      assert :review in failed.transitions
+
+      # The Failed phase handler returns a suspend tuple
+      result = mod.__phase_handler__(:failed, %{}, [])
+      assert {:suspend, "Requires human review", %{}, []} = result
+    end
   end
 
   # ------------------------------------------------------------------

@@ -52,6 +52,7 @@ defmodule Skein.AST do
   defmodule FnRef, do: defstruct([:name, :meta])
   defmodule Transition, do: defstruct([:phase, :meta])
   defmodule Stop, do: defstruct([:meta])
+  defmodule Suspend, do: defstruct([:reason, :meta])
   defmodule Emit, do: defstruct([:event_name, :fields, :meta])
   defmodule Respond, do: defstruct([:method, :args, :meta])
   defmodule Wildcard, do: defstruct([:meta])

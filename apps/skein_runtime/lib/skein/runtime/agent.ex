@@ -61,6 +61,33 @@ defmodule Skein.Runtime.Agent do
     :gen_statem.call(pid, :get_events)
   end
 
+  @doc """
+  Returns whether the agent is currently suspended.
+  """
+  @spec is_suspended?(pid()) :: boolean()
+  def is_suspended?(pid) do
+    :gen_statem.call(pid, :is_suspended)
+  end
+
+  @doc """
+  Returns the suspension reason if the agent is suspended, nil otherwise.
+  """
+  @spec get_suspend_reason(pid()) :: String.t() | nil
+  def get_suspend_reason(pid) do
+    :gen_statem.call(pid, :get_suspend_reason)
+  end
+
+  @doc """
+  Resumes a suspended agent, transitioning it to the given phase.
+
+  The agent must be in the `:suspended` state. The `next_phase` atom
+  determines which phase handler will be executed next.
+  """
+  @spec resume(pid(), atom()) :: :ok | {:error, :not_suspended}
+  def resume(pid, next_phase) do
+    :gen_statem.call(pid, {:resume, next_phase})
+  end
+
   # ------------------------------------------------------------------
   # gen_statem callbacks
   # ------------------------------------------------------------------
@@ -76,7 +103,8 @@ defmodule Skein.Runtime.Agent do
       module: module,
       state: %{},
       events: [],
-      args: args
+      args: args,
+      suspend_reason: nil
     }
 
     # Call the start handler which should return a transition action
@@ -105,6 +133,27 @@ defmodule Skein.Runtime.Agent do
     {:keep_state, data, [{:reply, from, data.events}]}
   end
 
+  def handle_event({:call, from}, :is_suspended, phase, data) do
+    {:keep_state, data, [{:reply, from, phase == :suspended}]}
+  end
+
+  def handle_event({:call, from}, :get_suspend_reason, _phase, data) do
+    {:keep_state, data, [{:reply, from, data.suspend_reason}]}
+  end
+
+  # Resume: transition from :suspended to a new phase
+  def handle_event({:call, from}, {:resume, next_phase}, :suspended, data) do
+    new_data = %{data | suspend_reason: nil}
+
+    {:next_state, next_phase, new_data,
+     [{:reply, from, :ok}, {:next_event, :internal, :execute_phase}]}
+  end
+
+  # Resume when not suspended: error
+  def handle_event({:call, from}, {:resume, _next_phase}, _phase, data) do
+    {:keep_state, data, [{:reply, from, {:error, :not_suspended}}]}
+  end
+
   # Fallback — ignore unknown events
   def handle_event(_event_type, _event, _phase, data) do
     {:keep_state, data}
@@ -125,6 +174,16 @@ defmodule Skein.Runtime.Agent do
 
         # Transition to the phase and queue the phase handler execution
         {:ok, next_phase, new_data, [{:next_event, :internal, :execute_phase}]}
+
+      {:suspend, reason, new_state, new_events} ->
+        new_data = %{
+          data
+          | state: merge_state(data.state, new_state),
+            events: data.events ++ new_events,
+            suspend_reason: reason
+        }
+
+        {:ok, :suspended, new_data}
 
       {:stop, new_state, new_events} ->
         new_data = %{
@@ -163,6 +222,16 @@ defmodule Skein.Runtime.Agent do
         }
 
         {:next_state, next_phase, new_data, [{:next_event, :internal, :execute_phase}]}
+
+      {:suspend, reason, new_state, new_events} ->
+        new_data = %{
+          data
+          | state: merge_state(data.state, new_state),
+            events: data.events ++ new_events,
+            suspend_reason: reason
+        }
+
+        {:next_state, :suspended, new_data}
 
       {:stop, new_state, new_events} ->
         new_data = %{

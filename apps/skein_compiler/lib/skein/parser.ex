@@ -2205,6 +2205,19 @@ defmodule Skein.Parser do
     {:ok, %AST.Stop{meta: %{line: line, col: col, file: file}}, rest}
   end
 
+  # suspend(reason_expr)
+  defp parse_primary([{:suspend, {line, col}}, {:lparen, _} | rest], file) do
+    with {:ok, reason, rest2} <- parse_expression(rest, file),
+         {:ok, _rparen, rest2} <- expect(:rparen, rest2, file) do
+      suspend = %AST.Suspend{
+        reason: reason,
+        meta: %{line: line, col: col, file: file}
+      }
+
+      {:ok, suspend, rest2}
+    end
+  end
+
   defp parse_primary(tokens, file) do
     unexpected_token_error(tokens, file, "an expression")
   end

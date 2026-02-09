@@ -136,12 +136,25 @@ on phase(Phase.Done) -> {
 }
 ```
 
+### Suspending
+
+Call `suspend(reason)` to pause an agent for human-in-the-loop review or external input. The agent enters a `:suspended` state and waits until resumed externally:
+
+```skein
+on phase(Phase.Failed) -> {
+  suspend("Requires human review")
+}
+```
+
+A suspended agent stays alive but does not execute any phase handlers until `Skein.Runtime.Agent.resume(pid, next_phase)` is called from outside. This is the primary mechanism for pausing agent workflows that need human intervention.
+
 ### Control Flow Summary
 
 | Construct | Meaning |
 |-----------|---------|
 | `transition(Phase.X)` | Move to phase X and execute its handler |
 | `stop()` | Terminate the agent process normally |
+| `suspend(reason)` | Pause the agent for external input |
 | `emit EventName { field: value }` | Record a domain event |
 
 ## State

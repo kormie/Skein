@@ -39,6 +39,7 @@ defmodule Skein.Analyzer do
   - E0031: Unreachable phase (warning)
   - E0032: Phase handler missing
   - E0033: `transition()` outside agent
+  - E0034: `suspend()` outside agent
 
   ### Supervisor (E004x)
   - E0040: Invalid supervisor strategy
@@ -307,6 +308,9 @@ defmodule Skein.Analyzer do
 
     # Pass 6: Unreachable code after stop() warnings
     errors = errors ++ check_unreachable_after_stop(ast.declarations)
+
+    # Pass 7: suspend() outside agent check
+    errors = errors ++ check_suspend_outside_agent(ast.declarations, env)
 
     filter_result(errors, ast)
   end
@@ -2410,8 +2414,54 @@ defmodule Skein.Analyzer do
 
   defp is_stop_call?(%AST.Stop{}), do: true
   defp is_stop_call?(%AST.Call{target: %AST.Identifier{name: "stop"}, args: []}), do: true
+  defp is_stop_call?(%AST.Suspend{}), do: true
   defp is_stop_call?(_), do: false
 
   defp extract_meta(%{meta: meta}), do: meta
   defp extract_meta(_), do: %{line: 0, col: 0}
+
+  # ------------------------------------------------------------------
+  # E0034: suspend() outside agent
+  # ------------------------------------------------------------------
+
+  defp check_suspend_outside_agent(declarations, env) do
+    fn_suspends =
+      declarations
+      |> Enum.filter(&match?(%AST.Fn{}, &1))
+      |> Enum.flat_map(fn %AST.Fn{body: body} ->
+        collect_suspends(body)
+      end)
+
+    handler_suspends =
+      declarations
+      |> Enum.filter(&match?(%AST.Handler{}, &1))
+      |> Enum.flat_map(fn %AST.Handler{body: body} ->
+        collect_suspends(body)
+      end)
+
+    (fn_suspends ++ handler_suspends)
+    |> Enum.map(fn meta ->
+      %Error{
+        code: "E0034",
+        severity: :error,
+        message:
+          "suspend() can only be used in agent handlers, not in module functions or handlers",
+        location: location_from_meta(meta, env.file),
+        fix_hint: "Move this to an agent handler (on start/on phase)",
+        fix_code: nil
+      }
+    end)
+  end
+
+  defp collect_suspends(%AST.Suspend{meta: meta}), do: [meta]
+
+  defp collect_suspends(%AST.Block{expressions: exprs}),
+    do: Enum.flat_map(exprs, &collect_suspends/1)
+
+  defp collect_suspends(%AST.Match{arms: arms}) do
+    Enum.flat_map(arms, fn %AST.MatchArm{body: body} -> collect_suspends(body) end)
+  end
+
+  defp collect_suspends(%AST.Let{value: value}), do: collect_suspends(value)
+  defp collect_suspends(_), do: []
 end

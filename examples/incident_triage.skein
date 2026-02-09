@@ -1,6 +1,7 @@
 -- incident_triage.skein
 -- A multi-phase agent for triaging production incidents.
--- Demonstrates memory usage, LLM classification, and phase transitions.
+-- Demonstrates memory usage, LLM classification, phase transitions,
+-- and suspend/resume for human escalation review.
 
 agent IncidentTriage {
   capability model("gpt-4")
@@ -44,7 +45,7 @@ agent IncidentTriage {
   on phase(Phase.Escalate) -> {
     let alert = memory.get("alert_id")
     emit IncidentEscalated { alert_id: alert }
-    transition(Phase.Resolve)
+    suspend("Awaiting on-call engineer")
   }
 
   on phase(Phase.Ignore) -> {

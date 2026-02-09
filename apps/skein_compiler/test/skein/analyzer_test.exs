@@ -2502,4 +2502,89 @@ defmodule Skein.AnalyzerTest do
              end)
     end
   end
+
+  # ------------------------------------------------------------------
+  # E0034: suspend() outside agent
+  # ------------------------------------------------------------------
+
+  describe "suspend validation" do
+    test "reports error for suspend in module function" do
+      errors =
+        analyze_errors("""
+        module M {
+          fn bad() -> String {
+            suspend("should not be here")
+          }
+        }
+        """)
+
+      assert Enum.any?(errors, fn e ->
+               e.code == "E0034" and e.severity == :error and
+                 e.message =~ "suspend()"
+             end)
+    end
+
+    test "reports error for suspend in module handler" do
+      errors =
+        analyze_errors("""
+        module M {
+          capability http.in
+
+          handler http GET "/test" (req) -> {
+            suspend("bad")
+          }
+        }
+        """)
+
+      assert Enum.any?(errors, fn e ->
+               e.code == "E0034" and e.severity == :error
+             end)
+    end
+
+    test "accepts suspend inside agent handler" do
+      assert {:ok, _} =
+               analyze("""
+               agent A {
+                 enum Phase {
+                   Active -> []
+                 }
+
+                 on start() -> {
+                   transition(Phase.Active)
+                 }
+
+                 on phase(Phase.Active) -> {
+                   suspend("Waiting for input")
+                 }
+               }
+               """)
+    end
+
+    test "accepts suspend inside agent match arm" do
+      assert {:ok, _} =
+               analyze("""
+               agent A {
+                 enum Phase {
+                   Review -> [Done]
+                   Done -> []
+                 }
+
+                 on start(severity: String) -> {
+                   transition(Phase.Review)
+                 }
+
+                 on phase(Phase.Review) -> {
+                   match 1 {
+                     1 -> suspend("Needs escalation")
+                     _ -> transition(Phase.Done)
+                   }
+                 }
+
+                 on phase(Phase.Done) -> {
+                   stop()
+                 }
+               }
+               """)
+    end
+  end
 end
