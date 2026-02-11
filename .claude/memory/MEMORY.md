@@ -115,7 +115,8 @@
 - **Stdlib is COMPLETE** — all 11 modules, 101 functions
 - **Error Code Alignment is COMPLETE** — all 21 + 3 warning codes
 - **idempotent(key) is COMPLETE** — lexer + parser + analyzer (E0035) + codegen + runtime
-- Next priority: trace.annotate, then llm.embed
+- **trace.annotate is COMPLETE** — analyzer + codegen + runtime (no capability required)
+- Next priority: llm.embed
 - Distribution work is unblocked — all three prerequisites are done
 - LSP (`apps/skein_lsp/`) is implemented — remove from backlog lists
 

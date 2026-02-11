@@ -177,4 +177,129 @@ defmodule Skein.Runtime.TraceTest do
       assert span.outcome == :error
     end
   end
+
+  # ------------------------------------------------------------------
+  # Annotations
+  # ------------------------------------------------------------------
+
+  describe "annotate/2" do
+    test "records an annotation with key and value" do
+      Trace.annotate("user_id", "u-123")
+
+      spans = Trace.recent_spans(10)
+      assert length(spans) == 1
+      annotation = hd(spans)
+      assert annotation.kind == :annotation
+      assert annotation.key == "user_id"
+      assert annotation.value == "u-123"
+    end
+
+    test "records multiple annotations" do
+      Trace.annotate("request_id", "req-1")
+      Trace.annotate("user_id", "u-456")
+
+      spans = Trace.recent_spans(10)
+      annotations = Enum.filter(spans, &(&1.kind == :annotation))
+      assert length(annotations) == 2
+
+      keys = Enum.map(annotations, & &1.key) |> Enum.sort()
+      assert keys == ["request_id", "user_id"]
+    end
+
+    test "annotation has a timestamp" do
+      Trace.annotate("key", "value")
+
+      [annotation] = Trace.recent_spans(1)
+      assert is_integer(annotation.timestamp)
+    end
+
+    test "annotations interleave with regular spans" do
+      Trace.record_span(%{kind: :http, method: :get, url: "test"})
+      Trace.annotate("step", "after_http")
+      Trace.record_span(%{kind: :http, method: :post, url: "test2"})
+
+      spans = Trace.recent_spans(10)
+      assert length(spans) == 3
+
+      kinds = Enum.map(spans, & &1.kind)
+      # Most recent first
+      assert kinds == [:http, :annotation, :http]
+    end
+
+    test "returns :ok" do
+      assert :ok = Trace.annotate("key", "value")
+    end
+  end
+
+  describe "annotate/3 (with capabilities)" do
+    test "ignores capabilities and records annotation" do
+      Trace.annotate("ticket_id", "T-789", [%{kind: "some.cap"}])
+
+      [annotation] = Trace.recent_spans(1)
+      assert annotation.kind == :annotation
+      assert annotation.key == "ticket_id"
+      assert annotation.value == "T-789"
+    end
+
+    test "returns :ok" do
+      assert :ok = Trace.annotate("key", "value", [])
+    end
+  end
+
+  # ------------------------------------------------------------------
+  # Property tests: annotate
+  # ------------------------------------------------------------------
+
+  if Code.ensure_loaded?(StreamData) do
+    describe "annotate property tests" do
+      use ExUnitProperties
+
+      property "arbitrary key/value strings produce valid annotations" do
+        check all(
+                key <- string(:printable, min_length: 1, max_length: 100),
+                value <- string(:printable, min_length: 0, max_length: 500)
+              ) do
+          Trace.clear()
+          assert :ok = Trace.annotate(key, value)
+
+          [annotation] = Trace.recent_spans(1)
+          assert annotation.kind == :annotation
+          assert annotation.key == key
+          assert annotation.value == value
+          assert is_integer(annotation.timestamp)
+        end
+      end
+
+      property "special characters in keys don't break storage" do
+        check all(key <- string(:printable, min_length: 1, max_length: 50)) do
+          Trace.clear()
+          Trace.annotate(key, "test")
+
+          [annotation] = Trace.recent_spans(1)
+          assert annotation.key == key
+        end
+      end
+
+      property "annotations appear in recent_spans alongside regular spans" do
+        check all(
+                n <- integer(1..5),
+                keys <- list_of(string(:alphanumeric, min_length: 1, max_length: 20), length: n)
+              ) do
+          Trace.clear()
+
+          # Record a regular span
+          Trace.record_span(%{kind: :http, method: :get, url: "test"})
+
+          # Record n annotations
+          Enum.each(keys, fn key -> Trace.annotate(key, "v") end)
+
+          spans = Trace.recent_spans(n + 1)
+          assert length(spans) == n + 1
+
+          annotations = Enum.filter(spans, &(&1.kind == :annotation))
+          assert length(annotations) == n
+        end
+      end
+    end
+  end
 end

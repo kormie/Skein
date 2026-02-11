@@ -209,6 +209,42 @@ handler topic "order.events" (msg) -> {
 
 See the [Handlers](/Skein/language/handlers/) page for full topic handler documentation.
 
+### Trace
+
+`trace.annotate(key, value)` adds key-value metadata to the trace log. Unlike other effects, trace annotations do **not** require a capability declaration -- they are always available in any module, agent, or handler.
+
+```skein
+module UserService {
+  capability http.in
+
+  handler http GET "/greet/:name" (req) -> {
+    let name = req.params.name
+    trace.annotate("user", name)
+    respond.json(200, "hello")
+  }
+}
+```
+
+Annotations are recorded as trace entries with `kind: :annotation` alongside regular effect spans. They appear in `Skein.Runtime.Trace.recent_spans/1` output interleaved with HTTP, memory, and LLM spans.
+
+In agents, use `trace.annotate` to enrich trace context with business-relevant data:
+
+```skein
+agent RefundAgent {
+  capability model("gpt-4")
+  capability memory.kv
+
+  on phase(Phase.Review) -> {
+    let order = memory.get("order_id")
+    trace.annotate("ticket_id", order)
+    let decision = llm.chat("gpt-4", "Evaluate refund", order)
+    trace.annotate("decision", decision)
+    memory.put("decision", decision)
+    transition(Phase.Approved)
+  }
+}
+```
+
 ### How They Parse
 
 Effect calls use existing Skein syntax -- no special grammar is needed. `http.get(url)` parses as:
@@ -310,12 +346,14 @@ Every effect call is automatically traced. The runtime records:
 
 | Field | Description |
 |-------|-------------|
-| `kind` | Effect type (`:http`, `:memory`, `:llm`, `:store`, `:tool`) |
+| `kind` | Effect type (`:http`, `:memory`, `:llm`, `:store`, `:tool`, `:annotation`) |
 | `method` | Operation (`:get`, `:post`, `:put`, `:chat`, `:json`, `:call`, etc.) |
 | `url` | Target URL (HTTP) |
 | `namespace` | Memory namespace (Memory) |
 | `model` | LLM model name (LLM) |
 | `name` | Tool name (Tool) |
+| `key` | Annotation key (Trace annotations) |
+| `value` | Annotation value (Trace annotations) |
 | `duration_us` | Wall-clock duration in microseconds |
 | `outcome` | `:ok` or `:error` |
 | `timestamp` | Monotonic timestamp |

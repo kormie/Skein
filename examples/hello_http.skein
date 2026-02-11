@@ -13,6 +13,7 @@ module HelloHttp {
   -- Greeting endpoint with path parameter (JSON)
   handler http GET "/greet/:name" (req) -> {
     let name = req.params.name
+    trace.annotate("user", name)
     respond.json(200, "hello")
   }
 
