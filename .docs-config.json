@@ -74,8 +74,8 @@
       "docs": ["runtime/overview"]
     },
     {
-      "source": "docs/IMPLEMENTATION_PLAN.md",
-      "docs": ["roadmap/phase-2"]
+      "source": "docs/ROADMAP.md",
+      "docs": ["roadmap/overview"]
     },
     {
       "source": "apps/skein_compiler/lib/skein/lexer.ex",
