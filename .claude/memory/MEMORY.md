@@ -111,16 +111,11 @@
 - `stop()` is parsed as `AST.Stop` node, NOT `AST.Call`
 
 ## What's Next
-- **UP_NEXT.md** (`docs/UP_NEXT.md`) is the canonical prioritized backlog
-- **Stdlib is COMPLETE** — all 11 modules, 101 functions
-- **Error Code Alignment is COMPLETE** — all 21 + 3 warning codes
-- **idempotent(key) is COMPLETE** — lexer + parser + analyzer (E0035) + codegen + runtime
-- **trace.annotate is COMPLETE** — analyzer + codegen + runtime (no capability required)
-- **llm.embed is COMPLETE** — analyzer + codegen + runtime (uses model capability)
-- **Remaining Capabilities are COMPLETE** — process.spawn, timer, event.log (analyzer + codegen + runtime)
-- Next priority: Check UP_NEXT.md for remaining items
-- Distribution work is unblocked — all three prerequisites are done
-- LSP (`apps/skein_lsp/`) is implemented — remove from backlog lists
+- **ROADMAP.md** (`docs/ROADMAP.md`) is the canonical prioritized work list
+- Phases 1-10 + all UP_NEXT priorities are COMPLETE
+- Top priorities now: real type inference (field access, pattern bindings), spec-example alignment, runtime capability enforcement
+- See `docs/AUDIT_FIRST_PRINCIPLES.md` for the detailed gap analysis behind the roadmap
+- `docs/IMPLEMENTATION_PLAN.md` and `docs/UP_NEXT.md` were deleted (fully completed, outdated)
 
 ## Topic Pub/Sub (Priority 5 — COMPLETE)
 - `handler topic "name" (msg) -> { ... }` parsed by `parse_topic_handler`
