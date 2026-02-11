@@ -413,4 +413,54 @@ defmodule Skein.ExamplesTest do
       assert {:respond_json, 200, "analytics-recorded"} = result
     end
   end
+
+  # ------------------------------------------------------------------
+  # semantic_search.skein
+  # ------------------------------------------------------------------
+
+  describe "semantic_search.skein" do
+    test "compiles successfully" do
+      Skein.Runtime.Llm.set_backend(Skein.Runtime.Llm.TestBackend)
+
+      assert {:module, mod} =
+               Compiler.compile_file(Path.join(project_root(), "examples/semantic_search.skein"))
+
+      assert is_atom(mod)
+    end
+
+    test "index function embeds and stores text" do
+      Skein.Runtime.Llm.set_backend(Skein.Runtime.Llm.TestBackend)
+
+      {:module, mod} =
+        Compiler.compile_file(Path.join(project_root(), "examples/semantic_search.skein"))
+
+      assert mod.index("doc_1", "The sky is blue") == "indexed"
+    end
+
+    test "search function uses embed and chat" do
+      Skein.Runtime.Llm.set_backend(Skein.Runtime.Llm.TestBackend)
+
+      {:module, mod} =
+        Compiler.compile_file(Path.join(project_root(), "examples/semantic_search.skein"))
+
+      # Index a document first so memory.get works
+      mod.index("doc_1", "The sky is blue")
+
+      assert {:ok, response} = mod.search("What color is the sky?")
+      assert is_binary(response)
+    end
+
+    test "has HTTP handler metadata" do
+      Skein.Runtime.Llm.set_backend(Skein.Runtime.Llm.TestBackend)
+
+      {:module, mod} =
+        Compiler.compile_file(Path.join(project_root(), "examples/semantic_search.skein"))
+
+      handlers = mod.__handlers__()
+      assert length(handlers) == 2
+
+      sources = Enum.map(handlers, & &1.source)
+      assert Enum.all?(sources, &(&1 == :http))
+    end
+  end
 end

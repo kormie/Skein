@@ -105,9 +105,10 @@ Memory is scoped by namespace. Each namespace requires a `capability memory.kv("
 llm.chat("claude-sonnet-4-5", "system prompt", input)
 llm.json[RefundDecision]("claude-sonnet-4-5", "system prompt", input)
 llm.stream("claude-sonnet-4-5", "system prompt", input)
+llm.embed("text-embedding-3-small", input)
 ```
 
-`llm.chat` returns unstructured text. `llm.json[T]` returns a parsed map constrained by a JSON schema derived from type `T` at compile time. `llm.stream` returns the assembled response text after streaming all chunks. All three require a `capability model(...)` declaration.
+`llm.chat` returns unstructured text. `llm.json[T]` returns a parsed map constrained by a JSON schema derived from type `T` at compile time. `llm.stream` returns the assembled response text after streaming all chunks. `llm.embed` returns a vector (list of floats) for use in semantic search and RAG patterns. All four require a `capability model(...)` declaration.
 
 #### Type-Parameterized JSON (`llm.json[T]`)
 
@@ -277,6 +278,7 @@ The analyzer recognizes this pattern and checks it against declared capabilities
 - `llm.chat` returns `{:ok, response_text}` or `{:error, %Llm.Error{}}`
 - `llm.json` returns `{:ok, parsed_map}` or `{:error, %Llm.Error{}}`
 - `llm.stream` returns `{:ok, assembled_text}` or `{:error, %Llm.Error{}}` (chunks delivered via callback at runtime)
+- `llm.embed` returns `{:ok, [float()]}` or `{:error, %Llm.Error{}}` (vector dimensionality depends on model)
 
 ## Compile-Time Checking
 
@@ -347,7 +349,7 @@ Every effect call is automatically traced. The runtime records:
 | Field | Description |
 |-------|-------------|
 | `kind` | Effect type (`:http`, `:memory`, `:llm`, `:store`, `:tool`, `:annotation`) |
-| `method` | Operation (`:get`, `:post`, `:put`, `:chat`, `:json`, `:call`, etc.) |
+| `method` | Operation (`:get`, `:post`, `:put`, `:chat`, `:json`, `:embed`, `:call`, etc.) |
 | `url` | Target URL (HTTP) |
 | `namespace` | Memory namespace (Memory) |
 | `model` | LLM model name (LLM) |

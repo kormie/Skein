@@ -3,9 +3,10 @@ defmodule Skein.Runtime.Llm do
   Provider-agnostic LLM client for Skein.
 
   Provides `chat/4` for unstructured text responses, `json/5` for
-  schema-constrained structured responses, and `stream/5` for streaming
-  chunked responses. Called by compiled Skein code when `llm.chat(...)`,
-  `llm.json(...)`, or `llm.stream(...)` effect calls are encountered.
+  schema-constrained structured responses, `stream/5` for streaming
+  chunked responses, and `embed/3` for text embeddings. Called by compiled
+  Skein code when `llm.chat(...)`, `llm.json(...)`, `llm.stream(...)`,
+  or `llm.embed(...)` effect calls are encountered.
 
   Uses a pluggable backend system:
   - `Skein.Runtime.Llm.TestBackend` — deterministic responses for testing
@@ -114,6 +115,28 @@ defmodule Skein.Runtime.Llm do
   end
 
   @doc """
+  Generates an embedding vector for the given input text.
+
+  Returns `{:ok, [float()]}` or `{:error, %Llm.Error{}}`.
+  The vector dimensionality depends on the model used.
+  """
+  @spec embed(String.t(), String.t(), [map()]) ::
+          {:ok, [float()]} | {:error, Error.t()}
+  def embed(model, input, capabilities)
+      when is_binary(model) and is_binary(input) and is_list(capabilities) do
+    Trace.with_span(%{kind: :llm, method: :embed, model: model}, fn ->
+      case check_model_capability(model, capabilities) do
+        :ok ->
+          backend = get_backend()
+          call_embed(backend, model, input)
+
+        {:error, reason} ->
+          {:error, Error.capability_error(reason)}
+      end
+    end)
+  end
+
+  @doc """
   Sets the active LLM backend. Useful for testing.
 
   Accepts a module atom or a `{module, config}` tuple for dynamic backends.
@@ -152,6 +175,15 @@ defmodule Skein.Runtime.Llm do
 
   defp call_stream(module, model, system, input, _on_chunk) when is_atom(module) do
     module.stream(model, system, input)
+  end
+
+  # Call embed on the backend, handling both module and {module, config} tuple backends
+  defp call_embed({module, _config}, model, input) do
+    module.embed(model, input)
+  end
+
+  defp call_embed(module, model, input) when is_atom(module) do
+    module.embed(model, input)
   end
 
   defp check_model_capability(_model, capabilities) do
@@ -270,7 +302,10 @@ defmodule Skein.Runtime.Llm.Backend do
   @callback stream(model :: String.t(), system :: String.t(), input :: any()) ::
               {:ok, [String.t()]} | {:error, Skein.Runtime.Llm.Error.t()}
 
-  @optional_callbacks [stream: 3]
+  @callback embed(model :: String.t(), input :: String.t()) ::
+              {:ok, [float()]} | {:error, Skein.Runtime.Llm.Error.t()}
+
+  @optional_callbacks [stream: 3, embed: 2]
 end
 
 defmodule Skein.Runtime.Llm.TestBackend do
@@ -289,6 +324,21 @@ defmodule Skein.Runtime.Llm.TestBackend do
   def json(_model, _system, _input, _schema) do
     {:ok, %{"action" => "approve", "amount" => 100, "reason" => "Test decision"}}
   end
+
+  @impl true
+  def embed(_model, input) do
+    # Generate a deterministic 8-dimensional embedding vector from the input hash.
+    # Same input always produces the same vector; different inputs produce different vectors.
+    hash = :erlang.phash2(input, 1_000_000)
+
+    vector =
+      for i <- 0..7 do
+        # Seed-based deterministic float in [-1.0, 1.0]
+        :erlang.phash2({hash, i}, 2_000_001) / 1_000_000 - 1.0
+      end
+
+    {:ok, vector}
+  end
 end
 
 defmodule Skein.Runtime.Llm.FailingBackend do
@@ -306,6 +356,11 @@ defmodule Skein.Runtime.Llm.FailingBackend do
   @impl true
   def json(_model, _system, _input, _schema) do
     {:error, Skein.Runtime.Llm.Error.provider_error("500", "Internal server error")}
+  end
+
+  @impl true
+  def embed(_model, _input) do
+    {:error, Skein.Runtime.Llm.Error.provider_error("500", "Embedding failed")}
   end
 end
 
