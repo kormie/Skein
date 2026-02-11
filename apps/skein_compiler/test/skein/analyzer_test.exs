@@ -2779,4 +2779,91 @@ defmodule Skein.AnalyzerTest do
              end)
     end
   end
+
+  # ------------------------------------------------------------------
+  # trace.annotate — no capability required
+  # ------------------------------------------------------------------
+
+  describe "trace.annotate checking" do
+    test "trace.annotate in fn body passes without any capability" do
+      assert {:ok, _} =
+               analyze("""
+               module M {
+                 fn tag_request(key: String, val: String) -> String {
+                   trace.annotate(key, val)
+                   "done"
+                 }
+               }
+               """)
+    end
+
+    test "trace.annotate in handler body passes without any capability" do
+      assert {:ok, _} =
+               analyze("""
+               module M {
+                 capability http.in
+
+                 handler http GET "/test" (req) -> {
+                   trace.annotate("endpoint", "/test")
+                   respond.json(200, "ok")
+                 }
+               }
+               """)
+    end
+
+    test "trace.annotate in agent handler passes without any capability" do
+      assert {:ok, _} =
+               analyze("""
+               agent A {
+                 state { id: String }
+
+                 enum Phase {
+                   Start -> [Done]
+                   Done -> []
+                 }
+
+                 on start(id: String) -> {
+                   trace.annotate("agent_id", id)
+                   transition(Phase.Start)
+                 }
+
+                 on phase(Phase.Start) -> {
+                   trace.annotate("phase", "start")
+                   transition(Phase.Done)
+                 }
+
+                 on phase(Phase.Done) -> {
+                   stop()
+                 }
+               }
+               """)
+    end
+
+    test "multiple trace.annotate calls in same function pass" do
+      assert {:ok, _} =
+               analyze("""
+               module M {
+                 fn annotate_all(a: String, b: String) -> String {
+                   trace.annotate("key1", a)
+                   trace.annotate("key2", b)
+                   "done"
+                 }
+               }
+               """)
+    end
+
+    test "trace.annotate alongside other effects passes" do
+      assert {:ok, _} =
+               analyze("""
+               module M {
+                 capability http.out("api.example.com")
+
+                 fn fetch(url: String) -> String {
+                   trace.annotate("url", url)
+                   http.get(url)
+                 }
+               }
+               """)
+    end
+  end
 end

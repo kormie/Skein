@@ -72,6 +72,31 @@ defmodule Skein.Runtime.Trace do
   end
 
   @doc """
+  Adds a key-value annotation to the trace log.
+
+  Annotations are recorded as spans with `kind: :annotation`, making them
+  visible alongside regular effect spans in the trace output.
+
+  This is the runtime backing for `trace.annotate(key, value)` in Skein source.
+  """
+  @spec annotate(String.t(), String.t()) :: :ok
+  def annotate(key, value) do
+    record_span(%{kind: :annotation, key: key, value: value})
+  end
+
+  @doc """
+  Adds a key-value annotation to the trace log.
+
+  Three-argument form used by compiled Skein code. The capabilities
+  argument is accepted for consistency with other effect calls but is
+  not used — trace annotations do not require any capability.
+  """
+  @spec annotate(String.t(), String.t(), list()) :: :ok
+  def annotate(key, value, _capabilities) do
+    annotate(key, value)
+  end
+
+  @doc """
   Executes a function and records a trace span with timing.
 
   The `metadata` map should contain at least `:kind`, `:method`, and `:url`.

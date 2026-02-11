@@ -2644,4 +2644,146 @@ defmodule Skein.CodeGen.CoreErlangTest do
       refute Process.alive?(pid)
     end
   end
+
+  # ------------------------------------------------------------------
+  # trace.annotate codegen
+  # ------------------------------------------------------------------
+
+  describe "trace.annotate codegen" do
+    test "trace.annotate generates runtime call" do
+      Skein.Runtime.Trace.clear()
+
+      mod =
+        compile!("""
+        module TraceAnnotateBasic {
+          fn tag(key: String, val: String) -> String {
+            trace.annotate(key, val)
+            "done"
+          }
+        }
+        """)
+
+      assert function_exported?(mod, :tag, 2)
+      result = mod.tag("user_id", "u-123")
+      assert result == "done"
+
+      # Verify the annotation was recorded
+      spans = Skein.Runtime.Trace.recent_spans(10)
+      annotations = Enum.filter(spans, &(&1.kind == :annotation))
+      assert length(annotations) >= 1
+      annotation = hd(annotations)
+      assert annotation.key == "user_id"
+      assert annotation.value == "u-123"
+    end
+
+    test "trace.annotate with string literal arguments" do
+      Skein.Runtime.Trace.clear()
+
+      mod =
+        compile!("""
+        module TraceAnnotateLiteral {
+          fn mark() -> String {
+            trace.annotate("endpoint", "/health")
+            "marked"
+          }
+        }
+        """)
+
+      mod.mark()
+
+      spans = Skein.Runtime.Trace.recent_spans(10)
+      annotations = Enum.filter(spans, &(&1.kind == :annotation))
+      assert length(annotations) >= 1
+      assert hd(annotations).key == "endpoint"
+      assert hd(annotations).value == "/health"
+    end
+
+    test "multiple trace.annotate calls in same function" do
+      Skein.Runtime.Trace.clear()
+
+      mod =
+        compile!("""
+        module TraceAnnotateMulti {
+          fn annotate_all() -> String {
+            trace.annotate("step", "start")
+            trace.annotate("component", "auth")
+            "done"
+          }
+        }
+        """)
+
+      mod.annotate_all()
+
+      spans = Skein.Runtime.Trace.recent_spans(10)
+      annotations = Enum.filter(spans, &(&1.kind == :annotation))
+      assert length(annotations) == 2
+
+      keys = Enum.map(annotations, & &1.key) |> Enum.sort()
+      assert keys == ["component", "step"]
+    end
+
+    test "trace.annotate in handler body" do
+      Skein.Runtime.Trace.clear()
+
+      mod =
+        compile!("""
+        module TraceAnnotateHandler {
+          capability http.in
+
+          handler http GET "/test" (req) -> {
+            trace.annotate("handler", "test")
+            respond.json(200, "ok")
+          }
+        }
+        """)
+
+      result = mod.__handler_0__(%{params: %{}})
+      assert {:respond_json, 200, "ok"} = result
+
+      spans = Skein.Runtime.Trace.recent_spans(10)
+      annotations = Enum.filter(spans, &(&1.kind == :annotation))
+      assert length(annotations) >= 1
+      assert hd(annotations).key == "handler"
+    end
+
+    test "trace.annotate does not require any capability" do
+      # Should compile without any capability declaration
+      mod =
+        compile!("""
+        module TraceAnnotateNoCap {
+          fn tag() -> String {
+            trace.annotate("key", "val")
+            "ok"
+          }
+        }
+        """)
+
+      assert function_exported?(mod, :tag, 0)
+    end
+
+    test "trace.annotate alongside other effect calls" do
+      Skein.Runtime.Trace.clear()
+
+      mod =
+        compile!("""
+        module TraceAnnotateMixed {
+          capability http.out("api.example.com")
+
+          fn fetch(url: String) -> String {
+            trace.annotate("url", url)
+            http.get(url)
+          }
+        }
+        """)
+
+      # Call should record both annotation and HTTP trace
+      mod.fetch("https://api.example.com/data")
+
+      spans = Skein.Runtime.Trace.recent_spans(10)
+      annotations = Enum.filter(spans, &(&1.kind == :annotation))
+      http_spans = Enum.filter(spans, &(&1.kind == :http))
+      assert length(annotations) >= 1
+      assert length(http_spans) >= 1
+    end
+  end
 end

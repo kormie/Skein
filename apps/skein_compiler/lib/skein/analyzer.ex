@@ -77,12 +77,14 @@ defmodule Skein.Analyzer do
           | :unknown
 
   # Known effect namespaces and the capabilities they require
+  # A nil value means no capability is required (e.g., trace is always available)
   @effect_namespaces %{
     "http" => "http.out",
     "memory" => "memory.kv",
     "llm" => "model",
     "tool" => "tool.use",
-    "topic" => "topic.publish"
+    "topic" => "topic.publish",
+    "trace" => nil
   }
 
   # Known effect methods per namespace
@@ -91,7 +93,8 @@ defmodule Skein.Analyzer do
     "memory" => ["put", "get", "get!", "delete", "list"],
     "llm" => ["chat", "json", "stream"],
     "tool" => ["call", "list", "schema"],
-    "topic" => ["publish"]
+    "topic" => ["publish"],
+    "trace" => ["annotate"]
   }
 
   # Store operations: store.<table>.<method>(...)
@@ -1616,8 +1619,17 @@ defmodule Skein.Analyzer do
   end
 
   defp check_effect_capability(namespace, _method, meta, env) do
-    required_capability = Map.fetch!(@effect_namespaces, namespace)
+    case Map.fetch!(@effect_namespaces, namespace) do
+      # No capability required for this effect namespace (e.g., trace)
+      nil ->
+        []
 
+      required_capability ->
+        check_effect_capability_required(namespace, required_capability, meta, env)
+    end
+  end
+
+  defp check_effect_capability_required(namespace, required_capability, meta, env) do
     has_capability =
       Enum.any?(env.capabilities, fn %AST.Capability{kind: kind} ->
         kind == required_capability
