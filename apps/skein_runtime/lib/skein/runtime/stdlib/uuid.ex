@@ -2,12 +2,19 @@ defmodule Skein.Runtime.Stdlib.Uuid do
   @moduledoc """
   Standard library functions for the Skein `Uuid` type.
 
-  UUIDs are represented as binary strings (e.g., "550e8400-e29b-41d4-a716-446655440000").
+  UUIDs are represented as lowercase binary strings
+  (e.g., `"550e8400-e29b-41d4-a716-446655440000"`).
   Uses a pure-Erlang v4 (random) UUID generator — no external deps.
+
+  ## Examples (Skein)
+
+      let id = Uuid.new()        -- "550e8400-e29b-41d4-a716-446655440000"
+      Uuid.parse("...")           -- Ok(uuid)
   """
 
   import Bitwise
 
+  @doc "Generates a new random v4 UUID string."
   @spec new() :: binary()
   def new do
     # Generate v4 (random) UUID
@@ -23,6 +30,12 @@ defmodule Skein.Runtime.Stdlib.Uuid do
     IO.iodata_to_binary(hex)
   end
 
+  @doc """
+  Parses and validates a UUID string.
+
+  Returns `{:ok, uuid}` with a normalized (lowercase) UUID, or
+  `{:error, message}` if the format is invalid.
+  """
   @spec parse(binary()) :: {:ok, binary()} | {:error, binary()}
   def parse(s) when is_binary(s) do
     # Validate UUID format: 8-4-4-4-12 hex chars
@@ -32,6 +45,7 @@ defmodule Skein.Runtime.Stdlib.Uuid do
     end
   end
 
+  @doc "Returns the UUID string unchanged (UUIDs are already strings)."
   @spec to_string(binary()) :: binary()
   def to_string(uuid) when is_binary(uuid), do: uuid
 end

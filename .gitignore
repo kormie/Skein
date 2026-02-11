@@ -35,3 +35,4 @@ erl_crash.dump
 .astro/
 node_modules/
 docs/site/dist/
+docs/site/public/api/

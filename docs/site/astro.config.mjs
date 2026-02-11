@@ -103,6 +103,7 @@ export default defineConfig({
           label: 'Reference',
           items: [
             { label: 'Standard Library', slug: 'reference/stdlib' },
+            { label: 'API Reference (ExDoc)', link: '/Skein/api/' },
             { label: 'Agent Quick Reference', slug: 'reference/agent-quick-reference' },
           ],
         },
