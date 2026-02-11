@@ -2786,4 +2786,161 @@ defmodule Skein.CodeGen.CoreErlangTest do
       assert length(http_spans) >= 1
     end
   end
+
+  # ------------------------------------------------------------------
+  # Priority 9: process.spawn, timer, event.log codegen
+  # ------------------------------------------------------------------
+
+  describe "process.spawn codegen" do
+    test "process.spawn compiles to runtime call" do
+      mod =
+        compile!("""
+        module ProcessSpawnTest {
+          capability process.spawn("workers")
+
+          fn run_task() -> String {
+            process.spawn("task")
+          }
+        }
+        """)
+
+      fns = mod.__info__(:functions)
+      assert {:run_task, 0} in fns
+    end
+
+    test "process.spawn with multiple capabilities compiles" do
+      mod =
+        compile!("""
+        module ProcessSpawnMulti {
+          capability process.spawn("workers")
+          capability http.out("api.example.com")
+
+          fn do_work() -> String {
+            process.spawn("task")
+          }
+        }
+        """)
+
+      fns = mod.__info__(:functions)
+      assert {:do_work, 0} in fns
+    end
+  end
+
+  describe "timer codegen" do
+    test "timer.after compiles to runtime call" do
+      mod =
+        compile!("""
+        module TimerAfterTest {
+          capability timer("default")
+
+          fn schedule() -> String {
+            timer.after(1000, "callback")
+          }
+        }
+        """)
+
+      fns = mod.__info__(:functions)
+      assert {:schedule, 0} in fns
+    end
+
+    test "timer.interval compiles to runtime call" do
+      mod =
+        compile!("""
+        module TimerIntervalTest {
+          capability timer("default")
+
+          fn schedule_interval() -> String {
+            timer.interval(5000, "callback")
+          }
+        }
+        """)
+
+      fns = mod.__info__(:functions)
+      assert {:schedule_interval, 0} in fns
+    end
+
+    test "timer.cancel compiles to runtime call" do
+      mod =
+        compile!("""
+        module TimerCancelTest {
+          capability timer("default")
+
+          fn cancel_timer() -> String {
+            timer.cancel("ref123")
+          }
+        }
+        """)
+
+      fns = mod.__info__(:functions)
+      assert {:cancel_timer, 0} in fns
+    end
+  end
+
+  describe "event.log codegen" do
+    test "event.log compiles to runtime call" do
+      mod =
+        compile!("""
+        module EventLogTest {
+          capability event.log("audit")
+
+          fn log_event() -> String {
+            event.log("user.login", "data")
+          }
+        }
+        """)
+
+      fns = mod.__info__(:functions)
+      assert {:log_event, 0} in fns
+    end
+
+    test "event.log is callable and records events" do
+      Skein.Runtime.EventLog.reset_all()
+
+      mod =
+        compile!("""
+        module EventLogCallable {
+          capability event.log("audit")
+
+          fn log_it() -> String {
+            event.log("test.event", "payload")
+          }
+        }
+        """)
+
+      mod.log_it()
+
+      events = Skein.Runtime.EventLog.all()
+      assert length(events) >= 1
+      event = Enum.find(events, &(&1.event == "test.event"))
+      assert event != nil
+      assert event.data == "payload"
+
+      Skein.Runtime.EventLog.reset_all()
+    end
+
+    test "multiple event.log calls in same function" do
+      Skein.Runtime.EventLog.reset_all()
+
+      mod =
+        compile!("""
+        module MultiEventLog {
+          capability event.log("audit")
+
+          fn log_multiple() -> String {
+            event.log("start", "begin")
+            event.log("end", "done")
+          }
+        }
+        """)
+
+      mod.log_multiple()
+
+      events = Skein.Runtime.EventLog.all()
+      event_names = Enum.map(events, & &1.event)
+      assert "start" in event_names
+      assert "end" in event_names
+
+      Skein.Runtime.EventLog.reset_all()
+    end
+  end
 end

@@ -1,0 +1,39 @@
+-- background_tasks.skein
+-- Demonstrates process.spawn and timer capabilities.
+-- An HTTP service that spawns background tasks on demand and uses
+-- timers for delayed actions and periodic maintenance.
+
+module BackgroundTasks {
+  capability http.in
+  capability process.spawn("workers")
+  capability timer("maintenance")
+
+  -- HTTP endpoint to trigger a background task
+  handler http POST "/tasks" (req) -> {
+    process.spawn("image-resize")
+    respond.json(202, "task-spawned")
+  }
+
+  -- HTTP endpoint to schedule a delayed action
+  handler http POST "/delayed" (req) -> {
+    timer.after(5000, "send-notification")
+    respond.json(202, "scheduled")
+  }
+
+  -- HTTP endpoint to start a recurring check
+  handler http POST "/monitor" (req) -> {
+    timer.interval(30000, "health-check")
+    respond.json(202, "monitoring-started")
+  }
+
+  -- HTTP endpoint to cancel a timer
+  handler http POST "/cancel" (req) -> {
+    timer.cancel("timer-ref")
+    respond.json(200, "cancelled")
+  }
+
+  -- Health check endpoint
+  handler http GET "/health" (req) -> {
+    respond.json(200, "ok")
+  }
+}

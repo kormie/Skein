@@ -463,4 +463,89 @@ defmodule Skein.ExamplesTest do
       assert Enum.all?(sources, &(&1 == :http))
     end
   end
+
+  # ------------------------------------------------------------------
+  # background_tasks.skein
+  # ------------------------------------------------------------------
+
+  describe "background_tasks.skein" do
+    test "compiles successfully" do
+      assert {:module, mod} =
+               Compiler.compile_file(Path.join(project_root(), "examples/background_tasks.skein"))
+
+      assert is_atom(mod)
+    end
+
+    test "has handler metadata with correct sources" do
+      {:module, mod} =
+        Compiler.compile_file(Path.join(project_root(), "examples/background_tasks.skein"))
+
+      handlers = mod.__handlers__()
+      assert length(handlers) == 5
+
+      sources = Enum.map(handlers, & &1.source)
+      assert Enum.all?(sources, &(&1 == :http))
+    end
+
+    test "health handler returns ok" do
+      {:module, mod} =
+        Compiler.compile_file(Path.join(project_root(), "examples/background_tasks.skein"))
+
+      # The last handler (index 4) is GET /health
+      result = mod.__handler_4__(%{})
+      assert {:respond_json, 200, "ok"} = result
+    end
+  end
+
+  # ------------------------------------------------------------------
+  # audit_log.skein
+  # ------------------------------------------------------------------
+
+  describe "audit_log.skein" do
+    test "compiles successfully" do
+      assert {:module, mod} =
+               Compiler.compile_file(Path.join(project_root(), "examples/audit_log.skein"))
+
+      assert is_atom(mod)
+    end
+
+    test "has handler metadata" do
+      {:module, mod} =
+        Compiler.compile_file(Path.join(project_root(), "examples/audit_log.skein"))
+
+      handlers = mod.__handlers__()
+      assert length(handlers) == 4
+
+      sources = Enum.map(handlers, & &1.source)
+      assert Enum.all?(sources, &(&1 == :http))
+    end
+
+    test "login handler logs event and responds" do
+      Skein.Runtime.EventLog.reset_all()
+
+      {:module, mod} =
+        Compiler.compile_file(Path.join(project_root(), "examples/audit_log.skein"))
+
+      result = mod.__handler_0__(%{user: "alice"})
+      assert {:respond_json, 200, "logged-in"} = result
+
+      events = Skein.Runtime.EventLog.all()
+      login_events = Enum.filter(events, &(&1.event == "user.login"))
+      assert length(login_events) >= 1
+
+      Skein.Runtime.EventLog.reset_all()
+    end
+
+    test "health handler returns ok without logging" do
+      Skein.Runtime.EventLog.reset_all()
+
+      {:module, mod} =
+        Compiler.compile_file(Path.join(project_root(), "examples/audit_log.skein"))
+
+      result = mod.__handler_3__(%{})
+      assert {:respond_json, 200, "ok"} = result
+
+      Skein.Runtime.EventLog.reset_all()
+    end
+  end
 end

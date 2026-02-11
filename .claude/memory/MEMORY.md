@@ -117,7 +117,8 @@
 - **idempotent(key) is COMPLETE** — lexer + parser + analyzer (E0035) + codegen + runtime
 - **trace.annotate is COMPLETE** — analyzer + codegen + runtime (no capability required)
 - **llm.embed is COMPLETE** — analyzer + codegen + runtime (uses model capability)
-- Next priority: Remaining Capability Kinds (process.spawn, timer, event.log)
+- **Remaining Capabilities are COMPLETE** — process.spawn, timer, event.log (analyzer + codegen + runtime)
+- Next priority: Check UP_NEXT.md for remaining items
 - Distribution work is unblocked — all three prerequisites are done
 - LSP (`apps/skein_lsp/`) is implemented — remove from backlog lists
 
@@ -141,6 +142,19 @@
 - Runtime Idempotent: `apps/skein_runtime/lib/skein/runtime/idempotent.ex`
 - Example: `examples/queue_worker.skein` uses `idempotent(msg.id)`
 - Can't use `ttl_ms()` in guard clauses — must bind to variable first
+
+## Remaining Capabilities (Priority 9 — COMPLETE)
+- `process.spawn` → namespace `process`, capability `process.spawn`, runtime `Skein.Runtime.Process` (DynamicSupervisor)
+- `timer` → namespace `timer`, capability `timer`, runtime `Skein.Runtime.Timer` (GenServer + ETS)
+  - `timer.after` is an Elixir reserved word: uses `def unquote(:after)(...)` syntax, tests use `apply(Timer, :after, [...])`
+  - Timer methods: `after`, `interval`, `cancel`
+- `event.log` → namespace `event`, capability `event.log`, runtime `Skein.Runtime.EventLog` (ETS)
+  - Method: `log`
+- All three follow the standard effect pattern: added to `@effect_namespaces`, `@effect_methods`, `@effect_runtime_modules`
+- Examples: `examples/background_tasks.skein`, `examples/audit_log.skein`
+- Runtime Process: `apps/skein_runtime/lib/skein/runtime/process.ex`
+- Runtime Timer: `apps/skein_runtime/lib/skein/runtime/timer.ex`
+- Runtime EventLog: `apps/skein_runtime/lib/skein/runtime/event_log.ex`
 
 ## Streaming Implementation Notes (Phase 8f)
 - `llm.stream` uses same `model` capability as `chat`/`json`

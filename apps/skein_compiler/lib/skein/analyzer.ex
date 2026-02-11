@@ -84,7 +84,10 @@ defmodule Skein.Analyzer do
     "llm" => "model",
     "tool" => "tool.use",
     "topic" => "topic.publish",
-    "trace" => nil
+    "trace" => nil,
+    "process" => "process.spawn",
+    "timer" => "timer",
+    "event" => "event.log"
   }
 
   # Known effect methods per namespace
@@ -94,7 +97,10 @@ defmodule Skein.Analyzer do
     "llm" => ["chat", "json", "stream", "embed"],
     "tool" => ["call", "list", "schema"],
     "topic" => ["publish"],
-    "trace" => ["annotate"]
+    "trace" => ["annotate"],
+    "process" => ["spawn"],
+    "timer" => ["after", "interval", "cancel"],
+    "event" => ["log"]
   }
 
   # Store operations: store.<table>.<method>(...)

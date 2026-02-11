@@ -2866,4 +2866,187 @@ defmodule Skein.AnalyzerTest do
                """)
     end
   end
+
+  # ------------------------------------------------------------------
+  # Priority 9: process.spawn, timer, event.log capability checking
+  # ------------------------------------------------------------------
+
+  describe "process.spawn capability checking" do
+    test "process.spawn effect without capability produces error" do
+      errors =
+        analyze_errors("""
+        module M {
+          fn run_task() -> String {
+            process.spawn("task")
+          }
+        }
+        """)
+
+      assert length(errors) >= 1
+      error = Enum.find(errors, &(&1.code == "E0012"))
+      assert error != nil
+      assert error.message =~ "process.spawn"
+    end
+
+    test "process.spawn with capability passes" do
+      assert {:ok, _} =
+               analyze("""
+               module M {
+                 capability process.spawn("workers")
+
+                 fn run_task() -> String {
+                   process.spawn("task")
+                 }
+               }
+               """)
+    end
+
+    test "process.spawn with invalid method produces no effect match" do
+      # process.invalid is not a known effect method, so it won't be treated as an effect call
+      assert {:ok, _} =
+               analyze("""
+               module M {
+                 capability process.spawn("workers")
+
+                 fn run_task() -> String {
+                   "ok"
+                 }
+               }
+               """)
+    end
+  end
+
+  describe "timer capability checking" do
+    test "timer.after without capability produces error" do
+      errors =
+        analyze_errors("""
+        module M {
+          fn schedule() -> String {
+            timer.after(1000, "callback")
+          }
+        }
+        """)
+
+      assert length(errors) >= 1
+      error = Enum.find(errors, &(&1.code == "E0012"))
+      assert error != nil
+      assert error.message =~ "timer"
+    end
+
+    test "timer.interval without capability produces error" do
+      errors =
+        analyze_errors("""
+        module M {
+          fn schedule() -> String {
+            timer.interval(5000, "callback")
+          }
+        }
+        """)
+
+      assert length(errors) >= 1
+      error = Enum.find(errors, &(&1.code == "E0012"))
+      assert error != nil
+      assert error.message =~ "timer"
+    end
+
+    test "timer.cancel without capability produces error" do
+      errors =
+        analyze_errors("""
+        module M {
+          fn cancel_timer() -> String {
+            timer.cancel("ref123")
+          }
+        }
+        """)
+
+      assert length(errors) >= 1
+      error = Enum.find(errors, &(&1.code == "E0012"))
+      assert error != nil
+      assert error.message =~ "timer"
+    end
+
+    test "timer.after with capability passes" do
+      assert {:ok, _} =
+               analyze("""
+               module M {
+                 capability timer("default")
+
+                 fn schedule() -> String {
+                   timer.after(1000, "callback")
+                 }
+               }
+               """)
+    end
+
+    test "timer.interval with capability passes" do
+      assert {:ok, _} =
+               analyze("""
+               module M {
+                 capability timer("default")
+
+                 fn schedule() -> String {
+                   timer.interval(5000, "callback")
+                 }
+               }
+               """)
+    end
+
+    test "timer.cancel with capability passes" do
+      assert {:ok, _} =
+               analyze("""
+               module M {
+                 capability timer("default")
+
+                 fn cancel_timer() -> String {
+                   timer.cancel("ref123")
+                 }
+               }
+               """)
+    end
+  end
+
+  describe "event.log capability checking" do
+    test "event.log without capability produces error" do
+      errors =
+        analyze_errors("""
+        module M {
+          fn log_event() -> String {
+            event.log("user.login", "data")
+          }
+        }
+        """)
+
+      assert length(errors) >= 1
+      error = Enum.find(errors, &(&1.code == "E0012"))
+      assert error != nil
+      assert error.message =~ "event.log"
+    end
+
+    test "event.log with capability passes" do
+      assert {:ok, _} =
+               analyze("""
+               module M {
+                 capability event.log("audit")
+
+                 fn log_event() -> String {
+                   event.log("user.login", "data")
+                 }
+               }
+               """)
+    end
+
+    test "multiple event.log calls with capability passes" do
+      assert {:ok, _} =
+               analyze("""
+               module M {
+                 capability event.log("audit")
+
+                 fn handle_request() -> String {
+                   event.log("request.start", "data")
+                   event.log("request.end", "data")
+                 }
+               }
+               """)
+    end
+  end
 end

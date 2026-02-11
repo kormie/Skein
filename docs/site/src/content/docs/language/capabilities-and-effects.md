@@ -48,6 +48,9 @@ capability <namespace>.<kind>(<params>)
 | `topic.publish` | Publish to a named topic | Topic name |
 | `topic.consume` | Subscribe to a named topic | Topic name |
 | `schedule.in` | Cron-based schedule handlers | Cron expression (optional) |
+| `process.spawn` | Spawn supervised processes | Pool name (optional) |
+| `timer` | One-shot and recurring timers | Timer namespace (optional) |
+| `event.log` | Structured event logging | Log namespace (optional) |
 
 ### Wildcard Capabilities
 
@@ -246,6 +249,66 @@ agent RefundAgent {
 }
 ```
 
+### Process Spawning
+
+`process.spawn` spawns a supervised background task. Spawned processes are automatically supervised and traced, providing crash isolation.
+
+```skein
+module BackgroundWorker {
+  capability process.spawn("workers")
+
+  fn start_task(data: String) -> String {
+    process.spawn(data)
+  }
+}
+```
+
+Requires a `capability process.spawn(...)` declaration. Spawned processes run under a DynamicSupervisor with `:temporary` restart strategy -- they are not restarted on crash.
+
+### Timer Effects
+
+Timer effects schedule one-shot or recurring callbacks:
+
+```skein
+module TimerService {
+  capability timer("maintenance")
+
+  fn schedule_task() -> String {
+    timer.after(5000, "callback")       -- fires once after 5 seconds
+    timer.interval(30000, "callback")   -- fires every 30 seconds
+    timer.cancel("timer-ref")           -- cancels a timer by ref
+  }
+}
+```
+
+- `timer.after(delay_ms, callback)` returns `{:ok, timer_ref}` -- a one-shot timer
+- `timer.interval(interval_ms, callback)` returns `{:ok, timer_ref}` -- a recurring timer
+- `timer.cancel(timer_ref)` returns `:ok` -- cancels any active timer
+
+All three require a `capability timer(...)` declaration.
+
+### Event Logging
+
+`event.log(name, data)` records a structured event to the event log. Events have automatic timestamps and unique IDs.
+
+```skein
+module AuditService {
+  capability event.log("audit")
+
+  handler http POST "/login" (req) -> {
+    event.log("user.login", req)
+    respond.json(200, "ok")
+  }
+
+  handler http POST "/action" (req) -> {
+    event.log("user.action", req)
+    respond.json(200, "recorded")
+  }
+}
+```
+
+Requires a `capability event.log(...)` declaration. Events are stored in an ETS table and queryable via `Skein.Runtime.EventLog.all/0` and `Skein.Runtime.EventLog.query/1`.
+
 ### How They Parse
 
 Effect calls use existing Skein syntax -- no special grammar is needed. `http.get(url)` parses as:
@@ -348,7 +411,7 @@ Every effect call is automatically traced. The runtime records:
 
 | Field | Description |
 |-------|-------------|
-| `kind` | Effect type (`:http`, `:memory`, `:llm`, `:store`, `:tool`, `:annotation`) |
+| `kind` | Effect type (`:http`, `:memory`, `:llm`, `:store`, `:tool`, `:annotation`, `:process`, `:timer`, `:event_log`) |
 | `method` | Operation (`:get`, `:post`, `:put`, `:chat`, `:json`, `:embed`, `:call`, etc.) |
 | `url` | Target URL (HTTP) |
 | `namespace` | Memory namespace (Memory) |
