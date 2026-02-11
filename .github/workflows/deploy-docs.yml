@@ -14,6 +14,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: erlef/setup-beam@v1
+        with:
+          otp-version: '28.1'
+          elixir-version: '1.19.5'
+      - run: mix deps.get
+      - run: mix docs
+        env:
+          MIX_ENV: dev
       - uses: oven-sh/setup-bun@v2
       - run: bun install
         working-directory: docs/site
