@@ -29,7 +29,7 @@ defmodule Skein.CodeGen.CoreErlang do
     "trace" => :"Elixir.Skein.Runtime.Trace",
     "process" => :"Elixir.Skein.Runtime.Process",
     "timer" => :"Elixir.Skein.Runtime.Timer",
-    "event" => :"Elixir.Skein.Runtime.EventLog"
+    "event" => :"Elixir.Skein.Runtime.EventStore"
   }
 
   # Standard library module mapping: Skein module name -> Elixir runtime module

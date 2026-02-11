@@ -298,3 +298,4 @@ _Move items here as they are finished, with date and session link._
 - [x] **trace.annotate(key, value)** (analyzer + codegen + runtime + docs) — 2026-02-11 — session_019MuBUA8XW6AhCYs6B8iogz
 - [x] **llm.embed** (analyzer + codegen + runtime + example + docs) — 2026-02-11 — session_01HUDduKnWfVoeXi4vrFYXXM
 - [x] **Remaining Capabilities: process.spawn, timer, event.log** (analyzer + codegen + runtime + examples + docs) — 2026-02-11 — session_01UAWv6aC96MieHScoFY6qL8
+- [x] **Unified Event Store** (EventStore + Trace facade + EventLog folded in + Memory event-sourced + Replay enhanced + docs) — 2026-02-11 — session_01QqF2LkNnAztvHdkA2rRdkh

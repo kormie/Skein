@@ -307,7 +307,7 @@ module AuditService {
 }
 ```
 
-Requires a `capability event.log(...)` declaration. Events are stored in an ETS table and queryable via `Skein.Runtime.EventLog.all/0` and `Skein.Runtime.EventLog.query/1`.
+Requires a `capability event.log(...)` declaration. Events are stored in the unified event store (`Skein.Runtime.EventStore`) as `kind: :user_event` entries, queryable alongside trace spans, annotations, and memory state changes via `EventStore.query(kind: :user_event)`.
 
 ### How They Parse
 
@@ -411,7 +411,7 @@ Every effect call is automatically traced. The runtime records:
 
 | Field | Description |
 |-------|-------------|
-| `kind` | Effect type (`:http`, `:memory`, `:llm`, `:store`, `:tool`, `:annotation`, `:process`, `:timer`, `:event_log`) |
+| `kind` | Event type (`:http`, `:memory`, `:llm`, `:store`, `:tool`, `:annotation`, `:user_event`, `:state_change`, `:process`, `:timer`) |
 | `method` | Operation (`:get`, `:post`, `:put`, `:chat`, `:json`, `:embed`, `:call`, etc.) |
 | `url` | Target URL (HTTP) |
 | `namespace` | Memory namespace (Memory) |
@@ -423,7 +423,7 @@ Every effect call is automatically traced. The runtime records:
 | `outcome` | `:ok` or `:error` |
 | `timestamp` | Monotonic timestamp |
 
-Traces are stored in an ETS table and can be queried via `Skein.Runtime.Trace.recent_spans/1`.
+All events are stored in the unified event store (`Skein.Runtime.EventStore`) and can be queried via `EventStore.query/1`, `EventStore.recent/1`, or `Trace.recent_spans/1`. Memory state can be reconstructed from `:state_change` events via `Memory.rebuild_from_events/1`.
 
 ## How Modules Compile (with Capabilities)
 

@@ -148,13 +148,23 @@
 - `timer` → namespace `timer`, capability `timer`, runtime `Skein.Runtime.Timer` (GenServer + ETS)
   - `timer.after` is an Elixir reserved word: uses `def unquote(:after)(...)` syntax, tests use `apply(Timer, :after, [...])`
   - Timer methods: `after`, `interval`, `cancel`
-- `event.log` → namespace `event`, capability `event.log`, runtime `Skein.Runtime.EventLog` (ETS)
+- `event.log` → namespace `event`, capability `event.log`, runtime `Skein.Runtime.EventStore` (unified event log)
   - Method: `log`
 - All three follow the standard effect pattern: added to `@effect_namespaces`, `@effect_methods`, `@effect_runtime_modules`
 - Examples: `examples/background_tasks.skein`, `examples/audit_log.skein`
 - Runtime Process: `apps/skein_runtime/lib/skein/runtime/process.ex`
 - Runtime Timer: `apps/skein_runtime/lib/skein/runtime/timer.ex`
-- Runtime EventLog: `apps/skein_runtime/lib/skein/runtime/event_log.ex`
+- Runtime EventStore: `apps/skein_runtime/lib/skein/runtime/event_store.ex`
+- Runtime EventLog: `apps/skein_runtime/lib/skein/runtime/event_log.ex` (deprecated — delegates to EventStore)
+
+## Unified Event Store (Phase 10 — COMPLETE)
+- **Single event log**: `Skein.Runtime.EventStore` backed by one ETS table `:skein_events`
+- **Event kinds**: `:effect`, `:annotation`, `:user_event`, `:state_change` (plus effect-specific kinds like `:http`, `:memory`, etc.)
+- **Trace facade**: `Skein.Runtime.Trace` delegates to EventStore — `with_span`, `annotate`, `recent_spans` all use `EventStore.append`
+- **EventLog deprecated**: `Skein.Runtime.EventLog` is a thin redirect to EventStore; codegen now points `"event"` → `EventStore`
+- **Memory event-sourced**: Each `memory.put`/`memory.delete` emits a `:state_change` event; `Memory.rebuild_from_events/1` reconstructs state
+- **Replay enhanced**: `Replay.rebuild_memory/2` reconstructs memory from event stream; handles `state_change`, `user_event`, `annotation` kinds
+- **One way to query**: `EventStore.query(kind: :user_event)` — no parallel query APIs
 
 ## Streaming Implementation Notes (Phase 8f)
 - `llm.stream` uses same `model` capability as `chat`/`json`

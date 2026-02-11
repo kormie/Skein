@@ -7,7 +7,7 @@ description: How the Skein code generator produces BEAM bytecode via Core Erlang
 
 The code generator (`Skein.CodeGen.CoreErlang`) translates the Skein AST into Core Erlang using Erlang's `:cerl` module, then compiles to BEAM bytecode via `:compile.forms/2`.
 
-**Location:** `apps/skein_compiler/lib/skein/codegen/core_erlang.ex` (~935 lines)
+**Location:** `apps/skein_compiler/lib/skein/codegen/core_erlang.ex` (~1700 lines)
 
 ## What is Core Erlang?
 
@@ -289,6 +289,36 @@ The final step compiles the Core Erlang AST to BEAM bytecode:
 
 The `:from_core` flag tells the compiler the input is Core Erlang (not Erlang source). The `:binary` flag returns the bytecode as a binary rather than writing to disk. The `:return_errors` flag returns errors as data rather than printing to stderr.
 
+## Stdlib Call Generation
+
+When the code generator encounters a call to a known stdlib module like `String.upcase(s)`, it generates a remote call to the corresponding runtime module:
+
+```skein
+-- Skein source:
+String.upcase(name)
+
+-- Compiles to (Core Erlang):
+call 'Elixir.Skein.Runtime.Stdlib.String':'upcase'(Name)
+```
+
+The mapping from Skein module names to Elixir runtime modules:
+
+| Skein Module | Runtime Module |
+|-------------|---------------|
+| `String` | `Skein.Runtime.Stdlib.String` |
+| `Int` | `Skein.Runtime.Stdlib.Int` |
+| `Float` | `Skein.Runtime.Stdlib.Float` |
+| `List` | `Skein.Runtime.Stdlib.List` |
+| `Map` | `Skein.Runtime.Stdlib.Map` |
+| `Set` | `Skein.Runtime.Stdlib.Set` |
+| `Option` | `Skein.Runtime.Stdlib.Option` |
+| `Result` | `Skein.Runtime.Stdlib.Result` |
+| `Uuid` | `Skein.Runtime.Stdlib.Uuid` |
+| `Instant` | `Skein.Runtime.Stdlib.Instant` |
+| `Duration` | `Skein.Runtime.Stdlib.Duration` |
+
+No capabilities are required for stdlib calls. See the [Standard Library reference](/Skein/reference/stdlib/) for the full API.
+
 ## Effect Call Generation
 
 When the code generator encounters an effect call like `http.get(url)`, it generates a remote call to the runtime instead of a local apply:
@@ -303,28 +333,152 @@ call 'Elixir.Skein.Runtime.Http':'get'(Url, Capabilities)
 
 The generator recognizes effect calls by pattern-matching on `Call{target: FieldAccess{subject: Identifier{name}, field}}` where `name` is a known effect namespace.
 
+### Capabilities parameter
+
+Every effect call appends the module's compiled capabilities list as the final argument. This is built at compile time from the module's `capability` declarations and enables runtime enforcement:
+
+```skein
+-- Skein source (module has: capability http.out("api.example.com"))
+http.get(url)
+
+-- Compiles to:
+call 'Elixir.Skein.Runtime.Http':'get'(
+  Url,
+  [#{kind => "http.out", params => ["api.example.com"]}]
+)
+```
+
 ### Effect namespace to runtime module mapping
 
 | Namespace | Runtime Module | Operations |
 |-----------|---------------|------------|
 | `http` | `Skein.Runtime.Http` | `get`, `post`, `put`, `patch`, `delete` |
 | `store.<table>` | `Skein.Runtime.Store` | `get`, `put`, `delete`, `query` |
+| `memory` | `Skein.Runtime.Memory` | `put`, `get`, `get!`, `delete`, `list` |
+| `llm` | `Skein.Runtime.Llm` | `chat`, `json`, `stream`, `embed` |
+| `tool` | `Skein.Runtime.Tool` | `call`, `list`, `schema` |
+| `topic` | `Skein.Runtime.Topic` | `publish` |
+| `trace` | `Skein.Runtime.Trace` | `annotate` |
+| `event` | `Skein.Runtime.EventStore` | `log` |
+| `process` | `Skein.Runtime.Process` | `spawn` |
+| `timer` | `Skein.Runtime.Timer` | `after`, `interval`, `cancel` |
+
+### HTTP effect compilation
+
+HTTP calls follow the generic pattern -- the namespace maps to `Skein.Runtime.Http` and the method becomes the function name:
+
+```skein
+http.post("https://api.example.com/data", body)
+
+-- Compiles to:
+call 'Elixir.Skein.Runtime.Http':'post'(Url, Body, Capabilities)
+```
 
 ### Store effect compilation
 
-Store effects have a three-level namespace: `store.<table>.<operation>`. The code generator extracts the table name and operation, then generates a call to `Skein.Runtime.Store`:
+Store effects have a three-level namespace: `store.<table>.<operation>`. The code generator extracts the table name and passes it as the first argument:
 
 ```skein
--- Skein source:
 store.users.get(id)
 
--- Compiles to (Core Erlang):
+-- Compiles to:
 call 'Elixir.Skein.Runtime.Store':'get'("users", Id, Capabilities)
 ```
 
-### Capabilities parameter
+### Memory effect compilation
 
-The capabilities list is built at compile time from the module's `capability` declarations and passed as a literal argument to every runtime call. This enables the runtime to enforce capability restrictions even without access to the module metadata.
+Memory effects extract the namespace from the `memory.kv(namespace)` capability declaration and pass it as the first argument:
+
+```skein
+-- Module has: capability memory.kv("sessions")
+memory.put("sessions", "user", user_id)
+
+-- Compiles to:
+call 'Elixir.Skein.Runtime.Memory':'put'("sessions", "user", UserId, Capabilities)
+```
+
+### LLM effect compilation
+
+LLM calls have special handling for each method:
+
+**`llm.chat`** -- standard text response:
+```skein
+llm.chat("claude-3-5-sonnet", "System prompt", input)
+
+-- Compiles to:
+call 'Elixir.Skein.Runtime.Llm':'chat'("claude-3-5-sonnet", "System prompt", Input, Capabilities)
+```
+
+**`llm.json[T]`** -- schema-constrained JSON. The type parameter is compiled into a JSON Schema literal using `SchemaGen`:
+```skein
+llm.json[Decision]("claude-3-5-sonnet", "Decide action", input)
+
+-- Compiles to:
+call 'Elixir.Skein.Runtime.Llm':'json'("claude-3-5-sonnet", "Decide action", Input, Schema, Capabilities)
+```
+
+Where `Schema` is the JSON Schema derived from the `Decision` type definition at compile time.
+
+**`llm.stream`** -- streaming response:
+```skein
+llm.stream("claude-3-5-sonnet", "Generate report", data)
+
+-- Compiles to:
+call 'Elixir.Skein.Runtime.Llm':'stream'("claude-3-5-sonnet", "Generate report", Data, NoOpCallback, Capabilities)
+```
+
+**`llm.embed`** -- embedding vector:
+```skein
+llm.embed("text-embedding-3-small", input)
+
+-- Compiles to:
+call 'Elixir.Skein.Runtime.Llm':'embed'("text-embedding-3-small", Input, Capabilities)
+```
+
+### Tool effect compilation
+
+Tool calls lower tool identifier references to string literals:
+
+```skein
+tool.call(Stripe.CreateRefund, { amount: 100 })
+
+-- Compiles to:
+call 'Elixir.Skein.Runtime.Tool':'call'("Stripe.CreateRefund", Args, Capabilities)
+```
+
+### Respond compilation
+
+Handler response helpers compile to tagged tuples (not runtime module calls):
+
+```skein
+respond.json(200, data)    -- {:respond_json, 200, data}
+respond.text(200, body)    -- {:respond_text, 200, body}
+respond.html(200, page)    -- {:respond_html, 200, page}
+```
+
+### Idempotent compilation
+
+The `idempotent(key)` construct compiles to a runtime check:
+
+```skein
+idempotent("process-order-123")
+
+-- Compiles to:
+call 'Elixir.Skein.Runtime.Idempotent':'check!'("process-order-123")
+```
+
+### Generic effect compilation
+
+Any effect namespace listed in the runtime modules map that doesn't have special handling follows the generic pattern:
+
+```skein
+namespace.method(arg1, arg2)
+
+-- Compiles to:
+call 'Elixir.Skein.Runtime.<Module>':'method'(Arg1, Arg2, Capabilities)
+```
+
+This covers `process.spawn`, `timer.after`, `timer.interval`, `timer.cancel`, `trace.annotate`, `event.log`, and `topic.publish`.
 
 ## Handler Generation
 

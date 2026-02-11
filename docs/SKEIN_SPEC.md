@@ -505,11 +505,18 @@ resume(input: Map) -> ()
 idempotent(key: String) -> ()   -- skip handler if key already processed
 ```
 
-### 6.10 Trace
+### 6.10 Trace and Event Store
+
+All runtime events — effect spans, trace annotations, user-defined events (`event.log`), and memory state changes — are stored in a single unified event log. This enables querying, replay, and memory reconstruction from the event stream.
 
 ```
 trace.annotate(key: String, value: String) -> ()  -- add metadata to current span
+event.log(name: String, data: T) -> ()            -- record structured user event
 ```
+
+`trace.annotate` requires no capability. `event.log` requires `capability event.log(...)`.
+
+Memory mutations (`memory.put`, `memory.delete`) automatically emit `:state_change` events, making memory state reconstructable from the event stream.
 
 ---
 

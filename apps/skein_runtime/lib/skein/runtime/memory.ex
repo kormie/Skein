@@ -5,19 +5,30 @@ defmodule Skein.Runtime.Memory do
   Provides per-namespace key-value storage used by `memory.put`, `memory.get`,
   `memory.get!`, `memory.delete`, and `memory.list` effect calls in Skein source.
 
-  Backed by ETS for local development. Each namespace gets a separate ETS table
-  named `skein_memory_<namespace>`.
+  ## Dual Storage Architecture
+
+  Memory uses two storage layers:
+
+  1. **ETS cache** — per-namespace ETS tables for fast read/write access
+  2. **EventStore** — each mutation (put/delete) appends a `:state_change` event
+     to the unified event log
+
+  The ETS cache is the primary read path for performance. The EventStore events
+  provide an audit trail and enable memory reconstruction from the event stream
+  (see `rebuild_from_events/1`).
 
   Every operation is:
   1. Checked against the module's declared `memory.kv` capabilities
-  2. Traced with timing, metadata, and outcome
-  3. Returns `{:ok, result}` or `{:error, reason}`
+  2. Traced with timing, metadata, and outcome (via `Trace.with_span`)
+  3. Mutations also emit a `:state_change` event with the key/value data
+  4. Returns `{:ok, result}` or `{:error, reason}`
 
   This module is called by compiled Skein code — the codegen emits calls like
   `Skein.Runtime.Memory.put("sessions", key, value, capabilities)`.
   """
 
   alias Skein.Runtime.Trace
+  alias Skein.Runtime.EventStore
 
   @doc """
   Stores a value under the given key in the specified namespace.
@@ -33,6 +44,15 @@ defmodule Skein.Runtime.Memory do
           ets_table = table_ref(namespace)
           ensure_table(ets_table)
           :ets.insert(ets_table, {key, value})
+
+          EventStore.append(%{
+            kind: :state_change,
+            namespace: namespace,
+            operation: :put,
+            key: key,
+            value: value
+          })
+
           {:ok, value}
 
         {:error, _} = error ->
@@ -94,6 +114,14 @@ defmodule Skein.Runtime.Memory do
           ets_table = table_ref(namespace)
           ensure_table(ets_table)
           :ets.delete(ets_table, key)
+
+          EventStore.append(%{
+            kind: :state_change,
+            namespace: namespace,
+            operation: :delete,
+            key: key
+          })
+
           {:ok, key}
 
         {:error, _} = error ->
@@ -135,6 +163,30 @@ defmodule Skein.Runtime.Memory do
     ensure_table(ets_table)
     :ets.delete_all_objects(ets_table)
     :ok
+  end
+
+  @doc """
+  Rebuilds memory state for a namespace from the unified event stream.
+
+  Replays all `:state_change` events for the given namespace in chronological
+  order, applying puts and deletes to reconstruct the current state.
+
+  Returns a map of `%{key => value}` representing the reconstructed state.
+
+  This enables event-sourced memory: the ETS cache is an optimization,
+  but the event log is the source of truth.
+  """
+  @spec rebuild_from_events(String.t()) :: %{String.t() => any()}
+  def rebuild_from_events(namespace) when is_binary(namespace) do
+    EventStore.query(kind: :state_change, namespace: namespace)
+    # query returns newest first; reverse to get chronological order
+    |> Enum.reverse()
+    |> Enum.reduce(%{}, fn event, acc ->
+      case event.operation do
+        :put -> Map.put(acc, event.key, event.value)
+        :delete -> Map.delete(acc, event.key)
+      end
+    end)
   end
 
   # ------------------------------------------------------------------

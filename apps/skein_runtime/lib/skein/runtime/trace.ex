@@ -2,8 +2,11 @@ defmodule Skein.Runtime.Trace do
   @moduledoc """
   Trace capture and storage for Skein effect calls.
 
+  This module is a facade over `Skein.Runtime.EventStore`. All spans are
+  stored in the unified event log and can be queried alongside user events,
+  memory state changes, and annotations.
+
   Records trace spans for every effect call with timing, metadata, and outcome.
-  Uses an ETS table for in-process trace storage.
 
   Spans are stored as maps with at minimum:
   - `:kind` — the effect type (e.g., `:http`)
@@ -15,22 +18,14 @@ defmodule Skein.Runtime.Trace do
   - `:timestamp` — monotonic timestamp when the span was recorded
   """
 
-  @table :skein_trace_spans
+  alias Skein.Runtime.EventStore
 
   @doc """
-  Ensures the trace ETS table exists. Called automatically by the application.
+  Ensures the event store ETS table exists. Called automatically by the application.
   """
   @spec init() :: :ok
   def init do
-    if :ets.whereis(@table) == :undefined do
-      try do
-        :ets.new(@table, [:named_table, :ordered_set, :public, read_concurrency: true])
-      rescue
-        ArgumentError -> :ok
-      end
-    end
-
-    :ok
+    EventStore.init()
   end
 
   @doc """
@@ -38,13 +33,7 @@ defmodule Skein.Runtime.Trace do
   """
   @spec record_span(map()) :: :ok
   def record_span(span) when is_map(span) do
-    init()
-    timestamp = System.monotonic_time(:microsecond)
-    # Use a unique key based on timestamp + unique_integer for ordering
-    key = {timestamp, System.unique_integer([:monotonic, :positive])}
-    enriched = Map.merge(span, %{timestamp: timestamp, _key: key})
-    :ets.insert(@table, {key, enriched})
-    :ok
+    EventStore.append(span)
   end
 
   @doc """
@@ -52,13 +41,7 @@ defmodule Skein.Runtime.Trace do
   """
   @spec recent_spans(pos_integer()) :: [map()]
   def recent_spans(count) when is_integer(count) and count > 0 do
-    init()
-
-    @table
-    |> :ets.tab2list()
-    |> Enum.map(fn {_key, span} -> span end)
-    |> Enum.sort_by(& &1.timestamp, :desc)
-    |> Enum.take(count)
+    EventStore.recent(count)
   end
 
   @doc """
@@ -66,9 +49,7 @@ defmodule Skein.Runtime.Trace do
   """
   @spec clear() :: :ok
   def clear do
-    init()
-    :ets.delete_all_objects(@table)
-    :ok
+    EventStore.clear()
   end
 
   @doc """
@@ -81,7 +62,7 @@ defmodule Skein.Runtime.Trace do
   """
   @spec annotate(String.t(), String.t()) :: :ok
   def annotate(key, value) do
-    record_span(%{kind: :annotation, key: key, value: value})
+    EventStore.append(%{kind: :annotation, key: key, value: value})
   end
 
   @doc """
@@ -127,7 +108,7 @@ defmodule Skein.Runtime.Trace do
         |> Map.merge(%{duration_us: duration, outcome: outcome})
         |> then(fn s -> if status, do: Map.put(s, :status, status), else: s end)
 
-      record_span(span)
+      EventStore.append(span)
       result
     rescue
       exception ->
@@ -140,7 +121,7 @@ defmodule Skein.Runtime.Trace do
             error: Exception.message(exception)
           })
 
-        record_span(span)
+        EventStore.append(span)
         reraise exception, __STACKTRACE__
     end
   end

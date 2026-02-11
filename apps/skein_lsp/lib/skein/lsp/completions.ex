@@ -84,6 +84,9 @@ defmodule Skein.Lsp.Completions do
       {"given", "Scenario given block", "keyword"},
       {"expect", "Scenario expect block", "keyword"},
       {"assert", "Assertion", "keyword"},
+      {"suspend", "Suspend the agent", "keyword"},
+      {"resume", "Resume a suspended agent", "keyword"},
+      {"idempotent", "Idempotent guard", "keyword"},
       {"return", "Return value", "keyword"}
     ]
 
@@ -244,17 +247,17 @@ defmodule Skein.Lsp.Completions do
 
   defp effect_namespace_completions do
     namespaces = [
-      {"llm", "LLM operations (chat, json, stream)"},
-      {"memory", "Key-value memory (get, put, delete)"},
+      {"llm", "LLM operations (chat, json, stream, embed)"},
+      {"memory", "Key-value memory (get, put, delete, list)"},
       {"store", "Persistent storage (get, put, delete, query)"},
       {"http", "HTTP client operations"},
       {"topic", "Pub/sub topic operations"},
       {"queue", "Message queue operations"},
-      {"trace", "Trace capture"},
-      {"config", "Configuration access"},
-      {"secret", "Secret access"},
-      {"stream", "Streaming operations"},
-      {"respond", "Response helpers (json, text)"}
+      {"trace", "Trace annotations"},
+      {"event", "Structured event logging"},
+      {"process", "Process spawning"},
+      {"timer", "Timer scheduling"},
+      {"respond", "Response helpers (json, text, html)"}
     ]
 
     Enum.map(namespaces, fn {name, detail} ->
@@ -275,14 +278,17 @@ defmodule Skein.Lsp.Completions do
           [
             {"chat", "Send a chat message to an LLM", "llm.chat(model, prompt, input)"},
             {"json", "Get structured JSON from LLM", "llm.json[Type](model: m, system: s, input: i)"},
-            {"stream", "Stream tokens from LLM", "llm.stream(model, prompt, input)"}
+            {"stream", "Stream tokens from LLM", "llm.stream(model, prompt, input)"},
+            {"embed", "Get embedding vector from LLM", "llm.embed(model, input)"}
           ]
 
         "memory" ->
           [
             {"get", "Get a value from memory", "memory.get(key)"},
+            {"get!", "Get a value or raise", "memory.get!(key)"},
             {"put", "Store a value in memory", "memory.put(key, value)"},
-            {"delete", "Delete a key from memory", "memory.delete(key)"}
+            {"delete", "Delete a key from memory", "memory.delete(key)"},
+            {"list", "List keys by prefix", "memory.list(prefix)"}
           ]
 
         "store" ->
@@ -296,7 +302,8 @@ defmodule Skein.Lsp.Completions do
         "respond" ->
           [
             {"json", "Respond with JSON", "respond.json(status, body)"},
-            {"text", "Respond with text", "respond.text(status, body)"}
+            {"text", "Respond with plain text", "respond.text(status, body)"},
+            {"html", "Respond with HTML", "respond.html(status, body)"}
           ]
 
         "http" ->
@@ -309,8 +316,7 @@ defmodule Skein.Lsp.Completions do
 
         "topic" ->
           [
-            {"publish", "Publish to topic", "topic.publish(name, message)"},
-            {"subscribe", "Subscribe to topic", "topic.subscribe(name)"}
+            {"publish", "Publish to topic", "topic.publish(name, message)"}
           ]
 
         "queue" ->
@@ -320,17 +326,24 @@ defmodule Skein.Lsp.Completions do
 
         "trace" ->
           [
-            {"emit", "Emit a trace event", "trace.emit(data)"}
+            {"annotate", "Add trace annotation", "trace.annotate(key, value)"}
           ]
 
-        "config" ->
+        "event" ->
           [
-            {"get", "Get config value", "config.get(key)"}
+            {"log", "Log a structured event", "event.log(name, data)"}
           ]
 
-        "secret" ->
+        "process" ->
           [
-            {"get", "Get secret value", "secret.get(key)"}
+            {"spawn", "Spawn a supervised process", "process.spawn(name)"}
+          ]
+
+        "timer" ->
+          [
+            {"after", "One-shot timer", "timer.after(delay_ms, callback)"},
+            {"interval", "Recurring timer", "timer.interval(interval_ms, callback)"},
+            {"cancel", "Cancel a timer", "timer.cancel(timer_ref)"}
           ]
 
         _ ->

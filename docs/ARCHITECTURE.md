@@ -329,36 +329,41 @@ end
 
 Every runtime effect wrapper (HTTP, store, memory, LLM, tool) calls `Capability.check!/3` before executing.
 
-### 2.3 Trace Collector (`Skein.Runtime.Trace`)
+### 2.3 Unified Event Store (`Skein.Runtime.EventStore`)
 
-Built on OpenTelemetry, with Skein-specific span attributes.
+All runtime events — effect spans, trace annotations, user-defined events, and memory state changes — flow through a single append-only event log backed by one ETS ordered set (`:skein_events`).
 
 ```elixir
-defmodule Skein.Runtime.Trace do
-  def with_span(name, attributes, fun) do
-    span = start_span(name, attributes)
-    try do
-      result = fun.()
-      end_span(span, :ok, result_meta(result))
-      result
-    rescue
-      e ->
-        end_span(span, :error, %{exception: inspect(e)})
-        reraise e, __STACKTRACE__
-    end
-  end
+defmodule Skein.Runtime.EventStore do
+  # Append any event (auto-assigns id, timestamp, _key)
+  @spec append(map()) :: :ok
+  def append(event)
+
+  # User-event entry point for compiled event.log() calls
+  @spec log(String.t(), term(), list()) :: :ok
+  def log(event_name, data, _capabilities)
+
+  # Query by kind, namespace, or any field
+  @spec query(keyword()) :: [map()]
+  def query(filters)
+
+  # Chronological snapshot for golden tests
+  @spec snapshot() :: [map()]
+  def snapshot()
 end
 ```
 
-Span attributes include:
-- `skein.trace_id`, `skein.span_id`, `skein.parent_span_id`
-- `skein.module`, `skein.handler`, `skein.agent`, `skein.phase`
-- `skein.tool_name`, `skein.model`, `skein.capability`
-- `skein.tenant_id` (when multi-tenancy is implemented)
-- `skein.tokens_in`, `skein.tokens_out`, `skein.cost` (for LLM calls)
-- `skein.duration_ms`
+Event kinds:
+- `:http`, `:memory`, `:llm`, `:store`, `:tool`, `:process`, `:timer` — effect spans with timing
+- `:annotation` — `trace.annotate(key, value)` markers
+- `:user_event` — `event.log(name, data)` user-defined events
+- `:state_change` — memory mutation audit trail (put/delete with key/value data)
 
-Traces are stored in an ETS table for the local trace viewer, and optionally exported to an external collector.
+Every event carries: `id` (unique hex), `timestamp` (monotonic µs), `kind`, and kind-specific fields.
+
+Two modules provide domain-specific APIs on top of this store:
+- **`Skein.Runtime.Trace`** — timing/instrumentation facade (`with_span/2`, `annotate/2`, `recent_spans/1`). All effect wrappers (HTTP, LLM, etc.) call `Trace.with_span` which delegates to `EventStore.append`.
+- **`Skein.Runtime.Memory`** — scoped KV state with capability checking and ETS caching. Each mutation also appends a `:state_change` event, enabling event-sourced reconstruction via `Memory.rebuild_from_events/1`.
 
 ### 2.4 LLM Client (`Skein.Runtime.LLM`)
 
@@ -508,26 +513,31 @@ The backend behaviour defines an optional `stream/3` callback returning `{:ok, [
 
 ### 2.12 Replay Engine (`Skein.Runtime.Replay`)
 
-Deterministic replay engine for golden trace tests. Loads recorded trace files (JSON arrays of span objects) and replays them against the current runtime to verify behavior hasn't regressed.
+Deterministic replay engine for golden trace tests. Loads recorded event stream files (JSON arrays of event objects from the unified EventStore) and replays them against the current runtime to verify behavior hasn't regressed.
 
 ```elixir
 defmodule Skein.Runtime.Replay do
-  # Load a trace file from disk — returns parsed span list or raises
+  # Load an event stream file from disk — returns parsed event list or raises
   @spec load_trace(String.t()) :: list(map())
   def load_trace(path)
 
-  # Replay spans, returning {span, result} tuples
+  # Replay events, returning {event, result} tuples
   @spec replay(list(map())) :: list({map(), term()})
   def replay(spans)
+
+  # Reconstruct memory state for a namespace from events
+  @spec rebuild_memory(list(map()), String.t()) :: %{String.t() => any()}
+  def rebuild_memory(events, namespace)
 end
 ```
 
-Supported span kinds: `handler`, `llm`, `memory`, `http`. Unknown kinds are passed through gracefully.
+Supported event kinds: `handler`, `llm`, `memory`, `http`, `state_change`, `user_event`, `annotation`. Unknown kinds are passed through gracefully.
 
 Used by compiled golden test functions:
-1. `load_trace/1` reads and parses the JSON trace file
-2. Test body runs assertions against the loaded trace data
-3. Future: `replay/1` will re-execute spans against actual runtime modules for full deterministic replay
+1. `load_trace/1` reads and parses the JSON event stream file
+2. Test body runs assertions against the loaded event data
+3. `replay/1` re-dispatches events and collects results
+4. `rebuild_memory/2` reconstructs memory state at any point from `:state_change` events
 
 ---
 
@@ -539,7 +549,7 @@ Skein.Application (Application)
 │   ├── Skein.Runtime.Store (GenServer — Ecto repo manager)
 │   ├── Skein.Runtime.Memory (GenServer — KV store manager)
 │   ├── Skein.Runtime.Tool.Registry (GenServer — tool registration)
-│   ├── Skein.Runtime.Trace.Collector (GenServer — trace storage)
+│   ├── Skein.Runtime.EventStore (ETS-backed — unified event log)
 │   ├── Skein.Runtime.Capability.Store (ETS-backed capability cache)
 │   ├── Skein.Runtime.Queue (GenServer — queue dispatch)
 │   ├── Skein.Runtime.Schedule (GenServer — cron dispatch)
