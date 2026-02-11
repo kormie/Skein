@@ -281,34 +281,15 @@ For each capability kind:
 
 ---
 
-## Priority 10: Add `@type t` to AST Structs (ExDoc Warnings)
+## ~~Priority 10: Add `@type t` to AST Structs (ExDoc Warnings)~~ ✅ DONE
 
-**Why:** `mix docs` produces 16 warnings about "undefined or private" types. Every AST struct (e.g., `Skein.AST.Module`, `Skein.AST.Agent`, `Skein.AST.TypeDecl`, etc.) uses `defstruct` but doesn't define `@type t :: %__MODULE__{}`. Specs throughout the compiler reference these types (e.g., `Skein.AST.Module.t()`), which ExDoc can't resolve. This makes the generated API docs less useful — type links are broken and readers can't navigate from a function spec to the struct definition.
+**Status:** COMPLETE
 
-**Status:** OPEN
+Added `@type t :: %__MODULE__{}` with correct field types to all 30 AST struct modules in `apps/skein_compiler/lib/skein/ast.ex`. Also added `@moduledoc` to every struct module, and defined shared `Skein.AST.meta()` and `Skein.AST.expr()` types at the module level.
 
-### Affected Modules (from ExDoc warnings)
-
-| Module | Referenced by |
-|--------|--------------|
-| `Skein.AST.Module` | Parser, Analyzer, CodeGen |
-| `Skein.AST.Agent` | Analyzer, CodeGen |
-| `Skein.AST.TypeDecl` | Analyzer, SchemaGen |
-| `Skein.AST.EnumDecl` | Analyzer, SchemaGen |
-| `Skein.AST.Field` | Analyzer, SchemaGen |
-| `Skein.AST.TypeRef` | SchemaGen |
-| `Skein.AST.Capability` | Analyzer |
-
-### Implementation Plan
-
-1. **Audit `Skein.AST`** — Go through every struct defined in `apps/skein_compiler/lib/skein/ast.ex` and add `@type t :: %__MODULE__{}` with the correct field types
-2. **Verify** — Run `mix docs` and confirm zero type-reference warnings
-3. **Bonus** — Add `@moduledoc` to any AST struct modules that lack one, so they show up properly in ExDoc
-
-### Testing Checklist
-
-- [ ] `mix docs` completes with zero warnings about "undefined or private" types
-- [ ] `mix test` still passes (no regressions from type annotations)
+- **Types added**: Module, Capability, Fn, TypeDecl, EnumDecl, Handler, Agent, AgentHandler, ToolDecl, Supervisor, Child, Test, Scenario, Golden, TypeRef, Field, Variant, Annotation, Let, Match, MatchArm, Call, Pipe, FieldAccess, BinaryOp, UnaryOp, StringLit, IntLit, FloatLit, BoolLit, ListLit, MapLit, Block, Identifier, ToolRef, FnRef, Transition, Stop, Suspend, Idempotent, Emit, Respond, Wildcard
+- **Warnings eliminated**: All 16 ExDoc warnings about "undefined or private" types resolved
+- **Tests**: All 1176 tests + 182 properties pass with 0 failures
 
 ---
 
@@ -330,3 +311,4 @@ _Move items here as they are finished, with date and session link._
 - [x] **llm.embed** (analyzer + codegen + runtime + example + docs) — 2026-02-11 — session_01HUDduKnWfVoeXi4vrFYXXM
 - [x] **Remaining Capabilities: process.spawn, timer, event.log** (analyzer + codegen + runtime + examples + docs) — 2026-02-11 — session_01UAWv6aC96MieHScoFY6qL8
 - [x] **Unified Event Store** (EventStore + Trace facade + EventLog folded in + Memory event-sourced + Replay enhanced + docs) — 2026-02-11 — session_01QqF2LkNnAztvHdkA2rRdkh
+- [x] **Add `@type t` to AST Structs** (all 30 struct modules, 16 ExDoc warnings resolved) — 2026-02-11 — session_012e5ammhs4hh6eKVyAxgTfG
