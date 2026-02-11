@@ -136,7 +136,7 @@ on phase(Phase.Done) -> {
 }
 ```
 
-### Suspending
+### Suspending and Resuming
 
 Call `suspend(reason)` to pause an agent for human-in-the-loop review or external input. The agent enters a `:suspended` state and waits until resumed externally:
 
@@ -146,7 +146,15 @@ on phase(Phase.Failed) -> {
 }
 ```
 
-A suspended agent stays alive but does not execute any phase handlers until `Skein.Runtime.Agent.resume(pid, next_phase)` is called from outside. This is the primary mechanism for pausing agent workflows that need human intervention.
+A suspended agent stays alive but does not execute any phase handlers until resumed from outside. This is the primary mechanism for pausing agent workflows that need human intervention.
+
+Resume from Elixir:
+
+```elixir
+Skein.Runtime.Agent.resume(pid, :analyze)
+```
+
+See [Runtime > Agents: Suspending and Resuming](/Skein/runtime/agents/#suspending-and-resuming) for the full runtime API (`is_suspended?/1`, `get_suspend_reason/1`, `resume/2`).
 
 ### Control Flow Summary
 

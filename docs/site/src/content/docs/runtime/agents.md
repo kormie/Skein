@@ -175,7 +175,7 @@ The code generator maps Skein constructs to these tuples:
 
 ### Suspending and Resuming
 
-When a handler returns `{:suspend, reason, state, events}`, the agent enters the `:suspended` state. The agent process stays alive but does not execute any phase handlers.
+When a handler returns `{:suspend, reason, state, events}`, the agent enters the `:suspended` state. The agent process stays alive but does not execute any phase handlers. See [Language > Agents: Suspending](/Skein/language/agents/#suspending-and-resuming) for the Skein syntax.
 
 **Runtime API for suspended agents:**
 

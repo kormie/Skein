@@ -102,6 +102,7 @@ export default defineConfig({
         {
           label: 'Reference',
           items: [
+            { label: 'Standard Library', slug: 'reference/stdlib' },
             { label: 'Agent Quick Reference', slug: 'reference/agent-quick-reference' },
           ],
         },

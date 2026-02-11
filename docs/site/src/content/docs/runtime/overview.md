@@ -17,7 +17,7 @@ The Skein runtime (`skein_runtime`) provides the libraries that compiled Skein c
 - **Memory** -- scoped KV storage with namespace isolation via `Skein.Runtime.Memory`
 - **LLM client** -- provider-agnostic LLM calls with schema-constrained JSON via `Skein.Runtime.Llm`
 - **HTTP server** -- Bandit + Plug HTTP server for serving Skein handlers
-- **Trace recording** -- capturing timing, metadata, and outcomes for every effect call
+- **Unified event store** -- a single append-only event log for all trace spans, user events, memory state changes, and annotations via `Skein.Runtime.EventStore`
 
 The runtime is an OTP application that starts automatically when Skein code is loaded.
 
@@ -246,8 +246,17 @@ Skein.Runtime.Memory.list("sessions", "user:", capabilities)
 Every operation:
 1. Validates `memory.kv` capability for the target namespace
 2. Performs the ETS operation in the namespace-specific table (`skein_memory_<namespace>`)
-3. Records a trace span with timing and outcome
-4. Returns `{:ok, _}` or `{:error, _}`
+3. Records a trace span with timing and outcome via the unified EventStore
+4. Each mutation (put/delete) also emits a `:state_change` event for audit and replay
+5. Returns `{:ok, _}` or `{:error, _}`
+
+Memory state can be reconstructed from the event stream:
+
+```elixir
+# Rebuild state from :state_change events (event-sourced)
+Skein.Runtime.Memory.rebuild_from_events("sessions")
+#=> %{"user_id" => "u-123", "session" => "s-456"}
+```
 
 ### `Skein.Runtime.Llm`
 
@@ -332,51 +341,72 @@ Skein.Runtime.Request.json(req_map, json_schema)
 - Checks required fields and field types (string, integer, number, boolean, array, object)
 - Returns structured error messages for validation failures
 
-### `Skein.Runtime.Trace`
+### `Skein.Runtime.EventStore`
 
-Records trace spans for every effect call. Uses an ETS ordered set for storage.
+Unified append-only event log for the entire runtime. All trace spans, user events (`event.log`), memory state changes, and annotations flow through a single ETS ordered set (`:skein_events`).
 
 **API:**
 
 ```elixir
-# Record a span manually
-Skein.Runtime.Trace.record_span(%{
-  kind: :http,
-  method: :get,
-  url: "https://api.example.com/data",
-  status: 200,
-  duration_us: 1500,
-  outcome: :ok
-})
+# Append any event
+Skein.Runtime.EventStore.append(%{kind: :http, method: :get, url: "/api"})
+#=> :ok (auto-assigns id, timestamp, _key)
 
+# Log a user event (compiled event.log() calls target this)
+Skein.Runtime.EventStore.log("user.login", %{user: "alice"}, capabilities)
+#=> :ok
+
+# Query by kind or any field
+Skein.Runtime.EventStore.query(kind: :user_event)
+Skein.Runtime.EventStore.query(kind: :state_change, namespace: "sessions")
+
+# Recent events (newest first)
+Skein.Runtime.EventStore.recent(10)
+
+# Count events
+Skein.Runtime.EventStore.count()
+Skein.Runtime.EventStore.count(kind: :effect)
+
+# Chronological snapshot for golden tests
+Skein.Runtime.EventStore.snapshot()
+#=> [oldest_event, ..., newest_event]
+
+# Clear all events
+Skein.Runtime.EventStore.clear()
+```
+
+**Event kinds:**
+
+| Kind | Source | Description |
+|------|--------|-------------|
+| `:http`, `:memory`, `:llm`, `:store`, `:tool`, `:process`, `:timer` | Effect calls | Effect spans with timing, outcome, method |
+| `:annotation` | `trace.annotate(key, value)` | Key-value markers |
+| `:user_event` | `event.log(name, data)` | User-defined structured events |
+| `:state_change` | `memory.put` / `memory.delete` | Memory mutation audit trail with key/value data |
+
+Every event carries: `id` (unique hex), `timestamp` (monotonic microseconds), `kind`, and kind-specific fields.
+
+### `Skein.Runtime.Trace`
+
+Timing and instrumentation facade over `EventStore`. All effect wrappers (HTTP, Memory, LLM, etc.) call `Trace.with_span` to record spans with automatic timing.
+
+**API:**
+
+```elixir
 # Execute a function with automatic tracing
 Skein.Runtime.Trace.with_span(%{kind: :http, method: :get, url: url}, fn ->
-  # ... do work ...
   {:ok, result}
 end)
 
-# Query recent spans
+# Add a trace annotation
+Skein.Runtime.Trace.annotate("step", "analysis_complete")
+
+# Query recent events (delegates to EventStore.recent)
 Skein.Runtime.Trace.recent_spans(10)
-#=> [%{kind: :http, method: :get, url: ..., duration_us: ..., ...}, ...]
 
-# Clear all recorded spans
-Skein.Runtime.Trace.clear()
+# Record a span manually (delegates to EventStore.append)
+Skein.Runtime.Trace.record_span(%{kind: :http, method: :get, url: "/test"})
 ```
-
-**Span fields:**
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `kind` | atom | Effect type (`:http`, `:store`, `:memory`, `:llm`) |
-| `method` | atom | Operation (`:get`, `:post`, `:put`, `:delete`, `:query`, `:chat`, `:json`, `:list`) |
-| `url` | string | Target URL (HTTP) or table name (store) |
-| `namespace` | string | Memory namespace (memory operations) |
-| `model` | string | LLM model identifier (LLM operations) |
-| `status` | integer | HTTP status code (when available) |
-| `duration_us` | integer | Wall-clock duration in microseconds |
-| `outcome` | atom | `:ok` or `:error` |
-| `error` | string | Error message (on exception) |
-| `timestamp` | integer | Monotonic timestamp (for ordering) |
 
 `with_span/2` handles both normal returns and exceptions:
 - `{:ok, _}` -> outcome `:ok`
