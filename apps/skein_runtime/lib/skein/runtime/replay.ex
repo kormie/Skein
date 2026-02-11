@@ -2,30 +2,39 @@ defmodule Skein.Runtime.Replay do
   @moduledoc """
   Replay engine for Skein golden trace tests.
 
-  Loads recorded trace files and provides deterministic replay of
+  Loads recorded event streams and provides deterministic replay of
   captured interactions. Golden tests use this module to verify that
   a recorded execution trace still produces the expected outcomes.
 
-  ## Trace File Format
+  ## Event File Format
 
-  Trace files are JSON arrays of span objects. Each span has:
+  Event files are JSON arrays of event objects from the unified EventStore.
+  Each event has at minimum:
 
-  - `kind` — the span type (e.g., "handler", "llm", "memory", "http")
-  - Additional fields depending on kind (e.g., `method`, `path`, `status`)
+  - `kind` — the event type (e.g., "effect", "state_change", "user_event",
+    "annotation", or legacy kinds like "handler", "llm", "memory", "http")
+  - Additional fields depending on kind
 
   ## Usage
 
   Called by generated golden test functions:
 
-      trace = Skein.Runtime.Replay.load_trace("path/to/trace.json")
-      # ... assertions using trace data ...
+      events = Skein.Runtime.Replay.load_trace("path/to/trace.json")
+      # ... assertions using event data ...
+
+  ## Memory Reconstruction
+
+  The replay engine can reconstruct memory state from `:state_change` events:
+
+      state = Skein.Runtime.Replay.rebuild_memory(events, "sessions")
+      # => %{"user_id" => "u-123", "decision" => "approved"}
 
   """
 
   @doc """
-  Loads a trace file from disk and returns the parsed span list.
+  Loads a trace file from disk and returns the parsed event list.
 
-  Returns `{:ok, spans}` on success or `{:error, reason}` on failure.
+  Returns the list of events on success.
   Raises on file not found or invalid JSON to fail the golden test.
   """
   @spec load_trace(String.t()) :: list(map())
@@ -52,10 +61,10 @@ defmodule Skein.Runtime.Replay do
   end
 
   @doc """
-  Replays a trace by re-executing each span against the current runtime.
+  Replays a trace by re-executing each event against the current runtime.
 
-  For each span in the trace, dispatches to the appropriate runtime module
-  and collects results. Returns a list of `{span, result}` tuples.
+  For each event in the trace, dispatches to the appropriate runtime module
+  and collects results. Returns a list of `{event, result}` tuples.
 
   This is used to verify that replaying recorded I/O produces the same
   outcomes as the original execution.
@@ -65,6 +74,36 @@ defmodule Skein.Runtime.Replay do
     Enum.map(spans, fn span ->
       result = replay_span(span)
       {span, result}
+    end)
+  end
+
+  @doc """
+  Reconstructs memory state for a namespace from a list of events.
+
+  Filters for `state_change` events matching the given namespace, then
+  replays puts and deletes in order to produce the final state.
+
+  Returns a map of `%{key => value}`.
+  """
+  @spec rebuild_memory(list(map()), String.t()) :: %{String.t() => any()}
+  def rebuild_memory(events, namespace) when is_list(events) and is_binary(namespace) do
+    events
+    |> Enum.filter(fn event ->
+      (event["kind"] == "state_change" or Map.get(event, :kind) == :state_change) and
+        (event["namespace"] == namespace or Map.get(event, :namespace) == namespace)
+    end)
+    |> Enum.reduce(%{}, fn event, acc ->
+      operation = event["operation"] || event[:operation]
+      key = event["key"] || event[:key]
+
+      case to_string(operation) do
+        "put" ->
+          value = event["value"] || event[:value]
+          Map.put(acc, key, value)
+
+        "delete" ->
+          Map.delete(acc, key)
+      end
     end)
   end
 
@@ -100,6 +139,35 @@ defmodule Skein.Runtime.Replay do
       kind: :http,
       method: Map.get(span, "method"),
       url: Map.get(span, "url"),
+      replayed: true
+    }
+  end
+
+  defp replay_span(%{"kind" => "state_change"} = span) do
+    %{
+      kind: :state_change,
+      namespace: Map.get(span, "namespace"),
+      operation: Map.get(span, "operation"),
+      key: Map.get(span, "key"),
+      value: Map.get(span, "value"),
+      replayed: true
+    }
+  end
+
+  defp replay_span(%{"kind" => "user_event"} = span) do
+    %{
+      kind: :user_event,
+      event: Map.get(span, "event"),
+      data: Map.get(span, "data"),
+      replayed: true
+    }
+  end
+
+  defp replay_span(%{"kind" => "annotation"} = span) do
+    %{
+      kind: :annotation,
+      key: Map.get(span, "key"),
+      value: Map.get(span, "value"),
       replayed: true
     }
   end

@@ -449,6 +449,26 @@ These are the immediate next priorities after Phase 7. They fill gaps in the exi
 
 ---
 
+## Phase 10: Unified Event Store ✅
+
+**Goal:** Consolidate trace, event.log, and memory audit into a single append-only event log. One way to observe what happened.
+
+**Status:** COMPLETE
+
+**What changed:**
+- [x] `Skein.Runtime.EventStore` — single ETS-backed event log (`:skein_events`) with `append/1`, `query/1`, `recent/1`, `snapshot/0`, `log/3`
+- [x] `Skein.Runtime.Trace` — refactored as thin facade over EventStore (preserves `with_span/2`, `annotate/2`, `recent_spans/1` API)
+- [x] `Skein.Runtime.EventLog` — deprecated redirect to EventStore; compiled `event.log()` calls now route to `EventStore.log/3`
+- [x] `Skein.Runtime.Memory` — each put/delete emits a `:state_change` event to EventStore; new `rebuild_from_events/1` for event-sourced reconstruction
+- [x] `Skein.Runtime.Replay` — handles unified event kinds (`state_change`, `user_event`, `annotation`); new `rebuild_memory/2` for memory reconstruction from event streams
+- [x] Codegen: `@effect_runtime_modules["event"]` now points to `EventStore`
+
+**Event kinds:** `:http`, `:memory`, `:llm`, `:store`, `:tool`, `:process`, `:timer` (effect spans), `:annotation` (trace markers), `:user_event` (event.log), `:state_change` (memory mutations)
+
+**Tests:** 29 EventStore tests (unit + property), 15 integration tests (unified stream, memory reconstruction, replay), all existing tests pass unchanged (74 properties, 740 tests total)
+
+---
+
 ## Post-MVP Backlog (Not Prioritized)
 
 These are features that matter but are explicitly out of scope for the initial build:
