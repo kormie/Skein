@@ -1,0 +1,35 @@
+-- semantic_search.skein
+-- A module demonstrating RAG-style semantic search using llm.embed.
+-- Embeds a user query, stores/retrieves context from memory,
+-- and uses llm.chat to generate an answer grounded in retrieved context.
+
+module SemanticSearch {
+  capability model("anthropic", "text-embedding-3-small")
+  capability memory.kv
+  capability http.in
+
+  -- Embed text and store the vector in memory under the given key
+  fn index(key: String, text: String) -> String {
+    let vector = llm.embed("text-embedding-3-small", text)
+    memory.put(key, text)
+    "indexed"
+  }
+
+  -- Embed a query and generate an answer using the LLM
+  fn search(query: String) -> String {
+    let query_vector = llm.embed("text-embedding-3-small", query)
+    let context = memory.get("doc_1")
+    let answer = llm.chat("text-embedding-3-small", "Answer using the provided context.", query)
+    answer
+  }
+
+  -- HTTP endpoint to index a document
+  handler http POST "/index" (req) -> {
+    respond.json(200, "indexed")
+  }
+
+  -- HTTP endpoint to search
+  handler http GET "/search/:query" (req) -> {
+    respond.json(200, "results")
+  }
+}

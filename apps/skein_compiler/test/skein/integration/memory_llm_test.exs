@@ -353,4 +353,67 @@ defmodule Skein.Integration.MemoryLlmTest do
       assert {:ok, _} = mod.stream_it("Hello")
     end
   end
+
+  # ------------------------------------------------------------------
+  # LLM embedding integration
+  # ------------------------------------------------------------------
+
+  describe "llm.embed integration" do
+    test "llm.embed compiles and runs end-to-end" do
+      Skein.Runtime.Llm.set_backend(Skein.Runtime.Llm.TestBackend)
+
+      {:module, mod} =
+        Skein.Compiler.compile_string("""
+        module EmbedIntegration {
+          capability model("anthropic", "text-embedding-3-small")
+
+          fn get_embedding(text: String) -> String {
+            llm.embed("text-embedding-3-small", text)
+          }
+        }
+        """)
+
+      assert {:ok, vector} = mod.get_embedding("Hello world")
+      assert is_list(vector)
+      assert Enum.all?(vector, &is_float/1)
+    end
+
+    test "llm.embed uses same model capability as chat" do
+      Skein.Runtime.Llm.set_backend(Skein.Runtime.Llm.TestBackend)
+
+      {:module, mod} =
+        Skein.Compiler.compile_string("""
+        module EmbedCaps {
+          capability model("anthropic", "text-embedding-3-small")
+
+          fn ask(data: String) -> String {
+            llm.chat("text-embedding-3-small", "system", data)
+          }
+
+          fn embed_it(text: String) -> String {
+            llm.embed("text-embedding-3-small", text)
+          }
+        }
+        """)
+
+      assert {:ok, _} = mod.ask("Hello")
+      assert {:ok, vector} = mod.embed_it("Hello")
+      assert is_list(vector)
+    end
+
+    test "llm.embed without model capability is rejected at compile time" do
+      source = """
+      module NoCapEmbed {
+        fn embed_it(text: String) -> String {
+          llm.embed("text-embedding-3-small", text)
+        }
+      }
+      """
+
+      {:ok, tokens} = Skein.Lexer.tokenize(source)
+      {:ok, ast} = Skein.Parser.parse(tokens)
+      assert {:error, errors} = Skein.Analyzer.analyze(ast)
+      assert Enum.any?(errors, &(&1.code == "E0012" and &1.message =~ "model"))
+    end
+  end
 end

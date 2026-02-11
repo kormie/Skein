@@ -116,7 +116,8 @@
 - **Error Code Alignment is COMPLETE** — all 21 + 3 warning codes
 - **idempotent(key) is COMPLETE** — lexer + parser + analyzer (E0035) + codegen + runtime
 - **trace.annotate is COMPLETE** — analyzer + codegen + runtime (no capability required)
-- Next priority: llm.embed
+- **llm.embed is COMPLETE** — analyzer + codegen + runtime (uses model capability)
+- Next priority: Remaining Capability Kinds (process.spawn, timer, event.log)
 - Distribution work is unblocked — all three prerequisites are done
 - LSP (`apps/skein_lsp/`) is implemented — remove from backlog lists
 

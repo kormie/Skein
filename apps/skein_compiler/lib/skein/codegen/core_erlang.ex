@@ -1581,6 +1581,30 @@ defmodule Skein.CodeGen.CoreErlang do
     )
   end
 
+  # LLM effect: llm.embed(model, input) — returns embedding vector
+  defp generate_expr(
+         %AST.Call{
+           target: %AST.FieldAccess{
+             subject: %AST.Identifier{name: "llm"},
+             field: "embed"
+           },
+           args: args
+         },
+         scope
+       ) do
+    args_exprs = Enum.map(args, &generate_expr(&1, scope))
+
+    capabilities = Map.get(scope, :__capabilities__, [])
+    caps_expr = generate_capabilities_literal(capabilities)
+
+    # Call: Skein.Runtime.Llm.embed(model, input, capabilities)
+    :cerl.c_call(
+      :cerl.c_atom(:"Elixir.Skein.Runtime.Llm"),
+      :cerl.c_atom(:embed),
+      args_exprs ++ [caps_expr]
+    )
+  end
+
   # Tool effect: tool.call(name, args), tool.list(), tool.schema(name)
   # For tool.call and tool.schema, the first arg may be an identifier-based
   # tool reference (e.g., MyTool or Stripe.CreateRefund) that must be lowered

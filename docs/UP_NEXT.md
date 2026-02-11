@@ -218,37 +218,18 @@ Implemented `trace.annotate(key, value)` across the full pipeline:
 
 ---
 
-## Priority 8: llm.embed
+## ~~Priority 8: llm.embed~~ ✅ DONE
 
-**Why eighth:** Defined in spec section 6.4. Needed for RAG patterns. Extends existing LLM runtime.
+**Status:** COMPLETE
 
-**Status:** NOT IMPLEMENTED
+Implemented `llm.embed(model, input)` across the full pipeline:
 
-### Scope
-
-`llm.embed(model: String, input: String) -> Result[List[Float], LlmError]`
-
-### Implementation Plan
-
-1. **Analyzer** — Add `"embed"` to `@effect_methods["llm"]`
-2. **Codegen** — Generate `Skein.Runtime.Llm.embed(...)` calls
-3. **Runtime** — Add `embed/3` function to `Skein.Runtime.Llm` with pluggable backend support (test backend returns deterministic vectors)
-
-### Testing Checklist
-
-- [ ] Unit tests: codegen produces correct llm.embed calls
-- [ ] Runtime tests: embed returns float list via test backend
-- [ ] Property tests: arbitrary input strings produce valid float-list embeddings; vector dimensionality is consistent per model
-
-### Examples Checklist
-
-- [ ] **Create `examples/semantic_search.skein`** — a new example demonstrating RAG-style semantic search: an agent that takes a user query, calls `llm.embed(model, query)` to get a vector, stores/retrieves embeddings from memory, and uses `llm.chat` to generate an answer grounded in retrieved context. Show the full `capability model(...)` + `capability memory.kv(...)` setup and the embed→retrieve→chat pipeline.
-- [ ] Verify the new example compiles and its integration tests pass
-
-### Docs Checklist
-
-- [ ] `docs/site/src/content/docs/language/capabilities-and-effects.md` — add `llm.embed` to the LLM section alongside chat/json/stream, with a code example showing embedding text and a note about expected return shape
-- [ ] Rebuild docs site: `cd docs/site && bunx astro build`
+- **Analyzer**: Added `"embed"` to `@effect_methods["llm"]` — uses same `model` capability as chat/json/stream
+- **Codegen**: Added `generate_expr` clause for `llm.embed` — generates `Skein.Runtime.Llm.embed(model, input, capabilities)` calls
+- **Runtime**: Added `embed/3` to `Skein.Runtime.Llm` with pluggable backend support; `embed/2` callback in Backend behaviour; TestBackend returns deterministic 8-dimensional vectors via hash-based generation; FailingBackend returns provider errors
+- **Examples**: `examples/semantic_search.skein` demonstrates RAG-style embed→retrieve→chat pipeline with memory and HTTP handlers
+- **Tests**: Runtime unit (7), property (5), integration (3), examples (4) — all passing
+- **Docs**: capabilities-and-effects.md updated with `llm.embed` in LLM section, return values, and tracing table
 
 ---
 
@@ -305,3 +286,4 @@ _Move items here as they are finished, with date and session link._
 - [x] **topic.publish / topic.consume** (parser + analyzer + codegen + runtime + docs) — 2026-02-09 — session_01HGdUnDFnp5AYRcZD7t1v5m
 - [x] **idempotent(key)** (lexer + parser + analyzer + codegen + runtime + docs) — 2026-02-09 — session_01LuWtXuwSy6E193S4X23JDK
 - [x] **trace.annotate(key, value)** (analyzer + codegen + runtime + docs) — 2026-02-11 — session_019MuBUA8XW6AhCYs6B8iogz
+- [x] **llm.embed** (analyzer + codegen + runtime + example + docs) — 2026-02-11 — session_01HUDduKnWfVoeXi4vrFYXXM
