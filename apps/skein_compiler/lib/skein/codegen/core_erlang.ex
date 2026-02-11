@@ -26,7 +26,10 @@ defmodule Skein.CodeGen.CoreErlang do
   @effect_runtime_modules %{
     "http" => :"Elixir.Skein.Runtime.Http",
     "topic" => :"Elixir.Skein.Runtime.Topic",
-    "trace" => :"Elixir.Skein.Runtime.Trace"
+    "trace" => :"Elixir.Skein.Runtime.Trace",
+    "process" => :"Elixir.Skein.Runtime.Process",
+    "timer" => :"Elixir.Skein.Runtime.Timer",
+    "event" => :"Elixir.Skein.Runtime.EventLog"
   }
 
   # Standard library module mapping: Skein module name -> Elixir runtime module

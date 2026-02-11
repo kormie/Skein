@@ -1,0 +1,32 @@
+-- audit_log.skein
+-- Demonstrates the event.log capability for structured event logging.
+-- An HTTP service that logs structured events for every request,
+-- providing an audit trail of user actions.
+
+module AuditLog {
+  capability http.in
+  capability event.log("audit")
+
+  -- Login endpoint: logs user login events
+  handler http POST "/login" (req) -> {
+    event.log("user.login", req)
+    respond.json(200, "logged-in")
+  }
+
+  -- Action endpoint: logs user actions
+  handler http POST "/action" (req) -> {
+    event.log("user.action", req)
+    respond.json(200, "action-recorded")
+  }
+
+  -- Logout endpoint: logs user logout
+  handler http POST "/logout" (req) -> {
+    event.log("user.logout", req)
+    respond.json(200, "logged-out")
+  }
+
+  -- Health check (no event logging needed)
+  handler http GET "/health" (req) -> {
+    respond.json(200, "ok")
+  }
+}

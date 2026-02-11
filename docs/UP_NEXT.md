@@ -233,11 +233,21 @@ Implemented `llm.embed(model, input)` across the full pipeline:
 
 ---
 
-## Priority 9: Remaining Capability Kinds (process.spawn, timer, event.log)
+## ~~Priority 9: Remaining Capability Kinds (process.spawn, timer, event.log)~~ ✅ DONE
 
-**Why ninth:** Defined in spec section 3.2. Lower priority because no canonical examples use them yet.
+**Status:** COMPLETE
 
-**Status:** NOT IMPLEMENTED (parser accepts the syntax but no analyzer/codegen/runtime backing)
+Implemented all three remaining capability kinds across the full pipeline:
+
+- **Analyzer**: Added `process` → `process.spawn`, `timer` → `timer`, `event` → `event.log` to `@effect_namespaces` and corresponding methods to `@effect_methods`
+- **Codegen**: Added `process` → `Skein.Runtime.Process`, `timer` → `Skein.Runtime.Timer`, `event` → `Skein.Runtime.EventLog` to `@effect_runtime_modules`
+- **Runtime**: Created three new modules:
+  - `Skein.Runtime.Process` — DynamicSupervisor-based task spawning with trace integration
+  - `Skein.Runtime.Timer` — GenServer-managed one-shot (`after`) and recurring (`interval`) timers with cancellation
+  - `Skein.Runtime.EventLog` — ETS-backed structured event logging with query support
+- **Examples**: `examples/background_tasks.skein` (process.spawn + timer) and `examples/audit_log.skein` (event.log)
+- **Tests**: Runtime unit (31), property (12), analyzer (13), codegen (8), examples (8) — all passing
+- **Docs**: capabilities-and-effects.md updated with Process Spawning, Timer Effects, and Event Logging sections
 
 ### Scope
 
@@ -287,3 +297,4 @@ _Move items here as they are finished, with date and session link._
 - [x] **idempotent(key)** (lexer + parser + analyzer + codegen + runtime + docs) — 2026-02-09 — session_01LuWtXuwSy6E193S4X23JDK
 - [x] **trace.annotate(key, value)** (analyzer + codegen + runtime + docs) — 2026-02-11 — session_019MuBUA8XW6AhCYs6B8iogz
 - [x] **llm.embed** (analyzer + codegen + runtime + example + docs) — 2026-02-11 — session_01HUDduKnWfVoeXi4vrFYXXM
+- [x] **Remaining Capabilities: process.spawn, timer, event.log** (analyzer + codegen + runtime + examples + docs) — 2026-02-11 — session_01UAWv6aC96MieHScoFY6qL8
