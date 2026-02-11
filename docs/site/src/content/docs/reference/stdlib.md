@@ -6,7 +6,7 @@ description: Reference for Skein's built-in standard library modules.
 Skein ships with 11 standard library modules available in every Skein program without imports. Stdlib calls compile to static function calls on the corresponding `Skein.Runtime.Stdlib.*` Elixir module.
 
 :::tip[Detailed API docs]
-The stdlib modules are implemented in Elixir with `@spec` annotations on every function. You can generate full API docs with ExDoc by adding `{:ex_doc, "~> 0.35", only: :dev}` to `skein_runtime/mix.exs` and running `mix docs`.
+Full API documentation with typespecs is available in the [ExDoc API Reference](/Skein/api/). Generate locally with `mix docs` from the project root.
 :::
 
 ## String

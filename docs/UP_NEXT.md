@@ -281,6 +281,37 @@ For each capability kind:
 
 ---
 
+## Priority 10: Add `@type t` to AST Structs (ExDoc Warnings)
+
+**Why:** `mix docs` produces 16 warnings about "undefined or private" types. Every AST struct (e.g., `Skein.AST.Module`, `Skein.AST.Agent`, `Skein.AST.TypeDecl`, etc.) uses `defstruct` but doesn't define `@type t :: %__MODULE__{}`. Specs throughout the compiler reference these types (e.g., `Skein.AST.Module.t()`), which ExDoc can't resolve. This makes the generated API docs less useful — type links are broken and readers can't navigate from a function spec to the struct definition.
+
+**Status:** OPEN
+
+### Affected Modules (from ExDoc warnings)
+
+| Module | Referenced by |
+|--------|--------------|
+| `Skein.AST.Module` | Parser, Analyzer, CodeGen |
+| `Skein.AST.Agent` | Analyzer, CodeGen |
+| `Skein.AST.TypeDecl` | Analyzer, SchemaGen |
+| `Skein.AST.EnumDecl` | Analyzer, SchemaGen |
+| `Skein.AST.Field` | Analyzer, SchemaGen |
+| `Skein.AST.TypeRef` | SchemaGen |
+| `Skein.AST.Capability` | Analyzer |
+
+### Implementation Plan
+
+1. **Audit `Skein.AST`** — Go through every struct defined in `apps/skein_compiler/lib/skein/ast.ex` and add `@type t :: %__MODULE__{}` with the correct field types
+2. **Verify** — Run `mix docs` and confirm zero type-reference warnings
+3. **Bonus** — Add `@moduledoc` to any AST struct modules that lack one, so they show up properly in ExDoc
+
+### Testing Checklist
+
+- [ ] `mix docs` completes with zero warnings about "undefined or private" types
+- [ ] `mix test` still passes (no regressions from type annotations)
+
+---
+
 ## Completed Items
 
 _Move items here as they are finished, with date and session link._
