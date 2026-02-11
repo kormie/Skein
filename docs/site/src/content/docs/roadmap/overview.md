@@ -84,31 +84,39 @@ Codegen uses Erlang `:div` for all `/` operations, which crashes on float operan
 
 #### 11. Multiple `emit` in a Single Handler
 
-Multiple `emit` calls in sequence only keep the last event because codegen overwrites the events list instead of accumulating.
+Multiple `emit` calls in a handler sequence may lose events. The handler return tuple carries only the last event set rather than accumulating.
+
+#### 12. Tool Input Validation
+
+Tool inputs go directly to the implementation function without schema validation. The `validation_error` variant exists in `Tool.Error` but is never constructed. An LLM calling a tool with malformed input gets a runtime crash instead of a structured error.
 
 ### Tier 3: Moderate
 
 Spec/implementation drift and polish items.
 
-#### 12. Contextual Keywords
+#### 13. Contextual Keywords
 
 `input`, `output`, `errors`, `state`, `strategy`, and other tokens are reserved globally but only meaningful in specific contexts. You can't name a variable `input` anywhere.
 
-#### 13. Queue Naming Convention
+#### 14. Queue Naming Convention
 
 The spec uses `queue.consume` but the implementation uses `queue.in`. These should be aligned.
 
-#### 14. Agent Events to EventStore
+#### 15. Agent Events to EventStore
 
 Events emitted via `emit` inside agents are stored in `gen_statem` data but not appended to the EventStore. If the agent crashes, emitted events are lost.
 
-#### 15. Persistent EventStore Backend
+#### 16. Persistent EventStore Backend
 
 The EventStore is ETS-only. All traces and events vanish on BEAM restart. Needs an optional persistent backend (SQLite via Ecto, or append-only file).
 
-#### 16. Schedule Auto-Firing
+#### 17. Schedule Auto-Firing
 
 Schedule handlers register their cron expression but never fire automatically. Only manual `trigger/1` works.
+
+#### 18. Agent Nesting Inside Modules
+
+The spec shows agents nested inside modules (`module RefundService { agent RefundAgent { ... } }`), but the parser's `parse_declaration` doesn't include `agent` as a valid module-level construct.
 
 ### Post-MVP Backlog
 
@@ -117,8 +125,9 @@ Items that are planned but not yet prioritized:
 - Erlang/Elixir FFI (`extern`)
 - Hot code upgrades
 - Web IDE (trace viewer)
-- `llm.embed` and `llm.rerank` for RAG pipelines
+- `llm.rerank` for RAG pipelines
 - Human-in-the-loop approval workflows
+- Guard expressions in match arms
 - Managed deployment platform
 - Marketplace for tools/connectors
 
