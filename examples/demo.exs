@@ -82,7 +82,7 @@ end
 IO.puts("\n─────────────────────────────────────")
 IO.puts("📊 Trace spans captured:")
 
-case Skein.Runtime.Trace.get_spans() do
+case Skein.Runtime.Trace.recent_spans(10) do
   spans when is_list(spans) and length(spans) > 0 ->
     Enum.each(spans, fn span ->
       duration = if span[:duration_us], do: "#{span[:duration_us]}µs", else: "n/a"
