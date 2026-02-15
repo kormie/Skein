@@ -80,13 +80,31 @@ end
 
 # 5. Show trace output
 IO.puts("\n─────────────────────────────────────")
-IO.puts("📊 Trace spans captured:")
+IO.puts("📊 Trace spans:")
 
 case Skein.Runtime.Trace.recent_spans(10) do
   spans when is_list(spans) and length(spans) > 0 ->
     Enum.each(spans, fn span ->
-      duration = if span[:duration_us], do: "#{span[:duration_us]}µs", else: "n/a"
-      IO.puts("   • #{span[:kind]}:#{span[:method]} model=#{span[:model]} duration=#{duration}")
+      duration_s =
+        if span[:duration_us],
+          do: :erlang.float_to_binary(span[:duration_us] / 1_000_000, decimals: 1),
+          else: "?"
+
+      outcome_icon = if span[:outcome] == :ok, do: "✅", else: "❌"
+
+      IO.puts(
+        "   • #{span[:kind]}:#{span[:method]} #{span[:model]} (#{duration_s}s) #{outcome_icon}"
+      )
+
+      if span[:system], do: IO.puts("     system: #{inspect(span[:system])}")
+      if span[:input], do: IO.puts("     input:  #{inspect(span[:input])}")
+      if span[:output], do: IO.puts("     output: #{inspect(span[:output])}")
+
+      if span[:usage] do
+        IO.puts(
+          "     tokens: #{span[:usage][:input_tokens]} in → #{span[:usage][:output_tokens]} out"
+        )
+      end
     end)
 
   _ ->

@@ -22,6 +22,7 @@ defmodule Skein.Runtime.Llm.AnthropicBackend do
   @behaviour Skein.Runtime.Llm.Backend
 
   alias Skein.Runtime.Llm.Error
+  alias Skein.Runtime.Llm.Response
 
   @api_url "https://api.anthropic.com/v1/messages"
   @anthropic_version "2023-06-01"
@@ -35,12 +36,12 @@ defmodule Skein.Runtime.Llm.AnthropicBackend do
   Returns `{:ok, response_text}` or `{:error, %Error{}}`.
   """
   @impl true
-  @spec chat(String.t(), String.t(), any()) :: {:ok, String.t()} | {:error, Error.t()}
+  @spec chat(String.t(), String.t(), any()) :: {:ok, Response.t()} | {:error, Error.t()}
   def chat(model, system, input) do
     body = build_request_body(model, system, input, stream: false)
 
     case post(body) do
-      {:ok, response} -> extract_text(response)
+      {:ok, response} -> build_response(response)
       {:error, _} = error -> error
     end
   end
@@ -65,8 +66,8 @@ defmodule Skein.Runtime.Llm.AnthropicBackend do
 
     case post(body) do
       {:ok, response} ->
-        with {:ok, text} <- extract_text(response) do
-          parse_json(text)
+        with {:ok, %Response{} = resp} <- build_response(response) do
+          {:ok, %Response{resp | text: strip_markdown_fences(resp.text)}}
         end
 
       {:error, _} = error ->
@@ -280,6 +281,31 @@ defmodule Skein.Runtime.Llm.AnthropicBackend do
   # -- Response Parsing ----------------------------------------------------
 
   @doc false
+  @spec build_response(map()) :: {:ok, Response.t()} | {:error, Error.t()}
+  def build_response(%{"content" => [%{"type" => "text", "text" => text} | _]} = raw) do
+    {:ok,
+     %Response{
+       text: text,
+       model: raw["model"],
+       stop_reason: map_stop_reason(raw["stop_reason"]),
+       usage: build_usage(raw["usage"]),
+       raw: raw
+     }}
+  end
+
+  def build_response(%{"content" => []}) do
+    {:error, Error.refused("Empty response from Anthropic")}
+  end
+
+  def build_response(%{"type" => "error", "error" => %{"message" => msg}}) do
+    {:error, Error.provider_error("api_error", msg)}
+  end
+
+  def build_response(other) do
+    {:error, Error.provider_error("unexpected_format", "Unexpected response: #{inspect(other)}")}
+  end
+
+  @doc false
   @spec extract_text(map()) :: {:ok, String.t()} | {:error, Error.t()}
   def extract_text(%{"content" => [%{"type" => "text", "text" => text} | _]}) do
     {:ok, text}
@@ -296,6 +322,18 @@ defmodule Skein.Runtime.Llm.AnthropicBackend do
   def extract_text(other) do
     {:error, Error.provider_error("unexpected_format", "Unexpected response: #{inspect(other)}")}
   end
+
+  defp map_stop_reason("end_turn"), do: :end
+  defp map_stop_reason("stop_sequence"), do: :end
+  defp map_stop_reason("max_tokens"), do: :max_tokens
+  defp map_stop_reason("tool_use"), do: :tool_use
+  defp map_stop_reason(_), do: nil
+
+  defp build_usage(%{"input_tokens" => input, "output_tokens" => output}) do
+    %Response.Usage{input_tokens: input, output_tokens: output}
+  end
+
+  defp build_usage(_), do: nil
 
   # -- Error Mapping -------------------------------------------------------
 
@@ -342,24 +380,11 @@ defmodule Skein.Runtime.Llm.AnthropicBackend do
 
   defp extract_retry_after(_), do: 60_000
 
-  defp parse_json(text) do
-    # Strip markdown fences if present
-    cleaned =
-      text
-      |> String.trim()
-      |> String.replace(~r/^```json\s*\n?/, "")
-      |> String.replace(~r/\n?```\s*$/, "")
-      |> String.trim()
-
-    case Jason.decode(cleaned) do
-      {:ok, parsed} when is_map(parsed) ->
-        {:ok, parsed}
-
-      {:ok, _other} ->
-        {:error, Error.parse_failed(text, "JSON object", "Response was not a JSON object")}
-
-      {:error, %Jason.DecodeError{} = err} ->
-        {:error, Error.parse_failed(text, "JSON", Exception.message(err))}
-    end
+  defp strip_markdown_fences(text) do
+    text
+    |> String.trim()
+    |> String.replace(~r/^```json\s*\n?/, "")
+    |> String.replace(~r/\n?```\s*$/, "")
+    |> String.trim()
   end
 end

@@ -3,6 +3,7 @@ defmodule Skein.Runtime.Llm.AnthropicBackendTest do
 
   alias Skein.Runtime.Llm.AnthropicBackend
   alias Skein.Runtime.Llm.Error
+  alias Skein.Runtime.Llm.Response
 
   describe "behaviour" do
     test "implements Backend behaviour" do
@@ -110,6 +111,52 @@ defmodule Skein.Runtime.Llm.AnthropicBackendTest do
     test "400 maps to bad_request" do
       error = AnthropicBackend.map_http_error(400, %{"error" => %{"message" => "invalid model"}})
       assert %Error{kind: :provider_error, detail: %{code: "bad_request", message: "invalid model"}} = error
+    end
+  end
+
+  describe "build_response/1" do
+    test "builds Response with text, model, usage, and stop_reason" do
+      raw = %{
+        "content" => [%{"type" => "text", "text" => "Hello!"}],
+        "model" => "claude-sonnet-4-20250514",
+        "stop_reason" => "end_turn",
+        "usage" => %{"input_tokens" => 10, "output_tokens" => 5}
+      }
+
+      assert {:ok, %Response{} = resp} = AnthropicBackend.build_response(raw)
+      assert resp.text == "Hello!"
+      assert resp.model == "claude-sonnet-4-20250514"
+      assert resp.stop_reason == :end
+      assert resp.usage.input_tokens == 10
+      assert resp.usage.output_tokens == 5
+      assert resp.raw == raw
+    end
+
+    test "maps stop_reason correctly" do
+      base = %{"content" => [%{"type" => "text", "text" => "x"}]}
+
+      {:ok, r1} = AnthropicBackend.build_response(Map.put(base, "stop_reason", "end_turn"))
+      assert r1.stop_reason == :end
+
+      {:ok, r2} = AnthropicBackend.build_response(Map.put(base, "stop_reason", "max_tokens"))
+      assert r2.stop_reason == :max_tokens
+
+      {:ok, r3} = AnthropicBackend.build_response(Map.put(base, "stop_reason", "stop_sequence"))
+      assert r3.stop_reason == :end
+
+      {:ok, r4} = AnthropicBackend.build_response(Map.put(base, "stop_reason", "tool_use"))
+      assert r4.stop_reason == :tool_use
+    end
+
+    test "handles missing usage gracefully" do
+      raw = %{"content" => [%{"type" => "text", "text" => "Hi"}]}
+      {:ok, resp} = AnthropicBackend.build_response(raw)
+      assert resp.usage == nil
+    end
+
+    test "returns error for empty content" do
+      assert {:error, %Error{kind: :refused}} =
+               AnthropicBackend.build_response(%{"content" => []})
     end
   end
 

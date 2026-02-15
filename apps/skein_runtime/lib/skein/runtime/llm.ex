@@ -20,7 +20,10 @@ defmodule Skein.Runtime.Llm do
   """
 
   alias Skein.Runtime.Llm.Error
+  alias Skein.Runtime.Llm.Response
   alias Skein.Runtime.Trace
+
+  @default_truncate_length 200
 
   @doc """
   Sends an unstructured chat request to the LLM.
@@ -31,7 +34,7 @@ defmodule Skein.Runtime.Llm do
           {:ok, String.t()} | {:error, Error.t()}
   def chat(model, system, input, capabilities)
       when is_binary(model) and is_binary(system) and is_list(capabilities) do
-    Trace.with_span(%{kind: :llm, method: :chat, model: model}, fn ->
+    with_enriched_span(%{kind: :llm, method: :chat, model: model}, system, input, fn ->
       case check_model_capability(model, capabilities) do
         :ok ->
           backend = get_backend()
@@ -55,12 +58,18 @@ defmodule Skein.Runtime.Llm do
           {:ok, map()} | {:error, Error.t()}
   def json(model, system, input, schema, capabilities)
       when is_binary(model) and is_binary(system) and is_map(schema) and is_list(capabilities) do
-    Trace.with_span(%{kind: :llm, method: :json, model: model}, fn ->
+    with_enriched_span(%{kind: :llm, method: :json, model: model}, system, input, fn ->
       case check_model_capability(model, capabilities) do
         :ok ->
           backend = get_backend()
 
           case backend.json(model, system, input, schema) do
+            {:ok, %Response{text: raw_text} = resp} ->
+              case parse_json_response(raw_text) do
+                {:ok, parsed} -> {:ok, parsed, resp}
+                error -> error
+              end
+
             {:ok, raw_text} when is_binary(raw_text) ->
               parse_json_response(raw_text)
 
@@ -93,14 +102,13 @@ defmodule Skein.Runtime.Llm do
   def stream(model, system, input, on_chunk, capabilities)
       when is_binary(model) and is_binary(system) and is_function(on_chunk, 1) and
              is_list(capabilities) do
-    Trace.with_span(%{kind: :llm, method: :stream, model: model}, fn ->
+    with_enriched_span(%{kind: :llm, method: :stream, model: model}, system, input, fn ->
       case check_model_capability(model, capabilities) do
         :ok ->
           backend = get_backend()
 
           case call_stream(backend, model, system, input, on_chunk) do
             {:ok, chunks} when is_list(chunks) ->
-              # Deliver each chunk to the callback and assemble
               Enum.each(chunks, on_chunk)
               {:ok, Enum.join(chunks, "")}
 
@@ -211,6 +219,105 @@ defmodule Skein.Runtime.Llm do
       {:error, %Jason.DecodeError{} = decode_error} ->
         {:error, Error.parse_failed(raw_text, "JSON", Exception.message(decode_error))}
     end
+  end
+
+  # -- Enriched span recording ---------------------------------------------
+
+  defp with_enriched_span(metadata, system, input, fun) do
+    truncate = @default_truncate_length
+    input_str = if is_binary(input), do: input, else: inspect(input)
+    input_type = if is_binary(input), do: :text, else: :structured
+
+    span_meta =
+      Map.merge(metadata, %{
+        system: Response.truncate(system, truncate),
+        input: Response.truncate(input_str, truncate),
+        input_type: input_type
+      })
+
+    start = System.monotonic_time(:microsecond)
+
+    try do
+      result = fun.()
+      duration = System.monotonic_time(:microsecond) - start
+
+      {outcome, caller_result, response_meta} = extract_result_meta(result, truncate)
+
+      span =
+        span_meta
+        |> Map.merge(response_meta)
+        |> Map.merge(%{duration_us: duration, outcome: outcome})
+
+      Trace.record_span(span)
+      caller_result
+    rescue
+      exception ->
+        duration = System.monotonic_time(:microsecond) - start
+
+        span =
+          Map.merge(span_meta, %{
+            duration_us: duration,
+            outcome: :error,
+            error: Exception.message(exception)
+          })
+
+        Trace.record_span(span)
+        reraise exception, __STACKTRACE__
+    end
+  end
+
+  # Extract trace metadata from backend result, normalizing Response vs raw strings
+  defp extract_result_meta({:ok, %Response{} = resp}, truncate) do
+    meta = %{
+      output: Response.truncate(resp.text, truncate),
+      actual_model: resp.model,
+      stop_reason: resp.stop_reason
+    }
+
+    meta =
+      if resp.usage do
+        Map.put(meta, :usage, %{
+          input_tokens: resp.usage.input_tokens,
+          output_tokens: resp.usage.output_tokens
+        })
+      else
+        meta
+      end
+
+    {:ok, {:ok, resp.text}, meta}
+  end
+
+  # json method returns {parsed, response} as a 3-tuple
+  defp extract_result_meta({:ok, parsed, %Response{} = resp}, truncate) do
+    meta = %{
+      output: Response.truncate(resp.text || inspect(parsed), truncate),
+      actual_model: resp.model,
+      stop_reason: resp.stop_reason
+    }
+
+    meta =
+      if resp.usage do
+        Map.put(meta, :usage, %{
+          input_tokens: resp.usage.input_tokens,
+          output_tokens: resp.usage.output_tokens
+        })
+      else
+        meta
+      end
+
+    {:ok, {:ok, parsed}, meta}
+  end
+
+  defp extract_result_meta({:ok, text} = result, truncate) when is_binary(text) do
+    {:ok, result, %{output: Response.truncate(text, truncate)}}
+  end
+
+  defp extract_result_meta({:ok, _} = result, _truncate) do
+    {:ok, result, %{}}
+  end
+
+  defp extract_result_meta({:error, _} = result, _truncate) do
+    {:error, result, %{}}
   end
 end
 
