@@ -1088,7 +1088,7 @@ defmodule Skein.Analyzer do
     {subject_type, subject_errors} = infer_type(subject, env)
 
     # Infer types of all arms
-    arm_results = Enum.map(arms, &infer_match_arm(&1, env))
+    arm_results = Enum.map(arms, &infer_match_arm(&1, subject_type, env))
     arm_types = Enum.map(arm_results, &elem(&1, 0))
     arm_errors = Enum.flat_map(arm_results, &elem(&1, 1))
 
@@ -1227,9 +1227,55 @@ defmodule Skein.Analyzer do
   end
 
   # Field access
-  defp infer_type(%AST.FieldAccess{}, _env) do
-    # Field access type depends on the subject type — for now, :unknown
-    {:unknown, []}
+  defp infer_type(%AST.FieldAccess{subject: subject, field: field, meta: meta}, env) do
+    {subject_type, subject_errors} = infer_type(subject, env)
+
+    case subject_type do
+      :unknown ->
+        {:unknown, subject_errors}
+
+      {:user_type, type_name} ->
+        case Map.get(env.types, type_name) do
+          %AST.TypeDecl{fields: fields} ->
+            case Enum.find(fields, &(&1.name == field)) do
+              %AST.Field{type: type_ref} ->
+                {resolve_type(type_ref, env.types), subject_errors}
+
+              nil ->
+                {
+                  :unknown,
+                  subject_errors ++
+                    [
+                      %Error{
+                        code: "E0020",
+                        severity: :error,
+                        message: "Type '#{type_name}' has no field '#{field}'",
+                        location: location_from_meta(meta, env.file),
+                        fix_hint: "Available fields: #{Enum.map_join(fields, ", ", & &1.name)}"
+                      }
+                    ]
+                }
+            end
+
+          _ ->
+            {:unknown, subject_errors}
+        end
+
+      other ->
+        {
+          :unknown,
+          subject_errors ++
+            [
+              %Error{
+                code: "E0020",
+                severity: :error,
+                message: "Cannot access field '#{field}' on type #{format_type(other)}",
+                location: location_from_meta(meta, env.file),
+                fix_hint: "Field access is only supported on user-defined types"
+              }
+            ]
+        }
+    end
   end
 
   # FnRef
@@ -1283,22 +1329,67 @@ defmodule Skein.Analyzer do
   # Match arm inference
   # ------------------------------------------------------------------
 
-  defp infer_match_arm(%AST.MatchArm{pattern: pattern, body: body}, env) do
-    # Bind pattern variables into scope
-    new_env = bind_pattern(pattern, env)
+  defp infer_match_arm(%AST.MatchArm{pattern: pattern, body: body}, subject_type, env) do
+    # Bind pattern variables into scope with type info from the subject
+    new_env = bind_pattern(pattern, subject_type, env)
     infer_type(body, new_env)
   end
 
-  defp bind_pattern(%AST.Identifier{name: name}, env) do
-    # Pattern variable — bind as :unknown type for now
-    %{env | variables: Map.put(env.variables, name, :unknown)}
+  defp bind_pattern(%AST.Identifier{name: name}, subject_type, env) do
+    %{env | variables: Map.put(env.variables, name, subject_type)}
   end
 
-  defp bind_pattern(%AST.Call{target: _target, args: args}, env) do
-    Enum.reduce(args, env, &bind_pattern/2)
+  defp bind_pattern(%AST.Call{target: %AST.Identifier{name: "Ok"}, args: [arg]}, subject_type, env) do
+    ok_type =
+      case subject_type do
+        {:result, ok_t, _err_t} -> ok_t
+        _ -> :unknown
+      end
+
+    bind_pattern(arg, ok_type, env)
   end
 
-  defp bind_pattern(_, env), do: env
+  defp bind_pattern(%AST.Call{target: %AST.Identifier{name: "Err"}, args: [arg]}, subject_type, env) do
+    err_type =
+      case subject_type do
+        {:result, _ok_t, err_t} -> err_t
+        _ -> :unknown
+      end
+
+    bind_pattern(arg, err_type, env)
+  end
+
+  defp bind_pattern(%AST.Call{target: %AST.Identifier{name: variant_name}, args: args}, subject_type, env) do
+    # Try to find enum variant and bind fields
+    case subject_type do
+      {:enum, enum_name} ->
+        case Map.get(env.enums, enum_name) do
+          %AST.EnumDecl{variants: variants} ->
+            case Enum.find(variants, &(&1.name == variant_name)) do
+              %AST.Variant{fields: fields} ->
+                Enum.zip(args, fields)
+                |> Enum.reduce(env, fn {arg, %AST.Field{type: type_ref}}, acc ->
+                  bind_pattern(arg, resolve_type(type_ref, env.types), acc)
+                end)
+
+              nil ->
+                Enum.reduce(args, env, fn arg, acc -> bind_pattern(arg, :unknown, acc) end)
+            end
+
+          _ ->
+            Enum.reduce(args, env, fn arg, acc -> bind_pattern(arg, :unknown, acc) end)
+        end
+
+      _ ->
+        Enum.reduce(args, env, fn arg, acc -> bind_pattern(arg, :unknown, acc) end)
+    end
+  end
+
+  defp bind_pattern(%AST.Call{args: args}, _subject_type, env) do
+    Enum.reduce(args, env, fn arg, acc -> bind_pattern(arg, :unknown, acc) end)
+  end
+
+  defp bind_pattern(_, _subject_type, env), do: env
 
   # ------------------------------------------------------------------
   # Match exhaustiveness checking

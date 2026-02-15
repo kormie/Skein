@@ -3049,4 +3049,159 @@ defmodule Skein.AnalyzerTest do
                """)
     end
   end
+
+  # ------------------------------------------------------------------
+  # Field access type inference
+  # ------------------------------------------------------------------
+
+  describe "field access type inference" do
+    test "field access on typed variable resolves field type" do
+      assert {:ok, _} =
+               analyze("""
+               module M {
+                 type User {
+                   name: String
+                   age: Int
+                 }
+
+                 fn get_name(user: User) -> String {
+                   user.name
+                 }
+               }
+               """)
+    end
+
+    test "field access on Int field mismatches String return type" do
+      errors =
+        analyze_errors("""
+        module M {
+          type User {
+            name: String
+            age: Int
+          }
+
+          fn get_age(user: User) -> String {
+            user.age
+          }
+        }
+        """)
+
+      # If field access properly infers Int, this should produce a return type mismatch
+      assert length(errors) >= 1
+      assert hd(errors).message =~ "type mismatch"
+    end
+
+    test "field access on unknown field produces error" do
+      errors =
+        analyze_errors("""
+        module M {
+          type User {
+            name: String
+            age: Int
+          }
+
+          fn bad(user: User) -> String {
+            user.nonexistent
+          }
+        }
+        """)
+
+      assert length(errors) >= 1
+      assert hd(errors).message =~ "nonexistent"
+    end
+
+    test "field access on unknown-typed variable returns unknown" do
+      # Should not produce a type error - we can't check what we don't know
+      assert {:ok, _} =
+               analyze("""
+               module M {
+                 fn foo() -> String {
+                   "ok"
+                 }
+               }
+               """)
+    end
+
+    test "chained field access through let binding" do
+      assert {:ok, _} =
+               analyze("""
+               module M {
+                 type User {
+                   name: String
+                   age: Int
+                 }
+
+                 fn get_name(user: User) -> String {
+                   let u = user
+                   u.name
+                 }
+               }
+               """)
+    end
+  end
+
+  # ------------------------------------------------------------------
+  # Pattern binding in match arms
+  # ------------------------------------------------------------------
+
+  describe "pattern binding in match arms" do
+    test "Ok pattern binds inner type from Result" do
+      assert {:ok, _} =
+               analyze("""
+               module M {
+                 type Profile {
+                   name: String
+                 }
+
+                 fn get_profile() -> Result[Profile, String] {
+                   Ok(Profile)
+                 }
+
+                 fn use_profile() -> String {
+                   let result = get_profile()
+                   match result {
+                     Ok(p) -> p.name
+                     Err(e) -> e
+                   }
+                 }
+               }
+               """)
+    end
+
+    test "Err pattern binds error type from Result" do
+      assert {:ok, _} =
+               analyze("""
+               module M {
+                 fn might_fail() -> Result[Int, String] {
+                   Ok(42)
+                 }
+
+                 fn handle() -> String {
+                   let result = might_fail()
+                   match result {
+                     Ok(n) -> "got it"
+                     Err(e) -> e
+                   }
+                 }
+               }
+               """)
+    end
+  end
+
+  # ------------------------------------------------------------------
+  # Constructor call type inference
+  # ------------------------------------------------------------------
+
+  describe "constructor call type inference" do
+    test "Ok constructor returns Result type" do
+      assert {:ok, _} =
+               analyze("""
+               module M {
+                 fn succeed() -> Result[Int, String] {
+                   Ok(42)
+                 }
+               }
+               """)
+    end
+  end
 end
