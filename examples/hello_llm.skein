@@ -1,0 +1,20 @@
+agent Greeter {
+  capability model("claude-sonnet-4-20250514")
+
+  state { name: String }
+
+  enum Phase {
+    Start -> [Done]
+    Done -> []
+  }
+
+  on start(name: String) -> {
+    let greeting = llm.chat("claude-sonnet-4-20250514", "You are a friendly greeter. Greet the user warmly in one sentence.", name)
+    emit Greeting { message: greeting }
+    transition(Phase.Done)
+  }
+
+  on phase(Phase.Done) -> {
+    stop()
+  }
+}

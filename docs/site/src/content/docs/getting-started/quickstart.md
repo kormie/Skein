@@ -130,6 +130,51 @@ The test suite includes:
 - **706+ unit tests** across lexer, parser, analyzer, codegen, runtime, and CLI
 - **72 property-based tests** -- randomized inputs across lexer, parser, codegen, capability checking, store, tool operations, and handler types
 
+## Running with a Real LLM Backend
+
+Skein includes a production Anthropic backend for making real LLM calls. To use it:
+
+1. **Set your API key** as an environment variable:
+
+```bash
+export ANTHROPIC_API_KEY=sk-ant-api03-...
+```
+
+2. **Run the demo script** to see it in action:
+
+```bash
+ANTHROPIC_API_KEY=sk-ant-... mix run examples/demo.exs
+```
+
+This compiles a Skein module with `llm.chat` calls and makes real requests to Claude.
+
+3. **Configure the backend** in your application config:
+
+```elixir
+# config/config.exs
+config :skein_runtime, :llm_backend, Skein.Runtime.Llm.AnthropicBackend
+config :skein_runtime, :anthropic_api_key, System.get_env("ANTHROPIC_API_KEY")
+```
+
+Or set the backend at runtime:
+
+```elixir
+Skein.Runtime.Llm.set_backend(Skein.Runtime.Llm.AnthropicBackend)
+```
+
+### Model Mapping
+
+Any `gpt-*` model name is automatically mapped to `claude-sonnet-4-20250514`. Claude model names are passed through as-is.
+
+### Supported Operations
+
+| Operation | Status |
+|-----------|--------|
+| `llm.chat(model, system, input)` | ✅ Full support |
+| `llm.json(model, system, input)` | ✅ Schema-constrained JSON output |
+| `llm.stream(model, system, input)` | ✅ Server-sent events streaming |
+| `llm.embed(model, input)` | ❌ Not available (use OpenAI or Voyage AI) |
+
 ## Compiled Module Naming
 
 Skein modules compile to Elixir-compatible module names following the pattern `Elixir.Skein.User.<Name>`. This means:

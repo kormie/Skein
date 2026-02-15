@@ -44,6 +44,7 @@ defmodule SkeinRuntime.MixProject do
       {:cc_precompiler, "~> 0.1.9"},
       {:stream_data, "~> 1.1", only: [:test, :dev]},
       {:propcheck, "~> 1.4", only: [:test, :dev]},
+      {:req, "~> 0.5"},
       {:skein_compiler, in_umbrella: true}
     ]
   end

@@ -160,7 +160,9 @@ defmodule Skein.Runtime.Llm do
     try do
       :persistent_term.get(:skein_llm_backend)
     rescue
-      ArgumentError -> Skein.Runtime.Llm.TestBackend
+      ArgumentError ->
+        # Fall back to Application config, then TestBackend
+        Application.get_env(:skein_runtime, :llm_backend, Skein.Runtime.Llm.TestBackend)
     end
   end
 
