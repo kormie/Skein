@@ -2407,4 +2407,102 @@ defmodule Skein.ParserTest do
       assert meta.line == 4
     end
   end
+
+  describe "map literals" do
+    test "parses empty map literal" do
+      source = """
+      module M {
+        fn empty() -> Map[String, Int] {
+          {}
+        }
+      }
+      """
+
+      assert {:ok, %AST.Module{declarations: [f]}} = parse(source)
+      assert %AST.Block{expressions: [%AST.MapLit{entries: []}]} = f.body
+    end
+
+    test "parses single-entry map literal" do
+      source = """
+      module M {
+        fn one() -> Map[String, Int] {
+          { name: "Alice" }
+        }
+      }
+      """
+
+      assert {:ok, %AST.Module{declarations: [f]}} = parse(source)
+      assert %AST.Block{expressions: [%AST.MapLit{entries: entries}]} = f.body
+      assert [{"name", %AST.StringLit{}}] = entries
+    end
+
+    test "parses multi-entry map literal" do
+      source = """
+      module M {
+        fn user() -> Map[String, String] {
+          { name: "Alice", age: 30, active: true }
+        }
+      }
+      """
+
+      assert {:ok, %AST.Module{declarations: [f]}} = parse(source)
+      assert %AST.Block{expressions: [%AST.MapLit{entries: entries}]} = f.body
+      assert [{"name", %AST.StringLit{}}, {"age", %AST.IntLit{value: 30}}, {"active", %AST.BoolLit{value: true}}] = entries
+    end
+
+    test "parses map literal with expression values" do
+      source = """
+      module M {
+        fn make(name: String) -> Map[String, String] {
+          { name: name, greeting: "hello" }
+        }
+      }
+      """
+
+      assert {:ok, %AST.Module{declarations: [f]}} = parse(source)
+      assert %AST.Block{expressions: [%AST.MapLit{entries: entries}]} = f.body
+      assert [{"name", %AST.Identifier{name: "name"}}, {"greeting", %AST.StringLit{}}] = entries
+    end
+
+    test "parses nested map literal" do
+      source = """
+      module M {
+        fn nested() -> Map[String, Map[String, Int]] {
+          { user: { name: "Alice" } }
+        }
+      }
+      """
+
+      assert {:ok, %AST.Module{declarations: [f]}} = parse(source)
+      assert %AST.Block{expressions: [%AST.MapLit{entries: [{"user", %AST.MapLit{entries: [{"name", %AST.StringLit{}}]}}]}]} = f.body
+    end
+
+    test "map literal preserves source location" do
+      source = """
+      module M {
+        fn m() -> Map[String, Int] {
+          { x: 1 }
+        }
+      }
+      """
+
+      assert {:ok, %AST.Module{declarations: [f]}} = parse(source)
+      assert %AST.Block{expressions: [%AST.MapLit{meta: meta}]} = f.body
+      assert meta.line == 3
+    end
+
+    test "block still works when not a map literal" do
+      source = """
+      module M {
+        fn f(x: Int) -> Int {
+          let y = x + 1
+          y
+        }
+      }
+      """
+
+      assert {:ok, %AST.Module{declarations: [f]}} = parse(source)
+      assert %AST.Block{expressions: [%AST.Let{}, %AST.Identifier{}]} = f.body
+    end
+  end
 end

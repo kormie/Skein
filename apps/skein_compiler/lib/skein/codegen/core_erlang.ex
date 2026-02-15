@@ -1810,6 +1810,16 @@ defmodule Skein.CodeGen.CoreErlang do
     )
   end
 
+  # Map literal
+  defp generate_expr(%AST.MapLit{entries: entries}, scope) do
+    pairs =
+      Enum.map(entries, fn {key, value} ->
+        {:cerl.c_atom(String.to_atom(key)), generate_expr(value, scope)}
+      end)
+
+    :cerl.c_map(pairs |> Enum.map(fn {k, v} -> :cerl.c_map_pair(k, v) end))
+  end
+
   # Identifier
   defp generate_expr(%AST.Identifier{name: name}, scope) do
     case Map.get(scope, name) do

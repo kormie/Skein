@@ -2206,7 +2206,18 @@ defmodule Skein.Parser do
     {:ok, %AST.Identifier{name: "tool", meta: %{line: line, col: col, file: file}}, rest}
   end
 
-  # Block as primary expression
+  # Map literal or block as primary expression
+  # Disambiguate: { ident: ... } is a map literal, { expr ... } is a block
+  defp parse_primary([{:lbrace, _}, {:ident, _, _}, {:colon, _} | _] = tokens, file) do
+    parse_map_literal(tokens, file)
+  end
+
+  # Empty braces: treat as empty map literal
+  defp parse_primary([{:lbrace, {line, col}}, {:rbrace, _} | rest], file) do
+    {:ok, %AST.MapLit{entries: [], meta: %{line: line, col: col, file: file}}, rest}
+  end
+
+  # Block as primary expression (fallback)
   defp parse_primary([{:lbrace, _} | _] = tokens, file) do
     parse_block(tokens, file)
   end
@@ -2278,6 +2289,36 @@ defmodule Skein.Parser do
 
       {:error, _} = error ->
         error
+    end
+  end
+
+  # ------------------------------------------------------------------
+  # Map literal: { key: value, key: value }
+  # ------------------------------------------------------------------
+
+  defp parse_map_literal([{:lbrace, {line, col}} | rest], file) do
+    case parse_map_entries(rest, file, []) do
+      {:ok, entries, rest} ->
+        {:ok, %AST.MapLit{entries: entries, meta: %{line: line, col: col, file: file}}, rest}
+
+      {:error, _} = error ->
+        error
+    end
+  end
+
+  defp parse_map_entries([{:rbrace, _} | rest], _file, acc) do
+    {:ok, Enum.reverse(acc), rest}
+  end
+
+  defp parse_map_entries([{:comma, _} | rest], file, acc) do
+    parse_map_entries(rest, file, acc)
+  end
+
+  defp parse_map_entries(tokens, file, acc) do
+    with {:ok, name, rest} <- expect_lower_ident(tokens, file),
+         {:ok, _colon, rest} <- expect(:colon, rest, file),
+         {:ok, value, rest} <- parse_expression(rest, file) do
+      parse_map_entries(rest, file, [{name, value} | acc])
     end
   end
 

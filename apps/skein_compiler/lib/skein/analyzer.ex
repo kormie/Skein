@@ -1242,6 +1242,16 @@ defmodule Skein.Analyzer do
     infer_type(value, env)
   end
 
+  defp infer_type(%AST.MapLit{entries: entries}, env) do
+    errors =
+      Enum.flat_map(entries, fn {_key, value} ->
+        {_type, errs} = infer_type(value, env)
+        errs
+      end)
+
+    {{:map, :string, :unknown}, errors}
+  end
+
   # Catch-all
   defp infer_type(_expr, _env) do
     {:unknown, []}
