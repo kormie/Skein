@@ -43,7 +43,8 @@ defmodule SkeinRuntime.MixProject do
       {:elixir_make, "~> 0.9"},
       {:cc_precompiler, "~> 0.1.9"},
       {:stream_data, "~> 1.1", only: [:test, :dev]},
-      {:propcheck, "~> 1.4", only: [:test, :dev]}
+      {:propcheck, "~> 1.4", only: [:test, :dev]},
+      {:skein_compiler, in_umbrella: true}
     ]
   end
 end

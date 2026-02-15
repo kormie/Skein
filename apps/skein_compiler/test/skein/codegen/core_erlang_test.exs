@@ -1543,7 +1543,9 @@ defmodule Skein.CodeGen.CoreErlangTest do
       Skein.Runtime.Llm.set_backend(Skein.Runtime.Llm.TestBackend)
 
       result = Skein.Runtime.Llm.chat("claude-sonnet-4-5", "Be helpful.", "Hello", [])
-      assert {:error, %Skein.Runtime.Llm.Error{kind: :capability_error}} = result
+      assert {:error, error} = result
+      assert error.__struct__ == Skein.Runtime.Llm.Error
+      assert error.kind == :capability_error
     end
   end
 

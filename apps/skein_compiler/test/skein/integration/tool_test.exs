@@ -150,7 +150,9 @@ defmodule Skein.Integration.ToolTest do
         }
         """)
 
-      assert {:error, %Skein.Runtime.Tool.Error{kind: :not_found}} = mod.invoke()
+      assert {:error, error} = mod.invoke()
+      assert error.__struct__ == Skein.Runtime.Tool.Error
+      assert error.kind == :not_found
     end
 
     test "tool.call result can be bound with let" do
