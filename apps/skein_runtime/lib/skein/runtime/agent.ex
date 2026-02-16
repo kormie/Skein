@@ -99,12 +99,21 @@ defmodule Skein.Runtime.Agent do
 
   @impl true
   def init({module, args}) do
+    # Generate a unique instance ID for memory scoping
+    instance_id = generate_instance_id()
+    agent_name = module |> Atom.to_string() |> String.split(".") |> List.last()
+
+    # Store in process dictionary so Memory module can scope keys transparently
+    Process.put(:skein_agent_instance_id, instance_id)
+    Process.put(:skein_agent_name, agent_name)
+
     data = %{
       module: module,
       state: %{},
       events: [],
       args: args,
-      suspend_reason: nil
+      suspend_reason: nil,
+      instance_id: instance_id
     }
 
     # Call the start handler which should return a transition action
@@ -259,4 +268,9 @@ defmodule Skein.Runtime.Agent do
 
   defp merge_state(old, new) when is_map(new), do: Map.merge(old, new)
   defp merge_state(old, _), do: old
+
+  defp generate_instance_id do
+    # 16 random bytes, hex-encoded
+    :crypto.strong_rand_bytes(16) |> Base.encode16(case: :lower)
+  end
 end

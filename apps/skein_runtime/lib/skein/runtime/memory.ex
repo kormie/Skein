@@ -41,15 +41,16 @@ defmodule Skein.Runtime.Memory do
     Trace.with_span(%{kind: :memory, method: :put, namespace: namespace}, fn ->
       case check_memory_capability(namespace, capabilities) do
         :ok ->
+          scoped = scope_key(key)
           ets_table = table_ref(namespace)
           ensure_table(ets_table)
-          :ets.insert(ets_table, {key, value})
+          :ets.insert(ets_table, {scoped, value})
 
           EventStore.append(%{
             kind: :state_change,
             namespace: namespace,
             operation: :put,
-            key: key,
+            key: scoped,
             value: value
           })
 
@@ -72,11 +73,12 @@ defmodule Skein.Runtime.Memory do
     Trace.with_span(%{kind: :memory, method: :get, namespace: namespace}, fn ->
       case check_memory_capability(namespace, capabilities) do
         :ok ->
+          scoped = scope_key(key)
           ets_table = table_ref(namespace)
           ensure_table(ets_table)
 
-          case :ets.lookup(ets_table, key) do
-            [{^key, value}] -> {:ok, value}
+          case :ets.lookup(ets_table, scoped) do
+            [{^scoped, value}] -> {:ok, value}
             [] -> {:error, "not_found"}
           end
 
@@ -111,15 +113,16 @@ defmodule Skein.Runtime.Memory do
     Trace.with_span(%{kind: :memory, method: :delete, namespace: namespace}, fn ->
       case check_memory_capability(namespace, capabilities) do
         :ok ->
+          scoped = scope_key(key)
           ets_table = table_ref(namespace)
           ensure_table(ets_table)
-          :ets.delete(ets_table, key)
+          :ets.delete(ets_table, scoped)
 
           EventStore.append(%{
             kind: :state_change,
             namespace: namespace,
             operation: :delete,
-            key: key
+            key: scoped
           })
 
           {:ok, key}
@@ -144,9 +147,18 @@ defmodule Skein.Runtime.Memory do
           ets_table = table_ref(namespace)
           ensure_table(ets_table)
 
+          instance_prefix = agent_prefix()
+
           :ets.tab2list(ets_table)
           |> Enum.map(fn {key, _value} -> key end)
-          |> Enum.filter(fn key -> String.starts_with?(key, prefix) end)
+          |> Enum.filter(fn key ->
+            # Filter to current agent instance's keys if in agent context
+            in_scope = if instance_prefix, do: String.starts_with?(key, instance_prefix), else: true
+            # Apply user prefix filter on the unscoped key
+            unscoped = if instance_prefix && in_scope, do: String.replace_prefix(key, instance_prefix, ""), else: key
+            in_scope && (prefix == "" || prefix == "*" || String.starts_with?(unscoped, prefix))
+          end)
+          |> Enum.map(&unscope_key/1)
 
         {:error, _} = error ->
           error
@@ -203,6 +215,42 @@ defmodule Skein.Runtime.Memory do
     end
 
     :ok
+  end
+
+  # Scope a key with the agent instance prefix if running inside an agent process.
+  # This provides automatic isolation between concurrent agent instances.
+  defp scope_key(key) do
+    case {Process.get(:skein_agent_name), Process.get(:skein_agent_instance_id)} do
+      {name, id} when is_binary(name) and is_binary(id) ->
+        "#{name}:#{id}:#{key}"
+
+      _ ->
+        key
+    end
+  end
+
+  # Strip the agent instance prefix from a scoped key to return the user-facing key.
+  defp unscope_key(scoped_key) do
+    case {Process.get(:skein_agent_name), Process.get(:skein_agent_instance_id)} do
+      {name, id} when is_binary(name) and is_binary(id) ->
+        prefix = "#{name}:#{id}:"
+        if String.starts_with?(scoped_key, prefix) do
+          String.replace_prefix(scoped_key, prefix, "")
+        else
+          scoped_key
+        end
+
+      _ ->
+        scoped_key
+    end
+  end
+
+  # Returns the agent instance prefix for filtering in list operations, or nil.
+  defp agent_prefix do
+    case {Process.get(:skein_agent_name), Process.get(:skein_agent_instance_id)} do
+      {name, id} when is_binary(name) and is_binary(id) -> "#{name}:#{id}:"
+      _ -> nil
+    end
   end
 
   defp check_memory_capability(namespace, capabilities) do

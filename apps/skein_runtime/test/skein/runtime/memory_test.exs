@@ -202,4 +202,103 @@ defmodule Skein.Runtime.MemoryTest do
       Memory.clear("ns2")
     end
   end
+
+  # ------------------------------------------------------------------
+  # Instance-scoped memory (agent context)
+  # ------------------------------------------------------------------
+
+  describe "agent instance-scoped memory" do
+    @caps [%{kind: "memory.kv", params: ["sessions"]}]
+
+    test "keys are scoped per agent instance" do
+      # Simulate two agent instances writing to the same namespace and key
+      Memory.clear("sessions")
+
+      # Agent instance 1
+      Process.put(:skein_agent_name, "RefundAgent")
+      Process.put(:skein_agent_instance_id, "inst_aaa")
+
+      Memory.put("sessions", "decision", "approve", @caps)
+
+      # Agent instance 2
+      Process.put(:skein_agent_name, "RefundAgent")
+      Process.put(:skein_agent_instance_id, "inst_bbb")
+
+      Memory.put("sessions", "decision", "reject", @caps)
+
+      # Instance 2 sees its own value
+      assert {:ok, "reject"} = Memory.get("sessions", "decision", @caps)
+
+      # Switch back to instance 1
+      Process.put(:skein_agent_instance_id, "inst_aaa")
+      assert {:ok, "approve"} = Memory.get("sessions", "decision", @caps)
+
+      Memory.clear("sessions")
+    end
+
+    test "memory.list returns only current instance's keys" do
+      Memory.clear("sessions")
+
+      Process.put(:skein_agent_name, "TestAgent")
+      Process.put(:skein_agent_instance_id, "inst_111")
+      Memory.put("sessions", "key_a", "val_a", @caps)
+
+      Process.put(:skein_agent_instance_id, "inst_222")
+      Memory.put("sessions", "key_b", "val_b", @caps)
+
+      # Instance 222 should only see key_b
+      keys = Memory.list("sessions", "", @caps)
+      assert keys == ["key_b"]
+
+      # Instance 111 should only see key_a
+      Process.put(:skein_agent_instance_id, "inst_111")
+      keys = Memory.list("sessions", "", @caps)
+      assert keys == ["key_a"]
+
+      Memory.clear("sessions")
+    end
+
+    test "delete only affects current instance's key" do
+      Memory.clear("sessions")
+
+      Process.put(:skein_agent_name, "DelAgent")
+      Process.put(:skein_agent_instance_id, "inst_del1")
+      Memory.put("sessions", "shared_key", "val1", @caps)
+
+      Process.put(:skein_agent_instance_id, "inst_del2")
+      Memory.put("sessions", "shared_key", "val2", @caps)
+      Memory.delete("sessions", "shared_key", @caps)
+
+      # Instance del2's key is gone
+      assert {:error, "not_found"} = Memory.get("sessions", "shared_key", @caps)
+
+      # Instance del1's key is intact
+      Process.put(:skein_agent_instance_id, "inst_del1")
+      assert {:ok, "val1"} = Memory.get("sessions", "shared_key", @caps)
+
+      Memory.clear("sessions")
+    end
+
+    test "no agent context means no scoping (backward compatible)" do
+      Memory.clear("sessions")
+      Process.delete(:skein_agent_name)
+      Process.delete(:skein_agent_instance_id)
+
+      Memory.put("sessions", "plain_key", "plain_val", @caps)
+      assert {:ok, "plain_val"} = Memory.get("sessions", "plain_key", @caps)
+
+      Memory.clear("sessions")
+    end
+
+    test "capability enforcement still applies with instance scoping" do
+      Process.put(:skein_agent_name, "CapAgent")
+      Process.put(:skein_agent_instance_id, "inst_cap1")
+
+      no_caps = []
+      assert {:error, _} = Memory.put("sessions", "key", "val", no_caps)
+
+      Process.delete(:skein_agent_name)
+      Process.delete(:skein_agent_instance_id)
+    end
+  end
 end
