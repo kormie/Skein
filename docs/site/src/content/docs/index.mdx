@@ -60,51 +60,52 @@ module Hello {
 }
 ```
 
-Compile and call from Elixir:
+Compile and run — no Erlang or Elixir install required:
 
-```elixir
-{:module, mod} = Skein.Compiler.compile_file("hello.skein")
-mod.greet("World")    #=> "Hello, World!"
-mod.add(3, 4)         #=> 7
-mod.classify(-1)      #=> "non-positive"
+```bash
+skein compile hello.skein
+# → Compiled: Skein.User.Hello
+```
+
+Scaffold a full project with tests, build everything, and start a server:
+
+```bash
+skein new my-service
+cd my-service
+skein build .
+skein test .
+skein run .
 ```
 
 ## LLM Demo — Real Claude Calls with Traces
 
-Skein modules can declare LLM capabilities and make type-checked calls to Claude. Run the demo with a real API key:
+Skein modules can declare LLM capabilities and make type-checked, traced calls to Claude:
+
+```skein
+module Demo {
+  capability model("anthropic", "claude-sonnet-4-20250514")
+
+  fn greet(name: String) -> String {
+    llm.chat("Say hello to ${name} in one sentence.")
+  }
+
+  fn classify(text: String) -> String {
+    llm.chat("Classify this as positive or negative (one word): ${text}")
+  }
+}
+```
 
 ```bash
-ANTHROPIC_API_KEY=sk-ant-... mix run examples/demo.exs
+skein compile demo.skein
+skein trace --last 2
 ```
 
 ```
-╔══════════════════════════════════════════╗
-║       Skein LLM Demo                     ║
-╚══════════════════════════════════════════╝
-
-✅ API key found (sk-ant-a...)
-✅ Anthropic backend configured
-
-📝 Compiling Skein module with LLM capability...
-✅ Compiled module: Skein.User.Demo
-
-🤖 Calling llm.chat via Skein...
-─────────────────────────────────────────
-
-📞 mod.greet("World")
-   → Hello there, World — welcome to the wonderful world of Skein!
-
-📞 mod.classify("I love this new programming language!")
-   → positive
-
-─────────────────────────────────────────
 📊 Trace spans:
    • llm:chat claude-sonnet-4-20250514 (1.2s) ✅
      tokens: 28 in → 15 out
    • llm:chat claude-sonnet-4-20250514 (0.4s) ✅
      tokens: 31 in → 3 out
-
-✨ Demo complete!
 ```
 
 Every LLM call is capability-gated (the module must declare `capability model(...)`), type-checked, and automatically traced with token usage.
