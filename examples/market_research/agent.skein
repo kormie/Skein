@@ -1,95 +1,132 @@
--- market_research_agent.skein
--- A multi-phase agent for conducting competitive market research.
--- Demonstrates multi-phase transitions, memory accumulation, LLM analysis,
--- suspend/resume for human refinement, and looping between phases.
+-- agent.skein
+-- Market Research Agent: pure workflow logic using tools for data gathering.
+-- Follows the spec section 8.4 pattern — agent calls tools, knows nothing about HTTP.
 
 agent MarketResearchAgent {
   capability model("anthropic", "claude-sonnet-4-5")
   capability memory.kv
+  capability tool.use(Research.SearchMarket)
+  capability tool.use(Research.AnalyzeCompetitor)
+  capability tool.use(Research.GenerateSwot)
 
   state {
     topic: String
     industry: String
-    focus_areas: String
   }
 
   enum Phase {
-    Briefing -> [Gathering]
-    Gathering -> [Analyzing, Briefing]
-    Analyzing -> [Gathering, Reporting]
-    Reporting -> [Complete]
-    Complete -> []
+    Briefing   -> [Gathering]
+    Gathering  -> [Analyzing, Briefing]
+    Analyzing  -> [Reporting, Gathering]
+    Reporting  -> [Complete]
+    Complete   -> []
   }
 
-  on start(topic: String) -> {
+  on start(topic: String, industry: String) -> {
     memory.put("topic", topic)
-    memory.put("phase_status", "started")
-    trace.annotate("agent_started", topic)
+    memory.put("industry", industry)
     transition(Phase.Briefing)
   }
 
   on phase(Phase.Briefing) -> {
     let topic = memory.get("topic")
-    trace.annotate("research_topic", topic)
-    trace.annotate("phase", "briefing")
-    memory.put("phase_status", "briefing_complete")
-    transition(Phase.Gathering)
-  }
+    let industry = memory.get("industry")
 
-  on phase(Phase.Gathering) -> {
-    let topic = memory.get("topic")
-    trace.annotate("phase", "gathering")
-    let scope_check = llm.chat("claude-sonnet-4-5", "Is this research scope focused enough for a competitive analysis? Answer only 'yes' or 'no'.", topic)
-    trace.annotate("scope_check_result", scope_check)
+    -- Ask LLM if scope is focused enough
+    let scope_check = llm.chat(
+      "claude-sonnet-4-5",
+      "Is this research scope focused enough for a competitive analysis? Answer only 'yes' or 'no'.",
+      topic
+    )
     memory.put("scope_check", scope_check)
+
     let is_too_broad = String.contains(scope_check, "no")
     match is_too_broad {
       true -> {
-        trace.annotate("scope_status", "too_broad")
         memory.put("phase_status", "suspended_scope_refinement")
         suspend("Requires human scope refinement")
       }
       false -> {
-        let competitors = llm.chat("claude-sonnet-4-5", "Identify top competitors for this market", topic)
-        trace.annotate("competitors_identified", competitors)
-        memory.put("competitors", competitors)
-        memory.put("phase_status", "gathering_complete")
-        emit CompetitorsIdentified { topic: topic }
+        memory.put("phase_status", "briefing_complete")
+        transition(Phase.Gathering)
+      }
+    }
+  }
+
+  on phase(Phase.Gathering) -> {
+    let topic = memory.get("topic")
+    let industry = memory.get("industry")
+
+    -- Use tool to search market data
+    let search_result = tool.call(Research.SearchMarket, {
+      topic: topic,
+      industry: industry
+    })
+
+    match search_result {
+      Ok(data) -> {
+        memory.put("competitors", data.competitors)
+        memory.put("market_size", data.market_size)
+        memory.put("trends", data.trends)
+        emit MarketDataGathered { topic: topic }
         transition(Phase.Analyzing)
+      }
+      Err(e) -> {
+        memory.put("phase_status", "gathering_failed")
+        suspend("Market search failed — requires human intervention")
       }
     }
   }
 
   on phase(Phase.Analyzing) -> {
-    let topic = memory.get("topic")
     let competitors = memory.get("competitors")
-    trace.annotate("phase", "analyzing")
-    let analysis = llm.chat("claude-sonnet-4-5", "Analyze competitive landscape: strengths, weaknesses, positioning", competitors)
-    trace.annotate("analysis_complete", analysis)
-    memory.put("analysis", analysis)
-    let swot = llm.chat("claude-sonnet-4-5", "Generate SWOT analysis from competitive data", analysis)
-    trace.annotate("swot_generated", swot)
-    memory.put("swot", swot)
-    memory.put("phase_status", "analysis_complete")
-    emit AnalysisComplete { topic: topic }
-    transition(Phase.Reporting)
+    let topic = memory.get("topic")
+
+    -- Use tool to analyze competitors
+    let analysis_result = tool.call(Research.AnalyzeCompetitor, {
+      competitor_name: competitors,
+      market_context: topic
+    })
+
+    match analysis_result {
+      Ok(analysis) -> {
+        memory.put("analysis", analysis)
+        emit AnalysisComplete { topic: topic }
+        transition(Phase.Reporting)
+      }
+      Err(e) -> {
+        memory.put("phase_status", "analysis_failed")
+        suspend("Competitor analysis failed — requires human review")
+      }
+    }
   }
 
   on phase(Phase.Reporting) -> {
-    let topic = memory.get("topic")
     let analysis = memory.get("analysis")
-    let swot = memory.get("swot")
-    trace.annotate("phase", "reporting")
-    let report = llm.chat("claude-sonnet-4-5", "Generate final market research report with recommendations", analysis)
-    trace.annotate("report_generated", report)
-    memory.put("report", report)
-    memory.put("phase_status", "report_generated")
-    emit ReportGenerated { topic: topic }
-    transition(Phase.Complete)
+    let trends = memory.get("trends")
+
+    -- Use tool to generate SWOT analysis
+    let swot_result = tool.call(Research.GenerateSwot, {
+      analysis_data: analysis,
+      market_trends: trends
+    })
+
+    match swot_result {
+      Ok(swot) -> {
+        memory.put("swot", swot)
+        memory.put("phase_status", "report_complete")
+        let topic = memory.get("topic")
+        emit ReportGenerated { topic: topic }
+        transition(Phase.Complete)
+      }
+      Err(e) -> {
+        memory.put("phase_status", "reporting_failed")
+        suspend("SWOT generation failed — requires human review")
+      }
+    }
   }
 
   on phase(Phase.Complete) -> {
-    trace.annotate("phase", "complete")
     stop()
   }
 }

@@ -1,0 +1,153 @@
+-- service.skein
+-- Market Research Service: HTTP API, tool declarations, and supervisor.
+-- Follows the spec section 8.4 pattern (RefundService + RefundAgent).
+
+module MarketResearchService {
+  capability http.in
+  capability tool.use(Research.SearchMarket)
+  capability tool.use(Research.AnalyzeCompetitor)
+  capability tool.use(Research.GenerateSwot)
+
+  type ResearchRequest {
+    topic: String
+    industry: String
+    focus_areas: String
+  }
+
+  type ResumeRequest {
+    refined_topic: String
+    notes: String
+  }
+
+  -- Tool: Search market data for a given industry and topic
+  tool Research.SearchMarket {
+    description: "Search market data for competitors, trends, and market size"
+
+    input {
+      topic: String @description("Research topic")
+      industry: String @description("Target industry")
+    }
+
+    output {
+      competitors: String
+      market_size: String
+      trends: String
+    }
+
+    errors { SearchError }
+
+    implement {
+      let result = http.post("https://api.research.example/market/search", {
+        query: topic,
+        sector: industry
+      })
+      match result {
+        Ok(r) -> Ok({
+          competitors: r.body.competitors,
+          market_size: r.body.market_size,
+          trends: r.body.trends
+        })
+        Err(e) -> Err(SearchError.from(e))
+      }
+    }
+  }
+
+  -- Tool: Analyze a specific competitor
+  tool Research.AnalyzeCompetitor {
+    description: "Deep analysis of a specific competitor's positioning and strategy"
+
+    input {
+      competitor_name: String @description("Name of competitor to analyze")
+      market_context: String @description("Market context for analysis")
+    }
+
+    output {
+      strengths: String
+      weaknesses: String
+      positioning: String
+      strategy: String
+    }
+
+    errors { AnalysisError }
+
+    implement {
+      let result = http.post("https://api.research.example/competitor/analyze", {
+        name: competitor_name,
+        context: market_context
+      })
+      match result {
+        Ok(r) -> Ok({
+          strengths: r.body.strengths,
+          weaknesses: r.body.weaknesses,
+          positioning: r.body.positioning,
+          strategy: r.body.strategy
+        })
+        Err(e) -> Err(AnalysisError.from(e))
+      }
+    }
+  }
+
+  -- Tool: Generate SWOT analysis from collected data
+  tool Research.GenerateSwot {
+    description: "Generate a SWOT analysis from competitive research data"
+
+    input {
+      analysis_data: String @description("Compiled competitive analysis data")
+      market_trends: String @description("Current market trends")
+    }
+
+    output {
+      strengths: String
+      weaknesses: String
+      opportunities: String
+      threats: String
+      summary: String
+    }
+
+    errors { SwotError }
+
+    implement {
+      let result = http.post("https://api.research.example/swot/generate", {
+        data: analysis_data,
+        trends: market_trends
+      })
+      match result {
+        Ok(r) -> Ok({
+          strengths: r.body.strengths,
+          weaknesses: r.body.weaknesses,
+          opportunities: r.body.opportunities,
+          threats: r.body.threats,
+          summary: r.body.summary
+        })
+        Err(e) -> Err(SwotError.from(e))
+      }
+    }
+  }
+
+  -- Start a new research task
+  handler http POST "/research/start" (req) -> {
+    let brief = req.json[ResearchRequest]!
+    trace.annotate("research_started", brief)
+    respond.json(201, brief)
+  }
+
+  -- Get research status by ID
+  handler http GET "/research/status" (req) -> {
+    trace.annotate("status_checked", "ok")
+    respond.json(200, "status_placeholder")
+  }
+
+  -- Resume a suspended research agent
+  handler http POST "/research/resume" (req) -> {
+    let body = req.json[ResumeRequest]!
+    trace.annotate("research_resumed", body)
+    respond.json(200, body)
+  }
+
+  supervisor Main {
+    child HttpServer { restart: permanent }
+    child AgentPool(MarketResearchAgent) { max: 100, restart: transient }
+    strategy: one_for_one
+    max_restarts: 5 per 60s
+  }
+}

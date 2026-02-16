@@ -498,10 +498,10 @@ defmodule Skein.ExamplesTest do
   end
 
   # ------------------------------------------------------------------
-  # market_research_agent.skein
+  # market_research/agent.skein
   # ------------------------------------------------------------------
 
-  describe "market_research_agent.skein" do
+  describe "market_research/agent.skein" do
     test "compiles successfully" do
       assert {:module, mod} =
                Compiler.compile_file(
@@ -543,8 +543,8 @@ defmodule Skein.ExamplesTest do
       assert :briefing in gathering.transitions
 
       analyzing = Enum.find(phases, &(&1.name == :analyzing))
-      assert :gathering in analyzing.transitions
       assert :reporting in analyzing.transitions
+      assert :gathering in analyzing.transitions
 
       reporting = Enum.find(phases, &(&1.name == :reporting))
       assert :complete in reporting.transitions
@@ -572,11 +572,20 @@ defmodule Skein.ExamplesTest do
       phases = mod.__phases__()
       phase_names = Enum.map(phases, & &1.name)
 
-      # Each phase should have a handler (no E0032 error)
       for name <- phase_names do
         assert is_function(Function.capture(mod, :__phase_handler__, 3)),
                "Missing phase handler for #{name}"
       end
+    end
+
+    test "start handler triggers transition to Briefing" do
+      {:module, mod} =
+        Compiler.compile_file(
+          Path.join(project_root(), "examples/market_research/agent.skein")
+        )
+
+      result = mod.__start_handler__(%{topic: "AI chips", industry: "semiconductors"}, [])
+      assert {:transition, :briefing, _, _} = result
     end
   end
 
@@ -633,27 +642,27 @@ defmodule Skein.ExamplesTest do
   end
 
   # ------------------------------------------------------------------
-  # market_research/api.skein
+  # market_research/service.skein
   # ------------------------------------------------------------------
 
-  describe "market_research/api.skein" do
+  describe "market_research/service.skein" do
     test "compiles successfully" do
       assert {:module, mod} =
                Compiler.compile_file(
-                 Path.join(project_root(), "examples/market_research/api.skein")
+                 Path.join(project_root(), "examples/market_research/service.skein")
                )
 
       assert is_atom(mod)
     end
 
-    test "has four HTTP handlers" do
+    test "has three HTTP handlers" do
       {:module, mod} =
         Compiler.compile_file(
-          Path.join(project_root(), "examples/market_research/api.skein")
+          Path.join(project_root(), "examples/market_research/service.skein")
         )
 
       handlers = mod.__handlers__()
-      assert length(handlers) == 4
+      assert length(handlers) == 3
 
       sources = Enum.map(handlers, & &1.source)
       assert Enum.all?(sources, &(&1 == :http))
@@ -662,7 +671,7 @@ defmodule Skein.ExamplesTest do
     test "has correct routes" do
       {:module, mod} =
         Compiler.compile_file(
-          Path.join(project_root(), "examples/market_research/api.skein")
+          Path.join(project_root(), "examples/market_research/service.skein")
         )
 
       handlers = mod.__handlers__()
@@ -671,16 +680,39 @@ defmodule Skein.ExamplesTest do
       assert {:post, "/research/start"} in routes
       assert {:get, "/research/status"} in routes
       assert {:post, "/research/resume"} in routes
-      assert {:get, "/research/report"} in routes
+    end
+
+    test "has tool declarations" do
+      {:module, mod} =
+        Compiler.compile_file(
+          Path.join(project_root(), "examples/market_research/service.skein")
+        )
+
+      tools = mod.__tools__()
+      assert length(tools) == 3
+
+      tool_names = Enum.map(tools, & &1.name)
+      assert "Research.SearchMarket" in tool_names
+      assert "Research.AnalyzeCompetitor" in tool_names
+      assert "Research.GenerateSwot" in tool_names
+    end
+
+    test "has supervisor metadata" do
+      {:module, mod} =
+        Compiler.compile_file(
+          Path.join(project_root(), "examples/market_research/service.skein")
+        )
+
+      supervisors = mod.__supervisors__()
+      assert length(supervisors) >= 1
     end
 
     test "start handler parses typed JSON body" do
       {:module, mod} =
         Compiler.compile_file(
-          Path.join(project_root(), "examples/market_research/api.skein")
+          Path.join(project_root(), "examples/market_research/service.skein")
         )
 
-      # Build a request with raw JSON body string
       req = %{body: ~s({"topic":"AI chips","industry":"semiconductors","focus_areas":"market share"})}
       result = mod.__handler_0__(req)
       assert {:respond_json, 201, body} = result
@@ -688,37 +720,17 @@ defmodule Skein.ExamplesTest do
       assert body["topic"] == "AI chips"
     end
 
-    test "status handler returns placeholder" do
-      {:module, mod} =
-        Compiler.compile_file(
-          Path.join(project_root(), "examples/market_research/api.skein")
-        )
-
-      result = mod.__handler_1__(%{})
-      assert {:respond_json, 200, "status_placeholder"} = result
-    end
-
     test "resume handler parses typed JSON body" do
       {:module, mod} =
         Compiler.compile_file(
-          Path.join(project_root(), "examples/market_research/api.skein")
+          Path.join(project_root(), "examples/market_research/service.skein")
         )
 
-      req = %{body: ~s({"refined_topic":"AI chips for edge computing"})}
+      req = %{body: ~s({"refined_topic":"AI chips for edge","notes":"narrow to edge computing"})}
       result = mod.__handler_2__(req)
       assert {:respond_json, 200, body} = result
       assert is_map(body)
-      assert body["refined_topic"] == "AI chips for edge computing"
-    end
-
-    test "report handler returns placeholder" do
-      {:module, mod} =
-        Compiler.compile_file(
-          Path.join(project_root(), "examples/market_research/api.skein")
-        )
-
-      result = mod.__handler_3__(%{})
-      assert {:respond_json, 200, "report_placeholder"} = result
+      assert body["refined_topic"] == "AI chips for edge"
     end
   end
 end

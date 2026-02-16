@@ -1,78 +1,60 @@
-# Market Research Agent + API
+# Market Research — Agent + Module + Tools Pattern
 
-A multi-phase agent with a companion HTTP module, demonstrating the agent-plus-module pattern in Skein.
+A properly architected example following the spec section 8.4 pattern (RefundService + RefundAgent).
 
 ## Architecture
 
 ```
-┌──────────────────┐     ┌──────────────────────┐
-│  api.skein       │     │  agent.skein          │
-│  (HTTP module)   │────▶│  (stateful agent)     │
-│                  │     │                       │
-│  POST /start     │     │  Briefing             │
-│  GET  /status    │     │  ↓                    │
-│  POST /resume    │     │  Gathering ──suspend──│──▶ human refines scope
-│  GET  /report    │     │  ↓                    │
-│                  │     │  Analyzing            │
-│                  │     │  ↓                    │
-│                  │     │  Reporting            │
-│                  │     │  ↓                    │
-│                  │     │  Complete             │
-└──────────────────┘     └──────────────────────┘
+┌─────────────────────────────┐     ┌──────────────────────────────┐
+│  service.skein (module)     │     │  agent.skein (agent)         │
+│                             │     │                              │
+│  Tools:                     │     │  capability tool.use(...)    │
+│    Research.SearchMarket    │◀────│  tool.call(Research.Search   │
+│    Research.AnalyzeCompet.  │     │    Market, {...})            │
+│    Research.GenerateSwot    │     │                              │
+│                             │     │  Phases:                     │
+│  HTTP endpoints:            │     │    Briefing → Gathering →    │
+│    POST /research/start     │     │    Analyzing → Reporting →   │
+│    GET  /research/status    │     │    Complete                  │
+│    POST /research/resume    │     │                              │
+│                             │     │  suspend() for human review  │
+│  Supervisor: Main           │     │  No HTTP knowledge           │
+└─────────────────────────────┘     └──────────────────────────────┘
 ```
+
+## Key Design Principle
+
+**Modules declare tools. Agents call tools.** The agent is pure workflow logic:
+- It calls `tool.call(Research.SearchMarket, {...})` — it doesn't know the tool talks to an HTTP API
+- It calls `suspend("reason")` — it doesn't know the module has a `/resume` endpoint
+- The module provides the HTTP interface for humans and the tool implementations for the agent
 
 ## Phase Flow
 
-1. **Briefing** — Records the research topic, annotates trace
-2. **Gathering** — Asks LLM if scope is focused enough. If "no", suspends for human refinement. Otherwise identifies competitors via LLM.
-3. **Analyzing** — Competitive landscape analysis + SWOT generation via LLM
-4. **Reporting** — Generates final report with recommendations
+1. **Briefing** — LLM checks if scope is focused enough. If too broad → `suspend()` for human refinement
+2. **Gathering** — Calls `Research.SearchMarket` tool to get competitors, market size, trends
+3. **Analyzing** — Calls `Research.AnalyzeCompetitor` tool for competitive analysis
+4. **Reporting** — Calls `Research.GenerateSwot` tool to produce final SWOT analysis
 5. **Complete** — Stops the agent
 
-## HTTP API (api.skein)
+## Tools
+
+| Tool | Purpose | Input | Output |
+|------|---------|-------|--------|
+| `Research.SearchMarket` | Search market data | topic, industry | competitors, market_size, trends |
+| `Research.AnalyzeCompetitor` | Analyze competitor | competitor_name, market_context | strengths, weaknesses, positioning, strategy |
+| `Research.GenerateSwot` | Generate SWOT | analysis_data, market_trends | strengths, weaknesses, opportunities, threats, summary |
+
+## HTTP API
 
 | Endpoint | Method | Description |
-|---|---|---|
-| `/research/start` | POST | Start research. Body: `{"topic": "...", "industry": "...", "focus_areas": "..."}` |
-| `/research/status` | GET | Check current phase and status |
-| `/research/resume` | POST | Resume suspended agent. Body: `{"refined_topic": "..."}` |
-| `/research/report` | GET | Retrieve final report |
-
-The API module uses `req.json[T]!` for typed request body parsing with automatic JSON Schema validation.
-
-## Suspend/Resume Pattern
-
-In the Gathering phase, the agent checks scope breadth via LLM. If too broad:
-```
-let is_too_broad = String.contains(scope_check, "no")
-match is_too_broad {
-  true -> suspend("Requires human scope refinement")
-  false -> { ... proceed ... }
-}
-```
-
-The agent suspends and waits for a human to provide a refined topic via `POST /research/resume`.
-
-## Language Gaps Discovered
-
-These were found while building this example and are documented for future language development:
-
-1. **No `if` expression** — Must use `match bool { true -> ... false -> ... }` pattern. Works but verbose.
-
-2. **`resume` is a keyword** — Cannot use `resume` as a variable name. Workaround: use `body` or another name.
-
-3. **No agent-to-module communication** — There's no way for a module to spawn, call, or query an agent instance. The API module currently returns placeholder data. Needs: `agent.spawn()`, `agent.send()`, `agent.query()` primitives.
-
-4. **No map literal returns from handlers** — Can't construct ad-hoc response objects. Must respond with strings or typed objects from `req.json[T]`.
-
-5. **Type declarations are parse-only for `req.json[T]`** — You can declare `type Foo { ... }` and use it with `req.json[Foo]!`, but there's no way to construct a `Foo` instance in code (no type constructors). Types exist only for JSON schema validation.
-
-6. **No memory access from modules** — Only agents have `memory.kv`. A companion module can't read the agent's memory to return status. Needs a cross-module query mechanism or shared state.
-
-7. **Trace annotations in agents use implicit scope** — `trace.annotate` works in both modules and agents but trace spans aren't queryable from outside.
+|----------|--------|-------------|
+| `/research/start` | POST | Start research. Body: `ResearchRequest` |
+| `/research/status` | GET | Check status |
+| `/research/resume` | POST | Resume suspended agent. Body: `ResumeRequest` |
 
 ## Files
 
-- `agent.skein` — The market research agent (5 phases, suspend/resume, LLM integration)
-- `api.skein` — Companion HTTP module (4 endpoints, typed request parsing)
+- `service.skein` — Module: tools, HTTP endpoints, supervisor, types
+- `agent.skein` — Agent: pure workflow with tool.call and phase transitions
 - `README.md` — This file
