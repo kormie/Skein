@@ -34,16 +34,25 @@ defmodule Skein.Runtime.Timer do
   # Use unquote(:after) to define a function named :after (reserved word in Elixir)
   def unquote(:after)(delay_ms, callback, capabilities)
 
-  def unquote(:after)(delay_ms, callback, _capabilities)
+  def unquote(:after)(delay_ms, callback, capabilities)
       when is_integer(delay_ms) and delay_ms >= 0 and is_function(callback, 0) do
-    ensure_started()
+    case check_capability(capabilities) do
+      :ok ->
+        ensure_started()
 
-    Trace.with_span(%{kind: :timer, method: :after, delay_ms: delay_ms}, fn ->
-      timer_ref = generate_ref()
-      erlang_ref = :erlang.send_after(delay_ms, __MODULE__, {:fire, timer_ref, :once, callback})
-      :ets.insert(@table, {timer_ref, erlang_ref, :once, callback, delay_ms})
-      {:ok, timer_ref}
-    end)
+        Trace.with_span(%{kind: :timer, method: :after, delay_ms: delay_ms}, fn ->
+          timer_ref = generate_ref()
+
+          erlang_ref =
+            :erlang.send_after(delay_ms, __MODULE__, {:fire, timer_ref, :once, callback})
+
+          :ets.insert(@table, {timer_ref, erlang_ref, :once, callback, delay_ms})
+          {:ok, timer_ref}
+        end)
+
+      {:error, _reason} = error ->
+        error
+    end
   end
 
   @doc """
@@ -52,20 +61,30 @@ defmodule Skein.Runtime.Timer do
   Returns `{:ok, timer_ref}` where timer_ref is a unique string identifier.
   The capabilities argument is passed by compiled Skein code for consistency.
   """
-  @spec interval(integer(), function(), list()) :: {:ok, String.t()}
-  def interval(interval_ms, callback, _capabilities)
+  @spec interval(integer(), function(), list()) :: {:ok, String.t()} | {:error, String.t()}
+  def interval(interval_ms, callback, capabilities)
       when is_integer(interval_ms) and interval_ms > 0 and is_function(callback, 0) do
-    ensure_started()
+    case check_capability(capabilities) do
+      :ok ->
+        ensure_started()
 
-    Trace.with_span(%{kind: :timer, method: :interval, interval_ms: interval_ms}, fn ->
-      timer_ref = generate_ref()
+        Trace.with_span(%{kind: :timer, method: :interval, interval_ms: interval_ms}, fn ->
+          timer_ref = generate_ref()
 
-      erlang_ref =
-        :erlang.send_after(interval_ms, __MODULE__, {:fire, timer_ref, :recurring, callback})
+          erlang_ref =
+            :erlang.send_after(
+              interval_ms,
+              __MODULE__,
+              {:fire, timer_ref, :recurring, callback}
+            )
 
-      :ets.insert(@table, {timer_ref, erlang_ref, :recurring, callback, interval_ms})
-      {:ok, timer_ref}
-    end)
+          :ets.insert(@table, {timer_ref, erlang_ref, :recurring, callback, interval_ms})
+          {:ok, timer_ref}
+        end)
+
+      {:error, _reason} = error ->
+        error
+    end
   end
 
   @doc """
@@ -74,8 +93,18 @@ defmodule Skein.Runtime.Timer do
   Returns `:ok` regardless of whether the timer was found.
   The capabilities argument is passed by compiled Skein code for consistency.
   """
-  @spec cancel(String.t(), list()) :: :ok
-  def cancel(timer_ref, _capabilities) when is_binary(timer_ref) do
+  @spec cancel(String.t(), list()) :: :ok | {:error, String.t()}
+  def cancel(timer_ref, capabilities) when is_binary(timer_ref) do
+    case check_capability(capabilities) do
+      :ok ->
+        cancel_impl(timer_ref)
+
+      {:error, _reason} = error ->
+        error
+    end
+  end
+
+  defp cancel_impl(timer_ref) do
     ensure_started()
 
     Trace.with_span(%{kind: :timer, method: :cancel, timer_ref: timer_ref}, fn ->
@@ -172,6 +201,14 @@ defmodule Skein.Runtime.Timer do
   # ------------------------------------------------------------------
   # Internal
   # ------------------------------------------------------------------
+
+  defp check_capability(capabilities) do
+    if Enum.any?(capabilities, fn cap -> cap.kind == "timer" end) do
+      :ok
+    else
+      {:error, "Capability 'timer' not declared. Timer operations blocked."}
+    end
+  end
 
   defp safe_execute(callback) do
     Trace.with_span(%{kind: :timer, event: :fire}, fn ->

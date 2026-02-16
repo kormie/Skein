@@ -16,7 +16,7 @@ defmodule Skein.Runtime.ProcessTest do
                  fn ->
                    send(test_pid, :spawned)
                  end,
-                 []
+                 [%{kind: "process.spawn", params: []}]
                )
 
       assert is_pid(pid)
@@ -31,7 +31,7 @@ defmodule Skein.Runtime.ProcessTest do
           fn ->
             send(test_pid, {:result, 42})
           end,
-          []
+          [%{kind: "process.spawn", params: []}]
         )
 
       assert_receive {:result, 42}, 1000
@@ -40,9 +40,9 @@ defmodule Skein.Runtime.ProcessTest do
     test "multiple processes can be spawned" do
       test_pid = self()
 
-      {:ok, pid1} = SpawnProcess.spawn(fn -> send(test_pid, {:from, 1}) end, [])
-      {:ok, pid2} = SpawnProcess.spawn(fn -> send(test_pid, {:from, 2}) end, [])
-      {:ok, pid3} = SpawnProcess.spawn(fn -> send(test_pid, {:from, 3}) end, [])
+      {:ok, pid1} = SpawnProcess.spawn(fn -> send(test_pid, {:from, 1}) end, [%{kind: "process.spawn", params: []}])
+      {:ok, pid2} = SpawnProcess.spawn(fn -> send(test_pid, {:from, 2}) end, [%{kind: "process.spawn", params: []}])
+      {:ok, pid3} = SpawnProcess.spawn(fn -> send(test_pid, {:from, 3}) end, [%{kind: "process.spawn", params: []}])
 
       assert pid1 != pid2
       assert pid2 != pid3
@@ -58,7 +58,7 @@ defmodule Skein.Runtime.ProcessTest do
           fn ->
             raise "intentional crash"
           end,
-          []
+          [%{kind: "process.spawn", params: []}]
         )
 
       # Give it time to crash
@@ -83,7 +83,7 @@ defmodule Skein.Runtime.ProcessTest do
             send(test_pid, :ready)
             Process.sleep(5000)
           end,
-          []
+          [%{kind: "process.spawn", params: []}]
         )
 
       assert_receive :ready, 1000
@@ -102,7 +102,7 @@ defmodule Skein.Runtime.ProcessTest do
             send(test_pid, :ready)
             Process.sleep(5000)
           end,
-          []
+          [%{kind: "process.spawn", params: []}]
         )
 
       assert_receive :ready, 1000

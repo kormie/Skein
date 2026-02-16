@@ -15,7 +15,7 @@ defmodule Skein.Runtime.ProcessPropertyTest do
 
       pids =
         for _ <- 1..count do
-          {:ok, pid} = SpawnProcess.spawn(fn -> Process.sleep(2000) end, [])
+          {:ok, pid} = SpawnProcess.spawn(fn -> Process.sleep(2000) end, [%{kind: "process.spawn", params: []}])
           pid
         end
 
@@ -30,7 +30,7 @@ defmodule Skein.Runtime.ProcessPropertyTest do
 
       pids =
         for _ <- 1..count do
-          {:ok, pid} = SpawnProcess.spawn(fn -> Process.sleep(5000) end, [])
+          {:ok, pid} = SpawnProcess.spawn(fn -> Process.sleep(5000) end, [%{kind: "process.spawn", params: []}])
           pid
         end
 
@@ -43,7 +43,7 @@ defmodule Skein.Runtime.ProcessPropertyTest do
 
   property "spawn always returns {:ok, pid} for valid functions" do
     check all(_ <- integer(1..20)) do
-      result = SpawnProcess.spawn(fn -> :ok end, [])
+      result = SpawnProcess.spawn(fn -> :ok end, [%{kind: "process.spawn", params: []}])
       assert {:ok, pid} = result
       assert is_pid(pid)
     end

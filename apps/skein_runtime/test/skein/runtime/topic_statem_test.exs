@@ -75,7 +75,7 @@ defmodule Skein.Runtime.TopicStatemTest do
   end
 
   def do_publish(topic_name, message) do
-    Topic.publish(topic_name, message, [])
+    Topic.publish(topic_name, message, [%{kind: "topic.publish", params: []}])
   end
 
   def do_list_topics do

@@ -64,14 +64,28 @@ defmodule Skein.Runtime.EventStore do
 
   Returns `:ok`.
   """
-  @spec log(String.t(), term(), list()) :: :ok
-  def log(event_name, data, _capabilities) when is_binary(event_name) do
-    append(%{
-      kind: :user_event,
-      event: event_name,
-      data: data,
-      wall_time: System.system_time(:microsecond)
-    })
+  @spec log(String.t(), term(), list()) :: :ok | {:error, String.t()}
+  def log(event_name, data, capabilities) when is_binary(event_name) do
+    case check_capability(capabilities) do
+      :ok ->
+        append(%{
+          kind: :user_event,
+          event: event_name,
+          data: data,
+          wall_time: System.system_time(:microsecond)
+        })
+
+      {:error, _reason} = error ->
+        error
+    end
+  end
+
+  defp check_capability(capabilities) do
+    if Enum.any?(capabilities, fn cap -> cap.kind == "event.log" end) do
+      :ok
+    else
+      {:error, "Capability 'event.log' not declared. Event logging blocked."}
+    end
   end
 
   @doc """

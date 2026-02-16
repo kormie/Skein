@@ -31,19 +31,25 @@ defmodule Skein.Runtime.Process do
   The capabilities argument is passed by compiled Skein code for consistency.
   """
   @spec spawn(function(), list()) :: {:ok, pid()} | {:error, term()}
-  def spawn(fun, _capabilities) when is_function(fun, 0) do
-    ensure_started()
+  def spawn(fun, capabilities) when is_function(fun, 0) do
+    case check_capability(capabilities) do
+      :ok ->
+        ensure_started()
 
-    Trace.with_span(%{kind: :process, method: :spawn}, fn ->
-      case DynamicSupervisor.start_child(__MODULE__, %{
-             id: make_ref(),
-             start: {Task, :start_link, [fun]},
-             restart: :temporary
-           }) do
-        {:ok, pid} -> {:ok, pid}
-        {:error, reason} -> {:error, inspect(reason)}
-      end
-    end)
+        Trace.with_span(%{kind: :process, method: :spawn}, fn ->
+          case DynamicSupervisor.start_child(__MODULE__, %{
+                 id: make_ref(),
+                 start: {Task, :start_link, [fun]},
+                 restart: :temporary
+               }) do
+            {:ok, pid} -> {:ok, pid}
+            {:error, reason} -> {:error, inspect(reason)}
+          end
+        end)
+
+      {:error, _reason} = error ->
+        error
+    end
   end
 
   @doc """
@@ -53,19 +59,25 @@ defmodule Skein.Runtime.Process do
   The capabilities argument is passed by compiled Skein code for consistency.
   """
   @spec spawn(function(), list(), list()) :: {:ok, pid()} | {:error, term()}
-  def spawn(fun, args, _capabilities) when is_function(fun) and is_list(args) do
-    ensure_started()
+  def spawn(fun, args, capabilities) when is_function(fun) and is_list(args) do
+    case check_capability(capabilities) do
+      :ok ->
+        ensure_started()
 
-    Trace.with_span(%{kind: :process, method: :spawn}, fn ->
-      case DynamicSupervisor.start_child(__MODULE__, %{
-             id: make_ref(),
-             start: {Task, :start_link, [fn -> apply(fun, args) end]},
-             restart: :temporary
-           }) do
-        {:ok, pid} -> {:ok, pid}
-        {:error, reason} -> {:error, inspect(reason)}
-      end
-    end)
+        Trace.with_span(%{kind: :process, method: :spawn}, fn ->
+          case DynamicSupervisor.start_child(__MODULE__, %{
+                 id: make_ref(),
+                 start: {Task, :start_link, [fn -> apply(fun, args) end]},
+                 restart: :temporary
+               }) do
+            {:ok, pid} -> {:ok, pid}
+            {:error, reason} -> {:error, inspect(reason)}
+          end
+        end)
+
+      {:error, _reason} = error ->
+        error
+    end
   end
 
   @doc """
@@ -99,6 +111,14 @@ defmodule Skein.Runtime.Process do
     end
 
     :ok
+  end
+
+  defp check_capability(capabilities) do
+    if Enum.any?(capabilities, fn cap -> cap.kind == "process.spawn" end) do
+      :ok
+    else
+      {:error, "Capability 'process.spawn' not declared. Process spawning blocked."}
+    end
   end
 
   defp ensure_started do

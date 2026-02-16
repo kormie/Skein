@@ -17,7 +17,7 @@ defmodule Skein.Runtime.TimerTest do
       test_pid = self()
 
       assert {:ok, ref} =
-               timer_after(50, fn -> send(test_pid, :fired) end, [])
+               timer_after(50, fn -> send(test_pid, :fired) end, [%{kind: "timer", params: []}])
 
       assert is_binary(ref)
       assert_receive :fired, 1000
@@ -27,7 +27,7 @@ defmodule Skein.Runtime.TimerTest do
       test_pid = self()
 
       {:ok, _ref} =
-        timer_after(50, fn -> send(test_pid, :fired) end, [])
+        timer_after(50, fn -> send(test_pid, :fired) end, [%{kind: "timer", params: []}])
 
       assert_receive :fired, 1000
       refute_receive :fired, 200
@@ -37,15 +37,15 @@ defmodule Skein.Runtime.TimerTest do
       test_pid = self()
 
       {:ok, _ref} =
-        timer_after(0, fn -> send(test_pid, :immediate) end, [])
+        timer_after(0, fn -> send(test_pid, :immediate) end, [%{kind: "timer", params: []}])
 
       assert_receive :immediate, 1000
     end
 
     test "returns unique refs for each timer" do
       noop = fn -> :ok end
-      {:ok, ref1} = timer_after(1000, noop, [])
-      {:ok, ref2} = timer_after(1000, noop, [])
+      {:ok, ref1} = timer_after(1000, noop, [%{kind: "timer", params: []}])
+      {:ok, ref2} = timer_after(1000, noop, [%{kind: "timer", params: []}])
       assert ref1 != ref2
     end
   end
@@ -55,7 +55,7 @@ defmodule Skein.Runtime.TimerTest do
       test_pid = self()
 
       {:ok, _ref} =
-        Timer.interval(50, fn -> send(test_pid, :tick) end, [])
+        Timer.interval(50, fn -> send(test_pid, :tick) end, [%{kind: "timer", params: []}])
 
       assert_receive :tick, 1000
       assert_receive :tick, 1000
@@ -63,7 +63,7 @@ defmodule Skein.Runtime.TimerTest do
 
     test "returns a string ref" do
       {:ok, ref} =
-        Timer.interval(1000, fn -> :ok end, [])
+        Timer.interval(1000, fn -> :ok end, [%{kind: "timer", params: []}])
 
       assert is_binary(ref)
     end
@@ -74,9 +74,9 @@ defmodule Skein.Runtime.TimerTest do
       test_pid = self()
 
       {:ok, ref} =
-        timer_after(500, fn -> send(test_pid, :should_not_fire) end, [])
+        timer_after(500, fn -> send(test_pid, :should_not_fire) end, [%{kind: "timer", params: []}])
 
-      assert :ok = Timer.cancel(ref, [])
+      assert :ok = Timer.cancel(ref, [%{kind: "timer", params: []}])
       refute_receive :should_not_fire, 700
     end
 
@@ -84,13 +84,13 @@ defmodule Skein.Runtime.TimerTest do
       test_pid = self()
 
       {:ok, ref} =
-        Timer.interval(50, fn -> send(test_pid, :tick) end, [])
+        Timer.interval(50, fn -> send(test_pid, :tick) end, [%{kind: "timer", params: []}])
 
       # Let it fire once
       assert_receive :tick, 1000
 
       # Cancel it
-      assert :ok = Timer.cancel(ref, [])
+      assert :ok = Timer.cancel(ref, [%{kind: "timer", params: []}])
       Process.sleep(150)
 
       # Drain any remaining messages that were in-flight
@@ -104,7 +104,7 @@ defmodule Skein.Runtime.TimerTest do
     end
 
     test "cancelling a nonexistent ref returns :ok" do
-      assert :ok = Timer.cancel("nonexistent-ref", [])
+      assert :ok = Timer.cancel("nonexistent-ref", [%{kind: "timer", params: []}])
     end
   end
 
@@ -114,8 +114,8 @@ defmodule Skein.Runtime.TimerTest do
     end
 
     test "returns refs of active timers" do
-      {:ok, ref1} = timer_after(5000, fn -> :ok end, [])
-      {:ok, ref2} = timer_after(5000, fn -> :ok end, [])
+      {:ok, ref1} = timer_after(5000, fn -> :ok end, [%{kind: "timer", params: []}])
+      {:ok, ref2} = timer_after(5000, fn -> :ok end, [%{kind: "timer", params: []}])
 
       timers = Timer.list_timers()
       assert ref1 in timers
@@ -123,10 +123,10 @@ defmodule Skein.Runtime.TimerTest do
     end
 
     test "does not include cancelled timers" do
-      {:ok, ref1} = timer_after(5000, fn -> :ok end, [])
-      {:ok, ref2} = timer_after(5000, fn -> :ok end, [])
+      {:ok, ref1} = timer_after(5000, fn -> :ok end, [%{kind: "timer", params: []}])
+      {:ok, ref2} = timer_after(5000, fn -> :ok end, [%{kind: "timer", params: []}])
 
-      Timer.cancel(ref1, [])
+      Timer.cancel(ref1, [%{kind: "timer", params: []}])
 
       timers = Timer.list_timers()
       refute ref1 in timers
@@ -138,8 +138,8 @@ defmodule Skein.Runtime.TimerTest do
     test "cancels all timers" do
       test_pid = self()
 
-      {:ok, _ref} = timer_after(500, fn -> send(test_pid, :a) end, [])
-      {:ok, _ref} = timer_after(500, fn -> send(test_pid, :b) end, [])
+      {:ok, _ref} = timer_after(500, fn -> send(test_pid, :a) end, [%{kind: "timer", params: []}])
+      {:ok, _ref} = timer_after(500, fn -> send(test_pid, :b) end, [%{kind: "timer", params: []}])
 
       Timer.reset_all()
 

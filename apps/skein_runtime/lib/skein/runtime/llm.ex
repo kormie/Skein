@@ -196,7 +196,7 @@ defmodule Skein.Runtime.Llm do
     module.embed(model, input)
   end
 
-  defp check_model_capability(_model, capabilities) do
+  defp check_model_capability(model, capabilities) do
     model_caps =
       Enum.filter(capabilities, fn cap ->
         cap.kind == "model"
@@ -206,8 +206,29 @@ defmodule Skein.Runtime.Llm do
       [] ->
         {:error, "Model capability 'model(...)' not declared. LLM calls blocked."}
 
-      _caps ->
-        :ok
+      caps ->
+        # Check if the requested model matches any declared capability.
+        # Capability params: ["provider", "model"] or ["model"] (single param).
+        match =
+          Enum.any?(caps, fn cap ->
+            case cap.params do
+              [] -> true
+              [single] -> single == model
+              [_provider, declared_model | _] -> declared_model == model
+            end
+          end)
+
+        if match do
+          :ok
+        else
+          declared =
+            caps
+            |> Enum.map(fn cap -> Enum.join(cap.params, "/") end)
+            |> Enum.join(", ")
+
+          {:error,
+           "Model '#{model}' not declared in capabilities. Declared models: #{declared}"}
+        end
     end
   end
 

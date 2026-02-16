@@ -18,7 +18,7 @@ defmodule Skein.Runtime.TimerPropertyTest do
       Timer.reset_all()
       Process.sleep(50)
 
-      {:ok, ref} = timer_after(delay, fn -> :ok end, [])
+      {:ok, ref} = timer_after(delay, fn -> :ok end, [%{kind: "timer", params: []}])
       assert is_binary(ref)
       assert byte_size(ref) > 0
     end
@@ -29,7 +29,7 @@ defmodule Skein.Runtime.TimerPropertyTest do
       Timer.reset_all()
       Process.sleep(50)
 
-      {:ok, ref} = Timer.interval(interval, fn -> :ok end, [])
+      {:ok, ref} = Timer.interval(interval, fn -> :ok end, [%{kind: "timer", params: []}])
       assert is_binary(ref)
       assert byte_size(ref) > 0
     end
@@ -42,7 +42,7 @@ defmodule Skein.Runtime.TimerPropertyTest do
 
       refs =
         for _ <- 1..count do
-          {:ok, ref} = timer_after(5000, fn -> :ok end, [])
+          {:ok, ref} = timer_after(5000, fn -> :ok end, [%{kind: "timer", params: []}])
           ref
         end
 
@@ -52,7 +52,7 @@ defmodule Skein.Runtime.TimerPropertyTest do
 
   property "cancel always returns :ok regardless of ref" do
     check all(ref <- string(:alphanumeric, min_length: 1, max_length: 32)) do
-      assert :ok = Timer.cancel(ref, [])
+      assert :ok = Timer.cancel(ref, [%{kind: "timer", params: []}])
     end
   end
 end

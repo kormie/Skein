@@ -59,7 +59,7 @@ defmodule Skein.Runtime.TopicPropertyTest do
         :ok
       end)
 
-      Topic.publish(topic_name, message, [])
+      Topic.publish(topic_name, message, [%{kind: "topic.publish", params: []}])
       assert_receive {:delivered, ^message}, 1000
     end
   end
@@ -80,7 +80,7 @@ defmodule Skein.Runtime.TopicPropertyTest do
         end)
       end
 
-      Topic.publish(topic_name, message, [])
+      Topic.publish(topic_name, message, [%{kind: "topic.publish", params: []}])
 
       for i <- 1..sub_count do
         assert_receive {:delivered, ^i, ^message}, 1000
@@ -103,7 +103,7 @@ defmodule Skein.Runtime.TopicPropertyTest do
       end)
 
       for msg <- messages do
-        Topic.publish(topic_name, msg, [])
+        Topic.publish(topic_name, msg, [%{kind: "topic.publish", params: []}])
       end
 
       for msg <- messages do
@@ -119,7 +119,7 @@ defmodule Skein.Runtime.TopicPropertyTest do
           ) do
       Topic.reset_all()
       # Should complete without error even with no subscribers
-      assert :ok = Topic.publish(topic_name, message, [])
+      assert :ok = Topic.publish(topic_name, message, [%{kind: "topic.publish", params: []}])
     end
   end
 

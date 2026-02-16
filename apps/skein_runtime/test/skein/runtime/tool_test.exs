@@ -73,8 +73,10 @@ defmodule Skein.Runtime.ToolTest do
     end
 
     test "returns error for unknown tool" do
+      caps = [%{kind: "tool.use", params: ["UnknownTool"]}]
+
       assert {:error, %Tool.Error{kind: :not_found}} =
-               Tool.call("UnknownTool", %{}, @valid_capabilities)
+               Tool.call("UnknownTool", %{}, caps)
     end
 
     test "returns error when implementation returns error" do
@@ -147,8 +149,10 @@ defmodule Skein.Runtime.ToolTest do
     end
 
     test "returns error for unknown tool" do
+      caps = [%{kind: "tool.use", params: ["UnknownTool"]}]
+
       assert {:error, %Tool.Error{kind: :not_found}} =
-               Tool.schema("UnknownTool", @valid_capabilities)
+               Tool.schema("UnknownTool", caps)
     end
 
     test "rejects without tool.use capability" do

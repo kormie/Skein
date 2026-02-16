@@ -13,7 +13,7 @@ defmodule Skein.Runtime.EventLogPropertyTest do
       EventLog.reset_all()
 
       for i <- 1..count do
-        EventLog.log("event.#{i}", %{i: i}, [])
+        EventLog.log("event.#{i}", %{i: i}, [%{kind: "event.log", params: []}])
       end
 
       assert EventLog.count() == count
@@ -25,7 +25,7 @@ defmodule Skein.Runtime.EventLogPropertyTest do
       EventLog.reset_all()
       event_name = "evt.#{event_name}"
 
-      EventLog.log(event_name, %{test: true}, [])
+      EventLog.log(event_name, %{test: true}, [%{kind: "event.log", params: []}])
 
       events = EventLog.query(event_name)
       assert length(events) == 1
@@ -39,7 +39,7 @@ defmodule Skein.Runtime.EventLogPropertyTest do
             data <- one_of([constant(%{}), constant("string_data"), constant(42)])
           ) do
       name = "evt.#{name}"
-      assert :ok = EventLog.log(name, data, [])
+      assert :ok = EventLog.log(name, data, [%{kind: "event.log", params: []}])
     end
   end
 
@@ -48,7 +48,7 @@ defmodule Skein.Runtime.EventLogPropertyTest do
       EventLog.reset_all()
 
       for i <- 1..count do
-        EventLog.log("event", %{i: i}, [])
+        EventLog.log("event", %{i: i}, [%{kind: "event.log", params: []}])
       end
 
       events = EventLog.all()
@@ -62,7 +62,7 @@ defmodule Skein.Runtime.EventLogPropertyTest do
       EventLog.reset_all()
 
       for i <- 1..count do
-        EventLog.log("event.#{i}", %{}, [])
+        EventLog.log("event.#{i}", %{}, [%{kind: "event.log", params: []}])
         # Small sleep to ensure distinct timestamps
         Process.sleep(1)
       end

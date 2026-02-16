@@ -59,7 +59,7 @@ defmodule Skein.Runtime.Tool do
   def call(name, input, capabilities)
       when is_binary(name) and is_list(capabilities) do
     Trace.with_span(%{kind: :tool, method: :call, name: name}, fn ->
-      case check_tool_capability(capabilities) do
+      case check_tool_capability(capabilities, name) do
         :ok ->
           execute_tool(name, input)
 
@@ -107,7 +107,7 @@ defmodule Skein.Runtime.Tool do
   @spec schema(String.t(), [map()]) :: {:ok, map()} | {:error, Error.t()}
   def schema(name, capabilities) when is_binary(name) and is_list(capabilities) do
     Trace.with_span(%{kind: :tool, method: :schema, name: name}, fn ->
-      case check_tool_capability(capabilities) do
+      case check_tool_capability(capabilities, name) do
         :ok ->
           init()
 
@@ -139,7 +139,7 @@ defmodule Skein.Runtime.Tool do
   # Internal
   # ------------------------------------------------------------------
 
-  defp check_tool_capability(capabilities) do
+  defp check_tool_capability(capabilities, tool_name \\ nil) do
     tool_caps =
       Enum.filter(capabilities, fn cap ->
         cap.kind == "tool.use"
@@ -148,6 +148,28 @@ defmodule Skein.Runtime.Tool do
     case tool_caps do
       [] ->
         {:error, "Capability 'tool.use(...)' not declared. Tool calls blocked."}
+
+      caps when tool_name != nil ->
+        # Check if the specific tool name is declared
+        match =
+          Enum.any?(caps, fn cap ->
+            case cap.params do
+              [] -> true
+              params -> tool_name in params
+            end
+          end)
+
+        if match do
+          :ok
+        else
+          declared =
+            caps
+            |> Enum.flat_map(fn cap -> cap.params end)
+            |> Enum.join(", ")
+
+          {:error,
+           "Tool '#{tool_name}' not declared in tool.use capabilities. Declared tools: #{declared}"}
+        end
 
       _caps ->
         :ok

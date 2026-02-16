@@ -9,11 +9,11 @@ defmodule Skein.Runtime.EventLogTest do
 
   describe "log/3" do
     test "logs an event and returns :ok" do
-      assert :ok = EventLog.log("user.login", %{user_id: "u1"}, [])
+      assert :ok = EventLog.log("user.login", %{user_id: "u1"}, [%{kind: "event.log", params: []}])
     end
 
     test "logged event is retrievable" do
-      EventLog.log("user.login", %{user_id: "u1"}, [])
+      EventLog.log("user.login", %{user_id: "u1"}, [%{kind: "event.log", params: []}])
 
       events = EventLog.all()
       assert length(events) == 1
@@ -25,15 +25,15 @@ defmodule Skein.Runtime.EventLogTest do
     end
 
     test "multiple events are stored" do
-      EventLog.log("user.login", %{user_id: "u1"}, [])
-      EventLog.log("user.logout", %{user_id: "u1"}, [])
-      EventLog.log("user.login", %{user_id: "u2"}, [])
+      EventLog.log("user.login", %{user_id: "u1"}, [%{kind: "event.log", params: []}])
+      EventLog.log("user.logout", %{user_id: "u1"}, [%{kind: "event.log", params: []}])
+      EventLog.log("user.login", %{user_id: "u2"}, [%{kind: "event.log", params: []}])
 
       assert EventLog.count() == 3
     end
 
     test "events with string data" do
-      EventLog.log("system.start", "booted", [])
+      EventLog.log("system.start", "booted", [%{kind: "event.log", params: []}])
 
       events = EventLog.all()
       assert length(events) == 1
@@ -47,11 +47,11 @@ defmodule Skein.Runtime.EventLogTest do
     end
 
     test "returns events in reverse chronological order" do
-      EventLog.log("first", %{}, [])
+      EventLog.log("first", %{}, [%{kind: "event.log", params: []}])
       Process.sleep(1)
-      EventLog.log("second", %{}, [])
+      EventLog.log("second", %{}, [%{kind: "event.log", params: []}])
       Process.sleep(1)
-      EventLog.log("third", %{}, [])
+      EventLog.log("third", %{}, [%{kind: "event.log", params: []}])
 
       events = EventLog.all()
       assert length(events) == 3
@@ -64,9 +64,9 @@ defmodule Skein.Runtime.EventLogTest do
 
   describe "query/1" do
     test "filters events by name" do
-      EventLog.log("user.login", %{user: "a"}, [])
-      EventLog.log("user.logout", %{user: "a"}, [])
-      EventLog.log("user.login", %{user: "b"}, [])
+      EventLog.log("user.login", %{user: "a"}, [%{kind: "event.log", params: []}])
+      EventLog.log("user.logout", %{user: "a"}, [%{kind: "event.log", params: []}])
+      EventLog.log("user.login", %{user: "b"}, [%{kind: "event.log", params: []}])
 
       logins = EventLog.query("user.login")
       assert length(logins) == 2
@@ -74,7 +74,7 @@ defmodule Skein.Runtime.EventLogTest do
     end
 
     test "returns empty list for unknown event name" do
-      EventLog.log("user.login", %{}, [])
+      EventLog.log("user.login", %{}, [%{kind: "event.log", params: []}])
       assert EventLog.query("nonexistent") == []
     end
   end
@@ -85,16 +85,16 @@ defmodule Skein.Runtime.EventLogTest do
     end
 
     test "returns correct count" do
-      EventLog.log("a", %{}, [])
-      EventLog.log("b", %{}, [])
+      EventLog.log("a", %{}, [%{kind: "event.log", params: []}])
+      EventLog.log("b", %{}, [%{kind: "event.log", params: []}])
       assert EventLog.count() == 2
     end
   end
 
   describe "reset_all/0" do
     test "clears all events" do
-      EventLog.log("a", %{}, [])
-      EventLog.log("b", %{}, [])
+      EventLog.log("a", %{}, [%{kind: "event.log", params: []}])
+      EventLog.log("b", %{}, [%{kind: "event.log", params: []}])
       assert EventLog.count() == 2
 
       EventLog.reset_all()

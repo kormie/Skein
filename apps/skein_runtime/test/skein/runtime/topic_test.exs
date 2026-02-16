@@ -34,7 +34,7 @@ defmodule Skein.Runtime.TopicTest do
       end
 
       Topic.subscribe_fn("dispatch-test", handler_fn)
-      Topic.publish("dispatch-test", %{body: "hello"}, [])
+      Topic.publish("dispatch-test", %{body: "hello"}, [%{kind: "topic.publish", params: ["dispatch-test"]}])
 
       assert_receive {:handled, %{body: "hello"}}, 1000
     end
@@ -61,7 +61,7 @@ defmodule Skein.Runtime.TopicTest do
       Topic.subscribe_fn("fan-out-test", handler_b)
       Topic.subscribe_fn("fan-out-test", handler_c)
 
-      Topic.publish("fan-out-test", %{body: "broadcast"}, [])
+      Topic.publish("fan-out-test", %{body: "broadcast"}, [%{kind: "topic.publish", params: ["fan-out-test"]}])
 
       assert_receive {:handler_a, "broadcast"}, 1000
       assert_receive {:handler_b, "broadcast"}, 1000
@@ -77,9 +77,9 @@ defmodule Skein.Runtime.TopicTest do
       end
 
       Topic.subscribe_fn("order-test", handler_fn)
-      Topic.publish("order-test", %{body: "first"}, [])
-      Topic.publish("order-test", %{body: "second"}, [])
-      Topic.publish("order-test", %{body: "third"}, [])
+      Topic.publish("order-test", %{body: "first"}, [%{kind: "topic.publish", params: ["order-test"]}])
+      Topic.publish("order-test", %{body: "second"}, [%{kind: "topic.publish", params: ["order-test"]}])
+      Topic.publish("order-test", %{body: "third"}, [%{kind: "topic.publish", params: ["order-test"]}])
 
       assert_receive {:handled, "first"}, 1000
       assert_receive {:handled, "second"}, 1000
@@ -88,7 +88,7 @@ defmodule Skein.Runtime.TopicTest do
 
     test "message to unsubscribed topic is dropped" do
       # No subscriber for this topic — should not crash
-      assert :ok = Topic.publish("nonexistent-topic", %{body: "dropped"}, [])
+      assert :ok = Topic.publish("nonexistent-topic", %{body: "dropped"}, [%{kind: "topic.publish", params: ["nonexistent-topic"]}])
     end
 
     test "subscribers to different topics only receive their messages" do
@@ -107,7 +107,7 @@ defmodule Skein.Runtime.TopicTest do
       Topic.subscribe_fn("topic-a", handler_a)
       Topic.subscribe_fn("topic-b", handler_b)
 
-      Topic.publish("topic-a", %{body: "only-a"}, [])
+      Topic.publish("topic-a", %{body: "only-a"}, [%{kind: "topic.publish", params: ["topic-a"]}])
 
       assert_receive {:topic_a, "only-a"}, 1000
       refute_receive {:topic_b, _}, 200

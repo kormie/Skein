@@ -64,10 +64,16 @@ defmodule Skein.Runtime.Topic do
   The capabilities argument is passed by compiled Skein code but is
   not used in the current implementation.
   """
-  @spec publish(String.t(), term(), list()) :: :ok
-  def publish(topic_name, message, _capabilities) do
-    ensure_started()
-    GenServer.cast(__MODULE__, {:publish, topic_name, message})
+  @spec publish(String.t(), term(), list()) :: :ok | {:error, String.t()}
+  def publish(topic_name, message, capabilities) do
+    case check_capability("topic.publish", topic_name, capabilities) do
+      :ok ->
+        ensure_started()
+        GenServer.cast(__MODULE__, {:publish, topic_name, message})
+
+      {:error, _reason} = error ->
+        error
+    end
   end
 
   @doc """
@@ -138,6 +144,33 @@ defmodule Skein.Runtime.Topic do
   # ------------------------------------------------------------------
   # Internal
   # ------------------------------------------------------------------
+
+  defp check_capability(kind, name, capabilities) do
+    matching_caps = Enum.filter(capabilities, fn cap -> cap.kind == kind end)
+
+    case matching_caps do
+      [] ->
+        {:error, "Capability '#{kind}' not declared. Operation on '#{name}' blocked."}
+
+      caps ->
+        match =
+          Enum.any?(caps, fn cap ->
+            case cap.params do
+              [] -> true
+              params -> name in params
+            end
+          end)
+
+        if match do
+          :ok
+        else
+          declared = caps |> Enum.flat_map(fn cap -> cap.params end) |> Enum.join(", ")
+
+          {:error,
+           "'#{name}' not declared in #{kind} capabilities. Declared: #{declared}"}
+        end
+    end
+  end
 
   defp dispatch_handler({:module, module, handler_fn}, message) do
     try do

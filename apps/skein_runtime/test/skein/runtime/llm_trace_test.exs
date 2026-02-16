@@ -6,7 +6,7 @@ defmodule Skein.Runtime.LlmTraceTest do
   alias Skein.Runtime.Llm.Response.Usage
   alias Skein.Runtime.Trace
 
-  @capabilities [%{kind: "model", model: "test-model"}]
+  @capabilities [%{kind: "model", params: ["test-model"]}]
 
   setup do
     Trace.init()
