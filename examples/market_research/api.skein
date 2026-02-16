@@ -1,0 +1,55 @@
+-- api.skein
+-- Companion HTTP module for the MarketResearchAgent.
+-- Provides REST endpoints to start, monitor, resume, and retrieve research.
+--
+-- NOTE: This is a module (not an agent). It provides the HTTP interface
+-- that would interact with the agent at runtime. In a full implementation,
+-- these handlers would call into the agent runtime to manage agent instances.
+--
+-- Language gaps discovered:
+-- - No typed record constructors in modules (TypeDecl exists for req.json[T] parsing only)
+-- - No agent instantiation from modules (no spawn/call primitives yet)
+-- - No if-expression; must use match bool { true -> ... false -> ... }
+-- - Cannot return map literals from handlers directly; must use respond.json with string
+
+module MarketResearchApi {
+  capability http.in
+
+  type ResearchBrief {
+    topic: String
+    industry: String
+    focus_areas: String
+  }
+
+  type ResumeRequest {
+    refined_topic: String
+  }
+
+  -- Start a new research task
+  -- Accepts a JSON body with topic, industry, and focus_areas
+  handler http POST "/research/start" (req) -> {
+    let brief = req.json[ResearchBrief]!
+    trace.annotate("research_started", brief)
+    respond.json(201, brief)
+  }
+
+  -- Get current research status
+  -- In a full implementation, this would query the agent's memory
+  handler http GET "/research/status" (req) -> {
+    trace.annotate("status_checked", "ok")
+    respond.json(200, "status_placeholder")
+  }
+
+  -- Resume a suspended agent with refined scope
+  handler http POST "/research/resume" (req) -> {
+    let body = req.json[ResumeRequest]!
+    trace.annotate("research_resumed", body)
+    respond.json(200, body)
+  }
+
+  -- Get the final research report
+  handler http GET "/research/report" (req) -> {
+    trace.annotate("report_requested", "ok")
+    respond.json(200, "report_placeholder")
+  }
+}

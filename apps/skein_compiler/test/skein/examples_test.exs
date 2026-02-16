@@ -505,7 +505,7 @@ defmodule Skein.ExamplesTest do
     test "compiles successfully" do
       assert {:module, mod} =
                Compiler.compile_file(
-                 Path.join(project_root(), "examples/market_research_agent.skein")
+                 Path.join(project_root(), "examples/market_research/agent.skein")
                )
 
       assert is_atom(mod)
@@ -514,7 +514,7 @@ defmodule Skein.ExamplesTest do
     test "has correct phase definitions" do
       {:module, mod} =
         Compiler.compile_file(
-          Path.join(project_root(), "examples/market_research_agent.skein")
+          Path.join(project_root(), "examples/market_research/agent.skein")
         )
 
       phases = mod.__phases__()
@@ -530,7 +530,7 @@ defmodule Skein.ExamplesTest do
     test "phase transitions are correct" do
       {:module, mod} =
         Compiler.compile_file(
-          Path.join(project_root(), "examples/market_research_agent.skein")
+          Path.join(project_root(), "examples/market_research/agent.skein")
         )
 
       phases = mod.__phases__()
@@ -556,7 +556,7 @@ defmodule Skein.ExamplesTest do
     test "Complete phase handler calls stop" do
       {:module, mod} =
         Compiler.compile_file(
-          Path.join(project_root(), "examples/market_research_agent.skein")
+          Path.join(project_root(), "examples/market_research/agent.skein")
         )
 
       result = mod.__phase_handler__(:complete, %{}, [])
@@ -566,7 +566,7 @@ defmodule Skein.ExamplesTest do
     test "has all phase handlers" do
       {:module, mod} =
         Compiler.compile_file(
-          Path.join(project_root(), "examples/market_research_agent.skein")
+          Path.join(project_root(), "examples/market_research/agent.skein")
         )
 
       phases = mod.__phases__()
@@ -629,6 +629,96 @@ defmodule Skein.ExamplesTest do
       assert {:respond_json, 200, "ok"} = result
 
       Skein.Runtime.EventLog.reset_all()
+    end
+  end
+
+  # ------------------------------------------------------------------
+  # market_research/api.skein
+  # ------------------------------------------------------------------
+
+  describe "market_research/api.skein" do
+    test "compiles successfully" do
+      assert {:module, mod} =
+               Compiler.compile_file(
+                 Path.join(project_root(), "examples/market_research/api.skein")
+               )
+
+      assert is_atom(mod)
+    end
+
+    test "has four HTTP handlers" do
+      {:module, mod} =
+        Compiler.compile_file(
+          Path.join(project_root(), "examples/market_research/api.skein")
+        )
+
+      handlers = mod.__handlers__()
+      assert length(handlers) == 4
+
+      sources = Enum.map(handlers, & &1.source)
+      assert Enum.all?(sources, &(&1 == :http))
+    end
+
+    test "has correct routes" do
+      {:module, mod} =
+        Compiler.compile_file(
+          Path.join(project_root(), "examples/market_research/api.skein")
+        )
+
+      handlers = mod.__handlers__()
+      routes = Enum.map(handlers, &{&1.method, &1.route})
+
+      assert {:post, "/research/start"} in routes
+      assert {:get, "/research/status"} in routes
+      assert {:post, "/research/resume"} in routes
+      assert {:get, "/research/report"} in routes
+    end
+
+    test "start handler parses typed JSON body" do
+      {:module, mod} =
+        Compiler.compile_file(
+          Path.join(project_root(), "examples/market_research/api.skein")
+        )
+
+      # Build a request with raw JSON body string
+      req = %{body: ~s({"topic":"AI chips","industry":"semiconductors","focus_areas":"market share"})}
+      result = mod.__handler_0__(req)
+      assert {:respond_json, 201, body} = result
+      assert is_map(body)
+      assert body["topic"] == "AI chips"
+    end
+
+    test "status handler returns placeholder" do
+      {:module, mod} =
+        Compiler.compile_file(
+          Path.join(project_root(), "examples/market_research/api.skein")
+        )
+
+      result = mod.__handler_1__(%{})
+      assert {:respond_json, 200, "status_placeholder"} = result
+    end
+
+    test "resume handler parses typed JSON body" do
+      {:module, mod} =
+        Compiler.compile_file(
+          Path.join(project_root(), "examples/market_research/api.skein")
+        )
+
+      req = %{body: ~s({"refined_topic":"AI chips for edge computing"})}
+      result = mod.__handler_2__(req)
+      assert {:respond_json, 200, body} = result
+      assert is_map(body)
+      assert body["refined_topic"] == "AI chips for edge computing"
+    end
+
+    test "report handler returns placeholder" do
+      {:module, mod} =
+        Compiler.compile_file(
+          Path.join(project_root(), "examples/market_research/api.skein")
+        )
+
+      result = mod.__handler_3__(%{})
+      assert {:respond_json, 200, "report_placeholder"} = result
     end
   end
 end
