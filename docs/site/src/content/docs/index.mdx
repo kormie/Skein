@@ -18,24 +18,26 @@ Skein is a programming language that compiles to BEAM bytecode and runs on the E
 
 The language sits at the intersection of three ideas:
 
-1. **The BEAM/OTP runtime** provides battle-tested concurrency, fault tolerance, and distribution -- exactly what long-running agent processes need.
+1. **The BEAM/OTP runtime** provides battle-tested concurrency, fault tolerance, and distribution — exactly what long-running agent processes need.
 2. **An integrated platform model** with trace-driven development and the "service as the unit of work" philosophy.
-3. **Agent-writability as a first-class design constraint** -- a language whose entire spec fits in an LLM context window, with maximally regular syntax and a type system that doubles as a contract language for tool calling.
+3. **Agent-writability as a first-class design constraint** — a language whose entire spec fits in an LLM context window, with maximally regular syntax and a type system that doubles as a contract language for tool calling.
 
 ## Current Status
 
-**Phases 1-7 are complete.** The full compilation pipeline is operational with type checking, capability-based security, HTTP handlers, storage, agents, and CLI tooling:
+The full compilation pipeline is operational. You can write `.skein` files, compile them to BEAM bytecode, and run them — including making real LLM calls to Claude with full tracing.
 
-- Lexer tokenizes Skein source into a token stream
-- Parser builds a full AST via recursive descent
-- Analyzer performs type checking, name resolution, capability validation, and transition checking
-- Code generator produces Core Erlang via the `:cerl` module
-- OTP's `:compile.forms/2` compiles to BEAM bytecode
-- Modules load into the VM and functions are callable from Elixir
-- Runtime provides agents, HTTP client, handler dispatch, store, memory, LLM, tools, and trace recording
-- CLI provides `skein new`, `skein build`, `skein test`, `skein run`, and `skein trace`
+**What works today:**
 
-The test suite has **651 checks** (594 unit tests + 57 property-based tests) with 0 failures.
+- **12 language constructs** — modules, functions, types, enums, agents, handlers (HTTP/queue/schedule), tests, pattern matching, pipes, capabilities
+- **Full type system** — type checking, type inference (field access resolves types), JSON schema derivation, constraint annotations
+- **Capability enforcement** — compile-time and runtime checking across all subsystems (HTTP, store, memory, LLM)
+- **Production LLM backend** — Anthropic integration with `llm.chat`, `llm.json`, and `llm.stream`, with token-level usage tracking
+- **Rich traces** — every effect call produces structured trace spans with timing, outcome, and token usage
+- **Agent state machines** — `gen_statem`-based agents with compile-time phase transition verification
+- **CLI tooling** — `skein new`, `skein build`, `skein test`, `skein run`, `skein trace`
+- **Editor support** — VS Code extension with syntax highlighting, snippets, and full LSP (diagnostics, hover, go-to-definition, completions)
+
+The test suite has **1,280 tests + 182 property-based tests** with 0 failures.
 
 ## Quick Example
 
@@ -66,3 +68,43 @@ mod.greet("World")    #=> "Hello, World!"
 mod.add(3, 4)         #=> 7
 mod.classify(-1)      #=> "non-positive"
 ```
+
+## LLM Demo — Real Claude Calls with Traces
+
+Skein modules can declare LLM capabilities and make type-checked calls to Claude. Run the demo with a real API key:
+
+```bash
+ANTHROPIC_API_KEY=sk-ant-... mix run examples/demo.exs
+```
+
+```
+╔══════════════════════════════════════════╗
+║       Skein LLM Demo                     ║
+╚══════════════════════════════════════════╝
+
+✅ API key found (sk-ant-a...)
+✅ Anthropic backend configured
+
+📝 Compiling Skein module with LLM capability...
+✅ Compiled module: Skein.User.Demo
+
+🤖 Calling llm.chat via Skein...
+─────────────────────────────────────────
+
+📞 mod.greet("World")
+   → Hello there, World — welcome to the wonderful world of Skein!
+
+📞 mod.classify("I love this new programming language!")
+   → positive
+
+─────────────────────────────────────────
+📊 Trace spans:
+   • llm:chat claude-sonnet-4-20250514 (1.2s) ✅
+     tokens: 28 in → 15 out
+   • llm:chat claude-sonnet-4-20250514 (0.4s) ✅
+     tokens: 31 in → 3 out
+
+✨ Demo complete!
+```
+
+Every LLM call is capability-gated (the module must declare `capability model(...)`), type-checked, and automatically traced with token usage.

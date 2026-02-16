@@ -222,16 +222,43 @@ Traces can be replayed for testing: fully recorded, live against real services, 
 ```bash
 git clone https://github.com/kormie/Skein.git
 cd Skein
-mix deps.get
-mix test
+
+# mise reads .mise.toml for the right Erlang/Elixir versions
+mise install
+
+mise exec -- mix deps.get
+mise exec -- mix compile
+mise exec -- mix test
 ```
 
-### Compile a Skein program
+### Run the LLM demo
 
 ```bash
-# Once the CLI is complete:
-mix skein.compile path/to/file.skein
+ANTHROPIC_API_KEY=sk-ant-... mise exec -- mix run examples/demo.exs
 ```
+
+```
+✅ Anthropic backend configured
+
+📝 Compiling Skein module with LLM capability...
+✅ Compiled module: Skein.User.Demo
+
+🤖 Calling llm.chat via Skein...
+
+📞 mod.greet("World")
+   → Hello there, World — welcome to the wonderful world of Skein!
+
+📞 mod.classify("I love this new programming language!")
+   → positive
+
+📊 Trace spans:
+   • llm:chat claude-sonnet-4-20250514 (1.2s) ✅
+     tokens: 28 in → 15 out
+   • llm:chat claude-sonnet-4-20250514 (0.4s) ✅
+     tokens: 31 in → 3 out
+```
+
+Every LLM call is capability-gated, type-checked, and automatically traced with token usage.
 
 ---
 
@@ -255,7 +282,7 @@ Skein is in active development. The compiler and runtime are being built in phas
 | **8f** | **LLM streaming** — `llm.stream` with chunked responses and trace spans | Complete |
 | **8b** | **Storage backend** — Ecto/SQLite integration, schema + migration generation | Complete |
 
-860 tests (81 property-based), 0 failures. The full compilation pipeline works end-to-end — from `.skein` source to running BEAM bytecode with real database storage.
+1,280 tests + 182 property-based tests, 0 failures. The full compilation pipeline works end-to-end — from `.skein` source to running BEAM bytecode with real LLM calls and database storage.
 
 ---
 

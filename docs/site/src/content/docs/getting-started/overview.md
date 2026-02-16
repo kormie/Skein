@@ -18,9 +18,9 @@ Skein is designed around six ranked principles:
 | P5 | Crash Gracefully | OTP's "let it crash" philosophy is the default for agent workloads |
 | P6 | Humans Read, Agents Write | Syntax favors regularity and unambiguous parsing over cleverness |
 
-## What Works Today (Phases 1-8)
+## What Works Today
 
-The compilation pipeline is operational through Phase 8. You can write `.skein` files with modules, functions, types, HTTP/queue/schedule handlers, store operations, and agents -- compile them to BEAM bytecode, and run them on a Bandit + Plug HTTP server. Store operations can be backed by ETS (default) or Ecto/SQLite for real database persistence. The CLI tooling provides project scaffolding, building, testing, running, and trace inspection. Test constructs include `test`, `scenario` (with `given`/`expect`), and `golden` trace tests with a deterministic replay engine.
+The compilation pipeline is fully operational. You can write `.skein` files with modules, functions, types, HTTP/queue/schedule handlers, store operations, and agents — compile them to BEAM bytecode, and run them on a Bandit + Plug HTTP server. Store operations can be backed by ETS (default) or Ecto/SQLite for real database persistence. The CLI tooling provides project scaffolding, building, testing, running, and trace inspection. Test constructs include `test`, `scenario` (with `given`/`expect`), and `golden` trace tests with a deterministic replay engine.
 
 **Language constructs:**
 
@@ -53,6 +53,7 @@ The compilation pipeline is operational through Phase 8. You can write `.skein` 
 - Built-in types: `String`, `Int`, `Float`, `Bool`, `Uuid`, `Instant`, `Duration`, `Email`, `Url`
 - Parameterized types: `Option[T]`, `Result[T, E]`, `List[T]`, `Map[K, V]`, `Set[T]`
 - Type checking at function boundaries and operator validation
+- Type inference — field access resolves types through record definitions
 - JSON schema derivation from type declarations
 - Constraint annotations: `@min`, `@max`, `@one_of`, `@default`
 
@@ -63,8 +64,8 @@ The compilation pipeline is operational through Phase 8. You can write `.skein` 
 - Store effect calls: `store.<table>.get`, `store.<table>.put`, `store.<table>.delete`, `store.<table>.query`
 - Memory effect calls: `memory.put`, `memory.get`, `memory.delete`, `memory.list`
 - LLM effect calls: `llm.chat`, `llm.json`, `llm.stream`
-- Runtime capability enforcement (second layer of defense)
-- Automatic trace recording for every effect call
+- Runtime capability enforcement across all subsystems (HTTP, store, memory, LLM)
+- Automatic trace recording for every effect call with timing, outcome, and token usage
 
 **Agents:**
 
@@ -83,10 +84,11 @@ The compilation pipeline is operational through Phase 8. You can write `.skein` 
 - Schedule dispatch with cron expression parsing for time-triggered handlers
 - ETS-backed store with capability-gated CRUD operations
 - Scoped KV memory with namespace isolation and capability enforcement
-- LLM client with pluggable backends and schema-constrained JSON responses
+- LLM client with pluggable backends (production Anthropic backend included) and schema-constrained JSON responses
 - Agent runtime wrapping `:gen_statem` for phase-based state machines
 - Bandit + Plug HTTP server with `req.json[T]` body validation
-- Trace recording with timing and outcome metadata
+- Trace recording with timing, outcome, and token usage metadata
+- Trace enrichment with model-specific usage data (input/output tokens, cost)
 - Replay engine for deterministic trace playback in tests
 
 **CLI tooling:**

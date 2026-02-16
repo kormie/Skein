@@ -11,6 +11,10 @@ agent Greeter {
   on start(name: String) -> {
     let greeting = llm.chat("claude-sonnet-4-20250514", "You are a friendly greeter. Greet the user warmly in one sentence.", name)
     emit Greeting { message: greeting }
+    transition(Phase.Start)
+  }
+
+  on phase(Phase.Start) -> {
     transition(Phase.Done)
   }
 
