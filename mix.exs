@@ -33,7 +33,7 @@ defmodule Skein.MixProject do
       extras: [
         "docs/SKEIN_SPEC.md": [title: "Language Specification"],
         "docs/ARCHITECTURE.md": [title: "Architecture"],
-        "docs/IMPLEMENTATION_PLAN.md": [title: "Implementation Plan"]
+        "docs/ROADMAP.md": [title: "Roadmap"]
       ],
       groups_for_modules: [
         "Standard Library": ~r/Skein\.Runtime\.Stdlib\./,

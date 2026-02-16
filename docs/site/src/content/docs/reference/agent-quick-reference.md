@@ -19,7 +19,7 @@ skein/
 ├── docs/
 │   ├── SKEIN_SPEC.md            # Complete language specification
 │   ├── ARCHITECTURE.md          # Compiler and runtime architecture
-│   ├── IMPLEMENTATION_PLAN.md   # Phased build plan
+│   ├── ROADMAP.md             # Development roadmap
 │   └── site/                    # Astro + Starlight documentation site
 ├── editors/
 │   └── vscode/                  # VS Code extension (grammar, snippets, LSP client)

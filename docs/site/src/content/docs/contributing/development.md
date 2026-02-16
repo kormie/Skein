@@ -257,7 +257,7 @@ General workflow for extending the compiler:
 
 - `docs/SKEIN_SPEC.md` -- Complete language specification
 - `docs/ARCHITECTURE.md` -- Compiler and runtime architecture
-- `docs/IMPLEMENTATION_PLAN.md` -- 7-phase build plan with acceptance criteria
+- `docs/ROADMAP.md` -- Development roadmap
 - `docs/skein_first_principles.md` -- Language design philosophy
 - Erlang `:cerl` module docs -- `https://www.erlang.org/doc/apps/compiler/cerl`
 - Core Erlang spec -- `https://www.it.uu.se/research/group/hipe/cerl/`

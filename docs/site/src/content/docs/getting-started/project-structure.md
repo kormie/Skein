@@ -14,7 +14,7 @@ skein/
 ├── docs/
 │   ├── SKEIN_SPEC.md                # Complete language specification
 │   ├── ARCHITECTURE.md              # Compiler and runtime architecture
-│   ├── IMPLEMENTATION_PLAN.md       # 7-phase build plan
+│   ├── ROADMAP.md                      # Development roadmap
 │   └── skein_first_principles.md    # Language design philosophy
 ├── examples/                        # Canonical .skein programs
 │   ├── hello.skein
