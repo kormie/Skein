@@ -498,6 +498,89 @@ defmodule Skein.ExamplesTest do
   end
 
   # ------------------------------------------------------------------
+  # market_research_agent.skein
+  # ------------------------------------------------------------------
+
+  describe "market_research_agent.skein" do
+    test "compiles successfully" do
+      assert {:module, mod} =
+               Compiler.compile_file(
+                 Path.join(project_root(), "examples/market_research_agent.skein")
+               )
+
+      assert is_atom(mod)
+    end
+
+    test "has correct phase definitions" do
+      {:module, mod} =
+        Compiler.compile_file(
+          Path.join(project_root(), "examples/market_research_agent.skein")
+        )
+
+      phases = mod.__phases__()
+      phase_names = Enum.map(phases, & &1.name)
+      assert :briefing in phase_names
+      assert :gathering in phase_names
+      assert :analyzing in phase_names
+      assert :reporting in phase_names
+      assert :complete in phase_names
+      assert length(phases) == 5
+    end
+
+    test "phase transitions are correct" do
+      {:module, mod} =
+        Compiler.compile_file(
+          Path.join(project_root(), "examples/market_research_agent.skein")
+        )
+
+      phases = mod.__phases__()
+
+      briefing = Enum.find(phases, &(&1.name == :briefing))
+      assert :gathering in briefing.transitions
+
+      gathering = Enum.find(phases, &(&1.name == :gathering))
+      assert :analyzing in gathering.transitions
+      assert :briefing in gathering.transitions
+
+      analyzing = Enum.find(phases, &(&1.name == :analyzing))
+      assert :gathering in analyzing.transitions
+      assert :reporting in analyzing.transitions
+
+      reporting = Enum.find(phases, &(&1.name == :reporting))
+      assert :complete in reporting.transitions
+
+      complete = Enum.find(phases, &(&1.name == :complete))
+      assert complete.transitions == []
+    end
+
+    test "Complete phase handler calls stop" do
+      {:module, mod} =
+        Compiler.compile_file(
+          Path.join(project_root(), "examples/market_research_agent.skein")
+        )
+
+      result = mod.__phase_handler__(:complete, %{}, [])
+      assert {:stop, %{}, []} = result
+    end
+
+    test "has all phase handlers" do
+      {:module, mod} =
+        Compiler.compile_file(
+          Path.join(project_root(), "examples/market_research_agent.skein")
+        )
+
+      phases = mod.__phases__()
+      phase_names = Enum.map(phases, & &1.name)
+
+      # Each phase should have a handler (no E0032 error)
+      for name <- phase_names do
+        assert is_function(Function.capture(mod, :__phase_handler__, 3)),
+               "Missing phase handler for #{name}"
+      end
+    end
+  end
+
+  # ------------------------------------------------------------------
   # audit_log.skein
   # ------------------------------------------------------------------
 
