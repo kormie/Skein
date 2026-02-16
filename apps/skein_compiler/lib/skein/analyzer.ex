@@ -291,10 +291,12 @@ defmodule Skein.Analyzer do
 
   @builtin_type_names Map.keys(@builtin_types)
 
-  @spec analyze(AST.Module.t() | AST.Agent.t()) ::
+  @spec analyze(AST.Module.t() | AST.Agent.t(), keyword()) ::
           {:ok, AST.Module.t() | AST.Agent.t()} | {:error, [Error.t()]}
-  def analyze(%AST.Module{} = ast) do
-    env = build_initial_env(ast)
+  def analyze(ast, opts \\ [])
+
+  def analyze(%AST.Module{} = ast, opts) do
+    env = build_initial_env(ast) |> put_source_text(opts)
     errors = []
 
     # Pass 0: Check for duplicate definitions
@@ -327,11 +329,11 @@ defmodule Skein.Analyzer do
     # Pass 8: idempotent() outside handler check
     errors = errors ++ check_idempotent_outside_handler(ast.declarations, env)
 
-    filter_result(errors, ast)
+    filter_result(errors, ast, env)
   end
 
-  def analyze(%AST.Agent{} = ast) do
-    env = build_agent_env(ast)
+  def analyze(%AST.Agent{} = ast, opts) do
+    env = build_agent_env(ast) |> put_source_text(opts)
     errors = []
 
     # Pass 1: Validate state field types
@@ -360,10 +362,51 @@ defmodule Skein.Analyzer do
     # idempotent() in agent fns (not handlers) is invalid
     errors = errors ++ check_idempotent_in_agent_fns(ast.fns, env)
 
-    filter_result(errors, ast)
+    filter_result(errors, ast, env)
   end
 
-  defp filter_result(errors, ast) do
+  defp put_source_text(env, opts) do
+    case Keyword.get(opts, :source_text) do
+      nil -> Map.put(env, :source_lines, nil)
+      text -> Map.put(env, :source_lines, String.split(text, "\n"))
+    end
+  end
+
+  defp enrich_error_context(%Error{location: %{line: line}} = error, source_lines)
+       when is_list(source_lines) and line > 0 and line <= length(source_lines) do
+    context_line = Enum.at(source_lines, line - 1)
+    %{error | context: String.trim(context_line)}
+  end
+
+  defp enrich_error_context(error, _source_lines), do: error
+
+  defp enrich_errors(errors, %{source_lines: nil}), do: errors
+
+  defp enrich_errors(errors, %{source_lines: source_lines}) do
+    Enum.map(errors, fn error ->
+      error
+      |> enrich_error_context(source_lines)
+      |> enrich_fix_code()
+    end)
+  end
+
+  defp enrich_errors(errors, _env), do: errors
+
+  defp enrich_fix_code(%Error{code: "E0020", fix_code: nil} = error) do
+    %{error | fix_code: extract_type_mismatch_fix(error.message)}
+  end
+
+  defp enrich_fix_code(error), do: error
+
+  defp extract_type_mismatch_fix(message) do
+    case Regex.run(~r/expected (\w+)/i, message) do
+      [_, expected_type] -> "// Change expression type to #{expected_type}"
+      _ -> "// Fix the type mismatch"
+    end
+  end
+
+  defp filter_result(errors, ast, env) do
+    errors = enrich_errors(errors, env)
     hard_errors = Enum.filter(errors, &(&1.severity == :error))
     warnings = Enum.filter(errors, &(&1.severity == :warning))
 
@@ -846,6 +889,10 @@ defmodule Skein.Analyzer do
         end
 
       true ->
+        suggestion = suggest_identifier(name, env)
+        fix_hint = if suggestion, do: "Did you mean '#{suggestion}'?", else: "Did you mean to declare this variable?"
+        fix_code = suggestion
+
         {:unknown,
          [
            %Error{
@@ -853,7 +900,8 @@ defmodule Skein.Analyzer do
              severity: :error,
              message: "Unknown identifier '#{name}'",
              location: location_from_meta(meta, env.file),
-             fix_hint: "Did you mean to declare this variable?"
+             fix_hint: fix_hint,
+             fix_code: fix_code
            }
          ]}
     end
@@ -2649,4 +2697,46 @@ defmodule Skein.Analyzer do
 
   defp collect_idempotents(%AST.Let{value: value}), do: collect_idempotents(value)
   defp collect_idempotents(_), do: []
+
+  # ------------------------------------------------------------------
+  # Identifier suggestion (Levenshtein distance)
+  # ------------------------------------------------------------------
+
+  defp suggest_identifier(name, env) do
+    candidates =
+      Map.keys(env.variables) ++ Map.keys(env.functions)
+
+    candidates
+    |> Enum.map(fn candidate -> {candidate, levenshtein(name, candidate)} end)
+    |> Enum.filter(fn {_, dist} -> dist <= max(2, div(String.length(name), 2)) end)
+    |> Enum.sort_by(fn {_, dist} -> dist end)
+    |> case do
+      [{best, _} | _] -> best
+      [] -> nil
+    end
+  end
+
+  defp levenshtein(s, t) do
+    s_len = String.length(s)
+    t_len = String.length(t)
+    s_chars = String.graphemes(s)
+    t_chars = String.graphemes(t)
+
+    # Build matrix row by row
+    first_row = Enum.to_list(0..t_len)
+
+    Enum.reduce(Enum.with_index(s_chars, 1), first_row, fn {s_char, i}, prev_row ->
+      Enum.reduce(Enum.with_index(t_chars, 1), {[i], prev_row}, fn {t_char, j},
+                                                                    {curr_row, prev} ->
+        cost = if s_char == t_char, do: 0, else: 1
+        prev_val = Enum.at(prev, j)
+        left_val = List.last(curr_row)
+        diag_val = Enum.at(prev, j - 1)
+        val = Enum.min([prev_val + 1, left_val + 1, diag_val + cost])
+        {curr_row ++ [val], prev}
+      end)
+      |> elem(0)
+    end)
+    |> List.last()
+  end
 end

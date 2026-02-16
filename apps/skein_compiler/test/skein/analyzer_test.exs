@@ -3204,4 +3204,115 @@ defmodule Skein.AnalyzerTest do
                """)
     end
   end
+
+  describe "error context enrichment" do
+    test "errors include source context when source_text is provided" do
+      source = """
+      module M {
+        fn bad() -> Int {
+          "hello"
+        }
+      }
+      """
+
+      {:ok, tokens} = Skein.Lexer.tokenize(source)
+      {:ok, ast} = Skein.Parser.parse(tokens)
+      {:error, errors} = Analyzer.analyze(ast, source_text: source)
+
+      assert length(errors) > 0
+      error = hd(errors)
+      assert error.context != nil
+      assert is_binary(error.context)
+    end
+
+    test "context contains the relevant source line" do
+      source = """
+      module M {
+        fn bad() -> Int {
+          "hello"
+        }
+      }
+      """
+
+      {:ok, tokens} = Skein.Lexer.tokenize(source)
+      {:ok, ast} = Skein.Parser.parse(tokens)
+      {:error, errors} = Analyzer.analyze(ast, source_text: source)
+
+      error = Enum.find(errors, &(&1.code == "E0020"))
+      assert error != nil
+      # Context is the source line where the error is reported
+      assert error.context =~ "fn bad"
+    end
+
+    test "E0010 undefined identifier includes fix_code with suggestion" do
+      source = """
+      module M {
+        fn greet() -> String {
+          let greeting = "hello"
+          greting
+        }
+      }
+      """
+
+      {:ok, tokens} = Skein.Lexer.tokenize(source)
+      {:ok, ast} = Skein.Parser.parse(tokens)
+      {:error, errors} = Analyzer.analyze(ast, source_text: source)
+
+      error = Enum.find(errors, &(&1.code == "E0010"))
+      assert error != nil
+      assert error.fix_code != nil
+      assert error.fix_code =~ "greeting"
+    end
+
+    test "E0020 type mismatch includes fix_code" do
+      source = """
+      module M {
+        fn bad() -> Int {
+          "hello"
+        }
+      }
+      """
+
+      {:ok, tokens} = Skein.Lexer.tokenize(source)
+      {:ok, ast} = Skein.Parser.parse(tokens)
+      {:error, errors} = Analyzer.analyze(ast, source_text: source)
+
+      error = Enum.find(errors, &(&1.code == "E0020"))
+      assert error != nil
+      assert error.fix_code != nil
+    end
+
+    test "analyze/1 still works without source_text (backward compat)" do
+      source = """
+      module M {
+        fn greet() -> String {
+          "hello"
+        }
+      }
+      """
+
+      {:ok, tokens} = Skein.Lexer.tokenize(source)
+      {:ok, ast} = Skein.Parser.parse(tokens)
+      assert {:ok, _ast} = Analyzer.analyze(ast)
+    end
+
+    test "error context in JSON serialization" do
+      source = """
+      module M {
+        fn bad() -> Int {
+          "hello"
+        }
+      }
+      """
+
+      {:ok, tokens} = Skein.Lexer.tokenize(source)
+      {:ok, ast} = Skein.Parser.parse(tokens)
+      {:error, errors} = Analyzer.analyze(ast, source_text: source)
+
+      error = hd(errors)
+      json = Skein.Error.to_json(error)
+      decoded = Jason.decode!(json)
+      assert decoded["context"] != nil
+    end
+  end
 end
