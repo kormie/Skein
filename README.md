@@ -310,7 +310,7 @@ Skein is in active development. The compiler and runtime are being built in phas
 | **8f** | **LLM streaming** — `llm.stream` with chunked responses and trace spans | Complete |
 | **8b** | **Storage backend** — Ecto/SQLite integration, schema + migration generation | Complete |
 
-1,280 tests + 182 property-based tests, 0 failures. The full compilation pipeline works end-to-end — from `.skein` source to running BEAM bytecode with real LLM calls and database storage.
+1,343 tests + 182 property-based tests, 0 failures. The full compilation pipeline works end-to-end — from `.skein` source to running BEAM bytecode with real LLM calls and database storage.
 
 ---
 

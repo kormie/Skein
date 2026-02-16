@@ -30,14 +30,14 @@ The full compilation pipeline is operational. You can write `.skein` files, comp
 
 - **12 language constructs** — modules, functions, types, enums, agents, handlers (HTTP/queue/schedule), tests, pattern matching, pipes, capabilities
 - **Full type system** — type checking, type inference (field access resolves types), JSON schema derivation, constraint annotations
-- **Capability enforcement** — compile-time and runtime checking across all subsystems (HTTP, store, memory, LLM)
+- **Capability enforcement** — compile-time and runtime checking for both modules and agents across all subsystems (HTTP, store, memory, LLM, tools)
 - **Production LLM backend** — Anthropic integration with `llm.chat`, `llm.json`, and `llm.stream`, with token-level usage tracking
 - **Rich traces** — every effect call produces structured trace spans with timing, outcome, and token usage
 - **Agent state machines** — `gen_statem`-based agents with compile-time phase transition verification
 - **CLI tooling** — `skein new`, `skein build`, `skein test`, `skein run`, `skein trace`
 - **Editor support** — VS Code extension with syntax highlighting, snippets, and full LSP (diagnostics, hover, go-to-definition, completions)
 
-The test suite has **1,316 tests + 182 property-based tests** with 0 failures.
+The test suite has **1,343 tests + 182 property-based tests** with 0 failures.
 
 ## Quick Example
 
