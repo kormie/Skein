@@ -1,35 +1,32 @@
 ---
 title: Distribution
-description: Next steps for packaging Skein so others can use it without the source repository.
+description: Packaging Skein so others can use it without the source repository.
 ---
 
 ## Current State
 
-Skein currently requires cloning the source repository and running via Mix. There are no standalone binaries, installable packages, or release artifacts. To use Skein today:
+Skein ships as **standalone binaries** via Burrito for Linux x86_64, macOS x86_64, and macOS ARM64. Users download a single `skein` binary and can immediately create, build, test, and run projects — no Erlang, Elixir, or Mix required.
 
 ```bash
-git clone <repo>
-cd Skein
-mix deps.get
-mix skein.build my_project/
-mix skein.run my_project/ --port 4000
+./skein new my_project
+./skein build my_project
+./skein test my_project
+./skein run my_project --port 4000
 ```
 
-`skein build` now supports writing compiled `.beam` files to disk with the `--output` flag:
+`skein build` also supports writing compiled `.beam` files to disk:
 
 ```bash
-mix skein.build my_project/ --output _build/beam
+./skein build my_project --output _build/beam
 ```
 
-This page documents the planned work to make Skein fully distributable.
+This page documents both what's done and the remaining work to make Skein fully distributable.
 
-## Goal
-
-A developer should be able to install Skein, create a project, and deploy a compiled artifact -- without ever cloning the compiler source.
+---
 
 ## 1. Standalone CLI Binary ✅
 
-A self-contained `skein` binary that bundles the compiler, runtime, and BEAM. A user downloads a single file and runs `skein new`, `skein build`, `skein test`, and `skein run` directly.
+A self-contained `skein` binary that bundles the compiler, runtime, and BEAM.
 
 ### Burrito Distribution (Implemented)
 
@@ -56,19 +53,11 @@ BURRITO_TARGET=macos_arm MIX_ENV=prod mix release skein
 
 Binaries are written to `burrito_out/`.
 
-**Using the standalone binary:**
-
-```bash
-./skein new my_project
-./skein build my_project
-./skein test my_project
-./skein run my_project --port 4000
-./skein version
-```
+---
 
 ## 2. OTP Releases for Skein Projects
 
-`skein build` currently compiles `.skein` files into in-memory BEAM modules. To deploy a Skein project, the build step needs to produce a standalone OTP release that can be copied to a server and started.
+`skein build` compiles `.skein` files and can write `.beam` files to disk. To deploy a Skein project as a standalone server, the build step needs to produce a full OTP release.
 
 **Planned output structure:**
 
@@ -87,10 +76,10 @@ _build/rel/my_service/
 
 **Steps:**
 
-1. ~~Update `skein build` to write `.beam` files to disk instead of only loading them into the running VM~~ Done
+1. ~~Update `skein build` to write `.beam` files to disk~~ ✅ Done
 2. Generate a minimal Mix project on the fly that depends on `skein_runtime` and includes the compiled modules
 3. Run `mix release` against the generated project to produce a self-contained OTP release
-4. ~~Support `skein build --output ./release` to specify the output path~~ Done
+4. ~~Support `skein build --output ./release`~~ ✅ Done
 
 ### Docker Images
 
@@ -98,7 +87,9 @@ Once OTP releases work, producing Docker images is straightforward:
 
 1. Provide a `Dockerfile.skein` template in `skein new` scaffolding
 2. Multi-stage build: compile in a builder image, copy the release into a minimal runtime image
-3. The resulting image needs only the OS and ERTS -- not Elixir, Mix, or the Skein compiler
+3. The resulting image needs only the OS and ERTS — not Elixir, Mix, or the Skein compiler
+
+---
 
 ## 3. Hex.pm Packages
 
@@ -119,6 +110,8 @@ Publishing the Skein compiler and runtime to Hex.pm would allow Elixir developer
 3. Ensure all dependencies are on Hex.pm (not Git-only)
 4. Publish with `mix hex.publish`
 
+---
+
 ## 4. GitHub Releases and CI
 
 Automate artifact creation in CI so every tagged version produces downloadable binaries and a release.
@@ -127,9 +120,10 @@ Automate artifact creation in CI so every tagged version produces downloadable b
 
 1. Add a GitHub Actions workflow triggered by version tags (`v*`)
 2. Build Burrito binaries for each target platform
-3. Build the escript as a fallback
-4. Attach all artifacts to the GitHub release
-5. Generate a changelog from commit history
+3. Attach all artifacts to the GitHub release
+4. Generate a changelog from commit history
+
+---
 
 ## 5. Installer Script
 
@@ -141,12 +135,14 @@ curl -fsSL https://skeinlang.dev/install.sh | bash
 
 The installer would detect the user's OS/architecture, download the appropriate binary from the latest GitHub release, and place it on `$PATH`.
 
+---
+
 ## Priority Order
 
 | Priority | Artifact | Status |
 |----------|----------|--------|
-| 1 | ~~`skein build` writes `.beam` to disk~~ | **Done** — `skein build --output` writes `.beam` files |
-| 2 | ~~Burrito binaries~~ | **Done** — standalone executables for Linux x86_64, macOS x86_64, macOS ARM64 |
+| 1 | `skein build` writes `.beam` to disk | ✅ Done |
+| 2 | Burrito standalone binaries | ✅ Done (Linux x86_64, macOS x86_64, macOS ARM64) |
 | 3 | OTP release generation | Enables standalone server deployment |
 | 4 | Hex.pm packages | Enables embedding Skein in Elixir projects |
 | 5 | Docker template | Enables container-based deployment |
@@ -156,6 +152,6 @@ The installer would detect the user's OS/architecture, download the appropriate 
 
 All prerequisites for distribution work have been completed:
 
-- ~~**Enum variant matching** needs to land in codegen (the last gap in the core language)~~ **Done.** Enum variants compile to tagged tuples (e.g., `{:charge, 100}`) and pattern matching in `match` expressions correctly destructures them. Both simple atom variants and variants with fields are supported.
-- ~~**Supervisor declarations** should be at least minimally implemented for agent pool use cases~~ **Done.** Supervisors can be declared with `child`, `strategy:`, and `max_restarts:` directives. Parsing, analysis (including validation), and codegen (exposing `__supervisors__/0` metadata) are implemented.
-- ~~**`skein build`** needs to be extended to write `.beam` files to a target directory~~ **Done.** `skein build <project> --output <dir>` compiles all `.skein` files and writes `.beam` files to the specified directory. The compiler also exposes `Compiler.compile_to_binary/1` for programmatic use.
+- ✅ **Enum variant matching** — Enum variants compile to tagged tuples and pattern matching correctly destructures them
+- ✅ **Supervisor declarations** — Supervisors with `child`, `strategy:`, and `max_restarts:` are parsed, analyzed, and generate metadata
+- ✅ **`skein build --output`** — Writes compiled `.beam` files to a target directory
