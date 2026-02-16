@@ -781,12 +781,7 @@ defmodule Skein.CodeGen.CoreErlang do
     caps_list =
       capabilities
       |> Enum.map(fn %AST.Capability{kind: kind, params: params} ->
-        param_strings =
-          Enum.map(params, fn
-            %AST.StringLit{segments: [{:literal, text}]} -> text
-            %AST.StringLit{segments: []} -> ""
-            _ -> ""
-          end)
+        param_strings = Enum.map(params, &capability_param_to_string/1)
 
         # Build a map: %{kind: kind, params: [param_strings]}
         kind_pair =
@@ -807,6 +802,13 @@ defmodule Skein.CodeGen.CoreErlang do
 
     :cerl.c_fun([], caps_list)
   end
+
+  # Shared helper to extract string values from capability params (handles StringLit, ToolRef, Identifier)
+  defp capability_param_to_string(%AST.StringLit{segments: [{:literal, text}]}), do: text
+  defp capability_param_to_string(%AST.StringLit{segments: []}), do: ""
+  defp capability_param_to_string(%AST.ToolRef{name: name}), do: name
+  defp capability_param_to_string(%AST.Identifier{name: name}), do: name
+  defp capability_param_to_string(_), do: ""
 
   # Generate __tools__/0 function that returns tool metadata with JSON Schema
   defp generate_tools_meta_fn(tools) do
@@ -1949,12 +1951,7 @@ defmodule Skein.CodeGen.CoreErlang do
   defp generate_capabilities_literal(capabilities) do
     caps_list =
       Enum.map(capabilities, fn %AST.Capability{kind: kind, params: params} ->
-        param_strings =
-          Enum.map(params, fn
-            %AST.StringLit{segments: [{:literal, text}]} -> text
-            %AST.StringLit{segments: []} -> ""
-            _ -> ""
-          end)
+        param_strings = Enum.map(params, &capability_param_to_string/1)
 
         kind_pair =
           :cerl.c_map_pair(
