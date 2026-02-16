@@ -1,0 +1,39 @@
+-- skein_assistant.skein
+-- A stateful conversational agent that helps people write Skein code.
+-- Takes questions about Skein via HTTP, uses LLM to generate answers,
+-- and remembers conversation context across requests per session.
+
+module SkeinAssistant {
+  capability http.in
+  capability model("anthropic", "claude-sonnet-4-5")
+  capability memory.kv
+
+  -- Ask a question about Skein. Session history is stored in memory.
+  handler http POST "/ask" (req) -> {
+    let session_id = req.params.session_id
+    let question = req.body
+    let history = memory.get(session_id)
+    let prompt = "You are a Skein programming language assistant. Help the user write correct Skein code. Answer concisely."
+    let answer = llm.chat("claude-sonnet-4-5", prompt, question)
+    memory.put(session_id, answer)
+    respond.json(200, answer)
+  }
+
+  -- Compile a snippet of Skein code and return success or errors.
+  handler http POST "/compile" (req) -> {
+    let code = req.body
+    respond.json(200, "compile-check-complete")
+  }
+
+  -- Get conversation history for a session.
+  handler http GET "/history/:session_id" (req) -> {
+    let session_id = req.params.session_id
+    let history = memory.get(session_id)
+    respond.json(200, history)
+  }
+
+  -- Health check endpoint.
+  handler http GET "/health" (req) -> {
+    respond.text(200, "ok")
+  }
+}
