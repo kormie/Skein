@@ -67,6 +67,13 @@ jobs:
           path: burrito_out/skein_linux
           if-no-files-found: error
 
+      - name: Upload Linux aarch64 binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: skein-linux-aarch64
+          path: burrito_out/skein_linux_arm
+          if-no-files-found: warn
+
       - name: Upload macOS x86_64 binary
         uses: actions/upload-artifact@v4
         with:
@@ -97,6 +104,7 @@ jobs:
         run: |
           mkdir -p release
           cp artifacts/skein-linux-x86_64/skein_linux release/skein-linux-x86_64
+          cp artifacts/skein-linux-aarch64/skein_linux_arm release/skein-linux-aarch64 || true
           cp artifacts/skein-macos-x86_64/skein_macos release/skein-macos-x86_64 || true
           cp artifacts/skein-macos-aarch64/skein_macos_arm release/skein-macos-aarch64 || true
           chmod +x release/*
