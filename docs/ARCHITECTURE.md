@@ -306,7 +306,7 @@ The generated module translates Skein's `on phase(Phase.X) -> { ... }` blocks in
 
 **State checkpointing:** After each phase transition, the agent's state is serialized and persisted to the memory store. On supervisor restart, the agent resumes from the last checkpoint.
 
-**Instance ID:** Each agent instance gets a unique ID (UUID) that scopes its memory namespace. The ID is stable across restarts.
+**Instance ID:** Each agent instance gets a unique 16-byte hex ID (via `:crypto.strong_rand_bytes/16`) stored in the process dictionary as `:skein_agent_instance_id`. The `Memory` module reads this transparently to prefix keys with `{agent_name}:{instance_id}:`, providing automatic isolation between concurrent instances. The `list` operation filters and unscopes keys so callers see only their own unprefixed key names.
 
 ### 2.2 Capability Enforcer (`Skein.Runtime.Capability`)
 

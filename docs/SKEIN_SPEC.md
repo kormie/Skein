@@ -437,7 +437,10 @@ store.<table>.query(filters: Map) -> List[T]
 
 ```
 -- Requires: capability memory.kv(namespace)
--- Inside agents: automatically scoped to agent instance
+-- Inside agents: keys automatically prefixed with {agent_name}:{instance_id}:
+-- This provides per-instance isolation — concurrent agent instances never collide.
+-- memory.list() returns unscoped key names (prefix stripped).
+-- Outside agent context: no scoping applied (backward compatible).
 memory.put(key: String, value: T) -> Result[T, MemoryError]
 memory.get(key: String) -> Result[T, NotFound]
 memory.get!(key: String) -> T
@@ -473,6 +476,12 @@ tool.call(name: ToolName, args: Map) -> Result[Map, ToolError]
 tool.list() -> List[ToolInfo]
 tool.schema(name: ToolName) -> Map
 ```
+
+**Input validation:** `tool.call` validates input arguments against the tool's declared input schema before execution. Two schema formats are supported:
+- Simple: `%{input: %{field_name => type}}` where type is `:int`, `:string`, `:float`, `:bool`
+- JSON Schema: `%{"input_schema" => %{"type" => "object", "properties" => ..., "required" => [...]}}`
+
+Invalid input returns a `ToolError` with `:validation_error` kind and a list of human-readable violation messages. Tools with no input schema skip validation. Extra fields beyond the schema are allowed; only declared fields are type-checked.
 
 ### 6.6 Topics and Queues
 

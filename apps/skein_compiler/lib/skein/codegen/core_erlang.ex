@@ -803,7 +803,12 @@ defmodule Skein.CodeGen.CoreErlang do
     :cerl.c_fun([], caps_list)
   end
 
-  # Shared helper to extract string values from capability params (handles StringLit, ToolRef, Identifier)
+  # Shared helper to extract string values from capability params.
+  # Handles all AST node types that can appear as capability arguments:
+  # - StringLit: `capability memory.kv("sessions")` → "sessions"
+  # - ToolRef: `capability tool.use(Stripe.CreateRefund)` → "Stripe.CreateRefund"
+  # - Identifier: `capability tool.use(MyTool)` → "MyTool"
+  # - Fallback: unknown nodes become "" (graceful degradation)
   defp capability_param_to_string(%AST.StringLit{segments: [{:literal, text}]}), do: text
   defp capability_param_to_string(%AST.StringLit{segments: []}), do: ""
   defp capability_param_to_string(%AST.ToolRef{name: name}), do: name

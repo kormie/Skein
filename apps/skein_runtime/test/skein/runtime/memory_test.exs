@@ -300,5 +300,97 @@ defmodule Skein.Runtime.MemoryTest do
       Process.delete(:skein_agent_name)
       Process.delete(:skein_agent_instance_id)
     end
+
+    test "special characters in keys work correctly" do
+      Memory.clear("sessions")
+      Process.put(:skein_agent_name, "SpecAgent")
+      Process.put(:skein_agent_instance_id, "inst_spec")
+
+      assert {:ok, _} = Memory.put("sessions", "key:with:colons", "val1", @caps)
+      assert {:ok, _} = Memory.put("sessions", "key/with/slashes", "val2", @caps)
+      assert {:ok, _} = Memory.put("sessions", "", "empty_key", @caps)
+
+      assert {:ok, "val1"} = Memory.get("sessions", "key:with:colons", @caps)
+      assert {:ok, "val2"} = Memory.get("sessions", "key/with/slashes", @caps)
+      assert {:ok, "empty_key"} = Memory.get("sessions", "", @caps)
+
+      Memory.clear("sessions")
+      Process.delete(:skein_agent_name)
+      Process.delete(:skein_agent_instance_id)
+    end
+
+    test "large values are stored and retrieved" do
+      Memory.clear("sessions")
+      Process.put(:skein_agent_name, "LargeAgent")
+      Process.put(:skein_agent_instance_id, "inst_large")
+
+      large_value = String.duplicate("x", 100_000)
+      assert {:ok, ^large_value} = Memory.put("sessions", "big", large_value, @caps)
+      assert {:ok, ^large_value} = Memory.get("sessions", "big", @caps)
+
+      Memory.clear("sessions")
+      Process.delete(:skein_agent_name)
+      Process.delete(:skein_agent_instance_id)
+    end
+
+    test "concurrent instances via spawned tasks are isolated" do
+      Memory.clear("sessions")
+      caps = @caps
+
+      tasks =
+        for i <- 1..5 do
+          Task.async(fn ->
+            Process.put(:skein_agent_name, "ConcAgent")
+            Process.put(:skein_agent_instance_id, "inst_#{i}")
+            Memory.put("sessions", "key", "val_#{i}", caps)
+            Memory.get("sessions", "key", caps)
+          end)
+        end
+
+      results = Task.await_many(tasks, 5000)
+
+      for i <- 1..5 do
+        assert Enum.at(results, i - 1) == {:ok, "val_#{i}"}
+      end
+
+      Memory.clear("sessions")
+    end
+
+    test "list with prefix filter in scoped context" do
+      Memory.clear("sessions")
+      Process.put(:skein_agent_name, "PrefAgent")
+      Process.put(:skein_agent_instance_id, "inst_pref")
+
+      Memory.put("sessions", "user:1", "a", @caps)
+      Memory.put("sessions", "user:2", "b", @caps)
+      Memory.put("sessions", "config:x", "c", @caps)
+
+      keys = Memory.list("sessions", "user:", @caps)
+      assert Enum.sort(keys) == ["user:1", "user:2"]
+
+      Memory.clear("sessions")
+      Process.delete(:skein_agent_name)
+      Process.delete(:skein_agent_instance_id)
+    end
+
+    test "clearing namespace removes all instances' data" do
+      Process.put(:skein_agent_name, "ClearAgent")
+      Process.put(:skein_agent_instance_id, "inst_c1")
+      Memory.put("sessions", "k", "v1", @caps)
+
+      Process.put(:skein_agent_instance_id, "inst_c2")
+      Memory.put("sessions", "k", "v2", @caps)
+
+      Memory.clear("sessions")
+
+      Process.put(:skein_agent_instance_id, "inst_c1")
+      assert {:error, "not_found"} = Memory.get("sessions", "k", @caps)
+
+      Process.put(:skein_agent_instance_id, "inst_c2")
+      assert {:error, "not_found"} = Memory.get("sessions", "k", @caps)
+
+      Process.delete(:skein_agent_name)
+      Process.delete(:skein_agent_instance_id)
+    end
   end
 end

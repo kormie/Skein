@@ -2323,6 +2323,90 @@ defmodule Skein.CodeGen.CoreErlangTest do
   end
 
   # ------------------------------------------------------------------
+  # Capability params codegen — AST node types
+  # ------------------------------------------------------------------
+
+  describe "capability param codegen for different AST node types" do
+    test "string literal capability param" do
+      mod =
+        compile_with_caps!("""
+        module CapParamString {
+          capability http.out("api.example.com")
+
+          fn x() -> Int { 1 }
+        }
+        """)
+
+      caps = mod.__capabilities__()
+      assert [%{kind: "http.out", params: ["api.example.com"]}] = caps
+    end
+
+    test "identifier capability param (ToolRef)" do
+      mod =
+        compile_with_caps!("""
+        module CapParamIdent {
+          capability tool.use(MyTool)
+
+          fn x() -> Int { 1 }
+        }
+        """)
+
+      caps = mod.__capabilities__()
+      assert [%{kind: "tool.use", params: ["MyTool"]}] = caps
+    end
+
+    test "dotted identifier capability param" do
+      mod =
+        compile_with_caps!("""
+        module CapParamDotted {
+          capability tool.use(Stripe.CreateRefund)
+
+          fn x() -> Int { 1 }
+        }
+        """)
+
+      caps = mod.__capabilities__()
+      assert [%{kind: "tool.use", params: ["Stripe.CreateRefund"]}] = caps
+    end
+
+    test "multiple capability params of mixed types" do
+      mod =
+        compile_with_caps!("""
+        module CapParamMixed {
+          capability tool.use(MyTool)
+          capability memory.kv("sessions")
+          capability http.out("api.example.com")
+
+          fn x() -> Int { 1 }
+        }
+        """)
+
+      caps = mod.__capabilities__()
+      kinds = Enum.map(caps, & &1.kind)
+      assert "tool.use" in kinds
+      assert "memory.kv" in kinds
+      assert "http.out" in kinds
+
+      tool_cap = Enum.find(caps, &(&1.kind == "tool.use"))
+      assert tool_cap.params == ["MyTool"]
+    end
+
+    test "capability with no params" do
+      mod =
+        compile_with_caps!("""
+        module CapParamNone {
+          capability http.out
+
+          fn x() -> Int { 1 }
+        }
+        """)
+
+      caps = mod.__capabilities__()
+      assert [%{kind: "http.out", params: []}] = caps
+    end
+  end
+
+  # ------------------------------------------------------------------
   # Enum variant matching codegen (distribution prerequisite)
   # ------------------------------------------------------------------
 

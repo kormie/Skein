@@ -269,8 +269,11 @@ defmodule Skein.Runtime.Agent do
   defp merge_state(old, new) when is_map(new), do: Map.merge(old, new)
   defp merge_state(old, _), do: old
 
+  # Generates a unique instance ID for memory scoping.
+  # Uses 16 cryptographically random bytes, hex-encoded (32 chars).
+  # Stored in the process dictionary as :skein_agent_instance_id so that
+  # Skein.Runtime.Memory can transparently scope keys per agent instance.
   defp generate_instance_id do
-    # 16 random bytes, hex-encoded
     :crypto.strong_rand_bytes(16) |> Base.encode16(case: :lower)
   end
 end

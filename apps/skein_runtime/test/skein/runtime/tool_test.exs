@@ -225,6 +225,142 @@ defmodule Skein.Runtime.ToolTest do
   end
 
   # ------------------------------------------------------------------
+  # Input validation — extended type coverage
+  # ------------------------------------------------------------------
+
+  describe "input validation — all simple types" do
+    setup do
+      Tool.clear_registry()
+      :ok
+    end
+
+    @all_caps [%{kind: "tool.use", params: []}]
+
+    test "float field accepts float and integer" do
+      Tool.register("FloatTool", %{input: %{score: :float}}, fn i -> {:ok, i} end)
+      assert {:ok, _} = Tool.call("FloatTool", %{score: 3.14}, @all_caps)
+      assert {:ok, _} = Tool.call("FloatTool", %{score: 42}, @all_caps)
+    end
+
+    test "float field rejects string" do
+      Tool.register("FloatTool2", %{input: %{score: :float}}, fn i -> {:ok, i} end)
+      assert {:error, %Tool.Error{kind: :validation_error}} =
+               Tool.call("FloatTool2", %{score: "high"}, @all_caps)
+    end
+
+    test "bool field accepts true/false" do
+      Tool.register("BoolTool", %{input: %{active: :bool}}, fn i -> {:ok, i} end)
+      assert {:ok, _} = Tool.call("BoolTool", %{active: true}, @all_caps)
+      assert {:ok, _} = Tool.call("BoolTool", %{active: false}, @all_caps)
+    end
+
+    test "bool field rejects non-boolean" do
+      Tool.register("BoolTool2", %{input: %{active: :bool}}, fn i -> {:ok, i} end)
+      assert {:error, %Tool.Error{kind: :validation_error}} =
+               Tool.call("BoolTool2", %{active: 1}, @all_caps)
+    end
+
+    test "int field rejects float" do
+      Tool.register("IntTool", %{input: %{count: :int}}, fn i -> {:ok, i} end)
+      assert {:error, %Tool.Error{kind: :validation_error}} =
+               Tool.call("IntTool", %{count: 3.5}, @all_caps)
+    end
+
+    test "string field rejects atom" do
+      Tool.register("StrTool", %{input: %{name: :string}}, fn i -> {:ok, i} end)
+      assert {:error, %Tool.Error{kind: :validation_error}} =
+               Tool.call("StrTool", %{name: :hello}, @all_caps)
+    end
+
+    test "multiple type violations reported together" do
+      Tool.register("MultiErr", %{input: %{a: :int, b: :string}}, fn i -> {:ok, i} end)
+      assert {:error, %Tool.Error{kind: :validation_error, detail: detail}} =
+               Tool.call("MultiErr", %{a: "bad", b: 42}, @all_caps)
+      assert length(detail.violations) == 2
+    end
+  end
+
+  describe "input validation — JSON Schema format" do
+    setup do
+      Tool.clear_registry()
+      :ok
+    end
+
+    @all_caps [%{kind: "tool.use", params: []}]
+
+    test "validates JSON Schema string type" do
+      schema = %{"input_schema" => %{"type" => "object", "properties" => %{"name" => %{"type" => "string"}}, "required" => ["name"]}}
+      Tool.register("JsonStr", schema, fn i -> {:ok, i} end)
+      assert {:ok, _} = Tool.call("JsonStr", %{"name" => "Alice"}, @all_caps)
+    end
+
+    test "rejects missing required field in JSON Schema" do
+      schema = %{"input_schema" => %{"type" => "object", "properties" => %{"name" => %{"type" => "string"}}, "required" => ["name"]}}
+      Tool.register("JsonReq", schema, fn i -> {:ok, i} end)
+      assert {:error, %Tool.Error{kind: :validation_error, detail: d}} =
+               Tool.call("JsonReq", %{}, @all_caps)
+      assert Enum.any?(d.violations, &String.contains?(&1, "name"))
+    end
+
+    test "validates JSON Schema integer type" do
+      schema = %{"input_schema" => %{"type" => "object", "properties" => %{"count" => %{"type" => "integer"}}, "required" => []}}
+      Tool.register("JsonInt", schema, fn i -> {:ok, i} end)
+      assert {:ok, _} = Tool.call("JsonInt", %{"count" => 5}, @all_caps)
+      assert {:error, _} = Tool.call("JsonInt", %{"count" => "five"}, @all_caps)
+    end
+
+    test "validates JSON Schema number type" do
+      schema = %{"input_schema" => %{"type" => "object", "properties" => %{"score" => %{"type" => "number"}}, "required" => []}}
+      Tool.register("JsonNum", schema, fn i -> {:ok, i} end)
+      assert {:ok, _} = Tool.call("JsonNum", %{"score" => 3.14}, @all_caps)
+      assert {:ok, _} = Tool.call("JsonNum", %{"score" => 42}, @all_caps)
+      assert {:error, _} = Tool.call("JsonNum", %{"score" => "high"}, @all_caps)
+    end
+
+    test "validates JSON Schema boolean type" do
+      schema = %{"input_schema" => %{"type" => "object", "properties" => %{"flag" => %{"type" => "boolean"}}, "required" => []}}
+      Tool.register("JsonBool", schema, fn i -> {:ok, i} end)
+      assert {:ok, _} = Tool.call("JsonBool", %{"flag" => true}, @all_caps)
+      assert {:error, _} = Tool.call("JsonBool", %{"flag" => "yes"}, @all_caps)
+    end
+
+    test "atom-keyed input matches string-keyed JSON Schema via flexible access" do
+      schema = %{input_schema: %{"type" => "object", "properties" => %{"name" => %{"type" => "string"}}, "required" => ["name"]}}
+      Tool.register("JsonFlex", schema, fn i -> {:ok, i} end)
+      assert {:ok, _} = Tool.call("JsonFlex", %{name: "Alice"}, @all_caps)
+    end
+  end
+
+  describe "input validation — edge cases" do
+    setup do
+      Tool.clear_registry()
+      :ok
+    end
+
+    @all_caps [%{kind: "tool.use", params: []}]
+
+    test "nil input with no schema passes" do
+      Tool.register("NilOk", %{}, fn _i -> {:ok, %{}} end)
+      assert {:ok, _} = Tool.call("NilOk", nil, @all_caps)
+    end
+
+    test "empty map input with schema passes (all optional)" do
+      Tool.register("EmptyIn", %{input: %{x: :int}}, fn _i -> {:ok, %{}} end)
+      assert {:ok, _} = Tool.call("EmptyIn", %{}, @all_caps)
+    end
+
+    test "non-map input with simple schema passes (check_fields fallback)" do
+      Tool.register("NonMap", %{input: %{x: :int}}, fn _i -> {:ok, %{}} end)
+      assert {:ok, _} = Tool.call("NonMap", "just a string", @all_caps)
+    end
+
+    test "empty input schema map skips validation" do
+      Tool.register("EmptySchema", %{input: %{}}, fn _i -> {:ok, %{}} end)
+      assert {:ok, _} = Tool.call("EmptySchema", %{bad: :data}, @all_caps)
+    end
+  end
+
+  # ------------------------------------------------------------------
   # Tool.Error
   # ------------------------------------------------------------------
 
