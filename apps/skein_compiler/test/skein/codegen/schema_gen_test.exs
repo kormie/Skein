@@ -105,9 +105,9 @@ defmodule Skein.CodeGen.SchemaGenTest do
              }
     end
 
-    test "Map[String, Int] -> object" do
+    test "Map[String, Int] -> object with additionalProperties" do
       assert SchemaGen.type_to_schema(type_ref("Map", [type_ref("String"), type_ref("Int")])) ==
-               %{"type" => "object"}
+               %{"type" => "object", "additionalProperties" => %{"type" => "integer"}}
     end
 
     test "Option[String] -> string schema (required handled elsewhere)" do
@@ -400,6 +400,195 @@ defmodule Skein.CodeGen.SchemaGenTest do
       schema = SchemaGen.fields_to_schema(fields)
       assert "name" in schema["required"]
       refute "phone" in schema["required"]
+    end
+  end
+
+  # ------------------------------------------------------------------
+  # Nested user types with context
+  # ------------------------------------------------------------------
+
+  describe "nested user types with context" do
+    test "user type field inlines the referenced type's schema" do
+      address_decl = %AST.TypeDecl{
+        name: "Address",
+        fields: [
+          field("street", type_ref("String")),
+          field("city", type_ref("String"))
+        ],
+        constraints: [],
+        meta: %{line: 1, col: 1, file: "test"}
+      }
+
+      env = %{"Address" => {:type, address_decl}}
+
+      order_decl = %AST.TypeDecl{
+        name: "Order",
+        fields: [
+          field("id", type_ref("Int")),
+          field("address", type_ref("Address"))
+        ],
+        constraints: [],
+        meta: %{line: 1, col: 1, file: "test"}
+      }
+
+      schema = SchemaGen.to_json_schema(order_decl, env)
+
+      assert schema["properties"]["address"] == %{
+               "type" => "object",
+               "properties" => %{
+                 "street" => %{"type" => "string"},
+                 "city" => %{"type" => "string"}
+               },
+               "required" => ["city", "street"]
+             }
+    end
+
+    test "user type referencing an enum inlines enum schema" do
+      status_decl = %AST.EnumDecl{
+        name: "Status",
+        variants: [
+          %AST.Variant{name: "Active", fields: [], transitions: [], meta: %{}},
+          %AST.Variant{name: "Inactive", fields: [], transitions: [], meta: %{}}
+        ],
+        transitions: [],
+        meta: %{line: 1, col: 1, file: "test"}
+      }
+
+      env = %{"Status" => {:enum, status_decl}}
+
+      user_decl = %AST.TypeDecl{
+        name: "User",
+        fields: [
+          field("name", type_ref("String")),
+          field("status", type_ref("Status"))
+        ],
+        constraints: [],
+        meta: %{line: 1, col: 1, file: "test"}
+      }
+
+      schema = SchemaGen.to_json_schema(user_decl, env)
+
+      assert schema["properties"]["status"] == %{
+               "type" => "string",
+               "enum" => ["Active", "Inactive"]
+             }
+    end
+
+    test "circular type references don't infinite loop" do
+      # Node has a field that references Node
+      node_decl = %AST.TypeDecl{
+        name: "Node",
+        fields: [
+          field("value", type_ref("Int")),
+          field("child", type_ref("Option", [type_ref("Node")]))
+        ],
+        constraints: [],
+        meta: %{line: 1, col: 1, file: "test"}
+      }
+
+      env = %{"Node" => {:type, node_decl}}
+
+      schema = SchemaGen.to_json_schema(node_decl, env)
+
+      # First level should have child inlined, but recursive ref should stop
+      assert schema["properties"]["value"] == %{"type" => "integer"}
+      # The child should be an object (stopped recursion) at some depth
+      assert schema["properties"]["child"]["type"] == "object"
+    end
+
+    test "without env, user types fall back to generic object" do
+      type_decl = %AST.TypeDecl{
+        name: "Order",
+        fields: [
+          field("customer", type_ref("Customer"))
+        ],
+        constraints: [],
+        meta: %{line: 1, col: 1, file: "test"}
+      }
+
+      # No env - backwards compatible
+      schema = SchemaGen.to_json_schema(type_decl)
+      assert schema["properties"]["customer"] == %{"type" => "object"}
+    end
+  end
+
+  # ------------------------------------------------------------------
+  # Enum variants with data (oneOf)
+  # ------------------------------------------------------------------
+
+  describe "enum variants with data" do
+    test "enum with data variants generates oneOf schema" do
+      enum_decl = %AST.EnumDecl{
+        name: "Shape",
+        variants: [
+          %AST.Variant{
+            name: "Circle",
+            fields: [field("radius", type_ref("Float"))],
+            transitions: [],
+            meta: %{}
+          },
+          %AST.Variant{
+            name: "Rectangle",
+            fields: [
+              field("width", type_ref("Float")),
+              field("height", type_ref("Float"))
+            ],
+            transitions: [],
+            meta: %{}
+          }
+        ],
+        transitions: [],
+        meta: %{line: 1, col: 1, file: "test"}
+      }
+
+      schema = SchemaGen.enum_to_schema(enum_decl)
+
+      assert %{"oneOf" => variants} = schema
+      assert length(variants) == 2
+
+      circle = Enum.find(variants, &(&1["properties"]["type"]["const"] == "Circle"))
+      assert circle["properties"]["radius"] == %{"type" => "number"}
+
+      rect = Enum.find(variants, &(&1["properties"]["type"]["const"] == "Rectangle"))
+      assert rect["properties"]["width"] == %{"type" => "number"}
+      assert rect["properties"]["height"] == %{"type" => "number"}
+    end
+
+    test "enum with mix of simple and data variants generates oneOf" do
+      enum_decl = %AST.EnumDecl{
+        name: "Result",
+        variants: [
+          %AST.Variant{name: "Ok", fields: [field("value", type_ref("String"))], transitions: [], meta: %{}},
+          %AST.Variant{name: "Error", fields: [field("message", type_ref("String"))], transitions: [], meta: %{}},
+          %AST.Variant{name: "Pending", fields: [], transitions: [], meta: %{}}
+        ],
+        transitions: [],
+        meta: %{line: 1, col: 1, file: "test"}
+      }
+
+      schema = SchemaGen.enum_to_schema(enum_decl)
+
+      # Since at least one variant has data, use oneOf
+      assert %{"oneOf" => variants} = schema
+      assert length(variants) == 3
+
+      pending = Enum.find(variants, &(&1["properties"]["type"]["const"] == "Pending"))
+      assert pending["required"] == ["type"]
+    end
+
+    test "simple enum (no data) still generates string enum" do
+      enum_decl = %AST.EnumDecl{
+        name: "Color",
+        variants: [
+          %AST.Variant{name: "Red", fields: [], transitions: [], meta: %{}},
+          %AST.Variant{name: "Blue", fields: [], transitions: [], meta: %{}}
+        ],
+        transitions: [],
+        meta: %{line: 1, col: 1, file: "test"}
+      }
+
+      schema = SchemaGen.enum_to_schema(enum_decl)
+      assert schema == %{"type" => "string", "enum" => ["Blue", "Red"]}
     end
   end
 
