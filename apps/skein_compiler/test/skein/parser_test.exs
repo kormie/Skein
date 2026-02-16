@@ -2505,4 +2505,70 @@ defmodule Skein.ParserTest do
       assert %AST.Block{expressions: [%AST.Let{}, %AST.Identifier{}]} = f.body
     end
   end
+
+  describe "contextual keywords as variable names" do
+    test "input can be used as a variable name" do
+      source = """
+      module M {
+        fn process(data: String) -> String {
+          let input = data
+          input
+        }
+      }
+      """
+
+      assert {:ok, %AST.Module{declarations: [f]}} = parse(source)
+      assert %AST.Block{expressions: [%AST.Let{name: "input"}, %AST.Identifier{name: "input"}]} = f.body
+    end
+
+    test "state can be used as a variable name" do
+      source = """
+      module M {
+        fn process(x: Int) -> Int {
+          let state = x + 1
+          state
+        }
+      }
+      """
+
+      assert {:ok, %AST.Module{declarations: [f]}} = parse(source)
+      assert %AST.Block{expressions: [%AST.Let{name: "state"}, %AST.Identifier{name: "state"}]} = f.body
+    end
+
+    test "output can be used as a variable name" do
+      source = """
+      module M {
+        fn process(x: Int) -> Int {
+          let output = x
+          output
+        }
+      }
+      """
+
+      assert {:ok, %AST.Module{declarations: [f]}} = parse(source)
+      assert %AST.Block{expressions: [%AST.Let{name: "output"}, %AST.Identifier{name: "output"}]} = f.body
+    end
+
+    test "input still works as keyword in tool declarations" do
+      source = """
+      module M {
+        tool MyTool {
+          description: "A tool"
+          input {
+            name: String
+          }
+          output {
+            result: String
+          }
+          implement {
+            "done"
+          }
+        }
+      }
+      """
+
+      assert {:ok, %AST.Module{declarations: [tool]}} = parse(source)
+      assert %AST.ToolDecl{input: [%AST.Field{name: "name"}]} = tool
+    end
+  end
 end

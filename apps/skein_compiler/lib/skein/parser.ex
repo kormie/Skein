@@ -115,7 +115,7 @@ defmodule Skein.Parser do
     end
   end
 
-  defp parse_agent_body([{:state, {line, col}} | rest], file, acc) do
+  defp parse_agent_body([{:ident, {line, col}, "state"} | rest], file, acc) do
     with {:ok, _lbrace, rest} <- expect(:lbrace, rest, file),
          {:ok, fields, rest} <- parse_fields(rest, file, []),
          {:ok, _rbrace, rest} <- expect(:rbrace, rest, file) do
@@ -668,7 +668,7 @@ defmodule Skein.Parser do
     {:ok, acc, tokens}
   end
 
-  defp parse_tool_body([{:description, _}, {:colon, _} | rest], file, acc) do
+  defp parse_tool_body([{:ident, _, "description"}, {:colon, _} | rest], file, acc) do
     case rest do
       [{:string, _, segments} | rest2] ->
         desc =
@@ -686,7 +686,7 @@ defmodule Skein.Parser do
     end
   end
 
-  defp parse_tool_body([{:input, _}, {:lbrace, _} | rest], file, acc) do
+  defp parse_tool_body([{:ident, _, "input"}, {:lbrace, _} | rest], file, acc) do
     case parse_fields(rest, file, []) do
       {:ok, fields, [{:rbrace, _} | rest2]} ->
         parse_tool_body(rest2, file, %{acc | input: fields})
@@ -699,7 +699,7 @@ defmodule Skein.Parser do
     end
   end
 
-  defp parse_tool_body([{:output, _}, {:lbrace, _} | rest], file, acc) do
+  defp parse_tool_body([{:ident, _, "output"}, {:lbrace, _} | rest], file, acc) do
     case parse_fields(rest, file, []) do
       {:ok, fields, [{:rbrace, _} | rest2]} ->
         parse_tool_body(rest2, file, %{acc | output: fields})
@@ -712,7 +712,7 @@ defmodule Skein.Parser do
     end
   end
 
-  defp parse_tool_body([{:errors, _}, {:lbrace, _} | rest], file, acc) do
+  defp parse_tool_body([{:ident, _, "errors"}, {:lbrace, _} | rest], file, acc) do
     case parse_error_names(rest, file, []) do
       {:ok, names, rest2} ->
         parse_tool_body(rest2, file, %{acc | errors: names})
@@ -828,7 +828,7 @@ defmodule Skein.Parser do
   end
 
   # Parse given { key: expr, key: expr, ... }
-  defp parse_given_block([{:given, _}, {:lbrace, _} | rest], file) do
+  defp parse_given_block([{:ident, _, "given"}, {:lbrace, _} | rest], file) do
     parse_given_vars(rest, file, [])
   end
 
@@ -853,7 +853,7 @@ defmodule Skein.Parser do
   end
 
   # Parse expect { assert expr, assert expr, ... }
-  defp parse_expect_block([{:expect, _}, {:lbrace, _} | rest], file) do
+  defp parse_expect_block([{:ident, _, "expect"}, {:lbrace, _} | rest], file) do
     case parse_block_body(rest, file, []) do
       {:ok, exprs, rest2} ->
         block = %AST.Block{
@@ -1278,7 +1278,7 @@ defmodule Skein.Parser do
     {:ok, Enum.reverse(children), strategy, max_restarts, tokens}
   end
 
-  defp parse_supervisor_body([{:child, _} | _] = tokens, file, children, strategy, max_restarts) do
+  defp parse_supervisor_body([{:ident, _, "child"} | _] = tokens, file, children, strategy, max_restarts) do
     case parse_child_decl(tokens, file) do
       {:ok, child, rest} ->
         parse_supervisor_body(rest, file, [child | children], strategy, max_restarts)
@@ -1289,7 +1289,7 @@ defmodule Skein.Parser do
   end
 
   defp parse_supervisor_body(
-         [{:strategy, _}, {:colon, _}, {:ident, _, strategy_name} | rest],
+         [{:ident, _, "strategy"}, {:colon, _}, {:ident, _, strategy_name} | rest],
          file,
          children,
          _strategy,
@@ -1327,7 +1327,7 @@ defmodule Skein.Parser do
   end
 
   # Parse a child declaration: child Target or child Target(Args...) { opts }
-  defp parse_child_decl([{:child, {line, col}} | rest], file) do
+  defp parse_child_decl([{:ident, {line, col}, "child"} | rest], file) do
     with {:ok, target, rest} <- expect_upper_ident(rest, file) do
       # Check for arguments: child Target(Arg1, Arg2)
       {args, rest} =
@@ -1506,7 +1506,7 @@ defmodule Skein.Parser do
   end
 
   # Assert expression: assert expr
-  defp parse_let_or_match_or_pipe([{:assert, {line, col}} | rest], file) do
+  defp parse_let_or_match_or_pipe([{:ident, {line, col}, "assert"} | rest], file) do
     case parse_pipe_expr(rest, file) do
       {:ok, expr, rest2} ->
         assert_node = %AST.Call{

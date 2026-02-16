@@ -8,13 +8,20 @@ defmodule Skein.LexerTest do
       keywords = ~w(
         module fn let match type enum handler agent tool capability
         supervisor test scenario golden on emit transition stop suspend
-        resume true false implement input output errors policy description
-        state strategy child replay given expect assert idempotent
+        resume true false implement idempotent
       )
 
       for kw <- keywords do
         assert {:ok, [{atom, {1, 1}}, {:eof, _}]} = Lexer.tokenize(kw)
         assert atom == String.to_atom(kw), "Expected keyword #{kw} to produce atom :#{kw}"
+      end
+    end
+
+    test "contextual keywords tokenize as identifiers" do
+      contextual = ~w(input output errors policy description state strategy child replay given expect assert)
+
+      for kw <- contextual do
+        assert {:ok, [{:ident, {1, 1}, ^kw}, {:eof, _}]} = Lexer.tokenize(kw)
       end
     end
   end
