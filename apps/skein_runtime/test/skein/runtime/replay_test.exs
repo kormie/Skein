@@ -142,4 +142,79 @@ defmodule Skein.Runtime.ReplayTest do
       assert kinds == [:handler, :llm, :memory]
     end
   end
+
+  # ------------------------------------------------------------------
+  # Recorded response injection
+  # ------------------------------------------------------------------
+
+  describe "start_replay/2 and with_replay/2" do
+    test "injects recorded LLM responses via replay backend" do
+      trace = [
+        %{
+          "kind" => "llm",
+          "model" => "gpt-4",
+          "input" => "What is 2+2?",
+          "response" => "4"
+        },
+        %{
+          "kind" => "llm",
+          "model" => "gpt-4",
+          "input" => "What is 3+3?",
+          "response" => "6"
+        }
+      ]
+
+      Replay.with_replay(trace, fn ->
+        assert {:ok, "4"} = Replay.next_response(:llm)
+        assert {:ok, "6"} = Replay.next_response(:llm)
+        assert :exhausted = Replay.next_response(:llm)
+      end)
+    end
+
+    test "injects recorded HTTP responses" do
+      trace = [
+        %{
+          "kind" => "http",
+          "method" => "GET",
+          "url" => "https://api.example.com/data",
+          "status" => 200,
+          "response_body" => ~s({"ok": true})
+        }
+      ]
+
+      Replay.with_replay(trace, fn ->
+        assert {:ok, %{"status" => 200, "response_body" => ~s({"ok": true})}} =
+                 Replay.next_response(:http)
+      end)
+    end
+
+    test "replay state is process-scoped" do
+      trace = [
+        %{"kind" => "llm", "model" => "gpt-4", "response" => "hello"}
+      ]
+
+      Replay.with_replay(trace, fn ->
+        # In another process, no replay state
+        task =
+          Task.async(fn ->
+            Replay.next_response(:llm)
+          end)
+
+        assert :no_replay = Task.await(task)
+        # In this process, it works
+        assert {:ok, "hello"} = Replay.next_response(:llm)
+      end)
+    end
+
+    test "replay cleans up after with_replay" do
+      trace = [%{"kind" => "llm", "response" => "hi"}]
+
+      Replay.with_replay(trace, fn ->
+        assert {:ok, "hi"} = Replay.next_response(:llm)
+      end)
+
+      # After with_replay, no replay state
+      assert :no_replay = Replay.next_response(:llm)
+    end
+  end
 end

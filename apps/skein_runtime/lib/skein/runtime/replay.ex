@@ -108,6 +108,77 @@ defmodule Skein.Runtime.Replay do
   end
 
   # Replay individual span types
+  # ------------------------------------------------------------------
+  # Recorded response injection
+  # ------------------------------------------------------------------
+
+  @replay_key :skein_replay_state
+
+  @doc """
+  Executes `fun` with a replay context loaded from the given trace.
+
+  During execution, `next_response/1` can be called to consume recorded
+  responses by kind. The replay state is process-scoped via the process
+  dictionary and is cleaned up after `fun` returns.
+  """
+  @spec with_replay(list(map()), (-> term())) :: term()
+  def with_replay(trace, fun) when is_list(trace) and is_function(fun, 0) do
+    # Group events by kind for sequential consumption
+    grouped =
+      trace
+      |> Enum.group_by(fn event -> event["kind"] end)
+      |> Enum.into(%{}, fn {kind, events} -> {kind, events} end)
+
+    Process.put(@replay_key, grouped)
+
+    try do
+      fun.()
+    after
+      Process.delete(@replay_key)
+    end
+  end
+
+  @doc """
+  Consumes the next recorded response for the given kind.
+
+  Returns:
+  - `{:ok, response}` — the next recorded response
+  - `:exhausted` — all responses for this kind have been consumed
+  - `:no_replay` — no replay context is active in this process
+  """
+  @spec next_response(atom()) :: {:ok, term()} | :exhausted | :no_replay
+  def next_response(kind) when is_atom(kind) do
+    kind_str = Atom.to_string(kind)
+
+    case Process.get(@replay_key) do
+      nil ->
+        :no_replay
+
+      grouped ->
+        case Map.get(grouped, kind_str, []) do
+          [] ->
+            :exhausted
+
+          [event | rest] ->
+            Process.put(@replay_key, Map.put(grouped, kind_str, rest))
+            {:ok, extract_response(kind, event)}
+        end
+    end
+  end
+
+  # Extract the relevant response data from a recorded event
+  defp extract_response(:llm, event), do: event["response"]
+
+  defp extract_response(:http, event) do
+    %{
+      "status" => event["status"],
+      "response_body" => event["response_body"]
+    }
+  end
+
+  defp extract_response(_kind, event), do: event
+
+  # Replay individual span types
   defp replay_span(%{"kind" => "handler"} = span) do
     %{
       kind: :handler,
