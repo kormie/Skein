@@ -592,22 +592,29 @@ defmodule Skein.CodeGen.CoreErlang do
     :cerl.c_clause([pat], body_expr)
   end
 
-  defp generate_agent_sequence([expr], scope) do
-    generate_agent_expr(expr, scope)
+  defp generate_agent_sequence(exprs, scope) do
+    generate_agent_sequence(exprs, scope, [])
   end
 
-  defp generate_agent_sequence([%AST.Let{name: name, value: value} | rest], scope) do
+  # Terminal expression: merge accumulated events into the return tuple
+  defp generate_agent_sequence([expr], scope, acc_event_vars) do
+    result = generate_agent_expr(expr, scope)
+    merge_events_into_result(result, acc_event_vars)
+  end
+
+  defp generate_agent_sequence([%AST.Let{name: name, value: value} | rest], scope, acc) do
     vname = var_name(name)
     new_scope = Map.put(scope, name, vname)
     value_expr = generate_expr(value, scope)
-    body = generate_agent_sequence(rest, new_scope)
+    body = generate_agent_sequence(rest, new_scope, acc)
     :cerl.c_let([:cerl.c_var(vname)], value_expr, body)
   end
 
-  defp generate_agent_sequence([%AST.Emit{event_name: name, fields: fields} | rest], scope) do
-    # Emit in a sequence: we need to collect events and continue
-    # For simplicity, the last expression in a sequence determines the return
-    # Emit in the middle is a side effect captured later
+  defp generate_agent_sequence(
+         [%AST.Emit{event_name: name, fields: fields} | rest],
+         scope,
+         acc
+       ) do
     field_pairs =
       Enum.map(fields, fn {field_name, value_expr} ->
         :cerl.c_map_pair(
@@ -622,16 +629,71 @@ defmodule Skein.CodeGen.CoreErlang do
         | field_pairs
       ])
 
-    discard_var = :cerl.c_var(gen_var())
-    body = generate_agent_sequence(rest, scope)
-    :cerl.c_let([discard_var], event_map, body)
+    event_var = :cerl.c_var(gen_var())
+    body = generate_agent_sequence(rest, scope, acc ++ [event_var])
+    :cerl.c_let([event_var], event_map, body)
   end
 
-  defp generate_agent_sequence([expr | rest], scope) do
+  defp generate_agent_sequence([expr | rest], scope, acc) do
     val = generate_expr(expr, scope)
-    body = generate_agent_sequence(rest, scope)
+    body = generate_agent_sequence(rest, scope, acc)
     discard_var = :cerl.c_var(gen_var())
     :cerl.c_let([discard_var], val, body)
+  end
+
+  # If there are accumulated events, wrap the result to prepend them to its events list.
+  # Result tuples are {action, ..., events_list} — we prepend acc events to that list.
+  defp merge_events_into_result(result, []) do
+    result
+  end
+
+  defp merge_events_into_result(result, acc_event_vars) do
+    # Bind the result to a var, extract the events list, prepend accumulated events
+    result_var = :cerl.c_var(gen_var())
+
+    # Build: erlang:'++' ([e1, e2, ...], element(tuple_size(result), result))
+    acc_list = :cerl.make_list(acc_event_vars)
+
+    # The events list is always the last element of the result tuple.
+    # Extract tuple size by case matching the known shapes:
+    # {action, state, events} or {action, phase, state, events} or {action, reason, state, events}
+    # We'll use a helper: call erlang:append_element equivalent
+    # Simpler: extract last element, prepend, rebuild.
+
+    # Actually, the simplest approach: use erlang:setelement to replace the last element
+    # with the merged list. But we need to know the tuple size.
+    # All agent return tuples have events as last element.
+    # Use: erlang:tuple_size/1 to get size, erlang:element/2 to get events, rebuild with setelement.
+
+    size_var = :cerl.c_var(gen_var())
+    events_var = :cerl.c_var(gen_var())
+    merged_var = :cerl.c_var(gen_var())
+
+    tuple_size_call =
+      :cerl.c_call(:cerl.c_atom(:erlang), :cerl.c_atom(:tuple_size), [result_var])
+
+    get_events =
+      :cerl.c_call(:cerl.c_atom(:erlang), :cerl.c_atom(:element), [size_var, result_var])
+
+    merge_call =
+      :cerl.c_call(:cerl.c_atom(:erlang), :cerl.c_atom(:++), [acc_list, events_var])
+
+    set_events =
+      :cerl.c_call(:cerl.c_atom(:erlang), :cerl.c_atom(:setelement), [
+        size_var,
+        result_var,
+        merged_var
+      ])
+
+    # let Result = <result> in
+    # let Size = tuple_size(Result) in
+    # let Events = element(Size, Result) in
+    # let Merged = acc ++ Events in
+    # setelement(Size, Result, Merged)
+    :cerl.c_let([result_var], result,
+      :cerl.c_let([size_var], tuple_size_call,
+        :cerl.c_let([events_var], get_events,
+          :cerl.c_let([merged_var], merge_call, set_events))))
   end
 
   defp phase_atom(name) when is_binary(name) do

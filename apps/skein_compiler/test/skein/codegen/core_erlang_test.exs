@@ -2642,6 +2642,44 @@ defmodule Skein.CodeGen.CoreErlangTest do
   # Agent suspend codegen
   # ------------------------------------------------------------------
 
+  describe "agent codegen - multiple emit" do
+    test "multiple emit in single handler collects all events" do
+      mod =
+        compile!("""
+        agent MultiEmitAgent {
+          enum Phase {
+            Processing -> [Done]
+            Done -> []
+          }
+
+          on start() -> {
+            transition(Phase.Processing)
+          }
+
+          on phase(Phase.Processing) -> {
+            emit EventA { kind: "first" }
+            emit EventB { kind: "second" }
+            emit EventC { kind: "third" }
+            transition(Phase.Done)
+          }
+
+          on phase(Phase.Done) -> {
+            42
+          }
+        }
+        """)
+
+      {:ok, pid} = Skein.Runtime.Agent.start(mod, %{})
+      Process.sleep(50)
+      events = Skein.Runtime.Agent.get_events(pid)
+      event_names = Enum.map(events, & &1.event)
+      assert "EventA" in event_names
+      assert "EventB" in event_names
+      assert "EventC" in event_names
+      assert length(events) >= 3
+    end
+  end
+
   describe "agent codegen - suspend" do
     test "agent with suspend compiles successfully" do
       mod =

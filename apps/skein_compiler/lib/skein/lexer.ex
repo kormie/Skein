@@ -28,11 +28,10 @@ defmodule Skein.Lexer do
     resume true false implement idempotent
   )a
 
-  # These words are only meaningful in specific parser contexts (tool blocks,
-  # supervisor blocks, test blocks, golden blocks). They are emitted as :ident
-  # tokens and recognised contextually by the parser.
+  # Contextual keywords (input, output, errors, policy, description, state,
+  # strategy, child, replay, given, expect, assert) are NOT in @keywords.
+  # They are emitted as :ident tokens and recognised contextually by the parser.
   # See expect_ident_value/3 and direct {:ident, _, "word"} matches in parser.
-  @contextual_keywords ~w(input output errors policy description state strategy child replay given expect assert)a
 
   @keyword_strings Enum.map(@keywords, &Atom.to_string/1)
 
