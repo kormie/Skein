@@ -2717,7 +2717,7 @@ defmodule Skein.Analyzer do
   end
 
   defp levenshtein(s, t) do
-    s_len = String.length(s)
+    _s_len = String.length(s)
     t_len = String.length(t)
     s_chars = String.graphemes(s)
     t_chars = String.graphemes(t)

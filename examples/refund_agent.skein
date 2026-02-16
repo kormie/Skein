@@ -4,7 +4,7 @@
 -- and suspend/resume for human-in-the-loop review.
 
 agent RefundAgent {
-  capability model("gpt-4")
+  capability model("anthropic", "claude-sonnet-4-5")
   capability memory.kv
 
   state {
