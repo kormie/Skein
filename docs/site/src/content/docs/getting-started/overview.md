@@ -5,7 +5,7 @@ description: What Skein is, what it can do today, and where it's headed.
 
 ## What is Skein?
 
-Skein is a new programming language that compiles to BEAM bytecode and runs on the Erlang VM. The compiler and toolchain are implemented in Elixir as an umbrella project.
+Skein is a new programming language that compiles to BEAM bytecode and runs on the Erlang VM. It ships as a standalone binary for Linux and macOS — no Erlang or Elixir install required. Download the latest build from [CI](https://github.com/kormie/Skein/actions/workflows/build.yml) and you're ready to go. See the [Quickstart](/Skein/getting-started/quickstart/) to get running in under 5 minutes.
 
 Skein is designed around six ranked principles:
 

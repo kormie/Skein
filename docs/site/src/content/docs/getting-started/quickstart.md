@@ -3,36 +3,46 @@ title: Quickstart
 description: Build and run your first Skein program in under 5 minutes.
 ---
 
-## Prerequisites
+## Install
 
-- **Git**
-- **[mise](https://mise.jdx.dev/)** for version management (recommended) — or manually install Erlang/OTP 28+ and Elixir 1.19+
+Grab the latest binary for your platform from the [CI builds](https://github.com/kormie/Skein/actions/workflows/build.yml):
 
-## Setup
+| Platform | Artifact |
+|---|---|
+| Linux x86_64 | `skein-linux-x86_64` |
+| Linux ARM64 | `skein-linux-aarch64` |
+| macOS x86_64 | `skein-macos-x86_64` |
+| macOS ARM64 (Apple Silicon) | `skein-macos-aarch64` |
 
 ```bash
-git clone https://github.com/kormie/Skein.git
-cd Skein
+# Make it executable and put it on your PATH
+chmod +x skein_*
+mv skein_* /usr/local/bin/skein
 
-# mise reads .mise.toml and installs the right Erlang + Elixir versions
-mise install
-
-mise exec -- mix deps.get
-mise exec -- mix compile
+skein version  # → skein 0.1.0
 ```
 
-The project is an Elixir umbrella with three apps:
+No Erlang, Elixir, or other dependencies required — it's a self-contained binary.
+
+## Create a Project
+
+```bash
+skein new hello_world
+cd hello_world
+```
+
+This gives you:
 
 ```
-apps/
-  skein_compiler/    # Lexer, parser, analyzer, code generator
-  skein_runtime/     # Agents, HTTP, store, memory, LLM, tracing
-  skein_cli/         # CLI tooling (new, build, test, run, trace)
+hello_world/
+  skein.toml
+  src/main.skein
+  test/main_test.skein
 ```
 
 ## Write Your First Program
 
-Create a file called `hello.skein`:
+Edit `src/main.skein`:
 
 ```skein
 module Hello {
@@ -53,72 +63,91 @@ module Hello {
 }
 ```
 
-## Compile and Run
+## Compile
 
 ```bash
-mise exec -- mix run -e '
-  {:module, mod} = Skein.Compiler.compile_file("examples/hello.skein")
-  IO.puts(mod.greet("World"))    # "Hello, World!"
-  IO.puts(mod.add(3, 4))         # 7
-  IO.puts(mod.classify(-1))      # "non-positive"
-'
+skein compile src/main.skein
+# → Compiled: Skein.User.Hello
 ```
 
-Or compile from a string:
+## Build the Whole Project
 
 ```bash
-mise exec -- mix run -e '
-  {:module, mod} = Skein.Compiler.compile_string(~S"""
-  module Math {
-    fn double(x: Int) -> Int { x + x }
-  }
-  """)
-  IO.puts(mod.double(21))  # 42
-'
+skein build .
 ```
 
-## Run with a Real LLM
+This compiles every `.skein` file in `src/`.
 
-Skein includes a production Anthropic backend. To see it in action:
+## Run Tests
 
 ```bash
-ANTHROPIC_API_KEY=sk-ant-... mise exec -- mix run examples/demo.exs
+skein test .
 ```
 
-This compiles a Skein module that declares `capability model("anthropic", "claude-sonnet-4-20250514")`, makes real API calls to Claude, and shows the trace output with token usage:
+Discovers and runs all test files in `src/` and `test/`.
 
-```
-🤖 Calling llm.chat via Skein...
+## Start a Server
 
-📞 mod.greet("World")
-   → Hello there, World — welcome to the wonderful world of Skein!
-
-📞 mod.classify("I love this new programming language!")
-   → positive
-
-📊 Trace spans:
-   • llm:chat claude-sonnet-4-20250514 (1.2s) ✅
-     tokens: 28 in → 15 out
-```
-
-Every call is capability-gated, type-checked, and automatically traced.
-
-## Run the Tests
+If your project has HTTP, queue, or schedule handlers:
 
 ```bash
+skein run .
+# → Server running on port 4000
+```
+
+## Inspect Traces
+
+Every effect (LLM calls, HTTP requests, store operations) is automatically traced:
+
+```bash
+skein trace --last 5
+skein trace --kind llm
+```
+
+## All Commands
+
+```bash
+skein help
+```
+
+```
+Skein 0.1.0 — AI-native language for the BEAM
+
+Commands:
+  compile <file.skein>       Compile a single .skein file
+  new <project-dir>          Scaffold a new Skein project
+  build <project-dir>        Compile all .skein files in a project
+  test <project-dir>         Run all tests in a project
+  run <project-dir>          Start the Skein service
+  trace [options]            View recent trace spans
+  version                    Print version
+  help                       Show this help
+```
+
+## Building from Source
+
+If you want to hack on the compiler itself:
+
+```bash
+git clone https://github.com/kormie/Skein.git
+cd Skein
+
+# mise reads .mise.toml for the right Erlang/Elixir versions
+mise install
+
+mise exec -- mix deps.get
+mise exec -- mix compile
 mise exec -- mix test
 ```
 
-1,280 tests + 182 property-based tests, 0 failures.
+The project is an Elixir umbrella with three apps:
 
-## Create a New Project
-
-```bash
-mise exec -- mix skein.new my_service
-cd my_service
 ```
-
-This scaffolds a project with `skein.toml`, `src/main.skein`, and `test/main_test.skein`.
+apps/
+  skein_compiler/    # Lexer, parser, analyzer, code generator
+  skein_runtime/     # Agents, HTTP, store, memory, LLM, tracing
+  skein_cli/         # CLI tooling (new, build, test, run, trace)
+```
 
 ## Next Steps
 
