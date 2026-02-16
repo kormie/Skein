@@ -212,12 +212,40 @@ Traces can be replayed for testing: fully recorded, live against real services, 
 
 ## Getting Started
 
-### Prerequisites
+### Option A: Prebuilt binary (no dependencies)
+
+Download a standalone binary from the [latest CI build](https://github.com/kormie/Skein/actions/workflows/build.yml) — no Erlang or Elixir install required.
+
+| Platform | Artifact |
+|---|---|
+| Linux x86_64 | `skein-linux-x86_64` |
+| Linux ARM64 | `skein-linux-aarch64` |
+| macOS x86_64 | `skein-macos-x86_64` |
+| macOS ARM64 (Apple Silicon) | `skein-macos-aarch64` |
+
+```bash
+# Download and make executable
+chmod +x skein_*
+./skein_linux_arm version    # → skein 0.1.0
+
+# Compile a file
+./skein_linux_arm compile hello.skein
+
+# Scaffold a new project
+./skein_linux_arm new my-agent
+
+# See all commands
+./skein_linux_arm help
+```
+
+### Option B: Build from source
+
+#### Prerequisites
 
 - Erlang/OTP 28+
 - Elixir 1.19+
 
-### Build and test
+#### Build and test
 
 ```bash
 git clone https://github.com/kormie/Skein.git
