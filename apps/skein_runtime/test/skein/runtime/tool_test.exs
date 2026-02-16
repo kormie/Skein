@@ -162,6 +162,69 @@ defmodule Skein.Runtime.ToolTest do
   end
 
   # ------------------------------------------------------------------
+  # Input validation
+  # ------------------------------------------------------------------
+
+  describe "input validation" do
+    setup do
+      schema = %{
+        input: %{amount: :int, customer_id: :string},
+        output: %{id: :string}
+      }
+
+      impl = fn input -> {:ok, %{id: "r_#{input[:amount]}"}} end
+      Tool.register("ValidatedTool", schema, impl)
+      :ok
+    end
+
+    @validated_caps [%{kind: "tool.use", params: ["ValidatedTool"]}]
+
+    test "valid input passes validation" do
+      assert {:ok, _} =
+               Tool.call("ValidatedTool", %{amount: 100, customer_id: "cust_1"}, @validated_caps)
+    end
+
+    test "wrong type for integer field is rejected" do
+      assert {:error, %Tool.Error{kind: :validation_error} = err} =
+               Tool.call("ValidatedTool", %{amount: "not_an_int", customer_id: "cust_1"}, @validated_caps)
+
+      assert Enum.any?(err.detail.violations, &String.contains?(&1, "amount"))
+    end
+
+    test "wrong type for string field is rejected" do
+      assert {:error, %Tool.Error{kind: :validation_error} = err} =
+               Tool.call("ValidatedTool", %{customer_id: 42}, @validated_caps)
+
+      assert Enum.any?(err.detail.violations, &String.contains?(&1, "customer_id"))
+    end
+
+    test "extra fields are allowed (not rejected)" do
+      assert {:ok, _} =
+               Tool.call("ValidatedTool", %{amount: 100, customer_id: "c", extra: true}, @validated_caps)
+    end
+
+    test "missing optional fields are allowed" do
+      assert {:ok, _} =
+               Tool.call("ValidatedTool", %{amount: 100}, @validated_caps)
+    end
+
+    test "tool with no input schema skips validation" do
+      Tool.register("NoSchema", %{}, fn _i -> {:ok, %{done: true}} end)
+      caps = [%{kind: "tool.use", params: ["NoSchema"]}]
+      assert {:ok, _} = Tool.call("NoSchema", %{anything: "goes"}, caps)
+    end
+
+    test "validation_error includes tool name and violation details" do
+      assert {:error, %Tool.Error{kind: :validation_error, detail: detail}} =
+               Tool.call("ValidatedTool", %{amount: "bad"}, @validated_caps)
+
+      assert detail.tool == "ValidatedTool"
+      assert is_list(detail.violations)
+      assert length(detail.violations) > 0
+    end
+  end
+
+  # ------------------------------------------------------------------
   # Tool.Error
   # ------------------------------------------------------------------
 

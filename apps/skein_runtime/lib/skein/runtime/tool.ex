@@ -180,22 +180,141 @@ defmodule Skein.Runtime.Tool do
     init()
 
     case :ets.lookup(@registry_table, name) do
-      [{^name, _schema, impl}] ->
-        case impl.(input) do
-          {:ok, result} when is_map(result) ->
-            {:ok, result}
+      [{^name, schema, impl}] ->
+        case validate_input(name, input, schema) do
+          :ok ->
+            case impl.(input) do
+              {:ok, result} when is_map(result) ->
+                {:ok, result}
 
-          {:ok, result} ->
-            {:ok, result}
+              {:ok, result} ->
+                {:ok, result}
 
-          {:error, reason} ->
-            {:error, Error.execution_error(name, inspect(reason))}
+              {:error, reason} ->
+                {:error, Error.execution_error(name, inspect(reason))}
+            end
+
+          {:error, _} = error ->
+            error
         end
 
       [] ->
         {:error, Error.not_found(name)}
     end
   end
+
+  @doc """
+  Validates tool input against the tool's declared input schema.
+
+  Supports two schema formats:
+  - Simple: `%{input: %{field_name => type_atom}}` where type_atom is `:int`, `:string`, `:float`, `:bool`
+  - JSON Schema: `%{"type" => "object", "properties" => %{...}, "required" => [...]}`
+
+  Returns `:ok` or `{:error, %Tool.Error{kind: :validation_error}}`.
+  """
+  @spec validate_input(String.t(), any(), map()) :: :ok | {:error, Error.t()}
+  def validate_input(name, input, schema) do
+    # Determine which schema format we have
+    input_spec = get_input_spec(schema)
+
+    case input_spec do
+      nil ->
+        # No input schema declared — skip validation
+        :ok
+
+      spec when spec == %{} ->
+        :ok
+
+      spec ->
+        violations = check_fields(input, spec)
+
+        case violations do
+          [] -> :ok
+          vs -> {:error, Error.validation_error(name, vs)}
+        end
+    end
+  end
+
+  defp get_input_spec(%{input: spec}) when is_map(spec) and map_size(spec) > 0, do: spec
+  defp get_input_spec(%{"input_schema" => %{"properties" => _} = schema}), do: {:json_schema, schema}
+  defp get_input_spec(%{input_schema: %{"properties" => _} = schema}), do: {:json_schema, schema}
+  defp get_input_spec(_), do: nil
+
+  defp check_fields(input, {:json_schema, schema}) do
+    properties = Map.get(schema, "properties", %{})
+    required = Map.get(schema, "required", [])
+
+    missing =
+      required
+      |> Enum.reject(fn field_name ->
+        map_has_key_flex?(input, field_name)
+      end)
+      |> Enum.map(fn field -> "missing required field '#{field}'" end)
+
+    type_errors =
+      properties
+      |> Enum.flat_map(fn {field_name, prop_schema} ->
+        case map_get_flex(input, field_name) do
+          :missing -> []
+          {:found, value} -> check_json_schema_type(field_name, value, prop_schema)
+        end
+      end)
+
+    missing ++ type_errors
+  end
+
+  defp check_fields(input, spec) when is_map(spec) and is_map(input) do
+    Enum.flat_map(spec, fn {field_name, expected_type} ->
+      case map_get_flex(input, field_name) do
+        :missing -> []
+        {:found, v} -> check_type(field_name, v, expected_type)
+      end
+    end)
+  end
+
+  defp check_fields(_input, _spec), do: []
+
+  # Flexible map access: tries both string and atom keys
+  defp map_has_key_flex?(map, key) when is_map(map) do
+    Map.has_key?(map, key) or
+      (is_binary(key) and Map.has_key?(map, safe_to_atom(key))) or
+      (is_atom(key) and Map.has_key?(map, Atom.to_string(key)))
+  end
+
+  defp map_get_flex(map, key) when is_map(map) do
+    cond do
+      Map.has_key?(map, key) -> {:found, Map.get(map, key)}
+      is_binary(key) -> atom_key = safe_to_atom(key); if atom_key && Map.has_key?(map, atom_key), do: {:found, Map.get(map, atom_key)}, else: :missing
+      is_atom(key) -> str_key = Atom.to_string(key); if Map.has_key?(map, str_key), do: {:found, Map.get(map, str_key)}, else: :missing
+      true -> :missing
+    end
+  end
+
+  defp safe_to_atom(str) when is_binary(str) do
+    String.to_existing_atom(str)
+  rescue
+    ArgumentError -> nil
+  end
+
+  defp check_type(field, value, :int) when not is_integer(value),
+    do: ["field '#{field}' expected Int, got #{inspect(value)}"]
+  defp check_type(field, value, :string) when not is_binary(value),
+    do: ["field '#{field}' expected String, got #{inspect(value)}"]
+  defp check_type(field, value, :float) when not is_float(value) and not is_integer(value),
+    do: ["field '#{field}' expected Float, got #{inspect(value)}"]
+  defp check_type(field, value, :bool) when not is_boolean(value),
+    do: ["field '#{field}' expected Bool, got #{inspect(value)}"]
+  defp check_type(_field, _value, _type), do: []
+
+  defp check_json_schema_type(field, value, %{"type" => "string"}) when not is_binary(value),
+    do: ["field '#{field}' expected String, got #{inspect(value)}"]
+  defp check_json_schema_type(field, value, %{"type" => "integer"}) when not is_integer(value),
+    do: ["field '#{field}' expected Int, got #{inspect(value)}"]
+  defp check_json_schema_type(field, value, %{"type" => "number"}) when not is_number(value),
+    do: ["field '#{field}' expected Number, got #{inspect(value)}"]
+  defp check_json_schema_type(field, value, %{"type" => "boolean"}) when not is_boolean(value),
+    do: ["field '#{field}' expected Bool, got #{inspect(value)}"]
+  defp check_json_schema_type(_field, _value, _schema), do: []
 end
 
 defmodule Skein.Runtime.Tool.Error do
