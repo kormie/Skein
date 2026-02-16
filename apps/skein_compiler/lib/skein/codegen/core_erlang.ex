@@ -1176,6 +1176,42 @@ defmodule Skein.CodeGen.CoreErlang do
   end
 
   # Binary operations
+  # Division: use runtime dispatch to pick integer div vs float /
+  defp generate_expr(%AST.BinaryOp{op: :/, left: left, right: right}, scope) do
+    left_expr = generate_expr(left, scope)
+    right_expr = generate_expr(right, scope)
+
+    left_var = :cerl.c_var(gen_var())
+    right_var = :cerl.c_var(gen_var())
+
+    # is_float(L) orelse is_float(R)
+    left_is_float =
+      :cerl.c_call(:cerl.c_atom(:erlang), :cerl.c_atom(:is_float), [left_var])
+
+    right_is_float =
+      :cerl.c_call(:cerl.c_atom(:erlang), :cerl.c_atom(:is_float), [right_var])
+
+    either_float =
+      :cerl.c_call(:cerl.c_atom(:erlang), :cerl.c_atom(:or), [left_is_float, right_is_float])
+
+    float_div =
+      :cerl.c_call(:cerl.c_atom(:erlang), :cerl.c_atom(:/), [left_var, right_var])
+
+    int_div =
+      :cerl.c_call(:cerl.c_atom(:erlang), :cerl.c_atom(:div), [left_var, right_var])
+
+    # case (is_float(L) or is_float(R)) of true -> L / R ; false -> div(L, R)
+    case_expr =
+      :cerl.c_case(either_float, [
+        :cerl.c_clause([:cerl.c_atom(true)], float_div),
+        :cerl.c_clause([:cerl.c_atom(false)], int_div)
+      ])
+
+    # let L = left_expr in let R = right_expr in case ...
+    :cerl.c_let([right_var], right_expr, case_expr)
+    |> then(fn inner -> :cerl.c_let([left_var], left_expr, inner) end)
+  end
+
   defp generate_expr(%AST.BinaryOp{op: op, left: left, right: right}, scope) do
     left_expr = generate_expr(left, scope)
     right_expr = generate_expr(right, scope)

@@ -137,6 +137,32 @@ defmodule Skein.CodeGen.CoreErlangTest do
       assert mod.divide(9, 3) == 3
     end
 
+    test "float division" do
+      mod =
+        compile!("""
+        module ArithFloatDiv {
+          fn divide_floats(a: Float, b: Float) -> Float {
+            a / b
+          }
+        }
+        """)
+
+      assert_in_delta mod.divide_floats(10.0, 3.0), 3.333, 0.01
+    end
+
+    test "mixed int/float division" do
+      mod =
+        compile!("""
+        module ArithMixedDiv {
+          fn divide_mixed(a: Int, b: Float) -> Float {
+            a / b
+          }
+        }
+        """)
+
+      assert_in_delta mod.divide_mixed(10, 3.0), 3.333, 0.01
+    end
+
     test "complex expression with precedence" do
       mod =
         compile!("""
