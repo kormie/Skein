@@ -351,13 +351,22 @@ defmodule Skein.Analyzer do
     # Pass 5: Type-check agent function bodies
     errors = errors ++ check_functions(ast.fns, env)
 
-    # Pass 6: Unreachable code after stop() warnings
+    # Convert agent handlers to Fn-shaped nodes for reuse with existing passes
     handler_decls =
       Enum.map(ast.handlers, fn h ->
         %AST.Fn{name: "__handler__", params: [], return_type: nil, body: h.body, meta: h.meta}
       end)
 
-    errors = errors ++ check_unreachable_after_stop(ast.fns ++ handler_decls)
+    all_decls = ast.fns ++ handler_decls
+
+    # Pass 6: Unreachable code after stop() warnings
+    errors = errors ++ check_unreachable_after_stop(all_decls)
+
+    # Pass 7: Capability checking — verify effect calls have covering capabilities
+    errors = errors ++ check_capabilities(all_decls, env)
+
+    # Pass 8: Unused capability warnings
+    errors = errors ++ check_unused_capabilities(all_decls, env)
 
     # idempotent() in agent fns (not handlers) is invalid
     errors = errors ++ check_idempotent_in_agent_fns(ast.fns, env)

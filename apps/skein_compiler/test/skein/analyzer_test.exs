@@ -1441,6 +1441,137 @@ defmodule Skein.AnalyzerTest do
   end
 
   # ------------------------------------------------------------------
+  # Agent capability enforcement
+  # ------------------------------------------------------------------
+
+  describe "agent analysis - capability enforcement" do
+    test "tool.call without capability tool.use produces E0012 in agent" do
+      errors =
+        analyze_errors("""
+        agent A {
+          on start() -> {
+            tool.call("search", {query: "test"})
+          }
+        }
+        """)
+
+      assert Enum.any?(errors, &(&1.code == "E0012" and &1.message =~ "tool.use"))
+    end
+
+    test "http.get without capability http.out produces E0012 in agent" do
+      errors =
+        analyze_errors("""
+        agent A {
+          fn fetch(url: String) -> String {
+            http.get(url)
+          }
+
+          on start() -> {
+            let result = fetch("http://example.com")
+          }
+        }
+        """)
+
+      assert Enum.any?(errors, &(&1.code == "E0012" and &1.message =~ "http.out"))
+    end
+
+    test "memory.put without capability memory.kv produces E0012 in agent" do
+      errors =
+        analyze_errors("""
+        agent A {
+          on start() -> {
+            memory.put("key", "value")
+          }
+        }
+        """)
+
+      assert Enum.any?(errors, &(&1.code == "E0012" and &1.message =~ "memory.kv"))
+    end
+
+    test "agent with correct capabilities passes analysis" do
+      result =
+        analyze("""
+        agent A {
+          capability tool.use(SearchTool)
+          capability http.out
+
+          fn fetch(url: String) -> String {
+            http.get(url)
+          }
+
+          on start() -> {
+            tool.call("SearchTool", {query: "test"})
+            let result = fetch("http://example.com")
+          }
+        }
+        """)
+
+      case result do
+        {:ok, _} -> assert true
+        {:ok, _, warnings} -> refute Enum.any?(warnings, &(&1.code == "E0012"))
+        {:error, errors} -> refute Enum.any?(errors, &(&1.code == "E0012"))
+      end
+    end
+
+    test "unused capability in agent produces W0002 warning" do
+      errors =
+        analyze_errors("""
+        agent A {
+          capability http.out
+
+          on start() -> {
+            stop()
+          }
+        }
+        """)
+
+      assert Enum.any?(errors, &(&1.code == "W0002" and &1.message =~ "http.out"))
+    end
+
+    test "tool.call with undeclared tool name produces E0014 in agent" do
+      errors =
+        analyze_errors("""
+        agent A {
+          capability tool.use(SearchTool)
+
+          on start() -> {
+            tool.call("unknown_tool", {query: "test"})
+          }
+        }
+        """)
+
+      assert Enum.any?(errors, &(&1.code == "E0014"))
+    end
+
+    test "capability checking works in agent phase handlers" do
+      errors =
+        analyze_errors("""
+        agent A {
+          enum Phase {
+            Working -> [Done]
+            Done -> []
+          }
+
+          on start() -> {
+            transition(Phase.Working)
+          }
+
+          on phase(Phase.Working) -> {
+            http.get("http://example.com")
+            transition(Phase.Done)
+          }
+
+          on phase(Phase.Done) -> {
+            stop()
+          }
+        }
+        """)
+
+      assert Enum.any?(errors, &(&1.code == "E0012" and &1.message =~ "http.out"))
+    end
+  end
+
+  # ------------------------------------------------------------------
   # Memory capability checking
   # ------------------------------------------------------------------
 
