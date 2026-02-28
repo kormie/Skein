@@ -1,0 +1,29 @@
+name: Chore / Task
+description: Maintenance work, refactors, build/CI improvements.
+title: "chore: "
+labels: ["type/chore", "status/triage"]
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: What needs doing?
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      placeholder: |
+        - [ ] ...
+        - [ ] ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: risks
+    attributes:
+      label: Risks / rollout
+      description: Anything to be careful about?
+    validations:
+      required: false

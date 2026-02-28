@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Question / Discussion
+    url: https://github.com/kormie/Skein/discussions
+    about: Please use Discussions for questions, ideas, and general discussion.
