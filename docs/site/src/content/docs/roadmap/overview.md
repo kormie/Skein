@@ -79,7 +79,7 @@ Tool inputs go directly to the implementation function without schema validation
 
 #### 9. Queue Naming Convention
 
-The spec uses `queue.consume` but the implementation uses `queue.in`. These should be aligned.
+The spec uses `queue.consume` but the implementation uses `queue.consume`. These should be aligned.
 
 #### 10. Agent Events to EventStore
 

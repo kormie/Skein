@@ -562,7 +562,7 @@ defmodule Skein.CodeGen.CoreErlang do
   defp generate_agent_expr(%AST.Match{subject: subject, arms: arms}, scope) do
     subject_expr = generate_expr(subject, scope)
     clauses = Enum.map(arms, &generate_agent_match_arm(&1, scope))
-    :cerl.c_case(subject_expr, clauses)
+    :cerl.c_case(subject_expr, ensure_catch_all(clauses, arms))
   end
 
   defp generate_agent_expr(%AST.Block{} = block, scope) do
@@ -1241,7 +1241,7 @@ defmodule Skein.CodeGen.CoreErlang do
   defp generate_expr(%AST.Match{subject: subject, arms: arms}, scope) do
     subject_expr = generate_expr(subject, scope)
     clauses = Enum.map(arms, &generate_match_arm(&1, scope))
-    :cerl.c_case(subject_expr, clauses)
+    :cerl.c_case(subject_expr, ensure_catch_all(clauses, arms))
   end
 
   # Binary operations
@@ -1987,6 +1987,41 @@ defmodule Skein.CodeGen.CoreErlang do
     :cerl.c_clause([pat], body_expr)
   end
 
+  # A case whose clauses can all fail (e.g. only literal patterns) needs an
+  # explicit failure clause: the BEAM validator rejects implicit fail paths
+  # for binary patterns. The added clause preserves the runtime semantics of
+  # a non-exhaustive match (a case_clause error).
+  defp ensure_catch_all(clauses, arms) do
+    exhaustive? =
+      Enum.any?(arms, fn %AST.MatchArm{pattern: pattern} ->
+        catch_all_pattern?(pattern)
+      end)
+
+    if exhaustive? do
+      clauses
+    else
+      var = :cerl.c_var(gen_var())
+
+      raise_case_clause =
+        :cerl.c_call(
+          :cerl.c_atom(:erlang),
+          :cerl.c_atom(:error),
+          [:cerl.c_tuple([:cerl.c_atom(:case_clause), var])]
+        )
+
+      clauses ++ [:cerl.c_clause([var], raise_case_clause)]
+    end
+  end
+
+  defp catch_all_pattern?(%AST.Wildcard{}), do: true
+
+  defp catch_all_pattern?(%AST.Identifier{name: name}) do
+    first_char = String.at(name, 0)
+    first_char != String.upcase(first_char) or first_char == "_"
+  end
+
+  defp catch_all_pattern?(_), do: false
+
   defp generate_pattern(%AST.BoolLit{value: value}, scope) do
     {:cerl.c_atom(value), scope}
   end
@@ -1995,8 +2030,26 @@ defmodule Skein.CodeGen.CoreErlang do
     {:cerl.c_int(value), scope}
   end
 
+  # String literals in pattern position must be Core Erlang binary patterns
+  # (one 8-bit segment per byte) — a plain binary c_literal in a clause
+  # pattern crashes the BEAM compiler's core_to_ssa pass.
+  defp generate_pattern(%AST.StringLit{segments: []}, scope) do
+    {:cerl.c_binary([]), scope}
+  end
+
   defp generate_pattern(%AST.StringLit{segments: [{:literal, text}]}, scope) do
-    {:cerl.abstract(text), scope}
+    segments =
+      for <<byte <- text>> do
+        :cerl.c_bitstr(
+          :cerl.c_int(byte),
+          :cerl.c_int(8),
+          :cerl.c_int(1),
+          :cerl.c_atom(:integer),
+          :cerl.abstract([:unsigned, :big])
+        )
+      end
+
+    {:cerl.c_binary(segments), scope}
   end
 
   defp generate_pattern(%AST.Identifier{name: name}, scope) do

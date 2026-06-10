@@ -161,7 +161,7 @@ let summary =
   incident
   |> gather_context()
   |> enrich_with_deploys()
-  |> llm.json[IncidentSummary](model: "gpt-4.1-mini", system: TRIAGE_PROMPT)
+  |> llm.json[IncidentSummary](model: "claude-haiku-4-5", system: TRIAGE_PROMPT)
   |> unwrap_or_escalate()
 ```
 
@@ -353,7 +353,7 @@ Consider this scenario: a human writes a capability block that defines what a co
 -- Human writes this "constitution" for the billing service
 capability http.out("api.stripe.com", methods: [POST], paths: ["/v1/refunds", "/v1/charges"])
 capability store.table("transactions")
-capability model.anthropic("claude-sonnet-4-5")
+capability model.anthropic("claude-opus-4-8")
 capability tool.use(Stripe.Refund, Stripe.Charge)
 ```
 
@@ -396,7 +396,7 @@ Capabilities are additive and scoped. A module declares its maximum capability s
 module BillingService {
   capability http.out("api.stripe.com")
   capability store.table("invoices")
-  capability model("anthropic", "claude-sonnet-4-5")
+  capability model("anthropic", "claude-opus-4-8")
 
   -- This function can use http.out and store.table but not model.
   fn sync_invoice(id: Uuid) -> Result[Invoice, SyncError] {
@@ -409,7 +409,7 @@ module BillingService {
   -- This function can use model.
   fn classify_dispute(invoice: Invoice) -> Result[DisputeClass, ClassifyError] {
     llm.json[DisputeClass](
-      model: "claude-sonnet-4-5",
+      model: "claude-opus-4-8",
       system: CLASSIFY_PROMPT,
       input: invoice
     )
@@ -435,7 +435,7 @@ An agent in Skein is an explicitly defined state machine running as a supervised
 
 ```
 agent RefundAgent {
-  capability model("anthropic", "claude-sonnet-4-5")
+  capability model("anthropic", "claude-opus-4-8")
   capability memory.kv("refund_sessions")
   capability tool.use(Stripe.CreateRefund)
 
@@ -462,7 +462,7 @@ agent RefundAgent {
     let ticket = Tickets.get!(state.ticket_id)
 
     let decision = llm.json[RefundDecision](
-      model: "claude-sonnet-4-5",
+      model: "claude-opus-4-8",
       system: REFUND_ANALYSIS_PROMPT,
       input: ticket
     )
@@ -546,7 +546,7 @@ on phase(Phase.Summarize) -> {
 
   -- stream collects tokens and produces the final result
   let summary = llm.stream[IncidentSummary](
-    model: "claude-sonnet-4-5",
+    model: "claude-opus-4-8",
     system: SUMMARIZE_PROMPT,
     input: ctx,
     on_chunk: fn chunk -> {
@@ -698,7 +698,7 @@ Trace: handle_refund_request (trace_id: abc-123)
 │   ├── Span: agent.start RefundAgent (0ms)
 │   │   ├── Span: phase.Analyze (1,203ms)
 │   │   │   ├── Span: store.get Ticket (3ms)
-│   │   │   └── Span: llm.json claude-sonnet-4-5 (1,198ms) [tokens: 340 in, 89 out, $0.002]
+│   │   │   └── Span: llm.json claude-opus-4-8 (1,198ms) [tokens: 340 in, 89 out, $0.002]
 │   │   ├── Span: phase.Refund (456ms)
 │   │   │   └── Span: tool.call Stripe.CreateRefund (453ms)
 │   │   └── Span: phase.Done (0ms)
@@ -783,7 +783,7 @@ When a human wants an LLM to generate a Skein module, they can provide a capabil
 module InvoiceProcessor {
   capability http.out("api.stripe.com", methods: [GET])
   capability store.table("invoices", ops: [read, write])
-  capability model("anthropic", "claude-sonnet-4-5")
+  capability model("anthropic", "claude-opus-4-8")
   capability tool.use(Slack.PostMessage)
 }
 
@@ -1034,7 +1034,7 @@ module IncidentTriage {
   capability store.table("incidents")
   capability topic.publish("incident.created")
   capability topic.consume("incident.created")
-  capability model("anthropic", "claude-sonnet-4-5")
+  capability model("anthropic", "claude-opus-4-8")
   capability tool.use(Jira.CreateIssue, Slack.PostMessage)
   capability memory.kv("incidents")
 
@@ -1108,7 +1108,7 @@ module IncidentTriage {
       let ctx = memory.get!("context")
 
       let summary = llm.json[TriageSummary](
-        model: "claude-sonnet-4-5",
+        model: "claude-opus-4-8",
         system: "Analyze this incident and provide a triage summary. Be concise.",
         input: ctx
       )

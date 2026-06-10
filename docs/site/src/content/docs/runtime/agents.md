@@ -20,7 +20,7 @@ At runtime, agents compile to `:gen_statem` processes managed by `Skein.Runtime.
 ```skein
 agent RefundBot {
   capability memory.kv("sessions")
-  capability model("claude-3-5-sonnet")
+  capability model("claude-opus-4-8")
 
   enum Phase {
     Review -> Approved, Denied
@@ -41,7 +41,7 @@ agent RefundBot {
   }
 
   on phase(Review) {
-    let decision = llm.chat("claude-3-5-sonnet", "Evaluate refund", state.amount)
+    let decision = llm.chat("claude-opus-4-8", "Evaluate refund", state.amount)
     match decision {
       "approve" -> transition(Approved)
       "deny" -> transition(Denied)
@@ -223,14 +223,14 @@ Agents can call LLM models for decision-making:
 
 ```skein
 agent Classifier {
-  capability model("claude-3-5-sonnet")
+  capability model("claude-opus-4-8")
 
   on phase(Classify) {
     -- Unstructured text response
-    let analysis = llm.chat("claude-3-5-sonnet", "Classify this input", state.input)
+    let analysis = llm.chat("claude-opus-4-8", "Classify this input", state.input)
 
     -- Schema-constrained JSON response
-    let decision = llm.json("claude-3-5-sonnet", "Decide action", state.input, schema)
+    let decision = llm.json("claude-opus-4-8", "Decide action", state.input, schema)
   }
 }
 ```

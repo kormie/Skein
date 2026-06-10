@@ -14,9 +14,9 @@ Skein supports four handler types:
 | Type | Capability | Trigger | Example |
 |------|-----------|---------|---------|
 | HTTP | `http.in` | Incoming HTTP request | `handler http GET "/users" (req) -> { ... }` |
-| Queue | `queue.in` | Message from a named queue | `handler queue "events" (msg) -> { ... }` |
+| Queue | `queue.consume` | Message from a named queue | `handler queue "events" (msg) -> { ... }` |
 | Topic | `topic.consume` | Broadcast message from a named topic | `handler topic "order.events" (msg) -> { ... }` |
-| Schedule | `schedule.in` | Cron-triggered timer | `handler schedule "*/5 * * * *" () -> { ... }` |
+| Schedule | `schedule.trigger` | Cron-triggered timer | `handler schedule "*/5 * * * *" () -> { ... }` |
 
 ## HTTP Handlers
 
@@ -102,7 +102,7 @@ handler queue "queue-name" (param) -> {
 
 ```skein
 module OrderWorker {
-  capability queue.in
+  capability queue.consume
 
   handler queue "order-events" (msg) -> {
     let data = msg
@@ -147,7 +147,7 @@ handler schedule "cron-expression" () -> {
 
 ```skein
 module Maintenance {
-  capability schedule.in
+  capability schedule.trigger
 
   handler schedule "*/5 * * * *" () -> {
     respond.json(200, "cleanup")
@@ -204,7 +204,7 @@ module PubsubNotifications {
 | | Queue | Topic |
 |---|-------|-------|
 | Delivery | Single consumer | All subscribers (fan-out) |
-| Capability | `queue.in` | `topic.consume` |
+| Capability | `queue.consume` | `topic.consume` |
 | Use case | Job processing | Notifications, events |
 | Publish | `queue.publish(name, data)` | `topic.publish(name, data)` |
 
@@ -219,8 +219,8 @@ A module can declare handlers of multiple types. Each type requires its own capa
 ```skein
 module QueueWorker {
   capability http.in
-  capability queue.in
-  capability schedule.in
+  capability queue.consume
+  capability schedule.trigger
 
   handler http GET "/health" (req) -> {
     respond.json(200, "ok")
@@ -298,7 +298,7 @@ The `idempotent(key)` guard prevents duplicate processing of messages. Place it 
 
 ```skein
 module BillingWorker {
-  capability queue.in
+  capability queue.consume
 
   handler queue "billing.events" (msg) -> {
     idempotent(msg.id)
@@ -335,7 +335,7 @@ module BillingWorker {
 The analyzer checks that each handler type has its required capability declared. Missing capabilities produce error `E0012`:
 
 ```
-Error E0012: Capability 'queue.in' required but not declared.
+Error E0012: Capability 'queue.consume' required but not declared.
 Queue handlers require this capability.
-Fix: capability queue.in
+Fix: capability queue.consume
 ```

@@ -197,7 +197,7 @@ Agents declare capabilities just like modules. Common agent capabilities:
 
 | Capability | Purpose |
 |-----------|---------|
-| `capability model("claude-3-5-sonnet")` | Use an LLM model |
+| `capability model("claude-opus-4-8")` | Use an LLM model |
 | `capability memory.kv("sessions")` | Scoped key-value storage |
 | `capability http.out("api.example.com")` | Make outbound HTTP calls |
 | `capability store.table("tickets")` | Database storage |
@@ -205,7 +205,7 @@ Agents declare capabilities just like modules. Common agent capabilities:
 
 ```skein
 agent Classifier {
-  capability model("claude-3-5-sonnet")
+  capability model("claude-opus-4-8")
   capability memory.kv("classifications")
 
   -- LLM and memory calls are now allowed in phase handlers
@@ -220,7 +220,7 @@ Agents can call LLM models for decision-making via the `llm.*` effects:
 
 ```skein
 on phase(Phase.Analyze) -> {
-  let analysis = llm.chat("claude-3-5-sonnet", "Analyze this input", state.input)
+  let analysis = llm.chat("claude-opus-4-8", "Analyze this input", state.input)
   -- analysis is a String
 }
 ```
@@ -236,7 +236,7 @@ type Decision {
 
 on phase(Phase.Decide) -> {
   let decision = llm.json[Decision](
-    "claude-3-5-sonnet",
+    "claude-opus-4-8",
     "Decide if this warrants a refund",
     state.ticket_description
   )
@@ -248,7 +248,7 @@ on phase(Phase.Decide) -> {
 
 ```skein
 on phase(Phase.Generate) -> {
-  let result = llm.stream("claude-3-5-sonnet", "Generate a report", state.data)
+  let result = llm.stream("claude-opus-4-8", "Generate a report", state.data)
   -- chunks are delivered to the runtime callback; result is the assembled text
 }
 ```
@@ -352,7 +352,7 @@ Skein.Agent.UtilAgent.add(3, 4)
 
 ```skein
 agent RefundAgent {
-  capability model("claude-3-5-sonnet")
+  capability model("claude-opus-4-8")
   capability memory.kv("refund_sessions")
   capability tool.use(Stripe.CreateRefund)
 
@@ -374,7 +374,7 @@ agent RefundAgent {
 
   on phase(Phase.Analyze) -> {
     let decision = llm.json[RefundDecision](
-      "claude-3-5-sonnet",
+      "claude-opus-4-8",
       "Decide if this ticket warrants a refund.",
       state.ticket_id
     )

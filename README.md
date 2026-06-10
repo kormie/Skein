@@ -6,7 +6,7 @@ Skein compiles to BEAM bytecode and runs on the Erlang VM — the same battle-te
 
 ```rust
 agent RefundAgent {
-  capability model("anthropic", "claude-sonnet-4-5")
+  capability model("anthropic", "claude-opus-4-8")
   capability tool.use(Stripe.CreateRefund)
 
   enum Phase {
@@ -19,7 +19,7 @@ agent RefundAgent {
   on phase(Phase.Analyze) -> {
     let ticket = store.tickets.get!(state.ticket_id)
     let decision = llm.json[RefundDecision](
-      model: "claude-sonnet-4-5",
+      model: "claude-opus-4-8",
       system: "Decide if this refund is warranted.",
       input: ticket
     )
@@ -116,7 +116,7 @@ module PaymentService {
   capability http.in
   capability http.out("api.stripe.com", methods: [POST])
   capability store.table("transactions")
-  capability model("anthropic", "claude-sonnet-4-5")
+  capability model("anthropic", "claude-opus-4-8")
 
   -- The compiler enforces these boundaries.
   -- Code that tries to call an undeclared endpoint won't compile.
@@ -185,7 +185,7 @@ Trace: handle_refund_request (abc-123)
 │   ├── agent.start RefundAgent (0ms)
 │   │   ├── phase.Analyze (1,203ms)
 │   │   │   ├── store.get Ticket (3ms)
-│   │   │   └── llm.json claude-sonnet-4-5 (1,198ms) [$0.002]
+│   │   │   └── llm.json claude-opus-4-8 (1,198ms) [$0.002]
 │   │   ├── phase.Refund (456ms)
 │   │   │   └── tool.call Stripe.CreateRefund (453ms)
 │   │   └── phase.Done (0ms)

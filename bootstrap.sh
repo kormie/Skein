@@ -130,7 +130,7 @@ SKEIN
 
 cat > examples/refund_agent.skein << 'SKEIN'
 module RefundService {
-  capability model("anthropic", "claude-sonnet-4-5")
+  capability model("anthropic", "claude-opus-4-8")
   capability memory.kv("refund_sessions")
   capability tool.use(Stripe.CreateRefund)
   capability store.table("tickets")
@@ -162,7 +162,7 @@ module RefundService {
     on phase(Phase.Analyze) -> {
       let ticket = store.tickets.get!(state.ticket_id)
       let decision = llm.json[RefundDecision](
-        model: "claude-sonnet-4-5",
+        model: "claude-opus-4-8",
         system: "Decide if this ticket warrants a refund.",
         input: ticket
       )

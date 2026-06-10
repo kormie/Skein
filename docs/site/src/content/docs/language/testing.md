@@ -236,7 +236,7 @@ Golden tests appear in `__tests__/0` with `kind: :golden`.
 ```json
 [
   {"kind": "handler", "method": "get", "path": "/refund", "status": 200},
-  {"kind": "llm", "model": "gpt-4", "tokens": 150},
+  {"kind": "llm", "model": "claude-opus-4-8", "tokens": 150},
   {"kind": "memory", "operation": "put", "key": "decision"}
 ]
 ```

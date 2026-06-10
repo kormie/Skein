@@ -279,6 +279,93 @@ defmodule Skein.CodeGen.CoreErlangTest do
       assert mod.describe(42) == "other"
     end
 
+    test "match on string literal patterns" do
+      mod =
+        compile!("""
+        module MatchString {
+          fn route(decision: String) -> String {
+            match decision {
+              "approve" -> "refunding"
+              "deny"    -> "closed"
+              _         -> "unknown"
+            }
+          }
+        }
+        """)
+
+      assert mod.route("approve") == "refunding"
+      assert mod.route("deny") == "closed"
+      assert mod.route("escalate") == "unknown"
+    end
+
+    test "non-exhaustive string match compiles and raises case_clause on miss" do
+      mod =
+        compile!("""
+        module MatchNoWild {
+          fn route(decision: String) -> String {
+            match decision {
+              "approve" -> "refunding"
+              "deny"    -> "closed"
+            }
+          }
+        }
+        """)
+
+      assert mod.route("approve") == "refunding"
+      assert mod.route("deny") == "closed"
+      assert_raise CaseClauseError, fn -> mod.route("escalate") end
+    end
+
+    test "match on empty string pattern" do
+      mod =
+        compile!("""
+        module MatchEmpty {
+          fn check(s: String) -> String {
+            match s {
+              "" -> "blank"
+              _  -> "present"
+            }
+          }
+        }
+        """)
+
+      assert mod.check("") == "blank"
+      assert mod.check("x") == "present"
+    end
+
+    test "match on string in agent phase handler" do
+      mod =
+        compile!("""
+        agent StringMatchAgent {
+          capability memory.kv
+
+          enum Phase {
+            Decide -> [Done]
+            Done -> []
+          }
+
+          on start(decision: String) -> {
+            memory.put("decision", decision)
+            transition(Phase.Decide)
+          }
+
+          on phase(Phase.Decide) -> {
+            let d = memory.get("decision")
+            match d {
+              "approve" -> transition(Phase.Done)
+              _         -> transition(Phase.Done)
+            }
+          }
+
+          on phase(Phase.Done) -> {
+            stop()
+          }
+        }
+        """)
+
+      assert function_exported?(mod, :__phases__, 0)
+    end
+
     test "match on boolean with block body" do
       mod =
         compile!("""
