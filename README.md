@@ -7,7 +7,11 @@ Skein compiles to BEAM bytecode and runs on the Erlang VM — the same battle-te
 ```rust
 agent RefundAgent {
   capability model("anthropic", "claude-opus-4-8")
-  capability tool.use(Stripe.CreateRefund)
+  capability store.table("tickets")
+
+  state {
+    ticket_id: String
+  }
 
   enum Phase {
     Analyze -> [Refund, Done]
@@ -16,22 +20,39 @@ agent RefundAgent {
     Done    -> []
   }
 
+  on start(ticket_id: String) -> {
+    transition(Phase.Analyze)
+  }
+
   on phase(Phase.Analyze) -> {
     let ticket = store.tickets.get!(state.ticket_id)
-    let decision = llm.json[RefundDecision](
-      model: "claude-opus-4-8",
-      system: "Decide if this refund is warranted.",
-      input: ticket
+    let decision = llm.chat(
+      "claude-opus-4-8",
+      "Decide if this refund is warranted. Reply approve or deny.",
+      ticket
     )
-    match decision.action {
+    match decision {
       "approve" -> transition(Phase.Refund)
       "deny"    -> transition(Phase.Done)
     }
   }
+
+  on phase(Phase.Refund) -> {
+    emit RefundIssued { ticket_id: state.ticket_id }
+    transition(Phase.Done)
+  }
+
+  on phase(Phase.Failed) -> {
+    suspend("Needs human review")
+  }
+
+  on phase(Phase.Done) -> {
+    stop()
+  }
 }
 ```
 
-> The compiler verifies every phase transition, every side effect, and every type contract — before a single line runs.
+> The compiler verifies every phase transition, every side effect, and every type contract — before a single line runs. This example compiles as-is with today's compiler.
 
 The phase graph above compiles to a verified state machine — the compiler rejects invalid transitions before your code ever runs:
 
@@ -214,9 +235,13 @@ Traces can be replayed for testing: fully recorded, live against real services, 
 
 ### Option A: Prebuilt binary (no dependencies)
 
-Download a standalone binary from the [latest CI build](https://github.com/kormie/Skein/actions/workflows/build.yml) — no Erlang or Elixir install required.
+Download a standalone binary for your platform from the
+[Releases page](https://github.com/kormie/Skein/releases) — no Erlang or
+Elixir install required. (Binaries for untagged commits are also available
+as artifacts on the [build workflow](https://github.com/kormie/Skein/actions/workflows/build.yml);
+note that workflow artifacts expire after a while — prefer a release.)
 
-| Platform | Artifact |
+| Platform | Asset |
 |---|---|
 | Linux x86_64 | `skein-linux-x86_64` |
 | Linux ARM64 | `skein-linux-aarch64` |
@@ -224,18 +249,20 @@ Download a standalone binary from the [latest CI build](https://github.com/kormi
 | macOS ARM64 (Apple Silicon) | `skein-macos-aarch64` |
 
 ```bash
-# Download and make executable
-chmod +x skein_*
-./skein_linux_arm version    # → skein 0.1.0
+# Download, make executable, and put it on your PATH
+chmod +x skein-*
+mv skein-* /usr/local/bin/skein
+
+skein version             # → skein 0.1.2
 
 # Compile a file
-./skein_linux_arm compile hello.skein
+skein compile hello.skein
 
 # Scaffold a new project
-./skein_linux_arm new my-agent
+skein new my-agent
 
 # See all commands
-./skein_linux_arm help
+skein help
 ```
 
 ### Option B: Build from source
@@ -310,7 +337,9 @@ Skein is in active development. The compiler and runtime are being built in phas
 | **8f** | **LLM streaming** — `llm.stream` with chunked responses and trace spans | Complete |
 | **8b** | **Storage backend** — Ecto/SQLite integration, schema + migration generation | Complete |
 
-1,343 tests + 182 property-based tests, 0 failures. The full compilation pipeline works end-to-end — from `.skein` source to running BEAM bytecode with real LLM calls and database storage.
+| **9-10** | **Stdlib, error codes, unified event store** — 11 stdlib modules (101 functions), 24 aligned error/warning codes, single append-only event log | Complete |
+
+1,413 tests + 189 property-based tests, 0 failures. The full compilation pipeline works end-to-end — from `.skein` source to running BEAM bytecode with real LLM calls and database storage. See [`examples/`](examples/README.md) for fourteen working programs, all covered by integration tests, and [docs/ROADMAP.md](docs/ROADMAP.md) for what's next.
 
 ---
 
@@ -341,7 +370,8 @@ See [ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full picture.
 |----------|----------------|
 | [Language Specification](docs/SKEIN_SPEC.md) | Every syntax rule, type rule, and standard library function |
 | [Architecture](docs/ARCHITECTURE.md) | Compiler pipeline, runtime design, supervision tree |
-| [Implementation Plan](docs/IMPLEMENTATION_PLAN.md) | Phased build plan with acceptance criteria |
+| [Roadmap](docs/ROADMAP.md) | Prioritized work list and current limitations |
+| [Examples](examples/README.md) | Fourteen working programs, from hello-world to a multi-file agent system |
 | [Design Rationale](docs/skein_first_principles.md) | First principles and the "why" behind every decision |
 | [Documentation Site](https://kormie.github.io/Skein/) | Published docs with LLM-friendly endpoints |
 

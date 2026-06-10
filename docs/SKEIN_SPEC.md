@@ -85,8 +85,8 @@ declaration = capability | fn_decl | type_decl | enum_decl | handler
 capability  = "capability" cap_kind "(" cap_params ")"
 cap_kind    = "http.out" | "http.in" | "store.table" | "memory.kv"
             | "event.log" | "topic.publish" | "topic.consume"
-            | "queue.publish" | "queue.consume" | "model"
-            | "tool.use" | "process.spawn" | "timer"
+            | "queue.publish" | "queue.consume" | "schedule.trigger"
+            | "model" | "tool.use" | "process.spawn" | "timer"
 cap_params  = (string | identifier | named_arg) ("," (string | identifier | named_arg))*
               -- tool.use params are dotted identifiers: tool.use(Stripe.CreateRefund)
               -- other capabilities use strings: store.table("users"), model("anthropic", "claude-opus-4-8")

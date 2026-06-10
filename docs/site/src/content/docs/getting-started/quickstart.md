@@ -5,9 +5,10 @@ description: Build and run your first Skein program in under 5 minutes.
 
 ## Install
 
-Grab the latest binary for your platform from the [CI builds](https://github.com/kormie/Skein/actions/workflows/build.yml):
+Grab the latest binary for your platform from the
+[Releases page](https://github.com/kormie/Skein/releases):
 
-| Platform | Artifact |
+| Platform | Asset |
 |---|---|
 | Linux x86_64 | `skein-linux-x86_64` |
 | Linux ARM64 | `skein-linux-aarch64` |
@@ -16,10 +17,10 @@ Grab the latest binary for your platform from the [CI builds](https://github.com
 
 ```bash
 # Make it executable and put it on your PATH
-chmod +x skein_*
-mv skein_* /usr/local/bin/skein
+chmod +x skein-*
+mv skein-* /usr/local/bin/skein
 
-skein version  # → skein 0.1.0
+skein version  # → skein 0.1.2
 ```
 
 No Erlang, Elixir, or other dependencies required — it's a self-contained binary.
@@ -111,7 +112,7 @@ skein help
 ```
 
 ```
-Skein 0.1.0 — AI-native language for the BEAM
+Skein 0.1.2 — AI-native language for the BEAM
 
 Commands:
   compile <file.skein>       Compile a single .skein file
@@ -140,13 +141,14 @@ mise exec -- mix compile
 mise exec -- mix test
 ```
 
-The project is an Elixir umbrella with three apps:
+The project is an Elixir umbrella with four apps:
 
 ```
 apps/
   skein_compiler/    # Lexer, parser, analyzer, code generator
   skein_runtime/     # Agents, HTTP, store, memory, LLM, tracing
   skein_cli/         # CLI tooling (new, build, test, run, trace)
+  skein_lsp/         # Language Server Protocol implementation
 ```
 
 ## Next Steps

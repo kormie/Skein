@@ -123,10 +123,9 @@
 - `stop()` is parsed as `AST.Stop` node, NOT `AST.Call`
 
 ## What's Next
-- **ROADMAP.md** (`docs/ROADMAP.md`) is the canonical prioritized work list
-- Phases 1-10 + all UP_NEXT priorities are COMPLETE
-- Top priorities now: real type inference (field access, pattern bindings), spec-example alignment, runtime capability enforcement
-- See `docs/AUDIT_FIRST_PRINCIPLES.md` for the detailed gap analysis behind the roadmap
+- **ROADMAP.md** (`docs/ROADMAP.md`) is the canonical prioritized work list (rewritten 2026-06-10 against a source-verified status pass)
+- Top open items: named arguments in calls, agent nesting inside modules, types usable from agents, schedule auto-firing, agent emit -> EventStore, replay backend injection
+- Type inference, schema derivation, Anthropic backend, instance-scoped memory, error context/fix_code, tool validation, contextual keywords, persistent EventStore are all DONE (don't re-litigate)
 - `docs/IMPLEMENTATION_PLAN.md` and `docs/UP_NEXT.md` were deleted (fully completed, outdated)
 
 ## Topic Pub/Sub (Priority 5 — COMPLETE)
@@ -179,3 +178,16 @@
 - `set_backend/1` accepts tuples `{module, config}` for dynamic backends in property tests
 - CodeGen emits a no-op callback (`fun(_StreamChunk) -> ok`) for compiled Skein code
 - DynamicStreamBackend + tuples pattern is useful for property testing any parameterized backend
+
+## Demo-Readiness Session (2026-06-10)
+- Version is 0.1.2 (root mix.exs + skein_cli). Tag `v0.1.2` on main to publish binaries — build.yml has a GitHub Release job on `v*` tags (no tag has ever been pushed before).
+- Test counts: 1,413 tests + 189 properties (compiler 869+81, runtime 448+108, cli 52, lsp 44)
+- **Model IDs**: canonical example model is `claude-opus-4-8` (capability form: `model("anthropic", "claude-opus-4-8")`). Never use `claude-sonnet-4-20250514` (deprecated, retires 2026-06-15). AnthropicBackend no longer rewrites gpt-* names — model passes through unchanged.
+- **String-literal match patterns**: pattern position needs `c_binary` with per-byte `c_bitstr` segments — a binary `c_literal` crashes core_to_ssa on OTP 28. Non-exhaustive matches need an explicit case_clause-raising catch-all clause (`ensure_catch_all` in codegen) or beam_validator rejects binary patterns.
+- **`method!(args)` parsing**: bang/question followed by lparen is handled in `parse_postfix_chain` (parse call first, wrap UnaryOp unwrap/propagate, continue chain). Plain postfix `!`/`?` after a complete chain still handled in `parse_unary_expr`.
+- **`state.field` in nested positions**: generate_expr has a clause keyed on `%{__state_var__: sv}` scope (guarded by `not is_map_key(scope, "state")` so user bindings win).
+- **store.get!/put!**: in analyzer `@store_methods`, codegen store guard, and `Skein.Runtime.Store.get!/3, put!/3`. Compiled `.get!(id)` actually goes through unwrap-of-call + `Store.get/3` (raises ErlangError on miss via erlang:error).
+- **Capability rename**: `queue.consume` / `schedule.trigger` (was queue.in/schedule.in). Declaring an old name gets a rename hint on E0012 (`deprecated_capability_alias` in analyzer). Spec grammar now lists schedule.trigger.
+- **process.spawn("name")**: string clause spawns a supervised no-op task (task name in trace span); task bodies are a roadmap item. event.log param-level runtime checks blocked on surface design (capability param is a stream label, call carries event name) — documented in ROADMAP item 7.
+- `examples/README.md` is the example index; examples_test covers all 14. `compile_string` success returns `{:module, mod}` (not `{:ok, mod}`).
+- llm.embed has no real backend (Anthropic has no embeddings API) — semantic_search example declares voyage model and documents this.
