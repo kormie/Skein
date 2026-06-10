@@ -1,3 +1,4 @@
+import * as fs from "fs";
 import * as path from "path";
 import * as vscode from "vscode";
 import {
@@ -10,6 +11,35 @@ import {
 let client: LanguageClient | undefined;
 
 export function activate(context: vscode.ExtensionContext) {
+  // Commands are declared in package.json; register them unconditionally so
+  // the palette entries work even when the language server is disabled.
+  context.subscriptions.push(
+    vscode.commands.registerCommand("skein.restartServer", async () => {
+      if (client) {
+        await client.restart();
+        vscode.window.showInformationMessage(
+          "Skein Language Server restarted."
+        );
+      } else {
+        vscode.window.showWarningMessage(
+          "Skein Language Server is not running (check the skein.lsp.enabled setting)."
+        );
+      }
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("skein.showServerOutput", () => {
+      if (client) {
+        client.outputChannel.show();
+      } else {
+        vscode.window.showWarningMessage(
+          "Skein Language Server is not running (check the skein.lsp.enabled setting)."
+        );
+      }
+    })
+  );
+
   const config = vscode.workspace.getConfiguration("skein");
   const lspEnabled = config.get<boolean>("lsp.enabled", true);
 
@@ -17,22 +47,8 @@ export function activate(context: vscode.ExtensionContext) {
     return;
   }
 
-  const mixCommand = config.get<string>("lsp.mixCommand", "mix");
   const projectPath = getProjectPath(config);
-
-  const serverOptions: ServerOptions = {
-    command: mixCommand,
-    args: ["skein.lsp"],
-    options: {
-      cwd: projectPath,
-      env: {
-        ...process.env,
-        MIX_ENV: "dev",
-      },
-    },
-    transport: TransportKind.stdio,
-  };
-
+  const serverOptions = resolveServerOptions(config, projectPath);
   const traceLevel = config.get<string>("trace.server", "off");
 
   const clientOptions: LanguageClientOptions = {
@@ -55,23 +71,6 @@ export function activate(context: vscode.ExtensionContext) {
   );
 
   client.start();
-
-  context.subscriptions.push(
-    vscode.commands.registerCommand("skein.restartServer", async () => {
-      if (client) {
-        await client.restart();
-        vscode.window.showInformationMessage(
-          "Skein Language Server restarted."
-        );
-      }
-    })
-  );
-
-  context.subscriptions.push(
-    vscode.commands.registerCommand("skein.showServerOutput", () => {
-      client?.outputChannel.show();
-    })
-  );
 }
 
 export function deactivate(): Thenable<void> | undefined {
@@ -79,6 +78,57 @@ export function deactivate(): Thenable<void> | undefined {
     return undefined;
   }
   return client.stop();
+}
+
+/**
+ * Decides how to launch the language server.
+ *
+ * - "skein": the standalone `skein` binary (`skein lsp`) — no Elixir needed.
+ * - "mix": `mix skein.lsp` inside an Elixir checkout of the Skein repo.
+ * - "auto" (default): use mix when the project path looks like the Skein
+ *   compiler repo (mix.exs + apps/skein_lsp), otherwise the binary.
+ */
+function resolveServerOptions(
+  config: vscode.WorkspaceConfiguration,
+  projectPath: string | undefined
+): ServerOptions {
+  const mode = config.get<string>("lsp.serverCommand", "auto");
+
+  const useMix =
+    mode === "mix" ||
+    (mode === "auto" && projectPath !== undefined && isSkeinRepo(projectPath));
+
+  if (useMix) {
+    return {
+      command: config.get<string>("lsp.mixCommand", "mix"),
+      args: ["skein.lsp"],
+      options: {
+        cwd: projectPath,
+        env: {
+          ...process.env,
+          MIX_ENV: "dev",
+        },
+      },
+      transport: TransportKind.stdio,
+    };
+  }
+
+  return {
+    command: config.get<string>("lsp.skeinPath", "skein") || "skein",
+    args: ["lsp"],
+    options: {
+      cwd: projectPath,
+      env: { ...process.env },
+    },
+    transport: TransportKind.stdio,
+  };
+}
+
+function isSkeinRepo(projectPath: string): boolean {
+  return (
+    fs.existsSync(path.join(projectPath, "mix.exs")) &&
+    fs.existsSync(path.join(projectPath, "apps", "skein_lsp"))
+  );
 }
 
 function getProjectPath(

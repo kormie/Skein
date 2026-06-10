@@ -233,6 +233,21 @@ defmodule Skein.Lexer do
     do_tokenize(rest, line, new_col, [{:upper_ident, {line, col}, name} | acc])
   end
 
+  # Semicolon — common habit from other languages; give a targeted hint
+  defp do_tokenize(<<";", _rest::binary>>, line, col, _acc) do
+    {:error,
+     [
+       %Skein.Error{
+         code: "E0001",
+         severity: :error,
+         message: "Unexpected character: ;",
+         location: %{file: "unknown", line: line, col: col},
+         fix_hint: "Skein does not use semicolons; a statement ends at the end of the line",
+         fix_code: ""
+       }
+     ]}
+  end
+
   # Unknown character
   defp do_tokenize(<<c::utf8, _rest::binary>>, line, col, _acc) do
     {:error,

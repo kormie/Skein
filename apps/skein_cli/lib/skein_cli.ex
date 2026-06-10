@@ -154,23 +154,20 @@ defmodule Skein.CLI do
   Returns `{:ok, %{compiled: n, errors: n, modules: [...], failed: [...]}}`.
   """
   @spec build([String.t()]) :: {:ok, map()} | {:error, String.t()}
-  def build([]) do
-    {:error, "Usage: skein build <project-directory>"}
-  end
-
   def build(args) do
-    {project_dir, opts} = parse_build_args(args)
-    project_dir = Path.expand(project_dir)
-    output_dir = Keyword.get(opts, :output, nil)
-    skein_files = discover_skein_files(project_dir, "src")
+    with {:ok, project_dir, opts} <- parse_project_args(args, build_flag_spec()) do
+      project_dir = Path.expand(project_dir)
+      output_dir = Keyword.get(opts, :output, nil)
+      skein_files = discover_skein_files(project_dir, "src")
 
-    if skein_files == [] do
-      {:error, "No .skein files found in #{project_dir}/src/"}
-    else
-      if output_dir do
-        build_to_disk(skein_files, output_dir)
+      if skein_files == [] do
+        no_files_error(project_dir, ["src"])
       else
-        build_in_memory(skein_files)
+        if output_dir do
+          build_to_disk(skein_files, output_dir)
+        else
+          build_in_memory(skein_files)
+        end
       end
     end
   end
@@ -232,24 +229,9 @@ defmodule Skein.CLI do
      }}
   end
 
-  defp parse_build_args(args) do
-    {project_dir, rest} =
-      case args do
-        ["--" <> _ | _] -> {".", args}
-        [dir | rest] -> {dir, rest}
-        [] -> {".", []}
-      end
-
-    opts = parse_build_flags(rest, [])
-    {project_dir, opts}
+  defp build_flag_spec do
+    %{"--output" => fn dir -> {:ok, {:output, dir}} end}
   end
-
-  defp parse_build_flags(["--output", dir | rest], acc) do
-    parse_build_flags(rest, [{:output, dir} | acc])
-  end
-
-  defp parse_build_flags([_ | rest], acc), do: parse_build_flags(rest, acc)
-  defp parse_build_flags([], acc), do: acc
 
   # ------------------------------------------------------------------
   # test (single file) — existing behavior
@@ -286,50 +268,53 @@ defmodule Skein.CLI do
   compiles each, and runs any test declarations found. Files that
   fail to compile are tracked separately.
 
-  Returns `{:ok, %{total: n, passed: n, failed: n, files: n, compile_errors: n, results: [...]}}`.
+  Returns `{:ok, %{total: n, passed: n, failed: n, files: n, compile_errors: n,
+  compile_failed: [...], results: [...]}}`. `compile_failed` carries the
+  structured errors for each file that did not compile, so callers can
+  surface them instead of silently skipping the file.
   """
   @spec test_all([String.t()]) :: {:ok, map()} | {:error, String.t()}
-  def test_all([]) do
-    {:error, "Usage: skein test <project-directory>"}
-  end
+  def test_all(args) do
+    with {:ok, project_dir, _opts} <- parse_project_args(args, %{}) do
+      project_dir = Path.expand(project_dir)
 
-  def test_all([project_dir | _]) do
-    project_dir = Path.expand(project_dir)
+      skein_files =
+        (discover_skein_files(project_dir, "test") ++
+           discover_skein_files(project_dir, "src"))
+        |> Enum.uniq()
 
-    skein_files =
-      (discover_skein_files(project_dir, "test") ++
-         discover_skein_files(project_dir, "src"))
-      |> Enum.uniq()
+      if skein_files == [] do
+        no_files_error(project_dir, ["src", "test"])
+      else
+        {all_results, compile_failed} =
+          skein_files
+          |> Enum.reduce({[], []}, fn file, {results_acc, failed_acc} ->
+            case Compiler.compile_file(file) do
+              {:module, mod} ->
+                file_results = run_tests_for_file(mod, file)
+                {results_acc ++ file_results, failed_acc}
 
-    if skein_files == [] do
-      {:error, "No .skein files found in #{project_dir}"}
-    else
-      {all_results, compile_errors} =
-        skein_files
-        |> Enum.reduce({[], 0}, fn file, {results_acc, err_count} ->
-          case Compiler.compile_file(file) do
-            {:module, mod} ->
-              file_results = run_tests_for_file(mod, file)
-              {results_acc ++ file_results, err_count}
+              {:error, errors} ->
+                {results_acc, [%{file: file, errors: errors} | failed_acc]}
+            end
+          end)
 
-            {:error, _} ->
-              {results_acc, err_count + 1}
-          end
-        end)
+        compile_failed = Enum.reverse(compile_failed)
+        passed = Enum.count(all_results, &(&1.status == :passed))
+        failed = Enum.count(all_results, &(&1.status == :failed))
+        files_tested = all_results |> Enum.map(& &1.file) |> Enum.uniq() |> length()
 
-      passed = Enum.count(all_results, &(&1.status == :passed))
-      failed = Enum.count(all_results, &(&1.status == :failed))
-      files_tested = all_results |> Enum.map(& &1.file) |> Enum.uniq() |> length()
-
-      {:ok,
-       %{
-         total: length(all_results),
-         passed: passed,
-         failed: failed,
-         files: files_tested,
-         compile_errors: compile_errors,
-         results: all_results
-       }}
+        {:ok,
+         %{
+           total: length(all_results),
+           passed: passed,
+           failed: failed,
+           files: files_tested,
+           compile_errors: length(compile_failed),
+           compile_failed: compile_failed,
+           results: all_results
+         }}
+      end
     end
   end
 
@@ -346,10 +331,6 @@ defmodule Skein.CLI do
   Returns `{:ok, pid}` where `pid` is the server process.
   """
   @spec run([String.t()]) :: {:ok, pid()} | {:error, String.t()}
-  def run([]) do
-    {:error, "Usage: skein run <project-directory> [--port <port>]"}
-  end
-
   def run(args) do
     case run_config(args) do
       {:ok, config} ->
@@ -367,12 +348,8 @@ defmodule Skein.CLI do
   Returns `{:ok, %{module: mod, port: n}}` or `{:error, reason}`.
   """
   @spec run_config([String.t()]) :: {:ok, map()} | {:error, String.t()}
-  def run_config([]) do
-    {:error, "Usage: skein run <project-directory> [--port <port>]"}
-  end
-
   def run_config(args) do
-    with {:ok, project_dir, opts} <- parse_run_args(args) do
+    with {:ok, project_dir, opts} <- parse_project_args(args, run_flag_spec()) do
       do_run_config(project_dir, opts)
     end
   end
@@ -384,7 +361,7 @@ defmodule Skein.CLI do
     skein_files = discover_skein_files(project_dir, "src")
 
     if skein_files == [] do
-      {:error, "No .skein files found in #{project_dir}/src/"}
+      no_files_error(project_dir, ["src"])
     else
       modules =
         skein_files
@@ -408,31 +385,20 @@ defmodule Skein.CLI do
     end
   end
 
-  defp parse_run_args(args) do
-    {project_dir, rest} =
-      case args do
-        ["--" <> _ | _] -> {".", args}
-        [dir | rest] -> {dir, rest}
-        [] -> {".", []}
+  defp run_flag_spec do
+    %{
+      "--port" => fn port_str ->
+        case Integer.parse(port_str) do
+          {port, ""} when port in 1..65535 ->
+            {:ok, {:port, port}}
+
+          _ ->
+            {:error,
+             "Invalid value for --port: '#{port_str}' (expected an integer from 1 to 65535)"}
+        end
       end
-
-    with {:ok, opts} <- parse_flags(rest, []) do
-      {:ok, project_dir, opts}
-    end
+    }
   end
-
-  defp parse_flags(["--port", port_str | rest], acc) do
-    case Integer.parse(port_str) do
-      {port, ""} when port in 1..65535 ->
-        parse_flags(rest, [{:port, port} | acc])
-
-      _ ->
-        {:error, "Invalid value for --port: '#{port_str}' (expected an integer from 1 to 65535)"}
-    end
-  end
-
-  defp parse_flags([_ | rest], acc), do: parse_flags(rest, acc)
-  defp parse_flags([], acc), do: {:ok, acc}
 
   # ------------------------------------------------------------------
   # trace — view recent trace spans
@@ -492,12 +458,68 @@ defmodule Skein.CLI do
     parse_trace_flags(rest, [{:kind, kind} | acc])
   end
 
-  defp parse_trace_flags([_ | rest], acc), do: parse_trace_flags(rest, acc)
+  defp parse_trace_flags(["-" <> _ = flag | _], _acc),
+    do: {:error, "Unknown option: #{flag} (run 'skein help' for usage)"}
+
+  defp parse_trace_flags([arg | _], _acc), do: {:error, "Unexpected argument: #{arg}"}
   defp parse_trace_flags([], acc), do: {:ok, acc}
 
   # ------------------------------------------------------------------
   # Shared helpers
   # ------------------------------------------------------------------
+
+  # Parses "[project-dir] [flags]" argument lists. The first non-flag token
+  # is the project directory (defaulting to "."); flags are looked up in
+  # `flag_spec`, a map of flag name to a value-parser function. Unknown
+  # flags are an error rather than being silently treated as a directory.
+  defp parse_project_args(args, flag_spec) do
+    do_parse_project_args(args, flag_spec, nil, [])
+  end
+
+  defp do_parse_project_args([], _spec, dir, opts), do: {:ok, dir || ".", Enum.reverse(opts)}
+
+  defp do_parse_project_args([arg | rest], spec, dir, opts) do
+    cond do
+      Map.has_key?(spec, arg) ->
+        case rest do
+          [value | rest_after_value] ->
+            with {:ok, parsed} <- spec[arg].(value) do
+              do_parse_project_args(rest_after_value, spec, dir, [parsed | opts])
+            end
+
+          [] ->
+            {:error, "Missing value for #{arg}"}
+        end
+
+      String.starts_with?(arg, "-") ->
+        {:error, "Unknown option: #{arg} (run 'skein help' for usage)"}
+
+      dir == nil ->
+        do_parse_project_args(rest, spec, arg, opts)
+
+      true ->
+        {:error, "Unexpected argument: #{arg}"}
+    end
+  end
+
+  # Reports that no sources were found, pointing at stray top-level .skein
+  # files when that's the likely cause (projects keep sources in src/).
+  defp no_files_error(project_dir, searched_subdirs) do
+    searched = Enum.map_join(searched_subdirs, " or ", &(Path.join(project_dir, &1) <> "/"))
+    root_files = project_dir |> Path.join("*.skein") |> Path.wildcard() |> Enum.sort()
+
+    case root_files do
+      [] ->
+        {:error, "No .skein files found in #{searched}"}
+
+      files ->
+        names = Enum.map_join(files, ", ", &Path.basename/1)
+
+        {:error,
+         "No .skein files found in #{searched} - found #{names} in the project root. " <>
+           "Skein projects keep sources in src/ (or compile a single file with 'skein compile <file>')"}
+    end
+  end
 
   defp discover_skein_files(project_dir, subdir) do
     dir = Path.join(project_dir, subdir)

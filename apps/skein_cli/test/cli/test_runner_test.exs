@@ -121,11 +121,18 @@ defmodule Skein.CLI.TestRunnerTest do
       assert result.total == 1
       assert result.passed == 1
       assert result.compile_errors == 1
+
+      # The structured errors are carried so the CLI can print them
+      bad_file = Path.join(test_dir, "bad_test.skein")
+      assert [%{file: ^bad_file, errors: [error | _]}] = result.compile_failed
+      assert error.location.file == bad_file
     end
 
-    test "returns error with no arguments" do
+    test "defaults to the current directory with no arguments" do
+      # The CLI app has no src/ or test/ .skein files at the default dir
       assert {:error, message} = CLI.test_all([])
-      assert message =~ "Usage"
+      assert message =~ "No .skein files found"
+      assert message =~ Path.expand(".")
     end
 
     test "returns error when no .skein files found", %{tmp_dir: tmp} do

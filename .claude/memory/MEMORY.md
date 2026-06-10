@@ -3,7 +3,8 @@
 ## Project State
 - All phases complete (1-8f plus unified event store / Phase 10) — MVP reached
 - Distribution prerequisites complete: enum variant matching, supervisors, build --output
-- Current version: 0.1.2 (demo-readiness pass done 2026-06-10; see session section below)
+- Current version: 0.1.3-dev (v0.1.2 released 2026-06-10 with binaries; CLI-UX + skein lsp pass in progress)
+- v0.1.2 shipped: tag push triggers binary release workflow automatically
 - Remaining work tracked in docs/ROADMAP.md (named args, agent nesting, schedule auto-fire, etc.)
 - Elixir 1.19.5, OTP 28, managed by mise
 
@@ -15,6 +16,15 @@
 - Parser uses `expect_ident_value` for contextual keywords (from, trace)
 - `compile_string/1` is the test helper for integration tests
 - `compile_file/1` is the integration test helper for .skein file examples
+
+## CLI / LSP Learnings (2026-06-10 UX pass)
+- `SkeinLsp.start/0` was broken until 0.1.3: GenLSP 0.11 needs Buffer (stdio comm) + Assigns + Task.Supervisor wired explicitly; `communication:` is a Buffer option, not a GenLSP one
+- `skein lsp` subcommand: must route :logger default handler to standard_error (LSP owns stdout)
+- LSP tests use GenLSP.Test (TCP buffer) so they never exercised the stdio boot path — smoke-test stdio with a framed initialize request via `mix skein.lsp`
+- CLI messages must be ASCII — em-dashes print as \x{2014} when stdout is latin1
+- VS Code commands need BOTH registerCommand and package.json contributes.commands to appear in the palette
+- Burrito release apps list lives in root mix.exs releases(); skein_lsp added 0.1.3
+- Compiler errors get their file path from Parser.parse(tokens, path) meta; lexer errors are stamped after the fact in Skein.Compiler
 
 ## Key Technical Details
 - `input` is a keyword token in Skein — use `ctx` or typed params in agents

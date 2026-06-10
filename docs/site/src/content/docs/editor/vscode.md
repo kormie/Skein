@@ -18,14 +18,18 @@ npm run compile
 Then in VS Code, use **Extensions: Install from VSIX** or run:
 
 ```bash
-code --install-extension skein-lang-0.1.0.vsix
+code --install-extension skein-lang-0.1.1.vsix
 ```
 
 ### Requirements
 
 - VS Code 1.80+
-- Elixir/OTP installed and on your `PATH`
-- A Skein project with `mix.exs` in the workspace root
+- For the language server, one of:
+  - the standalone `skein` binary (v0.1.3+) on your `PATH` — no Elixir needed
+    (see the [Quickstart](/Skein/getting-started/quickstart/)), or
+  - an Elixir/OTP checkout of the Skein repo (the extension runs `mix skein.lsp`)
+
+Syntax highlighting and snippets work without the language server.
 
 ## Features
 
@@ -140,8 +144,10 @@ Enhanced highlighting beyond TextMate grammar, powered by the Skein lexer. Provi
 | Setting | Default | Description |
 |---------|---------|-------------|
 | `skein.lsp.enabled` | `true` | Enable/disable the language server |
-| `skein.lsp.path` | `""` | Path to the Skein project root |
-| `skein.lsp.mixCommand` | `"mix"` | Path to the `mix` executable |
+| `skein.lsp.serverCommand` | `"auto"` | `skein` (standalone binary), `mix` (compiler checkout), or `auto` (mix only inside the Skein repo) |
+| `skein.lsp.skeinPath` | `"skein"` | Path to the `skein` binary |
+| `skein.lsp.path` | `""` | Working directory for the server (defaults to workspace root) |
+| `skein.lsp.mixCommand` | `"mix"` | Path to the `mix` executable (mix mode only) |
 | `skein.trace.server` | `"off"` | LSP trace level: `off`, `messages`, `verbose` |
 
 ## Architecture
@@ -178,13 +184,13 @@ The VS Code extension starts this automatically when a `.skein` file is opened.
 
 ### Language server not starting
 
-1. Ensure Elixir is installed and `mix` is on your `PATH`
-2. Check the Output panel (**View > Output**, select "Skein Language Server")
+1. Ensure the `skein` binary is on your `PATH` (`skein version` should print v0.1.3+), or — when using mix mode — that Elixir is installed and `mix` is on your `PATH`
+2. Check the Output panel (**View > Output**, select "Skein Language Server"), or run **Skein: Show Language Server Output** from the command palette
 3. Set `skein.trace.server` to `"verbose"` for detailed protocol logs
-4. Verify the Skein project compiles: `mix compile` in the project root
+4. If VS Code was launched from the dock rather than a terminal, it may not see your shell's `PATH` — set `skein.lsp.skeinPath` to the binary's absolute path
 
 ### Diagnostics not appearing
 
 1. Check that `skein.lsp.enabled` is `true`
 2. Verify the file has a `.skein` extension
-3. Check `skein.lsp.path` points to a directory with `mix.exs`
+3. In mix mode, check `skein.lsp.path` points to a Skein compiler checkout

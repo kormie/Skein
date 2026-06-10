@@ -4,7 +4,7 @@ defmodule SkeinCli.MixProject do
   def project do
     [
       app: :skein_cli,
-      version: "0.1.2",
+      version: "0.1.3",
       build_path: "../../_build",
       config_path: "../../config/config.exs",
       deps_path: "../../deps",
@@ -26,6 +26,7 @@ defmodule SkeinCli.MixProject do
     [
       {:skein_compiler, in_umbrella: true},
       {:skein_runtime, in_umbrella: true},
+      {:skein_lsp, in_umbrella: true},
       {:burrito, "~> 1.5"}
     ]
   end

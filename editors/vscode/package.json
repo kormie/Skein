@@ -2,7 +2,7 @@
   "name": "skein-lang",
   "displayName": "Skein Language",
   "description": "Full language support for the Skein programming language — syntax highlighting, diagnostics, completions, hover, go-to-definition, and more.",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "publisher": "kormie",
   "license": "MIT",
   "repository": {
@@ -30,6 +30,18 @@
   ],
   "main": "./out/extension.js",
   "contributes": {
+    "commands": [
+      {
+        "command": "skein.restartServer",
+        "title": "Restart Language Server",
+        "category": "Skein"
+      },
+      {
+        "command": "skein.showServerOutput",
+        "title": "Show Language Server Output",
+        "category": "Skein"
+      }
+    ],
     "languages": [
       {
         "id": "skein",
@@ -63,7 +75,18 @@
         "skein.lsp.path": {
           "type": "string",
           "default": "",
-          "description": "Path to the Skein project root (containing mix.exs). If empty, the workspace root is used."
+          "description": "Working directory for the language server. If empty, the workspace root is used. Only needs to point at a Skein compiler checkout when using the mix server command."
+        },
+        "skein.lsp.serverCommand": {
+          "type": "string",
+          "enum": ["auto", "skein", "mix"],
+          "default": "auto",
+          "description": "How to launch the language server: 'skein' runs 'skein lsp' from the standalone binary (no Elixir needed), 'mix' runs 'mix skein.lsp' in a Skein compiler checkout, 'auto' picks mix only when the project path is a Skein compiler repo."
+        },
+        "skein.lsp.skeinPath": {
+          "type": "string",
+          "default": "skein",
+          "description": "Path to the skein binary used for 'skein lsp' (default: skein on PATH)."
         },
         "skein.lsp.mixCommand": {
           "type": "string",
