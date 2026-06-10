@@ -28,34 +28,57 @@ defmodule Skein.Runtime.Http do
   @doc """
   Performs an HTTP POST request.
 
+  Map bodies are JSON-encoded (requests are sent as `application/json`);
+  string bodies pass through unchanged. Skein map literals compile to
+  Elixir maps, so `http.post(url, { a: 1 })` lands here as a map.
+
   Returns `{:ok, body}` or `{:error, reason}`.
   """
-  @spec post(String.t(), String.t(), [map()]) :: {:ok, String.t()} | {:error, String.t()}
+  @spec post(String.t(), String.t() | map(), [map()]) :: {:ok, String.t()} | {:error, String.t()}
   def post(url, body, capabilities)
       when is_binary(url) and is_binary(body) and is_list(capabilities) do
     execute(:post, url, body, capabilities)
   end
 
+  def post(url, body, capabilities)
+      when is_binary(url) and is_map(body) and is_list(capabilities) do
+    with_encoded_body(body, &execute(:post, url, &1, capabilities))
+  end
+
   @doc """
   Performs an HTTP PUT request.
 
+  Accepts string or map bodies like `post/3`.
+
   Returns `{:ok, body}` or `{:error, reason}`.
   """
-  @spec put(String.t(), String.t(), [map()]) :: {:ok, String.t()} | {:error, String.t()}
+  @spec put(String.t(), String.t() | map(), [map()]) :: {:ok, String.t()} | {:error, String.t()}
   def put(url, body, capabilities)
       when is_binary(url) and is_binary(body) and is_list(capabilities) do
     execute(:put, url, body, capabilities)
   end
 
+  def put(url, body, capabilities)
+      when is_binary(url) and is_map(body) and is_list(capabilities) do
+    with_encoded_body(body, &execute(:put, url, &1, capabilities))
+  end
+
   @doc """
   Performs an HTTP PATCH request.
 
+  Accepts string or map bodies like `post/3`.
+
   Returns `{:ok, body}` or `{:error, reason}`.
   """
-  @spec patch(String.t(), String.t(), [map()]) :: {:ok, String.t()} | {:error, String.t()}
+  @spec patch(String.t(), String.t() | map(), [map()]) :: {:ok, String.t()} | {:error, String.t()}
   def patch(url, body, capabilities)
       when is_binary(url) and is_binary(body) and is_list(capabilities) do
     execute(:patch, url, body, capabilities)
+  end
+
+  def patch(url, body, capabilities)
+      when is_binary(url) and is_map(body) and is_list(capabilities) do
+    with_encoded_body(body, &execute(:patch, url, &1, capabilities))
   end
 
   @doc """
@@ -71,6 +94,13 @@ defmodule Skein.Runtime.Http do
   # ------------------------------------------------------------------
   # Internal
   # ------------------------------------------------------------------
+
+  defp with_encoded_body(body, request_fn) do
+    case Jason.encode(body) do
+      {:ok, json} -> request_fn.(json)
+      {:error, reason} -> {:error, "Cannot encode request body as JSON: #{inspect(reason)}"}
+    end
+  end
 
   defp execute(method, url, body, capabilities) do
     Trace.with_span(%{kind: :http, method: method, url: url}, fn ->

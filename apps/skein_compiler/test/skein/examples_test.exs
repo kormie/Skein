@@ -397,6 +397,16 @@ defmodule Skein.ExamplesTest do
       info = mod.__info__(:module)
       assert info == mod
     end
+
+    test "start handler stores the alert and transitions to Classify" do
+      {:module, mod} =
+        Compiler.compile_file(Path.join(project_root(), "examples/incident_triage.skein"))
+
+      assert {:transition, :classify, _state, _events} =
+               mod.__start_handler__(%{alert_id: "alert-42"}, [])
+
+      Skein.Runtime.Memory.clear("default")
+    end
   end
 
   # ------------------------------------------------------------------
@@ -759,6 +769,132 @@ defmodule Skein.ExamplesTest do
       assert {:respond_json, 200, body} = result
       assert is_map(body)
       assert body["refined_topic"] == "AI chips for edge"
+    end
+  end
+
+  # ------------------------------------------------------------------
+  # market_research — end-to-end cross-module tool.call
+  # ------------------------------------------------------------------
+
+  describe "market_research end-to-end (cross-module tool.call)" do
+    alias Skein.Runtime.Memory
+    alias Skein.Runtime.Tool
+    alias Skein.Runtime.Trace
+
+    @tool_caps [%{kind: "tool.use", params: []}]
+    @memory_caps [%{kind: "memory.kv", params: []}]
+
+    setup do
+      Tool.clear_registry()
+      Trace.clear()
+      Memory.clear("default")
+
+      on_exit(fn ->
+        Tool.clear_registry()
+        Memory.clear("default")
+      end)
+
+      :ok
+    end
+
+    defp compile_market_research do
+      {:module, service} =
+        Compiler.compile_file(Path.join(project_root(), "examples/market_research/service.skein"))
+
+      {:module, agent} =
+        Compiler.compile_file(Path.join(project_root(), "examples/market_research/agent.skein"))
+
+      {service, agent}
+    end
+
+    test "service tools register from compiled metadata with implement entry points" do
+      {service, _agent} = compile_market_research()
+
+      assert :ok = Tool.register_module(service)
+
+      assert {:ok, tools} = Tool.list(@tool_caps)
+      names = Enum.map(tools, & &1.name) |> Enum.sort()
+
+      assert names == [
+               "Research.AnalyzeCompetitor",
+               "Research.GenerateSwot",
+               "Research.SearchMarket"
+             ]
+
+      for tool <- service.__tools__() do
+        assert tool.impl != nil
+        assert function_exported?(service, tool.impl, 1)
+      end
+    end
+
+    test "tool.call executes the SearchMarket implement block" do
+      {service, _agent} = compile_market_research()
+      Tool.register_module(service)
+
+      # The implement block runs and makes its outbound http.post, which
+      # the runtime denies (the module declares no http.out capability) —
+      # so the implement's Err arm wraps the denial in a SearchError.
+      # A registration regression would surface as :not_found instead.
+      assert {:error, %Tool.Error{kind: :execution_error} = error} =
+               Tool.call(
+                 "Research.SearchMarket",
+                 %{topic: "AI chips", industry: "semiconductors"},
+                 @tool_caps
+               )
+
+      assert error.detail.error =~ "search_error"
+      assert error.detail.error =~ "http.out"
+    end
+
+    test "input validation applies to the registered tools" do
+      {service, _agent} = compile_market_research()
+      Tool.register_module(service)
+
+      assert {:error, %Tool.Error{kind: :validation_error}} =
+               Tool.call("Research.SearchMarket", %{topic: "AI chips"}, @tool_caps)
+    end
+
+    test "agent Gathering phase drives the cross-module tool.call" do
+      {service, agent} = compile_market_research()
+      Tool.register_module(service)
+
+      # on start(...) stores the brief in memory and enters Briefing
+      assert {:transition, :briefing, _state, _events} =
+               agent.__start_handler__(
+                 %{topic: "AI chips", industry: "semiconductors"},
+                 []
+               )
+
+      # Drive Gathering directly (Briefing needs a live LLM backend).
+      # The tool call reaches the service's implement block, whose
+      # outbound HTTP is capability-denied, so the agent suspends for
+      # human intervention — the example's advertised failure path.
+      assert {:suspend, reason, _state, _events} = agent.__phase_handler__(:gathering, %{}, [])
+      assert reason =~ "Market search failed"
+
+      # The cross-module call really executed: the tool span and the
+      # implement block's outbound http.post span are both traced.
+      spans = Trace.recent_spans(100)
+      assert Enum.any?(spans, &(&1.kind == :tool and &1.name == "Research.SearchMarket"))
+      assert Enum.any?(spans, &(&1.kind == :http and &1.url =~ "api.research.example"))
+
+      # And the Err arm recorded the failure for the resume flow
+      assert {:ok, "gathering_failed"} = Memory.get("default", "phase_status", @memory_caps)
+    end
+
+    test "without registration the implement block never runs" do
+      {_service, agent} = compile_market_research()
+
+      agent.__start_handler__(%{topic: "AI chips", industry: "semiconductors"}, [])
+
+      # tool-not-found also lands in the Err arm, so the agent still
+      # suspends — but no implement executes, so no http span appears.
+      # Tool registration at module load (skein build/test/run) is what
+      # separates these two outcomes.
+      assert {:suspend, _reason, _state, _events} = agent.__phase_handler__(:gathering, %{}, [])
+
+      spans = Trace.recent_spans(100)
+      refute Enum.any?(spans, &(&1.kind == :http))
     end
   end
 end

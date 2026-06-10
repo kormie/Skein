@@ -53,6 +53,27 @@ A properly architected example following the spec section 8.4 pattern (RefundSer
 | `/research/status` | GET | Check status |
 | `/research/resume` | POST | Resume suspended agent. Body: `ResumeRequest` |
 
+## How the Cross-Module Call Works at Runtime
+
+Tools are the one cross-module seam in Skein (spec §3.1). When `skein build`,
+`skein test`, or `skein run` loads a compiled module, every `tool` declaration
+is registered into the runtime tool registry — that's what makes the agent's
+`tool.call(Research.SearchMarket, {...})` resolve to the implement block in
+`service.skein`. From Elixir, the same wiring is
+`Skein.Runtime.Tool.register_module(mod)`.
+
+The implement blocks post to `https://api.research.example`, a placeholder
+host. The module deliberately declares **no** `http.out` capability, so at
+runtime the outbound request is denied, each tool returns its declared error
+(`SearchError` / `AnalysisError` / `SwotError`), and the agent takes its
+suspend-for-human path — deterministically, with no network access. This is
+the example's advertised failure flow, and it's executed end-to-end in CI
+(`examples_test.exs`). To wire a real backend, point the URLs at your API and
+declare `capability http.out("your-api-host")` in `service.skein`.
+
+The Briefing phase calls `llm.chat`, which needs a configured LLM backend —
+that phase is not executed in CI; the suite drives Gathering directly.
+
 ## Files
 
 - `service.skein` — Module: tools, HTTP endpoints, supervisor, types
