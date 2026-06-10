@@ -19,51 +19,45 @@ The end-to-end pipeline works: `.skein` source files lex, parse, analyze, genera
 
 ### Tier 1: Language Surface
 
-#### 1. Named Arguments in Calls (#56)
-
-The spec grammar allows named arguments (`llm.chat(model: "...", system: "...")`), but the parser only supports positional arguments. All shipped examples use the positional form.
-
-**Target:** Named args parse, analyze (unknown/duplicate names are structured errors), and reorder to positional at codegen.
-
-#### 2. Agent Nesting Inside Modules (#63)
+#### 1. Agent Nesting Inside Modules (#63)
 
 The spec shows agents nested inside modules (`module RefundService { agent RefundAgent { ... } }`), but the parser doesn't accept `agent` as a module-level declaration. The `market_research` example works around this with one file per construct.
 
-#### 3. Types Usable from Agents (#70)
+#### 2. Types Usable from Agents (#70)
 
 Agents can't declare `type` blocks, so `llm.json[SomeType]` — the schema-constrained LLM decision pattern — only works in module functions today. Lands naturally once agents can nest inside modules.
 
-#### 4. Enum Variant Construction Completeness (#96)
+#### 3. Enum Variant Construction Completeness (#96)
 
 v0.1.5 made call-form constructors work (`Ok(x)`, `Err(e)`, `Event.Charge(n)`, `ErrName.from(cause)`), but zero-field variants (`Status.Active`) still can't be constructed in expression position, and unknown-variant or wrong-arity constructor calls crash codegen instead of producing structured compile-time errors.
 
-#### 5. Capability Checks Cover Test Blocks (#104)
+#### 4. Capability Checks Cover Test Blocks (#104)
 
 The analyzer's capability passes skip `test`/`scenario`/`golden` bodies: the fresh `skein new` scaffold warns W0002 on its own `tool.use` capability, and missing capabilities inside test blocks escape E0012 until runtime.
 
 ### Tier 2: Runtime Completeness
 
-#### 6. Schedule Auto-Firing (#71)
+#### 5. Schedule Auto-Firing (#71)
 
 Schedule handlers register their cron expression but only fire via manual `trigger/1`. A running service should fire them on schedule.
 
-#### 7. Agent Events to EventStore (#72)
+#### 6. Agent Events to EventStore (#72)
 
 Events emitted via `emit` inside agents live in `gen_statem` data but aren't appended to the EventStore, so they're lost on crash and invisible to `EventStore.query/1`.
 
-#### 8. Replay Backend Injection (#73)
+#### 7. Replay Backend Injection (#73)
 
 The replay engine can load traces and rebuild memory, but the LLM/HTTP/tool runtimes don't consult replay state — recorded-mode replay can't yet intercept live effects.
 
-#### 9. Stream/Pool-Scoped Runtime Capability Checks (#69, #57)
+#### 8. Stream/Pool-Scoped Runtime Capability Checks (#69, #57)
 
 `process.spawn`, `timer`, and `event.log` check capability *presence* at runtime but not parameters. Full enforcement needs a surface decision first: the declared capability names a pool/stream label, while the runtime call carries a different value (the task/event name).
 
-#### 10. `process.spawn` Task Bodies (#74)
+#### 9. `process.spawn` Task Bodies (#74)
 
 `process.spawn("name")` spawns a supervised, traced no-op task. Attaching real work to the spawned process needs a call-surface decision (likely a function reference argument).
 
-#### 11. Local LLM Backends for Dev (#107)
+#### 10. Local LLM Backends for Dev (#107)
 
 Testing agents burns real Anthropic spend. An OpenAI-compatible backend plus `[env.<name>.llm]` profiles in `skein.toml` (with `model_map`) would let `SKEIN_ENV=dev skein test` serve LLM calls from a local server (oMLX, Ollama, LM Studio, vLLM) with zero source edits — capabilities stay the code's contract.
 
@@ -73,7 +67,7 @@ Testing agents burns real Anthropic spend. An OpenAI-compatible backend plus `[e
 - **MCP `skein_compile_check` fidelity** (#109) — the MCP tool drops analyzer warnings and skips `test/` in project mode, reporting clean on projects `skein test` flags.
 - **`skein new` git init + `.gitignore`** (#106) — cargo-style version-control scaffolding so build artifacts never land in the first commit.
 - **zsh tab-completion for `skein`** (#101) — `skein completions zsh`, with a test pinning completions to the real command surface.
-- **Spec section 8 sweep** (#77) — after named args and agent nesting land, every spec example should compile (and be covered by `spec_examples_test.exs`) or carry an explicit "Planned" annotation.
+- **Spec section 8 sweep** (#77) — after agent nesting lands, every spec example should compile (and be covered by `spec_examples_test.exs`) or carry an explicit "Planned" annotation.
 - **Enum value-level exhaustiveness warning** (#76) — variant coverage is checked, but literal field patterns without a wildcard can still `case_clause` at runtime; the analyzer should warn.
 - **LSP code actions from `fix_hint`/`fix_code`** (#108) — every compiler error already carries fix data; surface it as editor quickfixes (and machine-applicable edits for agents).
 
@@ -145,8 +139,9 @@ Everything below is implemented and tested.
 | Capability naming | `queue.consume` / `schedule.trigger` (old names get a targeted rename hint) |
 | Cross-module `tool.call` | `implement` blocks compile to callable entry points; tools registered at module load (v0.1.5) |
 | Variant construction (call forms) | `Ok(x)`, `Err(e)`, `Event.Charge(n)`, `ErrName.from(cause)` compile in expression position (v0.1.5) |
+| Named arguments in calls | `f(name: value)` for local fns and documented effect signatures; analyzer rewrites to positional order at compile time (E0026 on misuse) |
 | Persistent EventStore | SQLite-backed event store (opt-in, ETS default) |
-| Error system | 21 error + 3 warning codes; `context` and `fix_code` populated on all analyzer/parser/lexer errors |
+| Error system | 22 error + 3 warning codes; `context` and `fix_code` populated on all analyzer/parser/lexer errors |
 
 ### Standard Library
 

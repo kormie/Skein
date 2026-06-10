@@ -33,6 +33,7 @@ defmodule Skein.Analyzer do
   - E0023: Invalid `?` on non-Result type (or enclosing fn doesn't return Result)
   - E0024: Unknown type name
   - E0025: Constraint annotation on wrong type
+  - E0026: Invalid named argument (unknown/duplicate name, positional after named, callee without named-argument support)
 
   ### Agent (E003x)
   - E0030: Invalid phase transition
@@ -299,7 +300,10 @@ defmodule Skein.Analyzer do
 
   def analyze(%AST.Module{} = ast, opts) do
     env = build_initial_env(ast) |> put_source_text(opts)
-    errors = []
+
+    # Pass 0a: Resolve named arguments into positional order (desugaring).
+    # Later passes and codegen only ever see positional arguments.
+    {ast, errors} = resolve_named_args(ast, env)
 
     # Pass 0: Check for duplicate definitions
     errors = errors ++ check_duplicate_definitions(ast.declarations, env)
@@ -336,7 +340,9 @@ defmodule Skein.Analyzer do
 
   def analyze(%AST.Agent{} = ast, opts) do
     env = build_agent_env(ast) |> put_source_text(opts)
-    errors = []
+
+    # Pass 0a: Resolve named arguments into positional order (desugaring).
+    {ast, errors} = resolve_named_args(ast, env)
 
     # Pass 1: Validate state field types
     errors = errors ++ validate_agent_state(ast.state, env)
@@ -432,6 +438,245 @@ defmodule Skein.Analyzer do
       _ ->
         {:error, errors}
     end
+  end
+
+  # ------------------------------------------------------------------
+  # Named argument resolution (Pass 0a)
+  #
+  # Calls may pass arguments by name (`f(b: 2, a: 1)`), with named
+  # arguments allowed only after positional ones. This pass validates
+  # named arguments against the callee's parameter names and rewrites
+  # every call into positional order, so all later passes — and
+  # codegen — only ever see positional arguments. Violations are E0026.
+  # ------------------------------------------------------------------
+
+  # Parameter names for effect calls, aligned with the Effects API
+  # signatures in SKEIN_SPEC.md section 6. Effects not listed here
+  # (tool.*, timer.*) do not support named arguments.
+  @effect_param_names %{
+    {"http", "get"} => ["url"],
+    {"http", "post"} => ["url", "json"],
+    {"http", "put"} => ["url", "json"],
+    {"http", "patch"} => ["url", "json"],
+    {"http", "delete"} => ["url"],
+    {"memory", "put"} => ["key", "value"],
+    {"memory", "get"} => ["key"],
+    {"memory", "get!"} => ["key"],
+    {"memory", "delete"} => ["key"],
+    {"memory", "list"} => ["prefix"],
+    {"llm", "chat"} => ["model", "system", "input"],
+    {"llm", "json"} => ["model", "system", "input"],
+    {"llm", "stream"} => ["model", "system", "input"],
+    {"llm", "embed"} => ["model", "input"],
+    {"topic", "publish"} => ["name", "data"],
+    {"trace", "annotate"} => ["key", "value"],
+    {"process", "spawn"} => ["name"],
+    {"event", "log"} => ["name", "data"]
+  }
+
+  defp resolve_named_args(%AST.Call{} = call, env) do
+    {target, target_errors} = resolve_named_args(call.target, env)
+    {args, arg_errors} = resolve_named_args(call.args, env)
+    {call, call_errors} = resolve_call_named_args(%{call | target: target, args: args}, env)
+    {call, target_errors ++ arg_errors ++ call_errors}
+  end
+
+  defp resolve_named_args(%AST.NamedArg{value: value} = named, env) do
+    {value, errors} = resolve_named_args(value, env)
+    {%{named | value: value}, errors}
+  end
+
+  defp resolve_named_args(%_{} = node, env) do
+    node
+    |> Map.from_struct()
+    |> Enum.reduce({node, []}, fn
+      {:meta, _value}, acc ->
+        acc
+
+      {key, value}, {node_acc, errors_acc} ->
+        {value, errors} = resolve_named_args(value, env)
+        {Map.put(node_acc, key, value), errors_acc ++ errors}
+    end)
+  end
+
+  defp resolve_named_args(nodes, env) when is_list(nodes) do
+    Enum.map_reduce(nodes, [], fn node, errors_acc ->
+      {node, errors} = resolve_named_args(node, env)
+      {node, errors_acc ++ errors}
+    end)
+  end
+
+  # String interpolation segments ({:interpolation, expr}) and map
+  # literal entries ({key, expr}) carry expressions in their second slot.
+  defp resolve_named_args({tag, value}, env) do
+    {value, errors} = resolve_named_args(value, env)
+    {{tag, value}, errors}
+  end
+
+  defp resolve_named_args(other, _env), do: {other, []}
+
+  defp resolve_call_named_args(%AST.Call{args: args} = call, env) do
+    if Enum.any?(args, &match?(%AST.NamedArg{}, &1)) do
+      reorder_named_args(call, env)
+    else
+      {call, []}
+    end
+  end
+
+  defp reorder_named_args(%AST.Call{args: args, meta: meta} = call, env) do
+    {positional, named_section} = Enum.split_while(args, &(not match?(%AST.NamedArg{}, &1)))
+
+    case Enum.find(named_section, &(not match?(%AST.NamedArg{}, &1))) do
+      nil ->
+        case callee_param_names(call, env) do
+          {:ok, callee, param_names} ->
+            apply_named_args(call, positional, named_section, callee, param_names, env)
+
+          :unsupported ->
+            error = %Error{
+              code: "E0026",
+              severity: :error,
+              message: "Named arguments are not supported for #{describe_callee(call.target)}",
+              location: location_from_meta(meta, env.file),
+              fix_hint: "Use positional arguments"
+            }
+
+            {strip_named_args(call), [error]}
+        end
+
+      stray ->
+        error = %Error{
+          code: "E0026",
+          severity: :error,
+          message: "Positional argument after named argument",
+          location: location_from_meta(Map.get(stray, :meta) || meta, env.file),
+          fix_hint: "Move positional arguments before all named arguments"
+        }
+
+        {strip_named_args(call), [error]}
+    end
+  end
+
+  defp apply_named_args(call, positional, named, callee, param_names, env) do
+    filled_positionally = Enum.take(param_names, length(positional))
+    remaining = Enum.drop(param_names, length(positional))
+
+    name_errors =
+      duplicate_named_arg_errors(named, callee, env) ++
+        Enum.flat_map(named, fn %AST.NamedArg{name: name, meta: meta} ->
+          cond do
+            name in remaining ->
+              []
+
+            name in filled_positionally ->
+              [
+                %Error{
+                  code: "E0026",
+                  severity: :error,
+                  message:
+                    "Argument '#{name}' in call to #{callee} is already provided positionally",
+                  location: location_from_meta(meta, env.file),
+                  fix_hint: "Remove the named argument or pass '#{name}' only positionally"
+                }
+              ]
+
+            true ->
+              [
+                %Error{
+                  code: "E0026",
+                  severity: :error,
+                  message: "Unknown argument '#{name}' in call to #{callee}",
+                  location: location_from_meta(meta, env.file),
+                  fix_hint: "Valid argument names: #{Enum.join(param_names, ", ")}",
+                  fix_code: "#{closest_name(name, param_names)}:"
+                }
+              ]
+          end
+        end)
+
+    named_by_name = Map.new(named, fn %AST.NamedArg{name: name} = arg -> {name, arg} end)
+    missing = Enum.reject(remaining, &Map.has_key?(named_by_name, &1))
+
+    missing_errors =
+      if name_errors == [] and missing != [] do
+        names = Enum.map_join(missing, ", ", &"'#{&1}'")
+
+        [
+          %Error{
+            code: "E0026",
+            severity: :error,
+            message: "Missing argument(s) #{names} in call to #{callee}",
+            location: location_from_meta(call.meta, env.file),
+            fix_hint: "Pass #{names} positionally or by name"
+          }
+        ]
+      else
+        []
+      end
+
+    case name_errors ++ missing_errors do
+      [] ->
+        ordered_named = Enum.map(remaining, fn name -> Map.fetch!(named_by_name, name).value end)
+        {%{call | args: positional ++ ordered_named}, []}
+
+      errors ->
+        {strip_named_args(call), errors}
+    end
+  end
+
+  defp duplicate_named_arg_errors(named, callee, env) do
+    named
+    |> Enum.group_by(& &1.name)
+    |> Enum.filter(fn {_name, args} -> length(args) > 1 end)
+    |> Enum.sort_by(fn {name, _args} -> name end)
+    |> Enum.map(fn {name, [_first | [dup | _]]} ->
+      %Error{
+        code: "E0026",
+        severity: :error,
+        message: "Duplicate named argument '#{name}' in call to #{callee}",
+        location: location_from_meta(dup.meta, env.file),
+        fix_hint: "Pass '#{name}' only once"
+      }
+    end)
+  end
+
+  defp callee_param_names(%AST.Call{target: %AST.Identifier{name: name}}, env) do
+    case Map.fetch(env.functions, name) do
+      {:ok, fn_info} -> {:ok, "'#{name}'", Enum.map(fn_info.params, & &1.name)}
+      :error -> :unsupported
+    end
+  end
+
+  defp callee_param_names(
+         %AST.Call{
+           target: %AST.FieldAccess{subject: %AST.Identifier{name: namespace}, field: method}
+         },
+         _env
+       ) do
+    case Map.fetch(@effect_param_names, {namespace, method}) do
+      {:ok, names} -> {:ok, "'#{namespace}.#{method}'", names}
+      :error -> :unsupported
+    end
+  end
+
+  defp callee_param_names(_call, _env), do: :unsupported
+
+  defp describe_callee(%AST.Identifier{name: name}), do: "'#{name}'"
+
+  defp describe_callee(%AST.FieldAccess{subject: %AST.Identifier{name: subject}, field: field}),
+    do: "'#{subject}.#{field}'"
+
+  defp describe_callee(_target), do: "this call"
+
+  defp strip_named_args(%AST.Call{args: args} = call) do
+    %{
+      call
+      | args:
+          Enum.map(args, fn
+            %AST.NamedArg{value: value} -> value
+            arg -> arg
+          end)
+    }
   end
 
   # ------------------------------------------------------------------

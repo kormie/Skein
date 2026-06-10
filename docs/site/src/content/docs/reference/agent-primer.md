@@ -80,6 +80,11 @@ Core forms:
   `Err` to the caller (enclosing function must return `Result`).
 - Function params and return types are always annotated:
   `fn add(a: Int, b: Int) -> Int { a + b }`.
+- Calls may pass arguments by name after any positional ones:
+  `add(b: 2, a: 1)`, `llm.chat(model: "...", system: "...", input: t)`.
+  Named args work for same-module fns and documented effect signatures;
+  stdlib calls are positional only. Never put a positional arg after a
+  named one.
 - Built-in types: `Int`, `Float`, `String`, `Bool`, `Uuid`, `Instant`,
   `Duration`, `Email`, `Url`, `Option[T]`, `Result[T, E]`, `List[T]`,
   `Map[K, V]`, `Set[T]`. Field constraints: `@min(n)`, `@max(n)`,

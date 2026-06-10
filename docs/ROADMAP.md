@@ -28,29 +28,7 @@ The remaining gaps are listed below. Field-testing v0.1.5 (2026-06-10) surfaced 
 
 ## Tier 1: Language Surface
 
-### 1. Named Arguments in Calls `[L]`
-
-**Issue:** [#56](https://github.com/kormie/Skein/issues/56)
-
-**Problem:** The spec grammar (section 3.2) allows named arguments (`named_arg = lower_ident ":" expr`), and the first-principles document shows calls like `llm.json[T](model: "...", system: PROMPT)`. The parser only supports positional arguments — `parse_args` has no named-argument production. All shipped examples and docs use the positional form.
-
-**Scope:**
-- Parser: accept `name: expr` entries in `parse_args`; represent as a `%AST.NamedArg{name, value}` (or a keyword-map argument node)
-- Analyzer: match named args against parameter names; produce a structured error for unknown/duplicate names
-- Codegen: reorder named args into positional order at the call site
-- Update spec section 8 examples to use named args where they improve readability
-
-**Acceptance criteria:**
-- `llm.chat(model: "claude-opus-4-8", system: "...", input: ticket)` compiles and runs
-- Mixing positional-then-named works; named-then-positional is a structured error
-- Unknown argument name produces an error with `fix_hint` listing valid names
-- All existing positional call sites still compile
-
-**Depends on:** Nothing.
-
----
-
-### 2. Agent Nesting Inside Modules `[M]`
+### 1. Agent Nesting Inside Modules `[M]`
 
 **Issue:** [#63](https://github.com/kormie/Skein/issues/63)
 
@@ -70,7 +48,7 @@ The remaining gaps are listed below. Field-testing v0.1.5 (2026-06-10) surfaced 
 
 ---
 
-### 3. Types Usable from Agents `[M]`
+### 2. Types Usable from Agents `[M]`
 
 **Issue:** [#70](https://github.com/kormie/Skein/issues/70)
 
@@ -88,7 +66,7 @@ The remaining gaps are listed below. Field-testing v0.1.5 (2026-06-10) surfaced 
 
 ---
 
-### 4. Enum Variant Construction Completeness `[M]`
+### 3. Enum Variant Construction Completeness `[M]`
 
 **Issue:** [#96](https://github.com/kormie/Skein/issues/96)
 
@@ -107,7 +85,7 @@ The remaining gaps are listed below. Field-testing v0.1.5 (2026-06-10) surfaced 
 
 ---
 
-### 5. Capability Checking Covers Test Blocks `[M]`
+### 4. Capability Checking Covers Test Blocks `[M]`
 
 **Issue:** [#104](https://github.com/kormie/Skein/issues/104)
 
@@ -127,7 +105,7 @@ The remaining gaps are listed below. Field-testing v0.1.5 (2026-06-10) surfaced 
 
 ## Tier 2: Runtime Completeness
 
-### 6. Schedule Handler Auto-Firing `[M]`
+### 5. Schedule Handler Auto-Firing `[M]`
 
 **Issue:** [#71](https://github.com/kormie/Skein/issues/71)
 
@@ -148,7 +126,7 @@ The remaining gaps are listed below. Field-testing v0.1.5 (2026-06-10) surfaced 
 
 ---
 
-### 7. Agent `emit` Events to EventStore `[M]`
+### 6. Agent `emit` Events to EventStore `[M]`
 
 **Issue:** [#72](https://github.com/kormie/Skein/issues/72)
 
@@ -167,7 +145,7 @@ The remaining gaps are listed below. Field-testing v0.1.5 (2026-06-10) surfaced 
 
 ---
 
-### 8. Replay Backend Injection `[L]`
+### 7. Replay Backend Injection `[L]`
 
 **Issue:** [#73](https://github.com/kormie/Skein/issues/73)
 
@@ -187,7 +165,7 @@ The remaining gaps are listed below. Field-testing v0.1.5 (2026-06-10) surfaced 
 
 ---
 
-### 9. Stream/Pool-Scoped Runtime Capability Checks `[M]` *(needs surface design first)*
+### 8. Stream/Pool-Scoped Runtime Capability Checks `[M]` *(needs surface design first)*
 
 **Issues:** [#69](https://github.com/kormie/Skein/issues/69) (surface decision), [#57](https://github.com/kormie/Skein/issues/57) (enforcement)
 
@@ -206,7 +184,7 @@ The remaining gaps are listed below. Field-testing v0.1.5 (2026-06-10) surfaced 
 
 ---
 
-### 10. `process.spawn` Task Bodies `[M]`
+### 9. `process.spawn` Task Bodies `[M]`
 
 **Issue:** [#74](https://github.com/kormie/Skein/issues/74)
 
@@ -224,7 +202,7 @@ The remaining gaps are listed below. Field-testing v0.1.5 (2026-06-10) surfaced 
 
 ---
 
-### 11. Local LLM Backends for Dev (OpenAI-Compatible + `skein.toml` Profiles) `[XL]`
+### 10. Local LLM Backends for Dev (OpenAI-Compatible + `skein.toml` Profiles) `[XL]`
 
 **Issue:** [#107](https://github.com/kormie/Skein/issues/107)
 
@@ -246,7 +224,7 @@ The remaining gaps are listed below. Field-testing v0.1.5 (2026-06-10) surfaced 
 
 ## Tier 3: Polish & Developer Experience
 
-### 12. Test Failures Show Expected vs Actual + Location `[M]`
+### 11. Test Failures Show Expected vs Actual + Location `[M]`
 
 **Issue:** [#105](https://github.com/kormie/Skein/issues/105)
 
@@ -265,7 +243,7 @@ The remaining gaps are listed below. Field-testing v0.1.5 (2026-06-10) surfaced 
 
 ---
 
-### 13. MCP `skein_compile_check` Fidelity `[M]`
+### 12. MCP `skein_compile_check` Fidelity `[M]`
 
 **Issue:** [#109](https://github.com/kormie/Skein/issues/109)
 
@@ -283,7 +261,7 @@ The remaining gaps are listed below. Field-testing v0.1.5 (2026-06-10) surfaced 
 
 ---
 
-### 14. `skein new` Git Init + Baseline `.gitignore` `[S]`
+### 13. `skein new` Git Init + Baseline `.gitignore` `[S]`
 
 **Issue:** [#106](https://github.com/kormie/Skein/issues/106)
 
@@ -295,7 +273,7 @@ The remaining gaps are listed below. Field-testing v0.1.5 (2026-06-10) surfaced 
 
 ---
 
-### 15. zsh Tab-Completion for `skein` `[S]`
+### 14. zsh Tab-Completion for `skein` `[S]`
 
 **Issue:** [#101](https://github.com/kormie/Skein/issues/101)
 
@@ -307,24 +285,24 @@ The remaining gaps are listed below. Field-testing v0.1.5 (2026-06-10) surfaced 
 
 ---
 
-### 16. Spec Section 8 Sweep `[M]`
+### 15. Spec Section 8 Sweep `[M]`
 
 **Issue:** [#77](https://github.com/kormie/Skein/issues/77)
 
-**Problem:** Spec examples are largely aligned and covered by `spec_examples_test.exs`, but a few forms remain aspirational (named args — item 1, nested agents — item 2, `agent.run_sync()` in testing docs, tuple destructuring, unit type `()`).
+**Problem:** Spec examples are largely aligned and covered by `spec_examples_test.exs`, but a few forms remain aspirational (nested agents — item 1, `agent.run_sync()` in testing docs, tuple destructuring, unit type `()`).
 
 **Scope:**
-- After items 1–2 land, re-sweep sections 8.2–8.5: every example either compiles (and is added to `spec_examples_test.exs`) or carries an explicit "Planned" annotation
+- After agent nesting (item 1, #63) lands, re-sweep sections 8.2–8.5: every example either compiles (and is added to `spec_examples_test.exs`) or carries an explicit "Planned" annotation
 
 **Acceptance criteria:**
 - Zero unannotated non-compiling examples in the spec
 - `spec_examples_test.exs` covers every compiling section-8 example
 
-**Depends on:** Items 1 and 2.
+**Depends on:** Item 1 (#63).
 
 ---
 
-### 17. Enum Value-Level Exhaustiveness Warning `[S]`
+### 16. Enum Value-Level Exhaustiveness Warning `[S]`
 
 **Issue:** [#76](https://github.com/kormie/Skein/issues/76)
 
@@ -342,7 +320,7 @@ The remaining gaps are listed below. Field-testing v0.1.5 (2026-06-10) surfaced 
 
 ---
 
-### 18. LSP Code Actions from `fix_hint`/`fix_code` `[L]`
+### 17. LSP Code Actions from `fix_hint`/`fix_code` `[L]`
 
 **Issue:** [#108](https://github.com/kormie/Skein/issues/108)
 
@@ -395,7 +373,7 @@ All of the following are done and tested:
 - Production LLM backend: Anthropic Messages API (chat, json, stream) with retry and structured errors; current model IDs throughout
 - Runtime capability enforcement: store, memory, HTTP, topic (name-scoped), tool (tool-name-scoped), LLM (model-scoped), presence checks for process/timer/event.log
 - Agent instance-scoped memory (`{agent}:{instance}:{key}`)
-- Error system: 21 error + 3 warning codes aligned with the spec; `context` and `fix_code` populated everywhere
+- Error system: 22 error + 3 warning codes aligned with the spec; `context` and `fix_code` populated everywhere
 - Codegen correctness: float-aware division, multi-`emit` accumulation, string-literal match patterns, explicit non-exhaustive-match failure clauses, `state.field` in nested positions, `method!(args)`/`method?(args)` parsing, `store.get!/put!`
 - Tool input validation against generated JSON Schema (`validation_error`)
 - Contextual keywords un-reserved (12 tokens usable as identifiers outside their construct)
@@ -405,6 +383,7 @@ All of the following are done and tested:
 - LSP: completions, hover, diagnostics, semantic tokens, document symbols, go-to-definition (+ request/response integration tests)
 - CLI: new, build (`--output`), test, run, trace; structured errors for malformed flags
 - Distribution: Burrito binaries (Linux x86_64/ARM64, macOS x86_64/ARM64), GitHub Release automation on `v*` tags
+- Named arguments in calls (#56): `f(name: value)` for local fns and documented effect signatures; positional-then-named mixing, analyzer rewrites to positional order (E0026 for unknown/duplicate/misordered names), spec grammar + section 8 updated
 - Release automation (#100, PR #102): green version-bump merges to `main` auto-tag and release (no manual tag step), README badges, per-release docs snapshots incl. `llms*.txt`; superseded PR runs cancel, main/release builds never do
 - Docs site: Astro + Starlight at https://kormie.github.io/Skein/ with `llms.txt` endpoints
 - CI: format check, `--warnings-as-errors` compile, full test suite

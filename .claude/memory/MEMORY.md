@@ -150,8 +150,20 @@
 - Set backed by MapSet; Uuid uses `:crypto.strong_rand_bytes` + Bitwise; Duration is integer seconds
 - Instant is ISO 8601 string backed by DateTime
 
+## Named Arguments in Calls (issue #56 — 2026-06-10)
+- `AST.NamedArg{name, value, meta}`; parser two-token lookahead (`ident` `colon`) in `parse_args` — unambiguous, no expression starts that way
+- Analyzer Pass 0a `resolve_named_args/2` runs BEFORE all other passes and **returns a rewritten AST** (analyze was pure-annotation before) — named args validated + reordered to positional, so codegen is untouched
+- `@effect_param_names` maps `{namespace, method}` -> param names from spec §6 (llm/http/memory/topic/trace/process/event; tool.*/timer.*/stdlib unsupported → E0026)
+- E0026 family: unknown name (fix_hint lists valid names, fix_code via closest_name), duplicate, positional-after-named, already-filled-positionally, missing params, unsupported callee
+- Patterns reject named args at PARSE time (parse_pattern_args is separate from parse_args) — patterns can never contain NamedArg
+- Generic AST rewrite walker: struct-reflection (skip :meta), lists, 2-tuples (`{:interpolation, e}` segments + MapLit `{key, e}` entries)
+- StreamData permutations: `uniq_list_of` over small int ranges hits TooManyDuplicatesError — derive permutation from random sort keys with index tiebreak instead
+
+## Known Bug Found 2026-06-10 (filed as issue)
+- **Int string interpolation emits raw codepoint**: `"${n}"` with n=42 yields "*" (binary segment treats Int as a byte) — needs to_string coercion in codegen interpolation
+
 ## Error Code Alignment — COMPLETE
-- All 21 error codes + 3 warning codes aligned with SKEIN_SPEC.md section 7
+- All 22 error codes (E0026 named args added 2026-06-10) + 3 warning codes aligned with SKEIN_SPEC.md section 7
 - Key renumberings: E0011→E0024, E0012→E0020, E0021→E0020, E0024→E0021, capability E0030→E0012, tool E0031→E0014, tool E0032→E0015
 - New codes: E0011 (duplicate def), E0022 (!on non-Result), E0023 (?on non-Result), W0001 (unused binding), W0002 (unused capability), W0003 (unreachable after stop)
 - Analyzer now returns `{:ok, ast, warnings}` for warnings-only (previously `{:error, warnings}`)

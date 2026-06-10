@@ -160,6 +160,11 @@ end
 
 The analyzer runs multiple passes:
 
+**Pass 0: Named argument resolution (desugaring)**
+- Validate named call arguments (`f(b: 2, a: 1)`) against the callee's declared parameter names (same-module/agent fns and documented effect signatures)
+- Rewrite every call into positional order — later passes and codegen only ever see positional arguments
+- Error (E0026) on unknown/duplicate names, a positional argument after a named one, or named arguments on a callee without a known signature
+
 **Pass 1: Name resolution**
 - Build symbol table of all modules, types, enums, functions, agents, tools
 - Resolve identifiers to their declarations

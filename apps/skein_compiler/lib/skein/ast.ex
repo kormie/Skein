@@ -311,6 +311,25 @@ defmodule Skein.AST do
     defstruct [:target, :args, :type_param, :meta]
   end
 
+  defmodule NamedArg do
+    @moduledoc """
+    A named argument in a call: `name: value`.
+
+    Only valid inside call argument lists, after any positional
+    arguments. The analyzer validates names against the callee's
+    parameter names and rewrites named arguments into positional
+    order, so codegen only ever sees positional arguments.
+    """
+
+    @type t :: %__MODULE__{
+            name: String.t(),
+            value: Skein.AST.expr(),
+            meta: Skein.AST.meta()
+          }
+
+    defstruct [:name, :value, :meta]
+  end
+
   defmodule Pipe do
     @moduledoc "A pipe expression (`|>`)."
 

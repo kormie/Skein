@@ -179,6 +179,34 @@ Becomes:
 apply 'add'/2(3, 4)
 ```
 
+### Named Arguments
+
+Arguments can be passed by name, in any order, after any positional arguments:
+
+```skein
+fn describe(name: String, count: Int) -> String { "${name}" }
+
+describe(count: 3, name: "widget")   -- all named, reordered freely
+describe("widget", count: 3)         -- positional first, then named
+```
+
+Named arguments work for calls to functions in the same module or agent, and
+for effect calls with documented signatures (`llm.chat(model:, system:, input:)`,
+`memory.put(key:, value:)`, `http.post(url:, json:)`, and so on).
+
+The analyzer resolves names against the callee's declared parameter names and
+rewrites the call into positional order at compile time, so there is no runtime
+cost — codegen only ever sees positional arguments. These are compile errors
+(`E0026`, with a `fix_hint` listing the valid names):
+
+- An unknown or duplicate argument name
+- A positional argument after a named one
+- Naming a parameter that was already filled positionally
+- Named arguments on a callee without a known signature (e.g. stdlib calls)
+
+Patterns never use named arguments — `Event.Charge(amount: 5)` in a `match`
+arm is a parse error.
+
 ## Variable Naming Convention
 
 Skein uses `snake_case` for variable names. Core Erlang requires capitalized variable names. The compiler transforms variable names:
