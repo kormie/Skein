@@ -62,7 +62,46 @@ defmodule Skein.CLI.NewTest do
 
       assert {:ok, tests} = CLI.test_all([project_dir])
       assert tests.compile_errors == 0
-      assert tests.passed == 1
+      assert tests.passed == 2
+      assert tests.failed == 0
+    end
+
+    test "scaffold tests exercise src/ code: co-located test plus tool integration test", %{
+      tmp_dir: tmp
+    } do
+      project_dir = Path.join(tmp, "fresh_app")
+      {:ok, _} = CLI.new([project_dir])
+
+      # src holds the function, its co-located test, and the tool that
+      # exposes it across modules
+      src = File.read!(Path.join(project_dir, "src/main.skein"))
+      assert src =~ "fn hello"
+      assert src =~ ~s(test "hello returns greeting")
+      assert src =~ "tool FreshApp.Greet"
+
+      # test/ exercises src/ through the tool — no duplicated function body
+      test_src = File.read!(Path.join(project_dir, "test/main_test.skein"))
+      refute test_src =~ "fn hello"
+      assert test_src =~ "tool.use(FreshApp.Greet)"
+      assert test_src =~ "tool.call(FreshApp.Greet"
+
+      assert {:ok, result} = CLI.test_all([project_dir])
+      assert result.compile_errors == 0
+      assert result.total == 2
+      assert result.passed == 2
+    end
+
+    test "breaking src/main.skein turns the scaffold tests red", %{tmp_dir: tmp} do
+      project_dir = Path.join(tmp, "breakable_app")
+      {:ok, _} = CLI.new([project_dir])
+
+      main_path = Path.join(project_dir, "src/main.skein")
+      broken = String.replace(File.read!(main_path), "Hello, ${name}!", "Goodbye, ${name}!")
+      File.write!(main_path, broken)
+
+      assert {:ok, result} = CLI.test_all([project_dir])
+      assert result.failed == 2
+      assert result.passed == 0
     end
 
     test "names not starting with a letter get a Skein prefix", %{tmp_dir: tmp} do
@@ -163,6 +202,16 @@ defmodule Skein.CLI.NewTest do
 
       readme = File.read!(Path.join(project_dir, "README.md"))
       assert readme =~ "documented_app"
+    end
+
+    test "README describes the co-located test model and the tool seam", %{tmp_dir: tmp} do
+      project_dir = Path.join(tmp, "doc_model_app")
+      {:ok, _} = CLI.new([project_dir])
+
+      readme = File.read!(Path.join(project_dir, "README.md"))
+      assert readme =~ "test"
+      assert readme =~ "tool"
+      assert readme =~ "cross-module"
     end
   end
 end

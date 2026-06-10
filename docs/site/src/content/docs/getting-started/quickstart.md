@@ -37,17 +37,23 @@ This gives you:
 ```
 hello_world/
   skein.toml
-  src/main.skein
-  test/main_test.skein
+  src/main.skein        # module + tool + co-located test
+  test/main_test.skein  # integration test through the module's tool
 ```
+
+The scaffold already runs: `src/main.skein` declares a function, a `test`
+block next to it, and a tool — the one cross-module seam in Skein — and
+`test/main_test.skein` exercises that tool the way another service or
+agent would.
 
 ## Write Your First Program
 
-Edit `src/main.skein`:
+Add functions to the `HelloWorld` module in `src/main.skein` (keep the
+scaffolded tool and test — `test/main_test.skein` calls the tool):
 
 ```skein
-module Hello {
-  fn greet(name: String) -> String {
+module HelloWorld {
+  fn hello(name: String) -> String {
     "Hello, ${name}!"
   }
 
@@ -60,6 +66,28 @@ module Hello {
       true  -> "positive"
       false -> "non-positive"
     }
+  }
+
+  -- Tools are how other modules and agents call into this one.
+  tool HelloWorld.Greet {
+    description: "Greet a person by name"
+
+    input {
+      name: String
+    }
+
+    output {
+      greeting: String
+    }
+
+    implement {
+      Ok({ greeting: hello(name) })
+    }
+  }
+
+  -- Tests live with the code they exercise.
+  test "hello returns greeting" {
+    assert hello("World") == "Hello, World!"
   }
 }
 ```
@@ -85,7 +113,10 @@ This compiles every `.skein` file in `src/`.
 skein test
 ```
 
-Discovers and runs all test files in `src/` and `test/`.
+Compiles and loads everything in `src/` and `test/` first, then runs every
+`test` block found — co-located tests in `src/` and integration tests in
+`test/` alike. On a fresh scaffold that's two tests: the module's own
+`test` block and the cross-module `tool.call` test.
 
 ## Start a Server
 

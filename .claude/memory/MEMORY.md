@@ -8,6 +8,21 @@
 - Remaining work tracked in docs/ROADMAP.md (named args, agent nesting, schedule auto-fire, etc.)
 - Elixir 1.19.5, OTP 28, managed by mise
 
+## Cross-Module Tools (issues #79/#80/#81/#84, PRs #91/#93/#95/#97)
+- Tools are the ONLY cross-module seam (#85, spec §3.1). Cross-module calls = `tool.call`.
+- Codegen compiles each `implement` block to exported `__tool_impl_N__/1` (N = tool's declaration index); `__tools__/0` metadata carries `impl:` atom. Input fields bound via `map_get(atom, InputMap)`.
+- `Skein.Runtime.Tool.register_module(mod)` reads `__tools__/0` and registers tools; idempotent (ETS set keyed by name). CLI compile/build/test/run all call it after loading a module.
+- Expression-position variant construction exists now: `Ok(x)` → `{:ok, x}`, `Err(e)` → `{:error, e}`, `Enum.Variant(args)` → `{:variant, args...}`, `ErrName.from(e)` → `{:err_name, e}`. Guarded by uppercase-first-char (`binary_part(name, 0, 1) >= "A"` works in guards).
+- `variant_pattern_atom("Err")` → `:error` (NOT `:err`) — patterns and constructors align with runtime `{:ok,_}/{:error,_}`.
+- Parser REQUIRES `implement` block on every tool (E0001 without it) — `impl: nil` only possible in hand-rolled metadata.
+- `Http.post/put/patch` accept map bodies (JSON-encoded). Map body + no `http.out` capability = deterministic offline denial (capability checked inside the Trace span, after encoding).
+- `memory.get` returns `{:ok, v}/{:error, "not_found"}` — examples must unwrap with `!` (spec RefundAgent uses `memory.get!`). Same for `llm.chat`.
+- `skein test` (`test_all/1`) is two-phase: compile+load ALL of src/ then test/ (registering tools), THEN run tests.
+- `skein new` scaffolds: co-located `test` block in src/main.skein + `{Module}.Greet` tool + test/ integration test via `tool.call(...)!`.
+- examples_test drives market_research e2e: register service tools → agent `__phase_handler__(:gathering, %{}, [])` → suspend; trace `:http` span proves the implement executed (absent span = registration regression).
+- Agent memory key scoping is process-dictionary based (`:skein_agent_name`/`:skein_agent_instance_id`) — direct handler calls from tests are unscoped.
+- CI workflows only trigger on PRs based on `main`; retargeting a PR's base does NOT trigger CI (push an empty commit for a `synchronize` event). `workflow_dispatch` is 403 for the integration token.
+
 ## Key Patterns
 - Tests must use `--no-start` or run via `mix test` (umbrella)
 - Module names: `Skein.User.{Name}` for modules, `Skein.Agent.{Name}` for agents

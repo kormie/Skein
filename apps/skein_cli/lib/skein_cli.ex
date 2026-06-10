@@ -152,6 +152,8 @@ defmodule Skein.CLI do
   end
 
   defp readme(name) do
+    module_name = module_name_from(name)
+
     """
     # #{name}
 
@@ -169,6 +171,18 @@ defmodule Skein.CLI do
     # Start the service
     skein run
     ```
+
+    ## Testing
+
+    Tests live next to the code they exercise: `src/main.skein` declares a
+    `test` block inside the module, and `skein test` discovers and runs test
+    blocks in both `src/` and `test/` (everything in `src/` is compiled and
+    loaded before any test runs).
+
+    Modules can't call each other's functions — tools are the one
+    cross-module seam in Skein. `test/main_test.skein` exercises the
+    `#{module_name}.Greet` tool that `src/main.skein` declares, the same way
+    another service or agent would call it.
     """
   end
 
@@ -180,6 +194,28 @@ defmodule Skein.CLI do
       fn hello(name: String) -> String {
         "Hello, ${name}!"
       }
+
+      -- Tools are how other modules and agents call into this one.
+      tool #{module_name}.Greet {
+        description: "Greet a person by name"
+
+        input {
+          name: String
+        }
+
+        output {
+          greeting: String
+        }
+
+        implement {
+          Ok({ greeting: hello(name) })
+        }
+      }
+
+      -- Tests live with the code they exercise.
+      test "hello returns greeting" {
+        assert hello("World") == "Hello, World!"
+      }
     }
     """
   end
@@ -188,13 +224,15 @@ defmodule Skein.CLI do
     module_name = module_name_from(name)
 
     """
+    -- Integration tests exercise src/ modules through their tools — the one
+    -- cross-module seam in Skein. `skein test` compiles and loads everything
+    -- in src/ before running these.
     module #{module_name}Test {
-      fn hello(name: String) -> String {
-        "Hello, ${name}!"
-      }
+      capability tool.use(#{module_name}.Greet)
 
-      test "hello returns greeting" {
-        assert hello("World") == "Hello, World!"
+      test "greets through the #{module_name}.Greet tool" {
+        let result = tool.call(#{module_name}.Greet, { name: "World" })!
+        assert result.greeting == "Hello, World!"
       }
     }
     """
