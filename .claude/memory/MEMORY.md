@@ -212,6 +212,10 @@
 - MCP schema: ok = errors-only; warnings array added; project mode globs src/ + test/ (skein test discovery order)
 - MCP docs page (editor/mcp-server.md) may mention the old schema — check on next docs sweep
 
+## zsh Completions (issue #101 — 2026-06-10)
+- `skein completions zsh` (CLI.completions/1 returns {:ok, script}); Main.usage_text/0 made public so the drift test asserts every help-listed subcommand appears in the script
+- #118 flake recurred twice in local umbrella runs during this work (runtime suite, intermittent, targeted runs green)
+
 ## Known Bug Found 2026-06-10 (filed as issue)
 - **Int string interpolation emits raw codepoint**: `"${n}"` with n=42 yields "*" (binary segment treats Int as a byte) — needs to_string coercion in codegen interpolation
 

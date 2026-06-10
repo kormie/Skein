@@ -179,6 +179,91 @@ defmodule Skein.CLI do
   end
 
   # ------------------------------------------------------------------
+  # completions — shell completion scripts
+  # ------------------------------------------------------------------
+
+  @doc """
+  Returns the shell completion script for the given shell.
+
+  Install for zsh with: `skein completions zsh > ~/.zfunc/_skein`
+  (and ensure `~/.zfunc` is on `fpath` before `compinit`).
+  """
+  @spec completions([String.t()]) :: {:ok, String.t()} | {:error, String.t()}
+  def completions(["zsh" | _]), do: {:ok, zsh_completions()}
+
+  def completions([shell | _]),
+    do: {:error, "Unsupported shell '#{shell}' — only zsh is supported (bash/fish planned)"}
+
+  def completions([]), do: {:error, "Usage: skein completions zsh"}
+
+  defp zsh_completions do
+    """
+    #compdef skein
+    # zsh completions for skein. Generate and install with:
+    #   mkdir -p ~/.zfunc && skein completions zsh > ~/.zfunc/_skein
+    #   # in ~/.zshrc, before compinit: fpath=(~/.zfunc $fpath)
+
+    _skein() {
+      local -a commands
+      commands=(
+        'compile:Compile a single .skein file'
+        'new:Scaffold a new Skein project'
+        'build:Compile all .skein files in a project'
+        'test:Run all tests in a project'
+        'run:Start the Skein service'
+        'agents:Create or refresh AGENTS.md'
+        'mcp:Start the MCP server (stdio, for coding agents)'
+        'lsp:Start the language server (stdio, for editors)'
+        'trace:View recent trace spans'
+        'completions:Print a shell completion script'
+        'version:Print version'
+        'help:Show help'
+      )
+
+      if (( CURRENT == 2 )); then
+        _describe -t commands 'skein command' commands
+        return
+      fi
+
+      case $words[2] in
+        compile)
+          _files -g '*.skein'
+          ;;
+        new)
+          _arguments \\
+            '--no-agents[Skip generating AGENTS.md / CLAUDE.md]' \\
+            '--no-git[Skip git init (a .gitignore is always written)]' \\
+            '*:project directory:_directories'
+          ;;
+        build)
+          _arguments \\
+            '--output[Write .beam files to directory]:output directory:_directories' \\
+            '*:project directory:_directories'
+          ;;
+        run)
+          _arguments \\
+            '--port[Server port (default 4000)]:port:' \\
+            '*:project directory:_directories'
+          ;;
+        test|agents)
+          _directories
+          ;;
+        trace)
+          _arguments \\
+            '--last[Number of traces (default 10)]:count:' \\
+            '--kind[Filter by span kind]:kind:(http llm tool memory store queue topic schedule handler)'
+          ;;
+        completions)
+          compadd zsh
+          ;;
+      esac
+    }
+
+    _skein \"$@\"
+    """
+  end
+
+  # ------------------------------------------------------------------
   # agents — create or refresh AGENTS.md in an existing project
   # ------------------------------------------------------------------
 
