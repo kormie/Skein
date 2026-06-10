@@ -351,6 +351,17 @@ defmodule Skein.ExamplesTest do
       assert {:error, _} = mod.safe_parse("abc")
     end
 
+    test "temperature_label clamps with negative bounds" do
+      {:module, mod} =
+        Compiler.compile_file(Path.join(project_root(), "examples/stdlib_demo.skein"))
+
+      assert mod.temperature_label(-30) == "freezing"
+      assert mod.temperature_label(20) == "normal"
+      # -100 clamps to -40, which is below -18
+      assert mod.temperature_label(-100) == "freezing"
+      assert mod.temperature_label(-18) == "normal"
+    end
+
     test "round_price rounds floats" do
       {:module, mod} =
         Compiler.compile_file(Path.join(project_root(), "examples/stdlib_demo.skein"))
