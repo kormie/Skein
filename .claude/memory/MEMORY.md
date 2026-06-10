@@ -3,16 +3,26 @@
 ## Project State
 - All phases complete (1-8f plus unified event store / Phase 10) — MVP reached
 - Distribution prerequisites complete: enum variant matching, supervisors, build --output
-- Current version: 0.1.3-dev (v0.1.2 released 2026-06-10 with binaries; CLI-UX + skein lsp pass in progress)
-- v0.1.2 shipped: tag push triggers binary release workflow automatically
-- Remaining work tracked in docs/ROADMAP.md (named args, agent nesting, schedule auto-fire, etc.)
+- Current version: 0.1.5 (released 2026-06-10: binaries for 4 targets incl. linux-aarch64, skein-vscode.vsix, checksums; `v*` tag push triggers build.yml release)
+- Test counts on main @ v0.1.5, from CI job logs: 1,547 tests + 195 properties (compiler 941+87, runtime 462+108, lsp 44, cli 100)
+- Remaining work tracked in docs/ROADMAP.md (12 items, each linking its GH issue) + Alpha/Beta milestones
 - Elixir 1.19.5, OTP 28, managed by mise
+
+## Repo Hygiene / Issue Tracking (2026-06-10 audit session)
+- All 20 open issues map to ROADMAP items (roadmap links each issue inline; 19 items across 4 tiers); #78 tracks the post-MVP backlog
+- v0.1.5 field-testing wave (#101, #104–#109) triaged same day: #104 W0002/E0012 test-block gap, #105 assertion output, #106 git init, #107 local LLM backends, #108 LSP code actions, #109 MCP compile_check fidelity
+- PR #102 MERGED 2026-06-10 20:37 → #100 closed (first Alpha item done): auto-tag on green version-bump merges (release.yml via workflow_call into build.yml), README badges, per-release docs snapshots; PR-run concurrency cancels superseded runs, never main/release builds
+- Milestones-as-code: `.github/milestones.json` + `workflows/milestones.yml` (gh api, runs on push when the JSON changes; never closes/deletes). **Alpha Release** = public-repo gate (#56 #63 #70 #71 #72 #77 #96 #100 #101 #104 #105 #106 #109); **Beta Release** = #57 #69 #73 #74 #76 #107 #108
+- Issue forms in `.github/ISSUE_TEMPLATE/` (bug/feature/chore + config contact links) auto-label `type/*` + `status/triage`; triage flow + label glossary in CONTRIBUTING.md; PR template in `.github/pull_request_template.md`
+- PR #53 (stale Feb repo-hygiene PR with generic templates) superseded by the 2026-06-10 hygiene PR and closed
+- GitHub MCP has NO milestone create/list tools — the milestones.yml workflow is the only creation path; `issue_write` CAN assign an existing milestone by number (Alpha=1, Beta=2)
+- Verify test counts from CI job logs (`get_job_logs` on the single "Format, compile, and test" job), not from memory — hex.pm can be unreachable in remote envs (deps.get fails on uncached packages, so `mix test` can't run locally)
 
 ## Cross-Module Tools (issues #79/#80/#81/#84, PRs #91/#93/#95/#97)
 - Tools are the ONLY cross-module seam (#85, spec §3.1). Cross-module calls = `tool.call`.
 - Codegen compiles each `implement` block to exported `__tool_impl_N__/1` (N = tool's declaration index); `__tools__/0` metadata carries `impl:` atom. Input fields bound via `map_get(atom, InputMap)`.
 - `Skein.Runtime.Tool.register_module(mod)` reads `__tools__/0` and registers tools; idempotent (ETS set keyed by name). CLI compile/build/test/run all call it after loading a module.
-- Expression-position variant construction exists now: `Ok(x)` → `{:ok, x}`, `Err(e)` → `{:error, e}`, `Enum.Variant(args)` → `{:variant, args...}`, `ErrName.from(e)` → `{:err_name, e}`. Guarded by uppercase-first-char (`binary_part(name, 0, 1) >= "A"` works in guards).
+- Expression-position variant construction exists now: `Ok(x)` → `{:ok, x}`, `Err(e)` → `{:error, e}`, `Enum.Variant(args)` → `{:variant, args...}`, `ErrName.from(e)` → `{:err_name, e}`. Guarded by uppercase-first-char (`binary_part(name, 0, 1) >= "A"` works in guards). **Call forms only**: zero-field variants (`Status.Active` field-access form, bare `Active`) still fail (misleading E0020 / core_lint unbound_var), and unknown-variant/wrong-arity constructor calls crash codegen unstructured — issue #96 / ROADMAP item 4.
 - `variant_pattern_atom("Err")` → `:error` (NOT `:err`) — patterns and constructors align with runtime `{:ok,_}/{:error,_}`.
 - Parser REQUIRES `implement` block on every tool (E0001 without it) — `impl: nil` only possible in hand-rolled metadata.
 - `Http.post/put/patch` accept map bodies (JSON-encoded). Map body + no `http.out` capability = deterministic offline denial (capability checked inside the Trace span, after encoding).
@@ -208,8 +218,8 @@
 - DynamicStreamBackend + tuples pattern is useful for property testing any parameterized backend
 
 ## Demo-Readiness Session (2026-06-10)
-- Version is 0.1.2 (root mix.exs + skein_cli). Tag `v0.1.2` on main to publish binaries — build.yml has a GitHub Release job on `v*` tags (no tag has ever been pushed before).
-- Test counts: 1,413 tests + 189 properties (compiler 869+81, runtime 448+108, cli 52, lsp 44)
+- Release flow: a PR bumps `mix.exs` + `apps/skein_cli/mix.exs` and dates CHANGELOG.md, then an annotated `v*` tag at the merge commit triggers build.yml (binaries + vsix + GitHub Release). v0.1.2–v0.1.5 all released 2026-06-10. Auto-tagging green merges is issue #100.
+- Test counts: see Project State (kept current there only)
 - **Model IDs**: canonical example model is `claude-opus-4-8` (capability form: `model("anthropic", "claude-opus-4-8")`). Never use `claude-sonnet-4-20250514` (deprecated, retires 2026-06-15). AnthropicBackend no longer rewrites gpt-* names — model passes through unchanged.
 - **String-literal match patterns**: pattern position needs `c_binary` with per-byte `c_bitstr` segments — a binary `c_literal` crashes core_to_ssa on OTP 28. Non-exhaustive matches need an explicit case_clause-raising catch-all clause (`ensure_catch_all` in codegen) or beam_validator rejects binary patterns.
 - **`method!(args)` parsing**: bang/question followed by lparen is handled in `parse_postfix_chain` (parse call first, wrap UnaryOp unwrap/propagate, continue chain). Plain postfix `!`/`?` after a complete chain still handled in `parse_unary_expr`.

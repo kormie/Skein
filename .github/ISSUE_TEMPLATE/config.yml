@@ -1,0 +1,14 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Documentation
+    url: https://kormie.github.io/Skein/
+    about: Guides, language tour, runtime reference, and the quickstart.
+  - name: Roadmap (known gaps)
+    url: https://kormie.github.io/Skein/roadmap/overview/
+    about: Check here first — alpha-known limitations are tracked on the roadmap.
+  - name: Language specification
+    url: https://github.com/kormie/Skein/blob/main/docs/SKEIN_SPEC.md
+    about: The complete Skein language spec.
+  - name: Docs for AI agents
+    url: https://kormie.github.io/Skein/llms-full.txt
+    about: Single-file documentation bundle for LLM agents writing Skein.

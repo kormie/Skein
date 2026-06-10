@@ -5,7 +5,7 @@ description: Packaging Skein so others can use it without the source repository.
 
 ## Current State
 
-Skein ships as **standalone binaries** via Burrito for Linux x86_64, macOS x86_64, and macOS ARM64. Users download a single `skein` binary and can immediately create, build, test, and run projects — no Erlang, Elixir, or Mix required.
+Skein ships as **standalone binaries** via Burrito for Linux x86_64, Linux ARM64, macOS x86_64, and macOS ARM64, published automatically by CI on every `v*` tag (along with the VS Code extension `.vsix` and a checksums file). Users download a single `skein` binary and can immediately create, build, test, and run projects — no Erlang, Elixir, or Mix required.
 
 ```bash
 ./skein new my_project
@@ -35,7 +35,7 @@ A self-contained `skein` binary that bundles the compiler, runtime, and BEAM.
 **Implementation:**
 
 - `burrito` (~> 1.5) added as a dependency of `skein_cli`
-- Release configured in root `mix.exs` with three targets: Linux x86_64, macOS x86_64, macOS ARM64
+- Release configured in root `mix.exs` with four targets: Linux x86_64, Linux ARM64, macOS x86_64, macOS ARM64
 - `Skein.CLI.Main` module implements the `Application` behaviour and dispatches subcommands via `Burrito.Util.Args.argv/0`
 - In release mode (Mix not available), the entry point reads args and routes to `compile`, `new`, `build`, `test`, `run`, `trace`, `version`, and `help` commands
 - In dev mode, the existing Mix aliases continue to work as before
@@ -112,16 +112,9 @@ Publishing the Skein compiler and runtime to Hex.pm would allow Elixir developer
 
 ---
 
-## 4. GitHub Releases and CI
+## 4. GitHub Releases and CI ✅
 
-Automate artifact creation in CI so every tagged version produces downloadable binaries and a release.
-
-**Steps:**
-
-1. Add a GitHub Actions workflow triggered by version tags (`v*`)
-2. Build Burrito binaries for each target platform
-3. Attach all artifacts to the GitHub release
-4. Generate a changelog from commit history
+Implemented: `.github/workflows/build.yml` triggers on version tags (`v*`), builds Burrito binaries for all four targets plus the VS Code `.vsix`, and publishes a GitHub Release with the artifacts, checksums, and auto-generated release notes. (Automating the *tag* step itself — tagging green merges that bump the version — is tracked in [#100](https://github.com/kormie/Skein/issues/100).)
 
 ---
 
@@ -142,11 +135,11 @@ The installer would detect the user's OS/architecture, download the appropriate 
 | Priority | Artifact | Status |
 |----------|----------|--------|
 | 1 | `skein build` writes `.beam` to disk | ✅ Done |
-| 2 | Burrito standalone binaries | ✅ Done (Linux x86_64, macOS x86_64, macOS ARM64) |
-| 3 | OTP release generation | Enables standalone server deployment |
-| 4 | Hex.pm packages | Enables embedding Skein in Elixir projects |
-| 5 | Docker template | Enables container-based deployment |
-| 6 | CI release pipeline | Automates everything above |
+| 2 | Burrito standalone binaries | ✅ Done (Linux x86_64/ARM64, macOS x86_64/ARM64) |
+| 3 | CI release pipeline | ✅ Done (binaries + `.vsix` + checksums on every `v*` tag) |
+| 4 | OTP release generation | Enables standalone server deployment |
+| 5 | Hex.pm packages | Enables embedding Skein in Elixir projects |
+| 6 | Docker template | Enables container-based deployment |
 
 ## Prerequisites
 

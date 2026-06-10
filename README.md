@@ -344,7 +344,7 @@ Skein is in active development. The compiler and runtime are being built in phas
 
 | **9-10** | **Stdlib, error codes, unified event store** — 11 stdlib modules (101 functions), 24 aligned error/warning codes, single append-only event log | Complete |
 
-1,413 tests + 189 property-based tests, 0 failures. The full compilation pipeline works end-to-end — from `.skein` source to running BEAM bytecode with real LLM calls and database storage. See [`examples/`](examples/README.md) for fourteen working programs, all covered by integration tests, and [docs/ROADMAP.md](docs/ROADMAP.md) for what's next.
+1,547 tests + 195 property-based tests, 0 failures. The full compilation pipeline works end-to-end — from `.skein` source to running BEAM bytecode with real LLM calls and database storage. See [`examples/`](examples/README.md) for fourteen working programs, all covered by integration tests, and [docs/ROADMAP.md](docs/ROADMAP.md) for what's next.
 
 ---
 

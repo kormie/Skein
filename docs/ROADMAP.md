@@ -5,7 +5,7 @@
 
 This is the forward-looking work list for Skein. Items are ordered by impact — the top items close the biggest gaps between the language's stated goals and its current reality.
 
-Every item is self-contained. Pick the top incomplete one and work it.
+Every item is self-contained and links its tracking issue — keep the two in sync when scope changes. Pick the top incomplete one and work it. Milestones: Tier 1–4 items below are the **Alpha Release** gate (repo goes public) except where their issue says otherwise; see `.github/milestones.json`.
 
 **Every item requires:**
 - TDD — tests first, implementation second
@@ -18,17 +18,19 @@ Every item is self-contained. Pick the top incomplete one and work it.
 
 ## Current State
 
-The compilation pipeline works end-to-end: lexer, parser, analyzer, codegen, and runtime are functional. **1,413 tests + 189 property tests pass.** Fourteen example programs (thirteen single-file + one multi-file) compile and run, all covered by integration tests. The LSP, CLI, docs site, and binary distribution (Burrito) are operational.
+The compilation pipeline works end-to-end: lexer, parser, analyzer, codegen, and runtime are functional. **1,547 tests + 195 property tests pass** (verified against `main` CI at v0.1.5). Fourteen example programs (thirteen single-file + one multi-file) compile and run, all covered by integration tests. The LSP, CLI, docs site, and binary distribution (Burrito, four targets) are operational. v0.1.5 shipped cross-module `tool.call` end-to-end.
 
 Most of the foundational gap-closing work from earlier roadmap revisions is **done**: real type inference for field access and pattern bindings, schema derivation for nested types and enum variants, the production Anthropic LLM backend, runtime capability enforcement for tool/LLM/topic (name- and model-aware), agent instance-scoped memory, error `context` + `fix_code` on all compiler errors, float-aware division, multi-`emit` accumulation, tool input validation, contextual (non-reserved) keywords, the persistent SQLite EventStore backend, string-literal match patterns, `store.<table>.get!/put!`, and the `queue.consume`/`schedule.trigger` capability naming.
 
-The remaining gaps are listed below.
+The remaining gaps are listed below. Field-testing v0.1.5 (2026-06-10) surfaced a wave of first-five-minutes DX issues (#101, #104–#109); they are folded into the tiers below.
 
 ---
 
 ## Tier 1: Language Surface
 
 ### 1. Named Arguments in Calls `[L]`
+
+**Issue:** [#56](https://github.com/kormie/Skein/issues/56)
 
 **Problem:** The spec grammar (section 3.2) allows named arguments (`named_arg = lower_ident ":" expr`), and the first-principles document shows calls like `llm.json[T](model: "...", system: PROMPT)`. The parser only supports positional arguments — `parse_args` has no named-argument production. All shipped examples and docs use the positional form.
 
@@ -50,6 +52,8 @@ The remaining gaps are listed below.
 
 ### 2. Agent Nesting Inside Modules `[M]`
 
+**Issue:** [#63](https://github.com/kormie/Skein/issues/63)
+
 **Problem:** The spec (section 8.4) shows `agent RefundAgent { ... }` nested inside `module RefundService { ... }`, but `parse_declaration` doesn't accept `agent` as a module-level declaration. The `examples/market_research/` project works around this with one file per construct.
 
 **Scope:**
@@ -68,6 +72,8 @@ The remaining gaps are listed below.
 
 ### 3. Types Usable from Agents `[M]`
 
+**Issue:** [#70](https://github.com/kormie/Skein/issues/70)
+
 **Problem:** Agents cannot declare `type` blocks, and (until item 2 lands) cannot live inside modules that do. As a result `llm.json[SomeType]` is unusable from agent bodies — the canonical "schema-constrained LLM decision" pattern only works in module functions today.
 
 **Scope:**
@@ -82,9 +88,48 @@ The remaining gaps are listed below.
 
 ---
 
+### 4. Enum Variant Construction Completeness `[M]`
+
+**Issue:** [#96](https://github.com/kormie/Skein/issues/96)
+
+**Problem:** v0.1.5 made call-form variant construction work (`Ok(x)`, `Err(e)`, `Event.Charge(n)`, `ErrName.from(cause)`), but zero-field variants still cannot be constructed in expression position: `Status.Active` hits a misleading E0020 ("Cannot access field 'Active' on type Status") and bare `Active` crashes codegen with an unstructured `core_lint` `unbound_var`. Constructor calls also aren't validated — unknown variants and wrong arity pass the analyzer as `:unknown` and crash at codegen instead of producing structured errors.
+
+**Scope:**
+- Analyzer: type `Status.Active` field access on an enum as `{:enum, "Status"}`; structured errors for unknown variants (closest-name `fix_code`) and wrong constructor arity/types
+- Codegen: lower zero-field variants to their snake_case atom, matching pattern-side `variant_pattern_atom/1`
+
+**Acceptance criteria:**
+- Zero-field (`Status.Active`) and data (`Status.Banned("spam")`) constructions round-trip through `match` at runtime
+- `Status.Nope` and wrong-arity constructor calls fail at compile time with structured errors
+- No `:core_lint` E0001 crashes remain for any construction form
+
+**Depends on:** Nothing.
+
+---
+
+### 5. Capability Checking Covers Test Blocks `[M]`
+
+**Issue:** [#104](https://github.com/kormie/Skein/issues/104)
+
+**Problem:** Both analyzer capability passes walk only `Fn`/`Handler` declarations and skip `test`/`scenario`/`golden` bodies. The fresh `skein new` scaffold warns W0002 on its own `tool.use` capability (and following the hint produces a *runtime* failure), while effect calls inside test blocks with missing capabilities escape E0012 entirely.
+
+**Scope:**
+- Include test-construct bodies in the traversals feeding `collect_used_capabilities/2` and `check_capabilities/2` (one traversal fix covers both directions)
+- Regression tests for the W0002 false positive and the E0012 escape
+
+**Acceptance criteria:**
+- A fresh `skein new` scaffold runs `skein test` with zero warnings
+- An effect call inside a test block with no matching capability is a compile-time E0012
+
+**Depends on:** Nothing.
+
+---
+
 ## Tier 2: Runtime Completeness
 
-### 4. Schedule Handler Auto-Firing `[M]`
+### 6. Schedule Handler Auto-Firing `[M]`
+
+**Issue:** [#71](https://github.com/kormie/Skein/issues/71)
 
 **Problem:** Schedule handlers register their cron expression but never fire automatically — only manual `Schedule.trigger/1` works. A `handler schedule "*/5 * * * *"` does nothing in a running service.
 
@@ -103,7 +148,9 @@ The remaining gaps are listed below.
 
 ---
 
-### 5. Agent `emit` Events to EventStore `[M]`
+### 7. Agent `emit` Events to EventStore `[M]`
+
+**Issue:** [#72](https://github.com/kormie/Skein/issues/72)
 
 **Problem:** Events emitted inside agents accumulate in `gen_statem` data but are never appended to the EventStore. If the agent crashes, emitted events are lost, and `EventStore.query/1` can't see agent events.
 
@@ -120,7 +167,9 @@ The remaining gaps are listed below.
 
 ---
 
-### 6. Replay Backend Injection `[L]`
+### 8. Replay Backend Injection `[L]`
+
+**Issue:** [#73](https://github.com/kormie/Skein/issues/73)
 
 **Problem:** `Skein.Runtime.Replay` can load traces, rebuild memory, and holds replay state (`with_replay/2`, `next_response/1`), but the LLM/HTTP/tool runtimes never consult it — `Llm.chat` always calls the configured backend. Recorded-mode replay therefore can't actually intercept live effects.
 
@@ -138,7 +187,9 @@ The remaining gaps are listed below.
 
 ---
 
-### 7. Stream/Pool-Scoped Runtime Capability Checks `[M]` *(needs surface design first)*
+### 9. Stream/Pool-Scoped Runtime Capability Checks `[M]` *(needs surface design first)*
+
+**Issues:** [#69](https://github.com/kormie/Skein/issues/69) (surface decision), [#57](https://github.com/kormie/Skein/issues/57) (enforcement)
 
 **Problem:** `process.spawn`, `timer`, and `event.log` check capability *presence* at runtime but not parameters. Full enforcement is blocked on a language-surface question: the capability parameter names a pool/stream label (`capability event.log("audit")`), while the runtime call carries a different value (the event name: `event.log("user.login", data)`), so there is nothing to match the declared label against at the call site.
 
@@ -155,7 +206,9 @@ The remaining gaps are listed below.
 
 ---
 
-### 8. `process.spawn` Task Bodies `[M]`
+### 10. `process.spawn` Task Bodies `[M]`
+
+**Issue:** [#74](https://github.com/kormie/Skein/issues/74)
 
 **Problem:** `process.spawn("name")` spawns a supervised no-op task carrying the name in its trace span. There is no way to attach actual work to the spawned process from Skein source.
 
@@ -171,9 +224,109 @@ The remaining gaps are listed below.
 
 ---
 
-## Tier 3: Polish
+### 11. Local LLM Backends for Dev (OpenAI-Compatible + `skein.toml` Profiles) `[XL]`
 
-### 9. Enum Value-Level Exhaustiveness Warning `[S]`
+**Issue:** [#107](https://github.com/kormie/Skein/issues/107)
+
+**Problem:** Testing agents means real Anthropic inference spend, and there's no way to point a project at a local model server (oMLX, Ollama, LM Studio, vLLM). Source must never change between environments — `capability model("anthropic", "claude-opus-4-8")` stays the code's contract regardless of which backend serves it.
+
+**Scope:**
+- `Skein.Runtime.Llm.OpenAiCompatibleBackend` implementing the existing `Llm.Backend` behaviour against `POST {base_url}/chat/completions`
+- `[env.<name>.llm]` profiles in `skein.toml` with `model_map` remapping capability model names to locally hosted ones
+- `skein run`/`skein test` resolve the active profile via `SKEIN_ENV` / `--env`; llm trace spans record which backend/base_url served each call
+
+**Acceptance criteria:**
+- `SKEIN_ENV=dev skein test` serves `llm.chat`/`llm.json` from the local server with zero source edits; plain `skein run` uses Anthropic
+- Local server down → structured `Llm.Error` naming the base_url
+- Stub-server tests give CI an inference-free path for agent tests
+
+**Depends on:** Nothing.
+
+---
+
+## Tier 3: Polish & Developer Experience
+
+### 12. Test Failures Show Expected vs Actual + Location `[M]`
+
+**Issue:** [#105](https://github.com/kormie/Skein/issues/105)
+
+**Problem:** A failing `assert` prints only "Assertion failed" — no operands, no `file:line`. Codegen lowers `__assert__` to a single boolean and raises a constant `RuntimeError`, discarding the operands and the meta location the parser already carries. The failure message is also what a coding agent debugs from.
+
+**Scope:**
+- New structured `Skein.Runtime.AssertionError` (`op`, `left`, `right`, `expr`, `file`, `line`)
+- Codegen special-cases `__assert__` over comparison `BinaryOp`s: bind operands, raise with both inspected values + location; bare truthy asserts keep location
+- CLI FAIL lines print `file:line` and left/right
+
+**Acceptance criteria:**
+- `assert a == b` failure shows inspected left and right values and the assert's `file:line`
+- Scenario `expect` and golden tests inherit the output via the shared `__test_N__` lowering
+
+**Depends on:** Nothing.
+
+---
+
+### 13. MCP `skein_compile_check` Fidelity `[M]`
+
+**Issue:** [#109](https://github.com/kormie/Skein/issues/109)
+
+**Problem:** The MCP tool reports clean on projects `skein test` visibly flags: `compile_file/1` discards analyzer warnings before the tool sees them, and project mode globs only `src/**/*.skein` — `test/` (where the scaffold's integration test lives) is never compiled.
+
+**Scope:**
+- A warnings-preserving compile API shared with the LSP diagnostics path (not a third reimplementation)
+- Result schema gains `warnings` (each entry keeps `code`/`severity`/`message`/`location`/`fix_hint`/`fix_code`); `ok` stays errors-only
+- Project mode globs `src/**` and `test/**`, matching `skein test` discovery
+
+**Acceptance criteria:**
+- On a fresh scaffold (pre-item-5 fix), project-mode `compile_check` reports `files_checked: 2` and the W0002 with its location
+
+**Depends on:** Nothing (pairs naturally with item 5).
+
+---
+
+### 14. `skein new` Git Init + Baseline `.gitignore` `[S]`
+
+**Issue:** [#106](https://github.com/kormie/Skein/issues/106)
+
+**Problem:** The scaffold ships without version control, and the first `git add .` after `skein build --output` drags `.beam`/`_build` artifacts (and eventually `erl_crash.dump`) into the repo.
+
+**Scope:** cargo-style `git init` by default (skipped inside an existing work tree, when `git` is missing, or with `--no-git`); always write a baseline `.gitignore` (build artifacts, crash dumps, local SQLite state); no auto-commit.
+
+**Depends on:** Nothing.
+
+---
+
+### 15. zsh Tab-Completion for `skein` `[S]`
+
+**Issue:** [#101](https://github.com/kormie/Skein/issues/101)
+
+**Problem:** Eleven subcommands plus per-command flags, none of it completes — every demo involves typing from memory.
+
+**Scope:** `skein completions zsh` subcommand printing a `_skein` function (subcommands + flags + `.skein`/directory positionals); a CLI test pins the completion source to the real command surface so it can't drift; bash/fish are follow-ups.
+
+**Depends on:** Nothing.
+
+---
+
+### 16. Spec Section 8 Sweep `[M]`
+
+**Issue:** [#77](https://github.com/kormie/Skein/issues/77)
+
+**Problem:** Spec examples are largely aligned and covered by `spec_examples_test.exs`, but a few forms remain aspirational (named args — item 1, nested agents — item 2, `agent.run_sync()` in testing docs, tuple destructuring, unit type `()`).
+
+**Scope:**
+- After items 1–2 land, re-sweep sections 8.2–8.5: every example either compiles (and is added to `spec_examples_test.exs`) or carries an explicit "Planned" annotation
+
+**Acceptance criteria:**
+- Zero unannotated non-compiling examples in the spec
+- `spec_examples_test.exs` covers every compiling section-8 example
+
+**Depends on:** Items 1 and 2.
+
+---
+
+### 17. Enum Value-Level Exhaustiveness Warning `[S]`
+
+**Issue:** [#76](https://github.com/kormie/Skein/issues/76)
 
 **Problem:** Exhaustiveness checking is variant-level only. `match e { Event.Charge(5) -> ... }` satisfies "Charge is covered", but `Event.Charge(10)` raises `case_clause` at runtime. (Plain literal matches without a catch-all now compile to an explicit `case_clause` raise — the gap is the missing *warning*.)
 
@@ -189,22 +342,27 @@ The remaining gaps are listed below.
 
 ---
 
-### 10. Spec Section 8 Sweep `[M]`
+### 18. LSP Code Actions from `fix_hint`/`fix_code` `[L]`
 
-**Problem:** Spec examples are largely aligned and covered by `spec_examples_test.exs`, but a few forms remain aspirational (named args — item 1, nested agents — item 2, `agent.run_sync()` in testing docs, tuple destructuring, unit type `()`).
+**Issue:** [#108](https://github.com/kormie/Skein/issues/108)
+
+**Problem:** Every `Skein.Error` carries `fix_hint`/`fix_code` by design — the agent-writability feature — but the LSP advertises no `codeActionProvider` and drops the fix data from diagnostics, so editors show no lightbulb.
 
 **Scope:**
-- After items 1–2 land, re-sweep sections 8.2–8.5: every example either compiles (and is added to `spec_examples_test.exs`) or carries an explicit "Planned" annotation
+- Ship `code`/`fix_hint`/`fix_code` in `Diagnostic.data`; advertise + handle `textDocument/codeAction` returning quickfixes
+- Phase 1: per-code edit mapping for the mechanical wins (missing-token inserts, missing-capability line, unused-declaration deletes)
+- Phase 2: extend `Skein.Error` with span + `edit_kind` so any exact fix applies generically (`skein mcp` inherits machine-applicable edits)
 
 **Acceptance criteria:**
-- Zero unannotated non-compiling examples in the spec
-- `spec_examples_test.exs` covers every compiling section-8 example
+- Lightbulb on a missing `:` applies it; missing-capability error inserts the `capability` line; W0002 removes the declaration; errors without an applicable fix produce no action
 
-**Depends on:** Items 1 and 2.
+**Depends on:** Nothing.
 
 ---
 
 ## Post-MVP Backlog
+
+**Issue:** [#78](https://github.com/kormie/Skein/issues/78) (tracking)
 
 Planned but not yet scoped or prioritized:
 
@@ -227,6 +385,11 @@ All of the following are done and tested:
 - Phases 1–7: full compilation pipeline (lexer, parser, analyzer, codegen)
 - Phase 8a–8f: test infrastructure, Ecto/SQLite storage, HTTP server (Bandit + Plug), canonical examples, queue/schedule handlers, LLM streaming
 - Phase 10: unified event store (+ optional persistent SQLite backend)
+- Cross-module `tool.call` end-to-end (v0.1.5): `implement` blocks compile to exported entry points, CLI registers tools at module load; tools are the only cross-module seam (E0016 rejects cross-module function calls)
+- Expression-position variant construction, call forms (v0.1.5): `Ok(x)`, `Err(e)`, `Event.Charge(n)`, `ErrName.from(cause)` — zero-field forms tracked in item 4
+- Prefix unary minus; targeted parser errors for known names missing their token (v0.1.5)
+- Agent context injection (v0.1.5): `skein new` scaffolds AGENTS.md, `skein agents` regenerates it, `skein mcp` serves spec lookup/docs search/compile checks over stdio
+- Two-phase `skein test` runner (compile + load all of src/ and test/, then run); `skein new` scaffolds co-located tests + a cross-module integration test
 - Type inference: field access through user-defined types, pattern bindings carry `Result`/variant inner types
 - Schema derivation: nested user types, enum `oneOf`, `Map[K, V]` `additionalProperties`, circular-reference safety
 - Production LLM backend: Anthropic Messages API (chat, json, stream) with retry and structured errors; current model IDs throughout
@@ -242,5 +405,6 @@ All of the following are done and tested:
 - LSP: completions, hover, diagnostics, semantic tokens, document symbols, go-to-definition (+ request/response integration tests)
 - CLI: new, build (`--output`), test, run, trace; structured errors for malformed flags
 - Distribution: Burrito binaries (Linux x86_64/ARM64, macOS x86_64/ARM64), GitHub Release automation on `v*` tags
+- Release automation (#100, PR #102): green version-bump merges to `main` auto-tag and release (no manual tag step), README badges, per-release docs snapshots incl. `llms*.txt`; superseded PR runs cancel, main/release builds never do
 - Docs site: Astro + Starlight at https://kormie.github.io/Skein/ with `llms.txt` endpoints
 - CI: format check, `--warnings-as-errors` compile, full test suite
