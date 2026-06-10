@@ -60,9 +60,11 @@ ANTHROPIC_API_KEY=sk-ant-... mise exec -- mix run examples/demo.exs
 
 [`market_research/`](market_research/) is the architectural reference: a module
 that declares tools and HTTP endpoints, plus an agent that is pure workflow
-logic calling those tools. It has [its own README](market_research/README.md)
-with the full design walkthrough. If you read only one example deeply, read
-this one.
+logic calling those tools. It ships in two equivalent shapes — two files
+(`service.skein` + `agent.skein`) and one file (`single_file.skein`, with the
+agent nested inside the module). It has
+[its own README](market_research/README.md) with the full design walkthrough.
+If you read only one example deeply, read this one.
 
 ## Live LLM demo
 

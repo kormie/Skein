@@ -283,6 +283,10 @@ defmodule Skein.Parser do
     parse_supervisor(tokens, file)
   end
 
+  defp parse_declaration([{:agent, _} | _] = tokens, file) do
+    parse_agent(tokens, file)
+  end
+
   defp parse_declaration([{token_type, {line, col}} | _], file) do
     {:error,
      [
@@ -290,7 +294,7 @@ defmodule Skein.Parser do
          code: "E0001",
          severity: :error,
          message:
-           "Unexpected token #{inspect(token_type)}, expected a declaration (fn, type, enum, capability, handler, tool, test, scenario, golden, supervisor)",
+           "Unexpected token #{inspect(token_type)}, expected a declaration (fn, type, enum, capability, handler, tool, test, scenario, golden, supervisor, agent)",
          location: %{file: file, line: line, col: col},
          fix_hint: "Add a valid declaration keyword",
          fix_code: "fn name() -> Type { ... }"

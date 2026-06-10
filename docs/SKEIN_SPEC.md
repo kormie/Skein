@@ -754,11 +754,12 @@ module BillingWorker {
 
 ### 8.4 Agent with LLM and Tools
 
-This example spans multiple top-level declarations: a module for types and tools,
-an agent for the refund workflow, and a supervisor for process management.
+The agent is nested inside the module. It shares the module's types
+(`RefundDecision`) and the module-level capabilities (`model`,
+`store.table`) apply to it in addition to its own (`memory.kv`). The agent
+compiles to its own BEAM module, `Skein.Agent.RefundService.RefundAgent`.
 
 ```
--- Types and tools for the refund service
 module RefundService {
   capability model("anthropic", "claude-opus-4-8")
   capability tool.use(Stripe.CreateRefund)
@@ -804,82 +805,80 @@ module RefundService {
     strategy: one_for_one
     max_restarts: 10 per 60s
   }
-}
-```
 
-```
--- The refund agent: processes refund requests through multiple phases
-agent RefundAgent {
-  capability model("claude-opus-4-8")
-  capability memory.kv("refund_sessions")
+  -- The refund agent: processes refund requests through multiple phases.
+  -- Module-level capabilities (model, store.table) apply here too.
+  agent RefundAgent {
+    capability memory.kv("refund_sessions")
 
-  state {
-    ticket_id: String
-    customer_id: String
-  }
+    state {
+      ticket_id: String
+      customer_id: String
+    }
 
-  enum Phase {
-    Analyze  -> [Refund, Done]
-    Refund   -> [Done, Failed]
-    Failed   -> [Analyze]
-    Done     -> []
-  }
+    enum Phase {
+      Analyze  -> [Refund, Done]
+      Refund   -> [Done, Failed]
+      Failed   -> [Analyze]
+      Done     -> []
+    }
 
-  on start(ticket_id: String, customer_id: String) -> {
-    memory.put("ticket_id", ticket_id)
-    memory.put("customer_id", customer_id)
-    transition(Phase.Analyze)
-  }
+    on start(ticket_id: String, customer_id: String) -> {
+      memory.put("ticket_id", ticket_id)
+      memory.put("customer_id", customer_id)
+      transition(Phase.Analyze)
+    }
 
-  on phase(Phase.Analyze) -> {
-    let ticket_id = memory.get!("ticket_id")
-    let ticket = store.tickets.get!(ticket_id)
+    on phase(Phase.Analyze) -> {
+      let ticket_id = memory.get!("ticket_id")
+      let ticket = store.tickets.get!(ticket_id)
 
-    let decision = llm.json[RefundDecision](
-      model: "claude-opus-4-8",
-      system: "Decide if this ticket warrants a refund. Return JSON.",
-      input: ticket
-    )
+      let decision = llm.json[RefundDecision](
+        model: "claude-opus-4-8",
+        system: "Decide if this ticket warrants a refund. Return JSON.",
+        input: ticket
+      )
 
-    match decision {
-      Ok(d) -> {
-        memory.put("decision", d)
-        match d.action {
-          "approve" -> transition(Phase.Refund)
-          "deny"    -> transition(Phase.Done)
+      match decision {
+        Ok(d) -> {
+          memory.put("decision", d)
+          match d.action {
+            "approve" -> transition(Phase.Refund)
+            "deny"    -> transition(Phase.Done)
+          }
+        }
+        Err(e) -> {
+          emit AnalysisError { ticket_id: ticket_id }
+          transition(Phase.Failed)
         }
       }
-      Err(e) -> {
-        emit AnalysisError { ticket_id: ticket_id }
-        transition(Phase.Failed)
+    }
+
+    on phase(Phase.Refund) -> {
+      let d = memory.get!("decision")
+      let customer_id = memory.get!("customer_id")
+      let result = tool.call(Stripe.CreateRefund, {
+        customer_id: customer_id,
+        amount: d.amount
+      })
+
+      match result {
+        Ok(refund) -> {
+          let tid = memory.get!("ticket_id")
+          emit RefundIssued { ticket_id: tid, refund_id: refund.id }
+          transition(Phase.Done)
+        }
+        Err(e) -> {
+          let tid = memory.get!("ticket_id")
+          emit RefundFailed { ticket_id: tid }
+          transition(Phase.Failed)
+        }
       }
     }
-  }
 
-  on phase(Phase.Refund) -> {
-    let d = memory.get!("decision")
-    let customer_id = memory.get!("customer_id")
-    let result = tool.call(Stripe.CreateRefund, {
-      customer_id: customer_id,
-      amount: d.amount
-    })
-
-    match result {
-      Ok(refund) -> {
-        let tid = memory.get!("ticket_id")
-        emit RefundIssued { ticket_id: tid, refund_id: refund.id }
-        transition(Phase.Done)
-      }
-      Err(e) -> {
-        let tid = memory.get!("ticket_id")
-        emit RefundFailed { ticket_id: tid }
-        transition(Phase.Failed)
-      }
+    on phase(Phase.Failed) -> {
+      suspend("Requires human review")
     }
-  }
-
-  on phase(Phase.Failed) -> {
-    suspend("Requires human review")
   }
 }
 ```

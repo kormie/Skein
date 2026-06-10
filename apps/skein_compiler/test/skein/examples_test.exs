@@ -773,6 +773,44 @@ defmodule Skein.ExamplesTest do
   end
 
   # ------------------------------------------------------------------
+  # market_research/single_file.skein — same example, nested-agent shape
+  # ------------------------------------------------------------------
+
+  describe "market_research/single_file.skein" do
+    test "compiles the module and the nested agent" do
+      assert {:module, mod} =
+               Compiler.compile_file(
+                 Path.join(project_root(), "examples/market_research/single_file.skein")
+               )
+
+      assert mod == Skein.User.MarketResearch
+      assert Code.ensure_loaded?(Skein.Agent.MarketResearch.MarketResearchAgent)
+    end
+
+    test "module keeps its tools, handlers, and supervisor" do
+      {:module, mod} =
+        Compiler.compile_file(
+          Path.join(project_root(), "examples/market_research/single_file.skein")
+        )
+
+      assert length(mod.__tools__()) == 3
+      assert length(mod.__handlers__()) == 3
+      assert length(mod.__supervisors__()) >= 1
+    end
+
+    test "nested agent has the same phase machine as the two-file version" do
+      {:module, _mod} =
+        Compiler.compile_file(
+          Path.join(project_root(), "examples/market_research/single_file.skein")
+        )
+
+      agent_mod = Skein.Agent.MarketResearch.MarketResearchAgent
+      phase_names = agent_mod.__phases__() |> Enum.map(& &1.name) |> Enum.sort()
+      assert phase_names == [:analyzing, :briefing, :complete, :gathering, :reporting]
+    end
+  end
+
+  # ------------------------------------------------------------------
   # market_research — end-to-end cross-module tool.call
   # ------------------------------------------------------------------
 

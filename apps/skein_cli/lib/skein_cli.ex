@@ -312,17 +312,24 @@ defmodule Skein.CLI do
       skein_files
       |> Enum.reduce({[], [], []}, fn file, {mods, beams, fails} ->
         case Compiler.compile_to_binary(file) do
-          {:ok, module_name, beam_binary} ->
-            # Write .beam file to output directory
-            beam_filename = "#{module_name}.beam"
-            beam_path = Path.join(output_dir, beam_filename)
-            File.write!(beam_path, beam_binary)
+          {:ok, compiled_modules} ->
+            # Write one .beam per generated module — a source file with
+            # nested agents produces several
+            {new_mods, new_beams} =
+              compiled_modules
+              |> Enum.map(fn {module_name, beam_binary} ->
+                beam_path = Path.join(output_dir, "#{module_name}.beam")
+                File.write!(beam_path, beam_binary)
 
-            # Also load into VM for immediate use
-            :code.load_binary(module_name, ~c"#{beam_path}", beam_binary)
-            register_tools(module_name)
+                # Also load into VM for immediate use
+                :code.load_binary(module_name, ~c"#{beam_path}", beam_binary)
+                register_tools(module_name)
 
-            {[module_name | mods], [beam_path | beams], fails}
+                {module_name, beam_path}
+              end)
+              |> Enum.unzip()
+
+            {Enum.reverse(new_mods) ++ mods, Enum.reverse(new_beams) ++ beams, fails}
 
           {:error, errors} ->
             {mods, beams, [%{file: file, errors: errors} | fails]}

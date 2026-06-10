@@ -49,10 +49,15 @@ defmodule Skein.CodeGen.CoreErlang do
 
   @stdlib_module_names Map.keys(@stdlib_modules)
 
-  @spec generate(AST.Module.t() | AST.Agent.t()) :: {:ok, binary()} | {:error, [Error.t()]}
+  @spec generate(AST.Module.t() | AST.Agent.t()) ::
+          {:ok, [{module(), binary()}]} | {:error, [Error.t()]}
   def generate(%AST.Agent{} = ast) do
     reset_var_counter()
-    generate_agent(ast)
+
+    case generate_agent(ast) do
+      {:ok, named_binary} -> {:ok, [named_binary]}
+      {:error, _} = error -> error
+    end
   end
 
   def generate(%AST.Module{} = ast) do
@@ -218,6 +223,40 @@ defmodule Skein.CodeGen.CoreErlang do
         all_defs
       )
 
+    with {:ok, beam_binary} <- compile_core_forms(mod, ast.meta),
+         {:ok, agent_modules} <- generate_nested_agents(ast, capabilities, type_decls) do
+      {:ok, [{module_atom, beam_binary} | agent_modules]}
+    end
+  end
+
+  # Agents nested inside a module compile to their own BEAM modules,
+  # namespaced under the parent (Skein.Agent.<Module>.<Agent>). They see
+  # the module's type declarations (for llm.json[T] schema resolution)
+  # and its capabilities in addition to their own.
+  defp generate_nested_agents(
+         %AST.Module{name: module_name, declarations: declarations},
+         module_capabilities,
+         type_decls
+       ) do
+    declarations
+    |> Enum.filter(&match?(%AST.Agent{}, &1))
+    |> Enum.reduce_while({:ok, []}, fn agent, {:ok, acc} ->
+      reset_var_counter()
+
+      opts = [
+        namespace: module_name,
+        capabilities: agent.capabilities ++ module_capabilities,
+        type_decls: type_decls
+      ]
+
+      case generate_agent(agent, opts) do
+        {:ok, named_binary} -> {:cont, {:ok, acc ++ [named_binary]}}
+        {:error, _} = error -> {:halt, error}
+      end
+    end)
+  end
+
+  defp compile_core_forms(mod, meta) do
     case :compile.forms(mod, [:from_core, :binary, :return_errors]) do
       {:ok, _, beam_binary} ->
         {:ok, beam_binary}
@@ -232,7 +271,7 @@ defmodule Skein.CodeGen.CoreErlang do
              code: "E0001",
              severity: :error,
              message: "Core Erlang compilation failed: #{inspect(errors)}",
-             location: %{file: ast.meta.file, line: 1, col: 1}
+             location: %{file: meta.file, line: 1, col: 1}
            }
          ]}
     end
@@ -242,10 +281,17 @@ defmodule Skein.CodeGen.CoreErlang do
   # Agent generation
   # ------------------------------------------------------------------
 
-  defp generate_agent(%AST.Agent{} = ast) do
-    module_atom = String.to_atom("Elixir.Skein.Agent.#{ast.name}")
+  defp generate_agent(%AST.Agent{} = ast, opts \\ []) do
+    module_atom =
+      case Keyword.get(opts, :namespace) do
+        nil -> String.to_atom("Elixir.Skein.Agent.#{ast.name}")
+        namespace -> String.to_atom("Elixir.Skein.Agent.#{namespace}.#{ast.name}")
+      end
 
-    capabilities = ast.capabilities
+    # Nested agents see the enclosing module's capabilities and type
+    # declarations in addition to their own.
+    capabilities = Keyword.get(opts, :capabilities, ast.capabilities)
+    type_decls = Keyword.get(opts, :type_decls, %{})
 
     # Build function name -> arity map for local call resolution
     fn_arities =
@@ -276,11 +322,13 @@ defmodule Skein.CodeGen.CoreErlang do
     start_handler_fname = :cerl.c_fname(:__start_handler__, 2)
 
     start_handler_fun =
-      generate_start_handler_fn(start_handler, capabilities, fn_arities, ast.state)
+      generate_start_handler_fn(start_handler, capabilities, fn_arities, ast.state, type_decls)
 
     # Generate __phase_handler__/3 — dispatches to phase-specific handlers
     phase_handler_fname = :cerl.c_fname(:__phase_handler__, 3)
-    phase_handler_fun = generate_phase_handler_fn(phase_handlers, capabilities, fn_arities)
+
+    phase_handler_fun =
+      generate_phase_handler_fn(phase_handlers, capabilities, fn_arities, type_decls)
 
     # Generate user functions
     fn_exports =
@@ -289,7 +337,7 @@ defmodule Skein.CodeGen.CoreErlang do
     fn_defs =
       Enum.map(ast.fns, fn f ->
         fname = :cerl.c_fname(String.to_atom(f.name), length(f.params))
-        fun = generate_fn(f, capabilities, fn_arities)
+        fun = generate_fn(f, capabilities, fn_arities, type_decls)
         {fname, fun}
       end)
 
@@ -319,23 +367,9 @@ defmodule Skein.CodeGen.CoreErlang do
         all_defs
       )
 
-    case :compile.forms(mod, [:from_core, :binary, :return_errors]) do
-      {:ok, _, beam_binary} ->
-        {:ok, beam_binary}
-
-      {:ok, _, beam_binary, _warnings} ->
-        {:ok, beam_binary}
-
-      {:error, errors, _warnings} ->
-        {:error,
-         [
-           %Error{
-             code: "E0001",
-             severity: :error,
-             message: "Core Erlang compilation failed: #{inspect(errors)}",
-             location: %{file: ast.meta.file, line: 1, col: 1}
-           }
-         ]}
+    case compile_core_forms(mod, ast.meta) do
+      {:ok, beam_binary} -> {:ok, {module_atom, beam_binary}}
+      {:error, _} = error -> error
     end
   end
 
@@ -419,7 +453,7 @@ defmodule Skein.CodeGen.CoreErlang do
     :cerl.c_fun([args_var], body)
   end
 
-  defp generate_start_handler_fn(nil, _capabilities, _fn_arities, _state_fields) do
+  defp generate_start_handler_fn(nil, _capabilities, _fn_arities, _state_fields, _type_decls) do
     # No start handler defined — just return keep
     args_var = :cerl.c_var(:_Args)
     state_var = :cerl.c_var(:_State)
@@ -431,7 +465,8 @@ defmodule Skein.CodeGen.CoreErlang do
          %AST.AgentHandler{params: params, body: body},
          capabilities,
          fn_arities,
-         state_fields
+         state_fields,
+         type_decls
        ) do
     args_var = :cerl.c_var(:ArgsMap)
     state_var = :cerl.c_var(:StateMap)
@@ -442,6 +477,7 @@ defmodule Skein.CodeGen.CoreErlang do
       %{}
       |> Map.put(:__capabilities__, capabilities)
       |> Map.put(:__fn_arities__, fn_arities)
+      |> Map.put(:__type_decls__, type_decls)
       |> Map.put(:__agent_context__, true)
       |> Map.put(:__state_var__, :StateMap)
       |> Map.put(:__state_fields__, Enum.map(state_fields, & &1.name))
@@ -477,7 +513,7 @@ defmodule Skein.CodeGen.CoreErlang do
     :cerl.c_fun([args_var, state_var], wrapped)
   end
 
-  defp generate_phase_handler_fn(phase_handlers, capabilities, fn_arities) do
+  defp generate_phase_handler_fn(phase_handlers, capabilities, fn_arities, type_decls) do
     phase_var = :cerl.c_var(:Phase)
     state_var = :cerl.c_var(:StateMap)
     events_var = :cerl.c_var(:Events)
@@ -489,6 +525,7 @@ defmodule Skein.CodeGen.CoreErlang do
           %{}
           |> Map.put(:__capabilities__, capabilities)
           |> Map.put(:__fn_arities__, fn_arities)
+          |> Map.put(:__type_decls__, type_decls)
           |> Map.put(:__agent_context__, true)
           |> Map.put(:__state_var__, :StateMap)
           |> Map.put(:__events_var__, :Events)
@@ -770,8 +807,6 @@ defmodule Skein.CodeGen.CoreErlang do
   # ------------------------------------------------------------------
   # Function generation
   # ------------------------------------------------------------------
-
-  defp generate_fn(fn_decl, capabilities, fn_arities, type_decls \\ %{})
 
   defp generate_fn(%AST.Fn{params: params, body: body}, capabilities, fn_arities, type_decls) do
     # Create variable bindings for params

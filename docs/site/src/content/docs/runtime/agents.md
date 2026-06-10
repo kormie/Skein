@@ -85,6 +85,30 @@ An agent named `RefundBot` compiles to `Elixir.Skein.Agent.RefundBot` with these
 | `__start_handler__/2` | Execute the `on start(params)` handler |
 | `__phase_handler__/3` | Execute phase-specific handlers, dispatched by phase atom |
 
+### Nesting Inside Modules
+
+Agents can be declared inside a module (the spec section 8.4 shape):
+
+```skein
+module RefundService {
+  capability model("anthropic", "claude-opus-4-8")
+
+  type RefundDecision { action: String }
+
+  agent RefundAgent {
+    capability memory.kv("refund_sessions")
+    -- ...
+  }
+}
+```
+
+A nested agent compiles to its own BEAM module namespaced under the parent
+(`Skein.Agent.RefundService.RefundAgent`) alongside the module's
+(`Skein.User.RefundService`). It sees the module's `type` declarations (so
+`llm.json[RefundDecision]` works in handlers) and the module's capabilities
+apply to it in addition to its own. Top-level agents (one per file) work
+unchanged — `examples/market_research/` ships both shapes.
+
 ### Transition Validation (E0040)
 
 The analyzer checks transition validity at compile time. Given the Phase enum:

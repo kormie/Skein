@@ -18,9 +18,8 @@ defmodule Skein.Compiler do
          {:ok, tokens} <- tag_errors(Lexer.tokenize(source), path),
          {:ok, ast} <- Parser.parse(tokens, path),
          {:ok, annotated_ast} <- normalize_analyze(Analyzer.analyze(ast, source_text: source)),
-         {:ok, beam_binary} <- CoreErlang.generate(annotated_ast) do
-      module_name = module_name_from_ast(annotated_ast)
-      :code.load_binary(module_name, ~c"#{path}", beam_binary)
+         {:ok, modules} <- CoreErlang.generate(annotated_ast) do
+      load_modules(modules, ~c"#{path}")
     end
   end
 
@@ -29,28 +28,38 @@ defmodule Skein.Compiler do
     with {:ok, tokens} <- Lexer.tokenize(source),
          {:ok, ast} <- Parser.parse(tokens),
          {:ok, annotated_ast} <- normalize_analyze(Analyzer.analyze(ast, source_text: source)),
-         {:ok, beam_binary} <- CoreErlang.generate(annotated_ast) do
-      module_name = module_name_from_ast(annotated_ast)
-      :code.load_binary(module_name, ~c"nofile", beam_binary)
+         {:ok, modules} <- CoreErlang.generate(annotated_ast) do
+      load_modules(modules, ~c"nofile")
     end
   end
 
   @doc """
-  Compiles a .skein file and returns the module name and BEAM binary
-  without loading it into the VM. Used by `skein build --output` to
-  write .beam files to disk.
+  Compiles a .skein file and returns the named BEAM binaries without
+  loading them into the VM. Used by `skein build --output` to write
+  .beam files to disk. The primary module is first; agents nested in
+  the module follow.
   """
   @spec compile_to_binary(String.t()) ::
-          {:ok, module(), binary()} | {:error, [Skein.Error.t()] | String.t()}
+          {:ok, [{module(), binary()}]} | {:error, [Skein.Error.t()] | String.t()}
   def compile_to_binary(path) do
     with {:ok, source} <- read_source(path),
          {:ok, tokens} <- tag_errors(Lexer.tokenize(source), path),
          {:ok, ast} <- Parser.parse(tokens, path),
          {:ok, annotated_ast} <- normalize_analyze(Analyzer.analyze(ast, source_text: source)),
-         {:ok, beam_binary} <- CoreErlang.generate(annotated_ast) do
-      module_name = module_name_from_ast(annotated_ast)
-      {:ok, module_name, beam_binary}
+         {:ok, modules} <- CoreErlang.generate(annotated_ast) do
+      {:ok, modules}
     end
+  end
+
+  # Load every generated module (primary first, then nested agents) and
+  # return the primary in the classic {:module, name} shape.
+  defp load_modules([{primary_name, _} | _] = modules, source_id) do
+    Enum.reduce_while(modules, {:module, primary_name}, fn {name, binary}, acc ->
+      case :code.load_binary(name, source_id, binary) do
+        {:module, _} -> {:cont, acc}
+        {:error, reason} -> {:halt, {:error, "Failed to load #{name}: #{inspect(reason)}"}}
+      end
+    end)
   end
 
   # Normalize analyzer results: {:ok, ast, warnings} -> {:ok, ast}
@@ -81,12 +90,4 @@ defmodule Skein.Compiler do
   end
 
   defp tag_errors(other, _path), do: other
-
-  defp module_name_from_ast(%Skein.AST.Module{name: name}),
-    do: String.to_atom("Elixir.Skein.User.#{name}")
-
-  defp module_name_from_ast(%Skein.AST.Agent{name: name}),
-    do: String.to_atom("Elixir.Skein.Agent.#{name}")
-
-  defp module_name_from_ast(_), do: :skein_unknown
 end
