@@ -1,4 +1,9 @@
 defmodule Skein.Runtime.EventLogPropertyTest do
+  @moduledoc """
+  Back-compat property coverage for the deprecated `Skein.Runtime.EventLog`
+  facade. Retained intentionally until the facade is removed; new property
+  tests belong in `event_store_property_test.exs`.
+  """
   use ExUnit.Case, async: false
   use ExUnitProperties
 

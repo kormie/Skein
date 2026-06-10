@@ -104,7 +104,12 @@ defmodule Skein.Runtime.Http do
         other -> other
       end
 
-    case :httpc.request(http_method, request, [{:timeout, 30_000}], []) do
+    case :httpc.request(
+           http_method,
+           request,
+           [{:timeout, 30_000}, {:connect_timeout, 10_000}],
+           []
+         ) do
       {:ok, {{_version, status, _reason}, _headers, response_body}} ->
         body_string = List.to_string(response_body)
 

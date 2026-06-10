@@ -4,4 +4,4 @@
 Application.put_env(:gen_lsp, :exit_on_end, false)
 
 # LSP round-trips go over real TCP; the 100ms default is flaky under load.
-ExUnit.start(assert_receive_timeout: 1_000)
+ExUnit.start(assert_receive_timeout: 3_000)

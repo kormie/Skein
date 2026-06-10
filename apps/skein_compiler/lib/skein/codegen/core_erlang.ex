@@ -51,10 +51,12 @@ defmodule Skein.CodeGen.CoreErlang do
 
   @spec generate(AST.Module.t() | AST.Agent.t()) :: {:ok, binary()} | {:error, [Error.t()]}
   def generate(%AST.Agent{} = ast) do
+    reset_var_counter()
     generate_agent(ast)
   end
 
   def generate(%AST.Module{} = ast) do
+    reset_var_counter()
     module_atom = String.to_atom("Elixir.Skein.User.#{ast.name}")
 
     # Extract capabilities for embedding in the module
@@ -2125,11 +2127,23 @@ defmodule Skein.CodeGen.CoreErlang do
     |> String.to_atom()
   end
 
-  # Generate a unique variable name to avoid conflicts
+  # Generate a unique variable name to avoid conflicts.
+  #
+  # The counter lives in the process dictionary because threading it through
+  # every generate_* function would touch dozens of signatures. It is reset
+  # at each generate/1 entry point so state never leaks between compilations
+  # and generated names stay deterministic per module. Uniqueness only needs
+  # to hold within a single compilation, and a process runs one compilation
+  # at a time.
   defp gen_var do
     counter = Process.get(:skein_var_counter, 0)
     Process.put(:skein_var_counter, counter + 1)
     String.to_atom("_skein_#{counter}")
+  end
+
+  defp reset_var_counter do
+    Process.put(:skein_var_counter, 0)
+    :ok
   end
 
   # ------------------------------------------------------------------

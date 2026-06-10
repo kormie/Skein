@@ -274,6 +274,13 @@ defmodule Skein.LexerTest do
       assert {:ok, [{:eof, _}]} = Lexer.tokenize("-- just a comment")
     end
 
+    test "eof column is correct after a trailing comment" do
+      source = "let x = 1 -- note"
+      assert {:ok, tokens} = Lexer.tokenize(source)
+      assert {:eof, {1, col}} = List.last(tokens)
+      assert col == String.length(source) + 1
+    end
+
     test "handles comment followed by code on next line" do
       source = "-- comment\nlet x = 1"
       assert {:ok, tokens} = Lexer.tokenize(source)

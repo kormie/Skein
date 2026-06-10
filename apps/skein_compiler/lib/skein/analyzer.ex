@@ -498,6 +498,7 @@ defmodule Skein.Analyzer do
   # ------------------------------------------------------------------
 
   @doc false
+  @spec resolve_type(AST.TypeRef.t() | nil, map()) :: atom() | tuple()
   def resolve_type(%AST.TypeRef{name: name, params: []}, _types) do
     case Map.get(@builtin_types, name) do
       nil -> {:user_type, name}

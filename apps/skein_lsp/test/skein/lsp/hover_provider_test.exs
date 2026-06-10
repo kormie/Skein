@@ -65,7 +65,7 @@ defmodule Skein.Lsp.HoverProviderTest do
 
       # May return nil or a result for closing brace — either is fine
       if hover do
-        assert hover.contents != nil
+        assert %GenLSP.Structures.MarkupContent{} = hover.contents
       end
     end
 

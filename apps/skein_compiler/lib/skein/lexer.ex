@@ -67,10 +67,11 @@ defmodule Skein.Lexer do
   end
 
   # Comments: -- to end of line
-  defp do_tokenize(<<"--", rest::binary>>, line, _col, acc) do
-    rest = skip_to_eol(rest)
-    # After skipping the comment content, the newline handler or EOF will handle position
-    do_tokenize(rest, line, column_after_comment(rest, line), acc)
+  defp do_tokenize(<<"--", rest::binary>>, line, col, acc) do
+    {rest, skipped} = skip_to_eol(rest, 0)
+    # The newline handler resets the position; tracking the skipped width
+    # keeps the :eof column correct when a comment ends the file.
+    do_tokenize(rest, line, col + 2 + skipped, acc)
   end
 
   # String literals
@@ -429,18 +430,11 @@ defmodule Skein.Lexer do
 
   # --- Comment handling ---
 
-  defp skip_to_eol(<<"\n", _rest::binary>> = source), do: source
-  defp skip_to_eol(<<"\r\n", _rest::binary>> = source), do: source
-  defp skip_to_eol(<<"\r", _rest::binary>> = source), do: source
-  defp skip_to_eol(<<>>), do: <<>>
-  defp skip_to_eol(<<_, rest::binary>>), do: skip_to_eol(rest)
-
-  # After a comment, we're at either a newline or EOF
-  # The newline/EOF handlers will set position correctly, so we just need
-  # to figure out where we are for tracking purposes
-  defp column_after_comment(<<"\n", _::binary>>, _line), do: 1
-  defp column_after_comment(<<"\r\n", _::binary>>, _line), do: 1
-  defp column_after_comment(<<"\r", _::binary>>, _line), do: 1
-  defp column_after_comment(<<>>, _line), do: 1
-  defp column_after_comment(_, _line), do: 1
+  # Skips to end of line, counting the characters consumed so the caller
+  # can keep column tracking accurate.
+  defp skip_to_eol(<<"\n", _rest::binary>> = source, count), do: {source, count}
+  defp skip_to_eol(<<"\r\n", _rest::binary>> = source, count), do: {source, count}
+  defp skip_to_eol(<<"\r", _rest::binary>> = source, count), do: {source, count}
+  defp skip_to_eol(<<>>, count), do: {<<>>, count}
+  defp skip_to_eol(<<_::utf8, rest::binary>>, count), do: skip_to_eol(rest, count + 1)
 end
