@@ -268,11 +268,13 @@ defmodule Skein.Analyzer do
 
   # Environment tracks types, functions, variables, and capabilities in scope
   @type env :: %{
+          module_name: String.t() | nil,
           types: %{String.t() => :builtin | AST.TypeDecl.t()},
           enums: %{String.t() => AST.EnumDecl.t()},
           functions: %{String.t() => %{params: [AST.Field.t()], return_type: skein_type}},
           variables: %{String.t() => skein_type},
           capabilities: [AST.Capability.t()],
+          tool_error_names: [String.t()],
           current_fn_return_type: skein_type | nil,
           file: String.t()
         }
@@ -436,7 +438,7 @@ defmodule Skein.Analyzer do
   # Environment construction
   # ------------------------------------------------------------------
 
-  defp build_initial_env(%AST.Module{declarations: declarations, meta: meta}) do
+  defp build_initial_env(%AST.Module{name: module_name, declarations: declarations, meta: meta}) do
     file = Map.get(meta, :file, "unknown")
 
     # Register all built-in types
@@ -482,12 +484,21 @@ defmodule Skein.Analyzer do
       declarations
       |> Enum.filter(&match?(%AST.Capability{}, &1))
 
+    # Error type names declared in tool `errors { ... }` blocks — these are
+    # referenced as `ErrorName.from(e)` and are not module references
+    tool_error_names =
+      declarations
+      |> Enum.filter(&match?(%AST.ToolDecl{}, &1))
+      |> Enum.flat_map(& &1.errors)
+
     %{
+      module_name: module_name,
       types: types,
       enums: enums,
       functions: functions,
       variables: %{},
       capabilities: capabilities,
+      tool_error_names: tool_error_names,
       current_fn_return_type: nil,
       file: file
     }
@@ -1323,6 +1334,19 @@ defmodule Skein.Analyzer do
             {fn_info.return_type, args_errors ++ arity_errors ++ type_errors}
         end
 
+      # Qualified call with a non-stdlib UpperIdent head: Module.fn(args).
+      # Functions are module-private (spec section 3.1) — tools are the only
+      # cross-module seam — so this is a structured E0016, never a silent
+      # fallthrough. Local enum/type names and tool error names are exempt:
+      # they are not module references.
+      %AST.FieldAccess{subject: %AST.Identifier{name: mod_name}, field: fn_name} ->
+        if cross_module_call_head?(mod_name, env) do
+          {:unknown,
+           args_errors ++ [cross_module_call_error(mod_name, fn_name, length(args), meta, env)]}
+        else
+          {:unknown, args_errors}
+        end
+
       _ ->
         # Unknown function call — can't infer type
         {:unknown, args_errors}
@@ -2054,6 +2078,7 @@ defmodule Skein.Analyzer do
   # ------------------------------------------------------------------
 
   defp build_agent_env(%AST.Agent{
+         name: agent_name,
          capabilities: capabilities,
          state: state,
          phases: phases,
@@ -2100,11 +2125,13 @@ defmodule Skein.Analyzer do
       |> Map.new()
 
     %{
+      module_name: agent_name,
       types: types,
       enums: enums,
       functions: functions,
       variables: variables,
       capabilities: capabilities,
+      tool_error_names: [],
       current_fn_return_type: nil,
       file: file
     }
@@ -2805,6 +2832,54 @@ defmodule Skein.Analyzer do
   defp call_skeleton(name, arity) when arity > 0 do
     args = Enum.map_join(1..arity, ", ", &"arg#{&1}")
     "#{name}(#{args})"
+  end
+
+  # A call head like `Foo.bar(...)` refers to another module when `Foo` is an
+  # uppercase identifier that is neither a stdlib module nor a locally known
+  # name: declared types and enums (variant constructors such as
+  # `Status.Banned("spam")`) and tool error types (`SearchError.from(e)`) are
+  # not module references.
+  defp cross_module_call_head?(mod_name, env) do
+    String.match?(mod_name, ~r/^[A-Z]/) and
+      mod_name not in @stdlib_modules and
+      not Map.has_key?(env.types, mod_name) and
+      mod_name not in env.tool_error_names
+  end
+
+  defp cross_module_call_error(mod_name, fn_name, arity, meta, env) do
+    if mod_name == env.module_name do
+      %Error{
+        code: "E0016",
+        severity: :error,
+        message:
+          "Module-qualified call '#{mod_name}.#{fn_name}' inside module '#{mod_name}': functions are called unqualified",
+        location: location_from_meta(meta, env.file),
+        fix_hint:
+          "Call '#{fn_name}' directly without the module prefix; qualified calls are reserved for stdlib modules",
+        fix_code: call_skeleton(fn_name, arity)
+      }
+    else
+      tool_name = "#{mod_name}.#{camelize_fn_name(fn_name)}"
+
+      %Error{
+        code: "E0016",
+        severity: :error,
+        message:
+          "Cross-module function call '#{mod_name}.#{fn_name}': functions are module-private",
+        location: location_from_meta(meta, env.file),
+        fix_hint:
+          "Functions are module-private; expose a tool in '#{mod_name}' and call it with tool.call",
+        fix_code:
+          "capability tool.use(#{tool_name})\n\nlet result = tool.call(#{tool_name}, { ... })"
+      }
+    end
+  end
+
+  # "fetch_data" -> "FetchData"
+  defp camelize_fn_name(fn_name) do
+    fn_name
+    |> String.split("_")
+    |> Enum.map_join(&String.capitalize/1)
   end
 
   # Picks the candidate closest to the given name, used as fix_code for
