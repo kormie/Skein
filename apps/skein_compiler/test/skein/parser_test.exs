@@ -2447,7 +2447,12 @@ defmodule Skein.ParserTest do
 
       assert {:ok, %AST.Module{declarations: [f]}} = parse(source)
       assert %AST.Block{expressions: [%AST.MapLit{entries: entries}]} = f.body
-      assert [{"name", %AST.StringLit{}}, {"age", %AST.IntLit{value: 30}}, {"active", %AST.BoolLit{value: true}}] = entries
+
+      assert [
+               {"name", %AST.StringLit{}},
+               {"age", %AST.IntLit{value: 30}},
+               {"active", %AST.BoolLit{value: true}}
+             ] = entries
     end
 
     test "parses map literal with expression values" do
@@ -2474,7 +2479,14 @@ defmodule Skein.ParserTest do
       """
 
       assert {:ok, %AST.Module{declarations: [f]}} = parse(source)
-      assert %AST.Block{expressions: [%AST.MapLit{entries: [{"user", %AST.MapLit{entries: [{"name", %AST.StringLit{}}]}}]}]} = f.body
+
+      assert %AST.Block{
+               expressions: [
+                 %AST.MapLit{
+                   entries: [{"user", %AST.MapLit{entries: [{"name", %AST.StringLit{}}]}}]
+                 }
+               ]
+             } = f.body
     end
 
     test "map literal preserves source location" do
@@ -2518,7 +2530,9 @@ defmodule Skein.ParserTest do
       """
 
       assert {:ok, %AST.Module{declarations: [f]}} = parse(source)
-      assert %AST.Block{expressions: [%AST.Let{name: "input"}, %AST.Identifier{name: "input"}]} = f.body
+
+      assert %AST.Block{expressions: [%AST.Let{name: "input"}, %AST.Identifier{name: "input"}]} =
+               f.body
     end
 
     test "state can be used as a variable name" do
@@ -2532,7 +2546,9 @@ defmodule Skein.ParserTest do
       """
 
       assert {:ok, %AST.Module{declarations: [f]}} = parse(source)
-      assert %AST.Block{expressions: [%AST.Let{name: "state"}, %AST.Identifier{name: "state"}]} = f.body
+
+      assert %AST.Block{expressions: [%AST.Let{name: "state"}, %AST.Identifier{name: "state"}]} =
+               f.body
     end
 
     test "output can be used as a variable name" do
@@ -2546,7 +2562,9 @@ defmodule Skein.ParserTest do
       """
 
       assert {:ok, %AST.Module{declarations: [f]}} = parse(source)
-      assert %AST.Block{expressions: [%AST.Let{name: "output"}, %AST.Identifier{name: "output"}]} = f.body
+
+      assert %AST.Block{expressions: [%AST.Let{name: "output"}, %AST.Identifier{name: "output"}]} =
+               f.body
     end
 
     test "input still works as keyword in tool declarations" do
@@ -2569,6 +2587,60 @@ defmodule Skein.ParserTest do
 
       assert {:ok, %AST.Module{declarations: [tool]}} = parse(source)
       assert %AST.ToolDecl{input: [%AST.Field{name: "name"}]} = tool
+    end
+  end
+
+  describe "structured error contract — fix_code" do
+    # CLAUDE.md design constraint #5: every compiler error carries fix_hint
+    # AND fix_code so agents can apply fixes mechanically.
+
+    test "expect/3 'expected token' errors include insertable fix_code" do
+      # Missing closing brace on the module
+      assert {:error, [error]} = parse("module M { fn f() -> Int { 1 }")
+      assert error.fix_hint != nil
+      assert error.fix_code == "}"
+    end
+
+    test "missing arrow in function declaration includes fix_code" do
+      assert {:error, [error]} = parse("module M { fn f() Int { 1 } }")
+      assert error.fix_code == "->"
+    end
+
+    test "unexpected declaration token includes fix_code" do
+      assert {:error, [error]} = parse("module M { 42 }")
+      assert error.code == "E0001"
+      assert error.fix_code != nil
+    end
+
+    test "unknown handler source includes fix_code" do
+      assert {:error, [error]} =
+               parse("module M { handler smoke \"/x\" (req) -> { 1 } }")
+
+      assert error.fix_code != nil
+    end
+
+    test "tool missing input block includes fix_code" do
+      source = """
+      module M {
+        tool T {
+          description: "x"
+          output { result: String }
+          implement { "done" }
+        }
+      }
+      """
+
+      assert {:error, [error]} = parse(source)
+      assert error.message =~ "input"
+      assert error.fix_code == "input { field: Type }"
+    end
+
+    test "unexpected_token_error descriptions derive code snippets" do
+      # Missing route string after the HTTP method
+      assert {:error, [error]} =
+               parse("module M { handler http GET (req) -> { 1 } }")
+
+      assert error.fix_code == "\"/path\""
     end
   end
 end

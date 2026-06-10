@@ -241,7 +241,8 @@ defmodule Skein.Lexer do
          severity: :error,
          message: "Unexpected character: #{<<c::utf8>>}",
          location: %{file: "unknown", line: line, col: col},
-         fix_hint: "Remove or replace this character"
+         fix_hint: "Remove or replace this character",
+         fix_code: ""
        }
      ]}
   end
