@@ -19,6 +19,10 @@ First-run UX release: fixes for the CLI paper cuts hit in real first-use session
 
 - **Targeted hints for habits from other languages** — `;` explains that Skein has no semicolons; `return` explains that a function returns the value of its last expression.
 
+### CI
+
+- **Lighter PR binary builds** — pull requests build only the native Linux target (release-assembly smoke test) and skip artifact uploads; docs-only PRs skip the job entirely. The full four-target matrix still runs on `main` pushes and `v*` tags.
+
 ### VS Code Extension (0.1.1)
 
 - **Command palette entries actually appear** — `Skein: Restart Language Server` and `Skein: Show Language Server Output` were registered but never declared in the manifest. They also work (with a warning) when the server is disabled.
