@@ -642,7 +642,8 @@ defmodule Skein.Analyzer do
               message:
                 "Invalid supervisor strategy '#{inspect(strategy)}', expected one_for_one, one_for_all, or rest_for_one",
               location: location_from_meta(sup.meta, env.file),
-              fix_hint: "Use one of: one_for_one, one_for_all, rest_for_one"
+              fix_hint: "Use one of: one_for_one, one_for_all, rest_for_one",
+              fix_code: "strategy: one_for_one"
             }
           ]
       end
@@ -664,7 +665,8 @@ defmodule Skein.Analyzer do
               message:
                 "Invalid max_restarts value, expected positive integers for count and period",
               location: location_from_meta(sup.meta, env.file),
-              fix_hint: "Use format: max_restarts: N per Xs"
+              fix_hint: "Use format: max_restarts: N per Xs",
+              fix_code: "max_restarts: 3 per 5s"
             }
           ]
       end
@@ -678,7 +680,8 @@ defmodule Skein.Analyzer do
               severity: :warning,
               message: "Supervisor '#{sup.name}' has no children",
               location: location_from_meta(sup.meta, env.file),
-              fix_hint: "Add child declarations to the supervisor"
+              fix_hint: "Add child declarations to the supervisor",
+              fix_code: "child worker_fn { }"
             }
           ]
 
@@ -717,7 +720,8 @@ defmodule Skein.Analyzer do
             severity: :error,
             message: "Unknown type '#{name}'",
             location: location_from_meta(meta, env.file),
-            fix_hint: "Did you mean one of: #{suggest_types(name, env)}?"
+            fix_hint: "Did you mean one of: #{suggest_types(name, env)}?",
+            fix_code: first_type_suggestion(name, env)
           }
         ]
       end
@@ -748,7 +752,8 @@ defmodule Skein.Analyzer do
         severity: :error,
         message: "Annotation @min can only be applied to Int or Float, got #{format_type(type)}",
         location: location_from_meta(meta, env.file),
-        fix_hint: "Remove @min or change the field type to Int or Float"
+        fix_hint: "Remove @min or change the field type to Int or Float",
+        fix_code: "Int"
       }
     ]
   end
@@ -761,7 +766,8 @@ defmodule Skein.Analyzer do
         severity: :error,
         message: "Annotation @max can only be applied to Int or Float, got #{format_type(type)}",
         location: location_from_meta(meta, env.file),
-        fix_hint: "Remove @max or change the field type to Int or Float"
+        fix_hint: "Remove @max or change the field type to Int or Float",
+        fix_code: "Int"
       }
     ]
   end
@@ -774,7 +780,8 @@ defmodule Skein.Analyzer do
         severity: :error,
         message: "Annotation @one_of can only be applied to String, got #{format_type(type)}",
         location: location_from_meta(meta, env.file),
-        fix_hint: "Remove @one_of or change the field type to String"
+        fix_hint: "Remove @one_of or change the field type to String",
+        fix_code: "String"
       }
     ]
   end
@@ -824,7 +831,8 @@ defmodule Skein.Analyzer do
             message:
               "Function return type mismatch: expected #{format_type(declared_return)}, got #{format_type(actual_return)}",
             location: location_from_meta(meta, env.file),
-            fix_hint: "Change the return type or fix the function body"
+            fix_hint: "Change the return type or fix the function body",
+            fix_code: "-> #{format_type(actual_return)}"
           }
         ]
       end
@@ -906,7 +914,7 @@ defmodule Skein.Analyzer do
             do: "Did you mean '#{suggestion}'?",
             else: "Did you mean to declare this variable?"
 
-        fix_code = suggestion
+        fix_code = suggestion || "let #{name} = value"
 
         {:unknown,
          [
@@ -956,7 +964,8 @@ defmodule Skein.Analyzer do
                 message:
                   "Operator '#{op}' requires numeric operands, got #{format_type(left_type)} and #{format_type(right_type)}",
                 location: location_from_meta(meta, env.file),
-                fix_hint: "Ensure both operands are Int or Float"
+                fix_hint: "Ensure both operands are Int or Float",
+                fix_code: "// Convert both operands of '#{op}' to Int or Float"
               }
             ]
         }
@@ -992,7 +1001,8 @@ defmodule Skein.Analyzer do
                message:
                  "Operator '#{op}' cannot compare #{format_type(left_type)} and #{format_type(right_type)}",
                location: location_from_meta(meta, env.file),
-               fix_hint: "Ensure operands have compatible types"
+               fix_hint: "Ensure operands have compatible types",
+               fix_code: "// Compare values of the same type with '#{op}'"
              }
            ]}
     end
@@ -1016,7 +1026,8 @@ defmodule Skein.Analyzer do
               severity: :error,
               message: "Operator '#{op}' requires Bool operands, got #{format_type(left_type)}",
               location: location_from_meta(meta, env.file),
-              fix_hint: "Ensure both operands are Bool"
+              fix_hint: "Ensure both operands are Bool",
+              fix_code: "// Use Bool operands with '#{op}'"
             }
           ]
 
@@ -1027,7 +1038,8 @@ defmodule Skein.Analyzer do
               severity: :error,
               message: "Operator '#{op}' requires Bool operands, got #{format_type(right_type)}",
               location: location_from_meta(meta, env.file),
-              fix_hint: "Ensure both operands are Bool"
+              fix_hint: "Ensure both operands are Bool",
+              fix_code: "// Use Bool operands with '#{op}'"
             }
           ]
 
@@ -1052,7 +1064,8 @@ defmodule Skein.Analyzer do
             severity: :error,
             message: "Operator '!' requires Bool operand, got #{format_type(operand_type)}",
             location: location_from_meta(meta, env.file),
-            fix_hint: "Ensure the operand is Bool"
+            fix_hint: "Ensure the operand is Bool",
+            fix_code: "// Use a Bool operand with '!'"
           }
         ]
       end
@@ -1080,7 +1093,8 @@ defmodule Skein.Analyzer do
                severity: :error,
                message: "Operator '!' (unwrap) requires a Result type, got #{format_type(other)}",
                location: location_from_meta(meta, env.file),
-               fix_hint: "Use '!' only on Result values, or wrap the value in Result.ok()"
+               fix_hint: "Use '!' only on Result values, or wrap the value in Result.ok()",
+               fix_code: "Result.ok(value)"
              }
            ]}
     end
@@ -1106,7 +1120,8 @@ defmodule Skein.Analyzer do
               message:
                 "Operator '?' (propagate) requires a Result type, got #{format_type(other)}",
               location: location_from_meta(meta, env.file),
-              fix_hint: "Use '?' only on Result values"
+              fix_hint: "Use '?' only on Result values",
+              fix_code: "Result.ok(value)"
             }
           ]
       end
@@ -1132,7 +1147,8 @@ defmodule Skein.Analyzer do
                 "Operator '?' used in function that returns #{format_type(other_ret)}, " <>
                   "but '?' requires the enclosing function to return a Result type",
               location: location_from_meta(meta, env.file),
-              fix_hint: "Change the function return type to Result or use '!' to unwrap instead"
+              fix_hint: "Change the function return type to Result or use '!' to unwrap instead",
+              fix_code: "-> Result[#{format_type(other_ret)}, String]"
             }
           ]
       end
@@ -1189,7 +1205,8 @@ defmodule Skein.Analyzer do
                 message:
                   "Function '#{name}' expects #{expected_arity} argument(s), got #{actual_arity}",
                 location: location_from_meta(meta, env.file),
-                fix_hint: "Pass #{expected_arity} argument(s) to '#{name}'"
+                fix_hint: "Pass #{expected_arity} argument(s) to '#{name}'",
+                fix_code: call_skeleton(name, expected_arity)
               }
             ]
           else
@@ -1214,7 +1231,8 @@ defmodule Skein.Analyzer do
                     severity: :error,
                     message: "Unknown function '#{mod_name}.#{fn_name}'",
                     location: location_from_meta(meta, env.file),
-                    fix_hint: "Available functions: #{Enum.join(Map.keys(mod_registry), ", ")}"
+                    fix_hint: "Available functions: #{Enum.join(Map.keys(mod_registry), ", ")}",
+                    fix_code: "#{mod_name}.#{closest_name(fn_name, Map.keys(mod_registry))}"
                   }
                 ]
             }
@@ -1232,7 +1250,8 @@ defmodule Skein.Analyzer do
                     message:
                       "Function '#{mod_name}.#{fn_name}' expects #{expected_arity} argument(s), got #{actual_arity}",
                     location: location_from_meta(meta, env.file),
-                    fix_hint: "Pass #{expected_arity} argument(s) to '#{mod_name}.#{fn_name}'"
+                    fix_hint: "Pass #{expected_arity} argument(s) to '#{mod_name}.#{fn_name}'",
+                    fix_code: call_skeleton("#{mod_name}.#{fn_name}", expected_arity)
                   }
                 ]
               else
@@ -1254,7 +1273,8 @@ defmodule Skein.Analyzer do
                         message:
                           "Type mismatch in call to '#{mod_name}.#{fn_name}': expected #{format_type(expected)}, got #{format_type(actual)}",
                         location: location_from_meta(meta, env.file),
-                        fix_hint: "Pass a value of type #{format_type(expected)}"
+                        fix_hint: "Pass a value of type #{format_type(expected)}",
+                        fix_code: "// Pass a #{format_type(expected)} value"
                       }
                     ]
                   else
@@ -1314,7 +1334,8 @@ defmodule Skein.Analyzer do
                         severity: :error,
                         message: "Type '#{type_name}' has no field '#{field}'",
                         location: location_from_meta(meta, env.file),
-                        fix_hint: "Available fields: #{Enum.map_join(fields, ", ", & &1.name)}"
+                        fix_hint: "Available fields: #{Enum.map_join(fields, ", ", & &1.name)}",
+                        fix_code: closest_name(field, Enum.map(fields, & &1.name))
                       }
                     ]
                 }
@@ -1334,7 +1355,8 @@ defmodule Skein.Analyzer do
                 severity: :error,
                 message: "Cannot access field '#{field}' on type #{format_type(other)}",
                 location: location_from_meta(meta, env.file),
-                fix_hint: "Field access is only supported on user-defined types"
+                fix_hint: "Field access is only supported on user-defined types",
+                fix_code: "// Access fields only on user-defined types"
               }
             ]
         }
@@ -1492,7 +1514,8 @@ defmodule Skein.Analyzer do
             severity: :warning,
             message: "Non-exhaustive match: missing pattern 'true'",
             location: location_from_meta(meta, env.file),
-            fix_hint: "Add a 'true -> ...' arm or a wildcard '_' pattern"
+            fix_hint: "Add a 'true -> ...' arm or a wildcard '_' pattern",
+            fix_code: "true -> value"
           }
         ]
 
@@ -1503,7 +1526,8 @@ defmodule Skein.Analyzer do
             severity: :warning,
             message: "Non-exhaustive match: missing pattern 'false'",
             location: location_from_meta(meta, env.file),
-            fix_hint: "Add a 'false -> ...' arm or a wildcard '_' pattern"
+            fix_hint: "Add a 'false -> ...' arm or a wildcard '_' pattern",
+            fix_code: "false -> value"
           }
         ]
 
@@ -1554,7 +1578,8 @@ defmodule Skein.Analyzer do
                 message:
                   "Non-exhaustive match on #{enum_name}: missing pattern(s) #{missing_list}",
                 location: location_from_meta(meta, env.file),
-                fix_hint: "Add arms for #{missing_list} or a wildcard '_' pattern"
+                fix_hint: "Add arms for #{missing_list} or a wildcard '_' pattern",
+                fix_code: missing |> MapSet.to_list() |> Enum.map_join("\n", &"#{&1} -> value")
               }
             ]
           end
@@ -1607,7 +1632,8 @@ defmodule Skein.Analyzer do
                 message:
                   "Match arm type mismatch: expected #{format_type(first)}, got #{format_type(t)}",
                 location: location_from_meta(meta, env.file),
-                fix_hint: "Ensure all match arms return the same type"
+                fix_hint: "Ensure all match arms return the same type",
+                fix_code: "// Return #{format_type(first)} from this arm"
               }
             ]
           end
@@ -1629,7 +1655,8 @@ defmodule Skein.Analyzer do
           severity: :error,
           message: "Unknown identifier '#{name}' in string interpolation",
           location: %{file: env.file, line: 0, col: 0},
-          fix_hint: "Did you mean to declare this variable?"
+          fix_hint: "Did you mean to declare this variable?",
+          fix_code: "let #{name} = value"
         }
       ]
     end
@@ -1978,7 +2005,7 @@ defmodule Skein.Analyzer do
                 "Tool names must be unique within a module.",
             location: location_from_meta(cap_meta, env.file),
             fix_hint: "Rename one of the tools to avoid the naming conflict",
-            fix_code: nil
+            fix_code: "// Rename one of: #{Enum.join(full_names, ", ")}"
           }
         ]
       else
@@ -2116,7 +2143,8 @@ defmodule Skein.Analyzer do
             severity: :warning,
             message: "Phase '#{name}' is unreachable — no transitions lead to it",
             location: location_from_meta(meta, env.file),
-            fix_hint: "Add a transition to '#{name}' from another phase or remove it"
+            fix_hint: "Add a transition to '#{name}' from another phase or remove it",
+            fix_code: "SomePhase -> [#{name}]"
           }
         ]
       end
@@ -2173,7 +2201,8 @@ defmodule Skein.Analyzer do
         severity: :error,
         message: "transition() used but no Phase enum is defined in this agent",
         location: location_from_meta(tmeta, env.file),
-        fix_hint: "Define an 'enum Phase { ... }' in the agent"
+        fix_hint: "Define an 'enum Phase { ... }' in the agent",
+        fix_code: "enum Phase { Start -> [] }"
       }
     end)
   end
@@ -2209,7 +2238,9 @@ defmodule Skein.Analyzer do
                 severity: :error,
                 message: "Transition to unknown phase '#{target_phase}'",
                 location: location_from_meta(tmeta, env.file),
-                fix_hint: "Use a valid Phase variant name"
+                fix_hint: "Use a valid Phase variant name",
+                fix_code:
+                  "transition(Phase.#{closest_name(target_phase, MapSet.to_list(variant_names))})"
               }
             ]
 
@@ -2363,7 +2394,8 @@ defmodule Skein.Analyzer do
             severity: :error,
             message: "Duplicate definition: #{kind} '#{name}' is already defined in this scope",
             location: location_from_meta(meta, env.file),
-            fix_hint: "Rename this #{kind} or remove the duplicate definition"
+            fix_hint: "Rename this #{kind} or remove the duplicate definition",
+            fix_code: "// Remove or rename the duplicate #{kind} '#{name}'"
           }
         end)
       else
@@ -2491,7 +2523,8 @@ defmodule Skein.Analyzer do
             severity: :warning,
             message: "Unused capability '#{kind}' — declared but never exercised",
             location: location_from_meta(meta, env.file),
-            fix_hint: "Remove this capability declaration if it is no longer needed"
+            fix_hint: "Remove this capability declaration if it is no longer needed",
+            fix_code: ""
           }
         ]
       end
@@ -2606,7 +2639,8 @@ defmodule Skein.Analyzer do
             severity: :warning,
             message: "Unreachable code after stop()",
             location: location_from_meta(next_meta, file),
-            fix_hint: "Remove the code after stop() — it will never be executed"
+            fix_hint: "Remove the code after stop() — it will never be executed",
+            fix_code: ""
           }
         ]
       else
@@ -2653,7 +2687,7 @@ defmodule Skein.Analyzer do
           "suspend() can only be used in agent handlers, not in module functions or handlers",
         location: location_from_meta(meta, env.file),
         fix_hint: "Move this to an agent handler (on start/on phase)",
-        fix_code: nil
+        fix_code: "on phase(Phase.Name) -> { suspend(\"reason\") }"
       }
     end)
   end
@@ -2691,7 +2725,7 @@ defmodule Skein.Analyzer do
         message: "idempotent() can only be used in handler bodies, not in regular functions",
         location: location_from_meta(meta, env.file),
         fix_hint: "Move this to a handler body (handler queue/schedule/http/topic)",
-        fix_code: nil
+        fix_code: "handler queue \"queue-name\" (msg) -> { idempotent(msg.id) }"
       }
     end)
   end
@@ -2708,7 +2742,7 @@ defmodule Skein.Analyzer do
         message: "idempotent() can only be used in handler bodies, not in agent functions",
         location: location_from_meta(meta, env.file),
         fix_hint: "Move this to a handler body (handler queue/schedule/http/topic)",
-        fix_code: nil
+        fix_code: "handler queue \"queue-name\" (msg) -> { idempotent(msg.id) }"
       }
     end)
   end
@@ -2728,6 +2762,30 @@ defmodule Skein.Analyzer do
   # ------------------------------------------------------------------
   # Identifier suggestion (Levenshtein distance)
   # ------------------------------------------------------------------
+
+  # Builds an insertable call snippet with placeholder arguments, used as
+  # fix_code for arity errors.
+  defp call_skeleton(name, 0), do: "#{name}()"
+
+  defp call_skeleton(name, arity) when arity > 0 do
+    args = Enum.map_join(1..arity, ", ", &"arg#{&1}")
+    "#{name}(#{args})"
+  end
+
+  # Picks the candidate closest to the given name, used as fix_code for
+  # unknown-name errors.
+  defp closest_name(_name, []), do: "name"
+
+  defp closest_name(name, candidates) do
+    Enum.max_by(candidates, &String.jaro_distance(&1, name))
+  end
+
+  defp first_type_suggestion(name, env) do
+    case suggest_types(name, env) do
+      "" -> "TypeName"
+      suggestions -> suggestions |> String.split(", ") |> List.first()
+    end
+  end
 
   defp suggest_identifier(name, env) do
     candidates =
