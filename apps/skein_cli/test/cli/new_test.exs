@@ -106,6 +106,57 @@ defmodule Skein.CLI.NewTest do
       assert message =~ "already exists"
     end
 
+    test "scaffolds AGENTS.md with primer content and llms.txt links", %{tmp_dir: tmp} do
+      project_dir = Path.join(tmp, "agent_app")
+      {:ok, _} = CLI.new([project_dir])
+
+      agents_md = File.read!(Path.join(project_dir, "AGENTS.md"))
+
+      # Generated block markers
+      assert agents_md =~ "<!-- skein:generated:start -->"
+      assert agents_md =~ "<!-- skein:generated:end -->"
+
+      # Primer essentials: syntax, capabilities, gotchas, CLI commands
+      assert agents_md =~ "## Syntax Cheatsheet"
+      assert agents_md =~ "## Capabilities and Effects"
+      assert agents_md =~ "## Known Gotchas"
+      assert agents_md =~ "`input` is a keyword"
+      assert agents_md =~ "skein build"
+      assert agents_md =~ "skein test"
+      assert agents_md =~ "skein run"
+
+      # Links to published agent docs
+      assert agents_md =~ "https://kormie.github.io/Skein/llms.txt"
+      assert agents_md =~ "https://kormie.github.io/Skein/llms-full.txt"
+
+      # MCP server registration mention
+      assert agents_md =~ "skein mcp"
+    end
+
+    test "scaffolds a CLAUDE.md pointer to AGENTS.md", %{tmp_dir: tmp} do
+      project_dir = Path.join(tmp, "claude_app")
+      {:ok, _} = CLI.new([project_dir])
+
+      assert File.read!(Path.join(project_dir, "CLAUDE.md")) =~ "See AGENTS.md"
+    end
+
+    test "--no-agents skips AGENTS.md and CLAUDE.md", %{tmp_dir: tmp} do
+      project_dir = Path.join(tmp, "no_agents_app")
+      {:ok, _} = CLI.new([project_dir, "--no-agents"])
+
+      assert File.exists?(Path.join(project_dir, "skein.toml"))
+      refute File.exists?(Path.join(project_dir, "AGENTS.md"))
+      refute File.exists?(Path.join(project_dir, "CLAUDE.md"))
+    end
+
+    test "unknown flags are rejected", %{tmp_dir: tmp} do
+      project_dir = Path.join(tmp, "flagged_app")
+
+      assert {:error, message} = CLI.new([project_dir, "--bogus"])
+      assert message =~ "Unknown option: --bogus"
+      refute File.exists?(project_dir)
+    end
+
     test "README includes project name", %{tmp_dir: tmp} do
       project_dir = Path.join(tmp, "documented_app")
       {:ok, _} = CLI.new([project_dir])
