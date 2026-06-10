@@ -62,6 +62,53 @@ defmodule Skein.Compiler do
     end)
   end
 
+  @doc """
+  Checks a .skein file through the full pipeline (without loading it)
+  and returns BOTH hard errors and warnings, split by severity.
+
+  This is the diagnostics-fidelity API: `skein test` prints warnings, so
+  consumers like the MCP `skein_compile_check` tool must see them too.
+
+  Returns `{:ok, %{errors: [...], warnings: [...]}}` for anything the
+  pipeline could parse far enough to diagnose, or `{:error, message}`
+  for unreadable paths.
+  """
+  @spec check_file(String.t()) ::
+          {:ok, %{errors: [Skein.Error.t()], warnings: [Skein.Error.t()]}}
+          | {:error, String.t()}
+  def check_file(path) do
+    with {:ok, source} <- read_source(path),
+         {:ok, tokens} <- tag_errors(Lexer.tokenize(source), path),
+         {:ok, ast} <- Parser.parse(tokens, path) do
+      case Analyzer.analyze(ast, source_text: source) do
+        {:error, mixed} ->
+          {hard_errors, warnings} = Enum.split_with(mixed, &(&1.severity == :error))
+          {:ok, %{errors: hard_errors, warnings: warnings}}
+
+        analyzed ->
+          {annotated_ast, warnings} =
+            case analyzed do
+              {:ok, annotated_ast} -> {annotated_ast, []}
+              {:ok, annotated_ast, warnings} -> {annotated_ast, warnings}
+            end
+
+          case CoreErlang.generate(annotated_ast) do
+            {:ok, _modules} -> {:ok, %{errors: [], warnings: warnings}}
+            {:error, errors} -> {:ok, %{errors: errors, warnings: warnings}}
+          end
+      end
+    else
+      # Lexer/parser failures carry structured error lists — surface them
+      # as check results; file-system problems stay {:error, message}.
+      {:error, errors} when is_list(errors) ->
+        {hard_errors, warnings} = Enum.split_with(errors, &(&1.severity == :error))
+        {:ok, %{errors: hard_errors, warnings: warnings}}
+
+      {:error, message} ->
+        {:error, message}
+    end
+  end
+
   # Normalize analyzer results: {:ok, ast, warnings} -> {:ok, ast}
   defp normalize_analyze({:ok, ast, _warnings}), do: {:ok, ast}
   defp normalize_analyze(other), do: other

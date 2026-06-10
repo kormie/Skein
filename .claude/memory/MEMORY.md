@@ -207,6 +207,11 @@
 - CLI result maps gain optional :location ("file:line"); main.ex FAIL lines print it
 - erlang:error(struct-with-__exception__) rescues as that exception in Elixir
 
+## MCP compile_check Fidelity (issue #109 — 2026-06-10)
+- `Compiler.check_file/1`: full pipeline (lex/parse/analyze/generate, NO load), returns {:ok, %{errors, warnings}} split by severity; lexer/parser error lists become check results, file-system problems stay {:error, message}
+- MCP schema: ok = errors-only; warnings array added; project mode globs src/ + test/ (skein test discovery order)
+- MCP docs page (editor/mcp-server.md) may mention the old schema — check on next docs sweep
+
 ## Known Bug Found 2026-06-10 (filed as issue)
 - **Int string interpolation emits raw codepoint**: `"${n}"` with n=42 yields "*" (binary segment treats Int as a byte) — needs to_string coercion in codegen interpolation
 

@@ -107,25 +107,7 @@ The remaining gaps are listed below. Field-testing v0.1.5 (2026-06-10) surfaced 
 
 ## Tier 3: Polish & Developer Experience
 
-### 5. MCP `skein_compile_check` Fidelity `[M]`
-
-**Issue:** [#109](https://github.com/kormie/Skein/issues/109)
-
-**Problem:** The MCP tool reports clean on projects `skein test` visibly flags: `compile_file/1` discards analyzer warnings before the tool sees them, and project mode globs only `src/**/*.skein` — `test/` (where the scaffold's integration test lives) is never compiled.
-
-**Scope:**
-- A warnings-preserving compile API shared with the LSP diagnostics path (not a third reimplementation)
-- Result schema gains `warnings` (each entry keeps `code`/`severity`/`message`/`location`/`fix_hint`/`fix_code`); `ok` stays errors-only
-- Project mode globs `src/**` and `test/**`, matching `skein test` discovery
-
-**Acceptance criteria:**
-- On a fresh scaffold (pre-item-5 fix), project-mode `compile_check` reports `files_checked: 2` and the W0002 with its location
-
-**Depends on:** Nothing (pairs naturally with item 5).
-
----
-
-### 6. zsh Tab-Completion for `skein` `[S]`
+### 5. zsh Tab-Completion for `skein` `[S]`
 
 **Issue:** [#101](https://github.com/kormie/Skein/issues/101)
 
@@ -137,7 +119,7 @@ The remaining gaps are listed below. Field-testing v0.1.5 (2026-06-10) surfaced 
 
 ---
 
-### 7. Spec Section 8 Sweep `[M]`
+### 6. Spec Section 8 Sweep `[M]`
 
 **Issue:** [#77](https://github.com/kormie/Skein/issues/77)
 
@@ -154,7 +136,7 @@ The remaining gaps are listed below. Field-testing v0.1.5 (2026-06-10) surfaced 
 
 ---
 
-### 8. Enum Value-Level Exhaustiveness Warning `[S]`
+### 7. Enum Value-Level Exhaustiveness Warning `[S]`
 
 **Issue:** [#76](https://github.com/kormie/Skein/issues/76)
 
@@ -172,7 +154,7 @@ The remaining gaps are listed below. Field-testing v0.1.5 (2026-06-10) surfaced 
 
 ---
 
-### 9. LSP Code Actions from `fix_hint`/`fix_code` `[L]`
+### 8. LSP Code Actions from `fix_hint`/`fix_code` `[L]`
 
 **Issue:** [#108](https://github.com/kormie/Skein/issues/108)
 
@@ -235,6 +217,7 @@ All of the following are done and tested:
 - LSP: completions, hover, diagnostics, semantic tokens, document symbols, go-to-definition (+ request/response integration tests)
 - CLI: new, build (`--output`), test, run, trace; structured errors for malformed flags
 - Distribution: Burrito binaries (Linux x86_64/ARM64, macOS x86_64/ARM64), GitHub Release automation on `v*` tags
+- MCP `skein_compile_check` fidelity (#109): new `Compiler.check_file/1` returns errors AND warnings (full pipeline, no load); MCP result schema gains `warnings` (ok stays errors-only); project mode checks `src/` and `test/` like `skein test`
 - Assertion failures show expected vs actual + location (#105): failing asserts raise structured Skein.Runtime.AssertionError (op/left/right/rendered expr/file:line); comparison operands bound and reported; CLI FAIL lines print the location; scenario/golden inherit via the shared lowering
 - `skein new` git init + `.gitignore` (#106): cargo-style — init by default (skipped inside an existing work tree, with --no-git, or when git is missing), baseline .gitignore always written
 - Agent `emit` -> EventStore (#72): handler-emitted events flush to the EventStore as :user_event (tagged agent/instance_id/phase) BEFORE the result is acted on, so they survive crashes; get_events/1 still reads gen_statem data; property pins N emits across M transitions = N stored events
