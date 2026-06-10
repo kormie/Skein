@@ -1,0 +1,102 @@
+name: Bug report
+description: Something in the compiler, runtime, CLI, or editor tooling is broken or incorrect.
+title: "bug: "
+labels: ["type/bug", "status/triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for trying the Skein alpha! Before filing, skim the
+        [roadmap](https://kormie.github.io/Skein/roadmap/overview/) — known gaps are listed there —
+        and search existing issues. Compiler errors are structured on purpose; pasting the full
+        error output (including `fix_hint`/`fix_code`) makes bugs much faster to fix.
+
+  - type: input
+    id: version
+    attributes:
+      label: Skein version
+      description: Output of `skein version` (or the commit SHA if built from source).
+      placeholder: "skein 0.1.5"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: install
+    attributes:
+      label: How did you install Skein?
+      options:
+        - GitHub release binary
+        - Built from source (Burrito release)
+        - Repo checkout (mix / dev mode)
+    validations:
+      required: true
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options:
+        - Linux x86_64
+        - Linux ARM64
+        - macOS Apple Silicon
+        - macOS x86_64 (Intel)
+        - Other (say which below)
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: Best guess is fine — this just speeds up triage.
+      options:
+        - Compiler (lexer / parser / analyzer / codegen)
+        - Runtime (agents, handlers, store, LLM, capabilities)
+        - CLI (new / build / test / run / trace)
+        - LSP / VS Code extension
+        - Docs
+        - Not sure
+    validations:
+      required: false
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you do, and what went wrong?
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Minimal reproduction
+      description: >
+        The smallest `.skein` snippet and/or exact commands that reproduce it.
+        If it needs a project, `skein new repro` + the diff from the scaffold is ideal.
+      placeholder: |
+        module Repro {
+          fn boom() -> String { ... }
+        }
+
+        # commands:
+        skein build repro
+    validations:
+      required: true
+
+  - type: textarea
+    id: output
+    attributes:
+      label: Full output
+      description: Complete compiler/runtime output — structured errors, stack traces, logs.
+      render: shell
+    validations:
+      required: false
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: If it's not obvious from the above.
+    validations:
+      required: false

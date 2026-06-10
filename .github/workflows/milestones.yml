@@ -1,0 +1,39 @@
+name: Sync milestones
+
+# Milestones-as-code: .github/milestones.json is the source of truth.
+# Creates any listed milestone that doesn't exist and refreshes the
+# description of ones that do. Never closes or deletes milestones.
+on:
+  push:
+    paths:
+      - ".github/milestones.json"
+      - ".github/workflows/milestones.yml"
+  workflow_dispatch:
+
+permissions:
+  issues: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Ensure milestones exist
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          existing=$(gh api "repos/${GITHUB_REPOSITORY}/milestones?state=all&per_page=100")
+          jq -c '.[]' .github/milestones.json | while read -r wanted; do
+            title=$(jq -r '.title' <<<"$wanted")
+            desc=$(jq -r '.description' <<<"$wanted")
+            number=$(jq -r --arg t "$title" '[.[] | select(.title == $t)][0].number // empty' <<<"$existing")
+            if [ -n "$number" ]; then
+              gh api -X PATCH "repos/${GITHUB_REPOSITORY}/milestones/${number}" -f description="$desc" >/dev/null
+              echo "updated milestone #${number}: ${title}"
+            else
+              created=$(gh api -X POST "repos/${GITHUB_REPOSITORY}/milestones" -f title="$title" -f description="$desc")
+              echo "created milestone #$(jq -r '.number' <<<"$created"): ${title}"
+            fi
+          done

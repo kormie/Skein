@@ -1,0 +1,52 @@
+name: Feature request
+description: Propose a language, runtime, or tooling change.
+title: "feat: "
+labels: ["type/feature", "status/triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Skein is deliberately small. Proposals are weighed against the design constraints in
+        [CLAUDE.md](https://github.com/kormie/Skein/blob/main/CLAUDE.md#important-design-constraints-to-remember)
+        and the [spec](https://github.com/kormie/Skein/blob/main/docs/SKEIN_SPEC.md) — most importantly:
+        **one way to do things**, types must derive JSON Schema, effects require capabilities, and the
+        spec must stay within its token budget.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem statement
+      description: What are you trying to do that Skein makes hard or impossible today?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed surface
+      description: What would the Skein code look like? Sketches welcome — this is a starting point, not a commitment.
+      placeholder: |
+        agent Example {
+          ...
+        }
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: design-fit
+    attributes:
+      label: Design-constraint check
+      description: Tick what you've considered (it's fine to leave these unchecked — triage will cover them).
+      options:
+        - label: I searched the spec/docs and there's no existing way to do this
+        - label: Any new types this introduces can derive a JSON Schema
+        - label: Any new I/O this introduces sits behind a capability
+        - label: The added spec surface is worth its weight (small grammar, big leverage)
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Workarounds you tried, or other shapes this could take.
+    validations:
+      required: false

@@ -1,0 +1,10 @@
+[
+  {
+    "title": "Alpha Release",
+    "description": "Gate for making the repo public and sharing with coworkers. Language surface is honest — named arguments (#56), agents nest in modules (#63), types usable from agents (#70), enum variant construction completeness (#96) — schedule handlers fire on their own (#71), agent events survive crashes (#72), every spec example compiles or is marked Planned (#77), and releases/badges/versioned docs are automated for public consumption (#100)."
+  },
+  {
+    "title": "Beta Release",
+    "description": "Post-alpha hardening, informed by alpha feedback: replay backend injection (#73), the capability-parameter surface decision (#69) and parameter-scoped enforcement for process/timer/event.log (#57), process.spawn task bodies (#74), and enum value-level exhaustiveness warnings (#76). Triaged alpha bug reports land here unless they block alpha itself."
+  }
+]
