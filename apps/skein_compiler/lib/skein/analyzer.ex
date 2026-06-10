@@ -311,6 +311,11 @@ defmodule Skein.Analyzer do
     # (unused capabilities) see effects exercised inside nested agents.
     nested_agent_views = Enum.flat_map(nested_agents, &agent_decl_views/1)
 
+    # Fn-shaped views of test/scenario/golden bodies: effect calls inside
+    # test blocks need capabilities (E0012) and count as capability usage
+    # (no W0002 false positives on the skein new scaffold) — issue #104.
+    test_views = test_decl_views(ast.declarations)
+
     # Pass 0: Check for duplicate definitions
     errors = errors ++ check_duplicate_definitions(ast.declarations, env)
 
@@ -323,14 +328,18 @@ defmodule Skein.Analyzer do
     # Pass 2b: Type-check handler bodies
     errors = errors ++ check_handlers(ast.declarations, env)
 
-    # Pass 3: Capability checking — verify effect calls have covering capabilities
-    errors = errors ++ check_capabilities(ast.declarations, env)
+    # Pass 3: Capability checking — verify effect calls have covering
+    # capabilities (test/scenario/golden bodies included)
+    errors = errors ++ check_capabilities(ast.declarations ++ test_views, env)
 
     # Pass 4: Unused binding warnings
     errors = errors ++ check_unused_bindings_in_declarations(ast.declarations, env)
 
-    # Pass 5: Unused capability warnings (nested agent usage counts)
-    errors = errors ++ check_unused_capabilities(ast.declarations ++ nested_agent_views, env)
+    # Pass 5: Unused capability warnings (nested agent and test-block
+    # usage counts)
+    errors =
+      errors ++
+        check_unused_capabilities(ast.declarations ++ nested_agent_views ++ test_views, env)
 
     # Pass 6: Unreachable code after stop() warnings
     errors = errors ++ check_unreachable_after_stop(ast.declarations)
@@ -398,6 +407,24 @@ defmodule Skein.Analyzer do
 
     # idempotent() in agent fns (not handlers) is invalid
     errors ++ check_idempotent_in_agent_fns(ast.fns, env)
+  end
+
+  # Fn-shaped views of test/scenario/golden bodies, for reuse with the
+  # declaration-driven capability passes.
+  defp test_decl_views(declarations) do
+    Enum.flat_map(declarations, fn
+      %AST.Test{body: body, meta: meta} ->
+        [%AST.Fn{name: "__test__", params: [], return_type: nil, body: body, meta: meta}]
+
+      %AST.Scenario{expect_body: body, meta: meta} ->
+        [%AST.Fn{name: "__scenario__", params: [], return_type: nil, body: body, meta: meta}]
+
+      %AST.Golden{body: body, meta: meta} ->
+        [%AST.Fn{name: "__golden__", params: [], return_type: nil, body: body, meta: meta}]
+
+      _ ->
+        []
+    end)
   end
 
   # Fn-shaped views of an agent's fns and handler bodies, for reuse with

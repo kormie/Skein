@@ -2827,6 +2827,114 @@ defmodule Skein.AnalyzerTest do
           refute Enum.any?(errors, &(&1.code == "W0002"))
       end
     end
+
+    test "capability exercised only inside a test block is not W0002 (scaffold shape)" do
+      errors =
+        analyze_errors("""
+        module PacesTest {
+          capability tool.use(Paces.Greet)
+
+          test "greets through the Paces.Greet tool" {
+            let result = tool.call(Paces.Greet, { name: "World" })!
+            assert result.greeting == "Hello, World!"
+          }
+        }
+        """)
+
+      refute Enum.any?(errors, &(&1.code == "W0002"))
+    end
+
+    test "capability exercised only inside a scenario expect block is not W0002" do
+      errors =
+        analyze_errors("""
+        module M {
+          capability memory.kv("ns")
+
+          scenario "memory round trip" {
+            given {
+              key: "k"
+            }
+
+            expect {
+              assert memory.put("k", "v") == memory.put("k", "v")
+            }
+          }
+        }
+        """)
+
+      refute Enum.any?(errors, &(&1.code == "W0002"))
+    end
+  end
+
+  # ------------------------------------------------------------------
+  # Capability checking covers test blocks (issue #104)
+  # ------------------------------------------------------------------
+
+  describe "capability checks inside test blocks" do
+    test "effect call inside a test block without a capability is E0012" do
+      errors =
+        analyze_errors("""
+        module M {
+          test "writes memory" {
+            let r = memory.put("k", "v")
+            assert 1 == 1
+          }
+        }
+        """)
+
+      assert Enum.any?(errors, fn e ->
+               e.code == "E0012" and e.severity == :error
+             end)
+    end
+
+    test "effect call inside a scenario expect block without a capability is E0012" do
+      errors =
+        analyze_errors("""
+        module M {
+          scenario "fetches" {
+            given {
+              url: "https://example.com"
+            }
+
+            expect {
+              assert http.get("https://example.com") == http.get("https://example.com")
+            }
+          }
+        }
+        """)
+
+      assert Enum.any?(errors, &(&1.code == "E0012"))
+    end
+
+    test "tool.call inside a test block without tool.use is E0012" do
+      errors =
+        analyze_errors("""
+        module M {
+          test "calls a tool" {
+            let r = tool.call(Other.Tool, { x: 1 })!
+            assert 1 == 1
+          }
+        }
+        """)
+
+      assert Enum.any?(errors, &(&1.code == "E0012"))
+    end
+
+    test "effect call inside a test block with the capability declared is clean" do
+      errors =
+        analyze_errors("""
+        module M {
+          capability memory.kv("ns")
+
+          test "writes memory" {
+            let r = memory.put("k", "v")
+            assert 1 == 1
+          }
+        }
+        """)
+
+      refute Enum.any?(errors, &(&1.code in ["E0012", "W0002"]))
+    end
   end
 
   # ------------------------------------------------------------------
