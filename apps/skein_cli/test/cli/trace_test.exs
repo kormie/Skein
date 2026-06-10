@@ -134,5 +134,19 @@ defmodule Skein.CLI.TraceTest do
       assert length(result.spans) == 2
       assert Enum.all?(result.spans, &(&1.kind == :http))
     end
+
+    test "unknown --kind returns empty results instead of raising" do
+      Trace.record_span(%{kind: :http, method: :get, url: "/api", outcome: :ok, duration_us: 100})
+
+      assert {:ok, result} = CLI.trace(["--kind", "definitely_not_an_existing_kind"])
+      assert result.spans == []
+      assert result.count == 0
+    end
+
+    test "malformed --last returns a structured error instead of raising" do
+      assert {:error, message} = CLI.trace(["--last", "foo"])
+      assert message =~ "--last"
+      assert message =~ "foo"
+    end
   end
 end

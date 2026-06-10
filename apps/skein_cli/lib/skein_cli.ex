@@ -372,7 +372,12 @@ defmodule Skein.CLI do
   end
 
   def run_config(args) do
-    {project_dir, opts} = parse_run_args(args)
+    with {:ok, project_dir, opts} <- parse_run_args(args) do
+      do_run_config(project_dir, opts)
+    end
+  end
+
+  defp do_run_config(project_dir, opts) do
     project_dir = Path.expand(project_dir)
     port = Keyword.get(opts, :port, 4000)
 
@@ -411,16 +416,23 @@ defmodule Skein.CLI do
         [] -> {".", []}
       end
 
-    opts = parse_flags(rest, [])
-    {project_dir, opts}
+    with {:ok, opts} <- parse_flags(rest, []) do
+      {:ok, project_dir, opts}
+    end
   end
 
   defp parse_flags(["--port", port_str | rest], acc) do
-    parse_flags(rest, [{:port, String.to_integer(port_str)} | acc])
+    case Integer.parse(port_str) do
+      {port, ""} when port in 1..65535 ->
+        parse_flags(rest, [{:port, port} | acc])
+
+      _ ->
+        {:error, "Invalid value for --port: '#{port_str}' (expected an integer from 1 to 65535)"}
+    end
   end
 
   defp parse_flags([_ | rest], acc), do: parse_flags(rest, acc)
-  defp parse_flags([], acc), do: acc
+  defp parse_flags([], acc), do: {:ok, acc}
 
   # ------------------------------------------------------------------
   # trace — view recent trace spans
@@ -433,37 +445,47 @@ defmodule Skein.CLI do
   - `--last <n>` — Number of traces to return (default: 10)
   - `--kind <kind>` — Filter by span kind (e.g., "http", "llm", "tool")
 
-  Returns `{:ok, %{spans: [...], count: n}}`.
+  Returns `{:ok, %{spans: [...], count: n}}` or `{:error, reason}` for
+  malformed flag values.
   """
-  @spec trace([String.t()]) :: {:ok, map()}
+  @spec trace([String.t()]) :: {:ok, map()} | {:error, String.t()}
   def trace(args) do
     alias Skein.Runtime.Trace
 
     Trace.init()
 
-    opts = parse_trace_args(args)
-    limit = Keyword.get(opts, :last, 10)
-    kind_filter = Keyword.get(opts, :kind, nil)
+    with {:ok, opts} <- parse_trace_args(args) do
+      limit = Keyword.get(opts, :last, 10)
+      kind_filter = Keyword.get(opts, :kind, nil)
 
-    spans = Trace.recent_spans(max(limit, 1))
+      spans = Trace.recent_spans(max(limit, 1))
 
-    spans =
-      if kind_filter do
-        kind_atom = String.to_existing_atom(kind_filter)
-        Enum.filter(spans, &(&1.kind == kind_atom))
-      else
-        spans
-      end
+      spans =
+        if kind_filter do
+          # Compare as strings rather than converting the filter to an atom:
+          # String.to_existing_atom/1 raises for unknown kinds, and
+          # String.to_atom/1 would mint atoms from user input.
+          Enum.filter(spans, &(Atom.to_string(&1.kind) == kind_filter))
+        else
+          spans
+        end
 
-    spans = Enum.take(spans, limit)
+      spans = Enum.take(spans, limit)
 
-    {:ok, %{spans: spans, count: length(spans)}}
+      {:ok, %{spans: spans, count: length(spans)}}
+    end
   end
 
   defp parse_trace_args(args), do: parse_trace_flags(args, [])
 
   defp parse_trace_flags(["--last", n | rest], acc) do
-    parse_trace_flags(rest, [{:last, String.to_integer(n)} | acc])
+    case Integer.parse(n) do
+      {count, ""} when count > 0 ->
+        parse_trace_flags(rest, [{:last, count} | acc])
+
+      _ ->
+        {:error, "Invalid value for --last: '#{n}' (expected a positive integer)"}
+    end
   end
 
   defp parse_trace_flags(["--kind", kind | rest], acc) do
@@ -471,7 +493,7 @@ defmodule Skein.CLI do
   end
 
   defp parse_trace_flags([_ | rest], acc), do: parse_trace_flags(rest, acc)
-  defp parse_trace_flags([], acc), do: acc
+  defp parse_trace_flags([], acc), do: {:ok, acc}
 
   # ------------------------------------------------------------------
   # Shared helpers

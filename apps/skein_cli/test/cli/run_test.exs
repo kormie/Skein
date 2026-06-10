@@ -105,6 +105,17 @@ defmodule Skein.CLI.RunTest do
       assert {:ok, config} = CLI.run_config([tmp, "--port", "8080"])
       assert config.port == 8080
     end
+
+    test "malformed --port returns a structured error instead of raising", %{tmp_dir: tmp} do
+      assert {:error, message} = CLI.run_config([tmp, "--port", "abc"])
+      assert message =~ "--port"
+      assert message =~ "abc"
+    end
+
+    test "out-of-range --port returns a structured error", %{tmp_dir: tmp} do
+      assert {:error, message} = CLI.run_config([tmp, "--port", "99999"])
+      assert message =~ "--port"
+    end
   end
 
   defp get_free_port do
