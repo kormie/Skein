@@ -7,6 +7,14 @@ on:
     branches: [main]
   workflow_dispatch:
 
+concurrency:
+  # Cancel superseded runs only on PRs (e.g. rapid pushes to the same PR). On
+  # main pushes the group is unique (run_id), so every merge's CI runs to
+  # completion — release.yml keys off CI success, and a cancelled main run
+  # would skip the release.
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: true
+
 env:
   MIX_ENV: test
   OTP_VERSION: "28.1"

@@ -34,6 +34,14 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  # Cancel superseded runs only on PRs (e.g. rapid pushes to the same PR). On
+  # main pushes, `v*` tags, and release workflow_call builds the group is unique
+  # (run_id), so those always run to completion — an in-flight release build is
+  # never cancelled by a later merge, so no version ships without its binaries.
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: true
+
 env:
   MIX_ENV: prod
   OTP_VERSION: "28.1"
