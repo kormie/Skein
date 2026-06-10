@@ -84,6 +84,7 @@ export default defineConfig({
           items: [
             { label: 'VS Code Extension', slug: 'editor/vscode' },
             { label: 'Language Server (LSP)', slug: 'editor/language-server' },
+            { label: 'MCP Server', slug: 'editor/mcp-server' },
           ],
         },
         {
@@ -105,6 +106,7 @@ export default defineConfig({
             { label: 'Standard Library', slug: 'reference/stdlib' },
             { label: 'API Reference (ExDoc)', link: '/api/' },
             { label: 'Agent Quick Reference', slug: 'reference/agent-quick-reference' },
+            { label: 'Agent Primer', slug: 'reference/agent-primer' },
           ],
         },
       ],
