@@ -92,6 +92,7 @@ All error codes are aligned with the language specification. Agents can rely on 
 |------|----------|-------------|
 | E0010 | error | Undefined identifier |
 | E0011 | error | Duplicate definition |
+| E0016 | error | Cross-module function call (functions are module-private; expose a tool instead) |
 
 ### Capability Errors
 
