@@ -113,7 +113,8 @@ defmodule Skein.Runtime.Agent do
       events: [],
       args: args,
       suspend_reason: nil,
-      instance_id: instance_id
+      instance_id: instance_id,
+      agent_name: agent_name
     }
 
     # Call the start handler which should return a transition action
@@ -126,7 +127,7 @@ defmodule Skein.Runtime.Agent do
   def handle_event(:internal, :execute_phase, phase, data) do
     module = data.module
     result = module.__phase_handler__(phase, data.state, data.events)
-    handle_phase_result(result, data)
+    handle_phase_result(result, data, phase)
   end
 
   # Query operations via call
@@ -173,6 +174,8 @@ defmodule Skein.Runtime.Agent do
   # ------------------------------------------------------------------
 
   defp handle_init_result(result, data) do
+    flush_events_to_store(result, data, :start)
+
     case result do
       {:transition, next_phase, new_state, new_events} ->
         new_data = %{
@@ -221,7 +224,9 @@ defmodule Skein.Runtime.Agent do
   # Phase handler result processing
   # ------------------------------------------------------------------
 
-  defp handle_phase_result(result, data) do
+  defp handle_phase_result(result, data, phase) do
+    flush_events_to_store(result, data, phase)
+
     case result do
       {:transition, next_phase, new_state, new_events} ->
         new_data = %{
@@ -265,6 +270,37 @@ defmodule Skein.Runtime.Agent do
         {:keep_state, data}
     end
   end
+
+  # Durably records the events a handler emitted (issue #72). Handler
+  # results carry only the events from that invocation; the events list is
+  # always the last tuple element. Flushing happens BEFORE the result is
+  # acted on, so events emitted ahead of a crashing transition survive.
+  defp flush_events_to_store(result, data, phase)
+       when is_tuple(result) and tuple_size(result) >= 3 do
+    case elem(result, tuple_size(result) - 1) do
+      events when is_list(events) ->
+        Enum.each(events, fn
+          %{} = event_map ->
+            Skein.Runtime.EventStore.append(%{
+              kind: :user_event,
+              event: Map.get(event_map, :event),
+              data: Map.delete(event_map, :event),
+              agent: data.agent_name,
+              instance_id: data.instance_id,
+              phase: phase,
+              wall_time: System.system_time(:microsecond)
+            })
+
+          _other ->
+            :ok
+        end)
+
+      _ ->
+        :ok
+    end
+  end
+
+  defp flush_events_to_store(_result, _data, _phase), do: :ok
 
   defp merge_state(old, new) when is_map(new), do: Map.merge(old, new)
   defp merge_state(old, _), do: old
