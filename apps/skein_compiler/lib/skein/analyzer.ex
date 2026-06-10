@@ -292,7 +292,15 @@ defmodule Skein.Analyzer do
     "Url" => :url
   }
 
-  @builtin_type_names Map.keys(@builtin_types)
+  # Effect error/response types defined by the Effects API (spec section 6).
+  # They are part of the language surface — Result[T, HttpError] in a fn
+  # signature must not be an unknown-type error.
+  @effect_type_names ~w(
+    HttpResponse HttpError StoreError NotFound MemoryError LlmError
+    ToolError ToolInfo ToolName PublishError
+  )
+
+  @builtin_type_names Map.keys(@builtin_types) ++ @effect_type_names
 
   @spec analyze(AST.Module.t() | AST.Agent.t(), keyword()) ::
           {:ok, AST.Module.t() | AST.Agent.t()} | {:error, [Error.t()]}
@@ -3209,9 +3217,7 @@ defmodule Skein.Analyzer do
       |> Enum.flat_map(fn %AST.Fn{body: body} ->
         collect_effect_namespaces(body)
       end)
-      |> Enum.map(fn namespace ->
-        Map.get(@effect_namespaces, namespace)
-      end)
+      |> Enum.map(&namespace_capability/1)
       |> Enum.reject(&is_nil/1)
 
     # Check handlers (they require http.in/queue.consume/schedule.trigger)
@@ -3224,7 +3230,7 @@ defmodule Skein.Analyzer do
         body_caps =
           body
           |> collect_effect_namespaces()
-          |> Enum.map(&Map.get(@effect_namespaces, &1))
+          |> Enum.map(&namespace_capability/1)
           |> Enum.reject(&is_nil/1)
 
         [cap | body_caps]
@@ -3234,8 +3240,25 @@ defmodule Skein.Analyzer do
     MapSet.new(fn_caps ++ handler_caps)
   end
 
+  # store.<table>.<method> usage exercises the store.table capability; all
+  # other namespaces map through the effect registry.
+  defp namespace_capability("store"), do: "store.table"
+  defp namespace_capability(namespace), do: Map.get(@effect_namespaces, namespace)
+
   defp collect_effect_namespaces(%AST.Block{expressions: exprs}) do
     Enum.flat_map(exprs, &collect_effect_namespaces/1)
+  end
+
+  # Store effect: store.<table>.<method>(...) exercises store.table
+  defp collect_effect_namespaces(%AST.Call{
+         target: %AST.FieldAccess{
+           subject: %AST.FieldAccess{subject: %AST.Identifier{name: "store"}, field: _table},
+           field: method
+         },
+         args: args
+       })
+       when method in @store_methods do
+    ["store"] ++ Enum.flat_map(args, &collect_effect_namespaces/1)
   end
 
   defp collect_effect_namespaces(%AST.Call{

@@ -2828,6 +2828,36 @@ defmodule Skein.AnalyzerTest do
       end
     end
 
+    test "store.table exercised via store.<table>.<method> is not W0002" do
+      errors =
+        analyze_errors("""
+        module M {
+          capability store.table("users")
+
+          fn lookup(id: String) -> String {
+            let user = store.users.get(id)
+            "done"
+          }
+        }
+        """)
+
+      refute Enum.any?(errors, &(&1.code == "W0002"))
+    end
+
+    test "effect error types from the spec are known type names" do
+      assert {:ok, _} =
+               analyze("""
+               module M {
+                 capability http.out("example.com")
+
+                 fn fetch(url: String) -> Result[String, HttpError] {
+                   let r = http.get(url)?
+                   Ok("done")
+                 }
+               }
+               """)
+    end
+
     test "capability exercised only inside a test block is not W0002 (scaffold shape)" do
       errors =
         analyze_errors("""

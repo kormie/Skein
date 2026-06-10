@@ -275,7 +275,7 @@ block         = "{" expr* "}"
 args          = (arg ("," arg)*)?               -- positional args first, then named
 arg           = named_arg | expr
 pattern       = ident | literal | UpperIdent ["(" pattern* ")"]
-             | "(" pattern ("," pattern)+ ")"   -- tuple destructure
+             | "(" pattern ("," pattern)+ ")"   -- tuple destructure (Planned — not implemented yet)
              | "_"                               -- wildcard
 ```
 
@@ -753,7 +753,7 @@ module BillingWorker {
 
   fn handle_dispute(dispute_id: String, charge_id: String) -> Result[String, HttpError] {
     let charge = http.get("https://api.stripe.com/v1/charges/${charge_id}")?
-    -- process dispute logic
+    trace.annotate("dispute_charge", charge.body)
     Ok("resolved")
   }
 }
@@ -824,7 +824,7 @@ module RefundService {
     }
 
     enum Phase {
-      Analyze  -> [Refund, Done]
+      Analyze  -> [Refund, Done, Failed]
       Refund   -> [Done, Failed]
       Failed   -> [Analyze]
       Done     -> []
@@ -885,6 +885,10 @@ module RefundService {
 
     on phase(Phase.Failed) -> {
       suspend("Requires human review")
+    }
+
+    on phase(Phase.Done) -> {
+      stop()
     }
   }
 }

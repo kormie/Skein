@@ -216,6 +216,13 @@
 - `skein completions zsh` (CLI.completions/1 returns {:ok, script}); Main.usage_text/0 made public so the drift test asserts every help-listed subcommand appears in the script
 - #118 flake recurred twice in local umbrella runs during this work (runtime suite, intermittent, targeted runs green)
 
+## Spec Section 8 Sweep (issue #77 — 2026-06-10, LAST alpha issue)
+- spec_examples_test upgraded: parse-only -> Compiler.check_file with ZERO diagnostics (errors AND warnings); writes examples to tmp files
+- @effect_type_names (HttpError, StoreError, NotFound, MemoryError, LlmError, ToolError, ToolInfo, ToolName, PublishError, HttpResponse) added to @builtin_type_names — spec §6 effect types are language surface
+- store.<table>.<method> usage now collected for W0002 (three-level FieldAccess clause + namespace_capability("store") -> "store.table")
+- Spec 8.4 phase machine was genuinely broken (Analyze couldn't reach Failed; no Done handler) — fixed in spec + embedded copies
+- Tuple destructuring marked Planned in grammar; agent.run_sync already gone
+
 ## Known Bug Found 2026-06-10 (filed as issue)
 - **Int string interpolation emits raw codepoint**: `"${n}"` with n=42 yields "*" (binary segment treats Int as a byte) — needs to_string coercion in codegen interpolation
 
