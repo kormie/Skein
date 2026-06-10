@@ -144,6 +144,36 @@ defmodule Skein.CLI.Main do
     end
   end
 
+  def dispatch(["agents" | rest]) do
+    case Skein.CLI.agents(rest) do
+      {:ok, %{path: path, action: :created}} ->
+        IO.puts("Created #{path}")
+        System.halt(0)
+
+      {:ok, %{path: path, action: :updated}} ->
+        IO.puts("Updated generated block in #{path}")
+        System.halt(0)
+
+      {:error, reason} ->
+        IO.puts(:stderr, "Error: #{format_error(reason)}")
+        System.halt(1)
+    end
+  end
+
+  def dispatch(["mcp" | _]) do
+    # The MCP server owns stdout — route logging to stderr so JSON-RPC
+    # frames stay clean (same as the lsp subcommand).
+    :logger.remove_handler(:default)
+
+    :logger.add_handler(:default, :logger_std_h, %{
+      config: %{type: :standard_error},
+      formatter: Logger.default_formatter()
+    })
+
+    Skein.CLI.Mcp.serve()
+    System.halt(0)
+  end
+
   def dispatch(["lsp" | _]) do
     # The LSP owns stdout — route logging to stderr so protocol frames
     # stay clean.
@@ -191,12 +221,15 @@ defmodule Skein.CLI.Main do
       build [project-dir]        Compile all .skein files in a project (default: .)
       test [project-dir]         Run all tests in a project (default: .)
       run [project-dir]          Start the Skein service (default: .)
+      agents [project-dir]       Create or refresh AGENTS.md (default: .)
+      mcp                        Start the MCP server (stdio, for coding agents)
       lsp                        Start the language server (stdio, for editors)
       trace [options]            View recent trace spans
       version                    Print version
       help                       Show this help
 
     Options:
+      new --no-agents            Skip generating AGENTS.md / CLAUDE.md
       build --output <dir>       Write .beam files to directory
       run --port <port>          Server port (default: 4000)
       trace --last <n>           Number of traces (default: 10)
