@@ -1,5 +1,27 @@
 # Changelog
 
+## v0.1.6 (2026-06-10)
+
+Named arguments land in the language, and the project itself gets release and triage automation: green version-bump merges now tag and publish on their own, and issues/milestones are managed as code.
+
+### Language & Compiler
+
+- **Named arguments in calls** (#56) — `f(name: value)`, with named arguments allowed in any order after any positional ones: `describe(suffix: "three", name: "widget")`, `llm.chat(model: "claude-opus-4-8", system: "...", input: question)`. The analyzer validates names against the callee's declared parameters — same-module/agent functions plus the documented effect signatures (`llm.*`, `http.*`, `memory.*`, `topic.publish`, `trace.annotate`, `process.spawn`, `event.log`) — and rewrites every call into positional order at compile time, so there is no runtime cost. Misuse is the new structured `E0026` error family: unknown names (the `fix_hint` lists valid ones), duplicates, a positional argument after a named one, parameters filled twice, missing parameters, and callees without a known signature. The spec grammar, section 8 examples, language docs, and agent primer all teach the form.
+
+### CI & Release
+
+- **Releases are "merge one PR"** (#100) — merging a green version-bump PR to `main` now auto-tags `v<version>` and publishes the four-target binaries, the VS Code extension, a per-release docs snapshot, and the `llms*.txt` files. No manual tag step. Release runs only trigger from `main`; superseded PR runs auto-cancel while `main`/release builds never do. README gained build/release badges.
+- **`bump-version` repo skill** — preflights the exact gates the release workflow enforces (version match across `mix.exs` files, dated changelog section, doc version banners) before the release PR is opened.
+
+### Project & Triage
+
+- **Issues and milestones as code** — bug/feature/chore issue forms auto-label `type/*` and `status/triage`; milestones are defined in `.github/milestones.json` and synced by workflow (Alpha Release = the public-repo gate, Beta Release = post-alpha hardening). `CONTRIBUTING.md` documents the triage flow and label glossary; PRs get a template.
+- v0.1.5 field-testing feedback triaged into the roadmap (#101, #104–#109); removed a legacy hooks archive.
+
+### Testing
+
+- Fixed a flaky analyzer property test (`uniq_list_of` exhausting its retry budget on small candidate spaces).
+
 ## v0.1.5 (2026-06-10)
 
 Cross-module tools work end-to-end, and the toolchain meets AI agents halfway: `skein new` scaffolds agent context, `skein mcp` serves the spec and compile checks over MCP.
