@@ -53,6 +53,35 @@ defmodule Skein.Runtime.ServerTest do
     Enum.random(10_000..60_000)
   end
 
+  describe "schedule handler registration" do
+    test "starting a server registers its schedule handlers for auto-firing" do
+      mod =
+        compile_module!("""
+        module ServerScheduleTest {
+          capability http.in
+          capability schedule.trigger("*/7 * * * *")
+
+          handler http GET "/health" (req) -> {
+            respond.json(200, "ok")
+          }
+
+          handler schedule "*/7 * * * *" () -> {
+            respond.json(200, "tick")
+          }
+        }
+        """)
+
+      Skein.Runtime.Schedule.reset_all()
+      port = unique_port()
+      {:ok, pid} = Server.start_link(module: mod, port: port)
+
+      assert "*/7 * * * *" in Skein.Runtime.Schedule.list_schedules()
+
+      Server.stop(pid)
+      Skein.Runtime.Schedule.reset_all()
+    end
+  end
+
   describe "end-to-end: compile handlers + serve HTTP" do
     test "GET handler returns JSON response" do
       mod =

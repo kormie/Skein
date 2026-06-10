@@ -28,28 +28,7 @@ The remaining gaps are listed below. Field-testing v0.1.5 (2026-06-10) surfaced 
 
 ## Tier 1: Language Surface
 
-### 1. Schedule Handler Auto-Firing `[M]`
-
-**Issue:** [#71](https://github.com/kormie/Skein/issues/71)
-
-**Problem:** Schedule handlers register their cron expression but never fire automatically — only manual `Schedule.trigger/1` works. A `handler schedule "*/5 * * * *"` does nothing in a running service.
-
-**Scope:**
-- Periodic tick (e.g. `:timer.send_interval/2` at 1s granularity) in `Skein.Runtime.Schedule`
-- Evaluate registered cron expressions on each tick; fire matching handlers via the existing dispatch path
-- Track last-fired time per handler to prevent duplicate firing within a cron period
-
-**Acceptance criteria:**
-- A registered `* * * * *` handler fires once per minute without manual intervention
-- `trigger/1` still works for tests
-- No duplicate firings within the same cron period
-- Property: for any valid cron expression and time window, firing count matches the expected count
-
-**Depends on:** Nothing.
-
----
-
-### 2. Agent `emit` Events to EventStore `[M]`
+### 1. Agent `emit` Events to EventStore `[M]`
 
 **Issue:** [#72](https://github.com/kormie/Skein/issues/72)
 
@@ -68,7 +47,7 @@ The remaining gaps are listed below. Field-testing v0.1.5 (2026-06-10) surfaced 
 
 ---
 
-### 3. Replay Backend Injection `[L]`
+### 2. Replay Backend Injection `[L]`
 
 **Issue:** [#73](https://github.com/kormie/Skein/issues/73)
 
@@ -88,7 +67,7 @@ The remaining gaps are listed below. Field-testing v0.1.5 (2026-06-10) surfaced 
 
 ---
 
-### 4. Stream/Pool-Scoped Runtime Capability Checks `[M]` *(needs surface design first)*
+### 3. Stream/Pool-Scoped Runtime Capability Checks `[M]` *(needs surface design first)*
 
 **Issues:** [#69](https://github.com/kormie/Skein/issues/69) (surface decision), [#57](https://github.com/kormie/Skein/issues/57) (enforcement)
 
@@ -107,7 +86,7 @@ The remaining gaps are listed below. Field-testing v0.1.5 (2026-06-10) surfaced 
 
 ---
 
-### 5. `process.spawn` Task Bodies `[M]`
+### 4. `process.spawn` Task Bodies `[M]`
 
 **Issue:** [#74](https://github.com/kormie/Skein/issues/74)
 
@@ -125,7 +104,7 @@ The remaining gaps are listed below. Field-testing v0.1.5 (2026-06-10) surfaced 
 
 ---
 
-### 6. Local LLM Backends for Dev (OpenAI-Compatible + `skein.toml` Profiles) `[XL]`
+### 5. Local LLM Backends for Dev (OpenAI-Compatible + `skein.toml` Profiles) `[XL]`
 
 **Issue:** [#107](https://github.com/kormie/Skein/issues/107)
 
@@ -147,7 +126,7 @@ The remaining gaps are listed below. Field-testing v0.1.5 (2026-06-10) surfaced 
 
 ## Tier 3: Polish & Developer Experience
 
-### 7. Test Failures Show Expected vs Actual + Location `[M]`
+### 6. Test Failures Show Expected vs Actual + Location `[M]`
 
 **Issue:** [#105](https://github.com/kormie/Skein/issues/105)
 
@@ -166,7 +145,7 @@ The remaining gaps are listed below. Field-testing v0.1.5 (2026-06-10) surfaced 
 
 ---
 
-### 8. MCP `skein_compile_check` Fidelity `[M]`
+### 7. MCP `skein_compile_check` Fidelity `[M]`
 
 **Issue:** [#109](https://github.com/kormie/Skein/issues/109)
 
@@ -184,7 +163,7 @@ The remaining gaps are listed below. Field-testing v0.1.5 (2026-06-10) surfaced 
 
 ---
 
-### 9. `skein new` Git Init + Baseline `.gitignore` `[S]`
+### 8. `skein new` Git Init + Baseline `.gitignore` `[S]`
 
 **Issue:** [#106](https://github.com/kormie/Skein/issues/106)
 
@@ -196,7 +175,7 @@ The remaining gaps are listed below. Field-testing v0.1.5 (2026-06-10) surfaced 
 
 ---
 
-### 10. zsh Tab-Completion for `skein` `[S]`
+### 9. zsh Tab-Completion for `skein` `[S]`
 
 **Issue:** [#101](https://github.com/kormie/Skein/issues/101)
 
@@ -208,7 +187,7 @@ The remaining gaps are listed below. Field-testing v0.1.5 (2026-06-10) surfaced 
 
 ---
 
-### 11. Spec Section 8 Sweep `[M]`
+### 10. Spec Section 8 Sweep `[M]`
 
 **Issue:** [#77](https://github.com/kormie/Skein/issues/77)
 
@@ -225,7 +204,7 @@ The remaining gaps are listed below. Field-testing v0.1.5 (2026-06-10) surfaced 
 
 ---
 
-### 12. Enum Value-Level Exhaustiveness Warning `[S]`
+### 11. Enum Value-Level Exhaustiveness Warning `[S]`
 
 **Issue:** [#76](https://github.com/kormie/Skein/issues/76)
 
@@ -243,7 +222,7 @@ The remaining gaps are listed below. Field-testing v0.1.5 (2026-06-10) surfaced 
 
 ---
 
-### 13. LSP Code Actions from `fix_hint`/`fix_code` `[L]`
+### 12. LSP Code Actions from `fix_hint`/`fix_code` `[L]`
 
 **Issue:** [#108](https://github.com/kormie/Skein/issues/108)
 
@@ -306,6 +285,7 @@ All of the following are done and tested:
 - LSP: completions, hover, diagnostics, semantic tokens, document symbols, go-to-definition (+ request/response integration tests)
 - CLI: new, build (`--output`), test, run, trace; structured errors for malformed flags
 - Distribution: Burrito binaries (Linux x86_64/ARM64, macOS x86_64/ARM64), GitHub Release automation on `v*` tags
+- Schedule handler auto-firing (#71): periodic tick (1s, configurable) evaluates full 5-field cron matching (`*`, `n`, `a-b`, `*/n`, lists; DOM/DOW OR rule) with per-minute dedup; `Server` registers `:schedule` handlers from `__handlers__/0`; invalid crons rejected at registration; deterministic `tick_at/1` + firing-count property for tests
 - Capability checks cover test blocks (#104): test/scenario/golden bodies feed both capability passes — effects inside tests require capabilities (E0012) and count as usage (no W0002 on the `skein new` scaffold; pinned by a scaffold-analyzes-warning-free CLI test)
 - Enum variant construction completeness (#96): zero-field variants construct in expression position (`Status.Active`, bare `Active`, `Status.Active()` — all lower to `:active`, matching patterns); unknown variants and wrong constructor arity/types are structured E0010/E0020 with closest-name fix_code (no core_lint crashes remain)
 - Types usable from agents (#70): module types are visible to nested agents and the derived JSON Schema flows into `llm.json[T]` requests from agent handlers (verified via recording backend); agents never declare their own `type` blocks — nesting is the route (spec §3.7)

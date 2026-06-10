@@ -21,27 +21,23 @@ The end-to-end pipeline works: `.skein` source files lex, parse, analyze, genera
 
 ### Tier 2: Runtime Completeness
 
-#### 2. Schedule Auto-Firing (#71)
-
-Schedule handlers register their cron expression but only fire via manual `trigger/1`. A running service should fire them on schedule.
-
-#### 3. Agent Events to EventStore (#72)
+#### 1. Agent Events to EventStore (#72)
 
 Events emitted via `emit` inside agents live in `gen_statem` data but aren't appended to the EventStore, so they're lost on crash and invisible to `EventStore.query/1`.
 
-#### 4. Replay Backend Injection (#73)
+#### 2. Replay Backend Injection (#73)
 
 The replay engine can load traces and rebuild memory, but the LLM/HTTP/tool runtimes don't consult replay state — recorded-mode replay can't yet intercept live effects.
 
-#### 5. Stream/Pool-Scoped Runtime Capability Checks (#69, #57)
+#### 3. Stream/Pool-Scoped Runtime Capability Checks (#69, #57)
 
 `process.spawn`, `timer`, and `event.log` check capability *presence* at runtime but not parameters. Full enforcement needs a surface decision first: the declared capability names a pool/stream label, while the runtime call carries a different value (the task/event name).
 
-#### 6. `process.spawn` Task Bodies (#74)
+#### 4. `process.spawn` Task Bodies (#74)
 
 `process.spawn("name")` spawns a supervised, traced no-op task. Attaching real work to the spawned process needs a call-surface decision (likely a function reference argument).
 
-#### 7. Local LLM Backends for Dev (#107)
+#### 5. Local LLM Backends for Dev (#107)
 
 Testing agents burns real Anthropic spend. An OpenAI-compatible backend plus `[env.<name>.llm]` profiles in `skein.toml` (with `model_map`) would let `SKEIN_ENV=dev skein test` serve LLM calls from a local server (oMLX, Ollama, LM Studio, vLLM) with zero source edits — capabilities stay the code's contract.
 
@@ -123,6 +119,7 @@ Everything below is implemented and tested.
 | Capability naming | `queue.consume` / `schedule.trigger` (old names get a targeted rename hint) |
 | Cross-module `tool.call` | `implement` blocks compile to callable entry points; tools registered at module load (v0.1.5) |
 | Variant construction | `Ok(x)`, `Err(e)`, `Event.Charge(n)`, `ErrName.from(cause)`, and zero-field forms (`Status.Active`, bare `Active`) all compile in expression position; unknown variants and wrong arity are structured errors |
+| Schedule auto-firing | Cron tick with per-minute dedup; Server registers schedule handlers; `tick_at/1` for deterministic tests |
 | Capability checks in test blocks | Effects inside `test`/`scenario`/`golden` require capabilities (E0012) and count as usage (no scaffold W0002) |
 | Named arguments in calls | `f(name: value)` for local fns and documented effect signatures; analyzer rewrites to positional order at compile time (E0026 on misuse) |
 | Agent nesting inside modules | `module Foo { agent Bar }` → `Skein.Agent.Foo.Bar`; module types and capabilities apply to the nested agent |

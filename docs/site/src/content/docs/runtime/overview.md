@@ -152,7 +152,7 @@ Features:
 
 ### `Skein.Runtime.Schedule`
 
-Cron-based schedule dispatch for compiled Skein schedule handlers. Registers handlers for cron expressions and triggers them on schedule.
+Cron-based schedule dispatch for compiled Skein schedule handlers. Registered handlers **fire automatically**: a periodic tick (1s by default) evaluates each cron expression against the wall clock and fires matching handlers at most once per cron minute. `Skein.Runtime.Server` registers every `:schedule` entry from a module's `__handlers__/0` at startup, so `skein run` services fire on schedule with no manual intervention.
 
 **API:**
 
@@ -171,9 +171,12 @@ Skein.Runtime.Schedule.list_schedules()
 ```
 
 Features:
-- Standard 5-field cron expression parsing
-- Manual triggering for deterministic testing
-- Trace span recording for each triggered handler
+- Automatic firing on a configurable tick (`schedule_tick_ms`, default 1s; `schedule_auto_tick: false` disables — the test env does)
+- Full 5-field cron matching: `*`, `n`, `a-b`, `*/n`, `a-b/n`, comma lists; weekday 0/7 = Sunday; restricted day-of-month and weekday combine with OR (standard cron rule)
+- Per-minute dedup — no duplicate firings within the same cron minute
+- Invalid cron expressions are rejected at registration (`{:error, reason}`)
+- Manual triggering (`trigger/1`) and deterministic clock injection (`tick_at/1`) for testing
+- Trace span recording for each fired handler
 
 ### `Skein.Runtime.Store`
 
