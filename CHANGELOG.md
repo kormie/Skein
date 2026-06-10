@@ -1,6 +1,36 @@
 # Changelog
 
-## v0.1.5 (unreleased)
+## v0.1.5 (2026-06-10)
+
+Cross-module tools work end-to-end, and the toolchain meets AI agents halfway: `skein new` scaffolds agent context, `skein mcp` serves the spec and compile checks over MCP.
+
+### Language & Compiler
+
+- **Cross-module `tool.call` works end-to-end** — tools are the one cross-module seam (spec §3.1), and the whole chain now functions: each tool's `implement` block compiles to a callable entry point (`__tool_impl_N__/1`, named in `__tools__/0` metadata), and `skein build` / `skein test` / `skein run` register every declared tool at module load. `examples/market_research`'s agent→service call — previously a guaranteed runtime tool-not-found — now executes.
+- **Result and enum variant construction in expression position** — `Ok(x)`, `Err(e)`, `Event.Charge(n)`, and the spec §8.4 `ErrName.from(cause)` error conversion now compile (implement blocks use all four). `Err` patterns lower to `:error`, so pattern matching, construction, and the runtime's `{:ok, _} | {:error, _}` convention finally agree.
+- **E0016: cross-module function calls are rejected at compile time** — functions are module-private; a qualified call like `Hello.greet(...)` from another module is now a structured error whose fix points at the tool seam. Stdlib calls, enum variant constructors, and declared tool error names are exempt.
+- **Prefix unary minus** — `-x` parses, type-checks (Int→Int, Float→Float), and compiles.
+- **Targeted parser errors for known names missing their token** — e.g. a tool `description` without its `:` now says `Missing ':' after 'description'` with the token as `fix_code`, instead of a generic unexpected-token error.
+
+### CLI
+
+- **`skein test` is a two-phase runner** — every file (`src/` before `test/`) is compiled and loaded before any test runs, so tests in `test/` can exercise tools declared in `src/`. Previously test files ran immediately after compiling, before the modules they depended on existed.
+- **`skein new` scaffolds tests that actually test** — `src/main.skein` ships a co-located `test` block plus a `{Module}.Greet` tool, and `test/main_test.skein` exercises that tool through `tool.call(...)!`. The old scaffold duplicated the function under test, so breaking `src/` left the test green; now it turns both tests red.
+- **`skein new` scaffolds agent context** — generates `AGENTS.md` with a compact Skein primer plus a `CLAUDE.md` pointer (`--no-agents` to skip); `skein agents` (re)generates the marker-delimited block in place without touching user content.
+- **`skein mcp`** — an MCP server (JSON-RPC 2.0 over stdio) exposing `skein_spec_lookup`, `skein_docs_search`, and `skein_compile_check` (structured JSON errors with `fix_hint`/`fix_code`), so coding agents can look up the language and check sources without a checkout.
+
+### Runtime
+
+- **`http.post` / `put` / `patch` accept map bodies** — JSON-encoded automatically, matching the spec §8.4 implement pattern (`http.post(url, { customer: id })`), which previously crashed on a binary guard before the capability check.
+- **Tool registry hardening** — registration from compiled metadata is idempotent, string input keys normalize to the declared atom fields, and non-map input against a schema with required fields is a validation error instead of a crash.
+
+### Testing
+
+- **Examples are executed, not just compiled** — the suite drives the `market_research` cross-module path end-to-end (registration → implement execution → agent suspend flow, fully offline via deterministic capability denial), so a registration regression turns CI red instead of failing in user demos.
+
+### Spec & Docs
+
+- **Module boundaries documented** (§3.1): tools are the only cross-module mechanism; §8.5 shows the co-located test pattern. The docs site covers tool registration, the new scaffold, and registering the MCP server with Claude Code and Cursor.
 
 ### CI
 
