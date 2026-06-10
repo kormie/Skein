@@ -1,6 +1,19 @@
 # Changelog
 
-## v0.1.3 (unreleased)
+## v0.1.4 (unreleased)
+
+Fixes from v0.1.3 field testing.
+
+### CLI
+
+- **`skein new my-app` generates a valid module name** — hyphens (or anything else that isn't a letter/digit/underscore) in the project directory name produced `module Skein-tests {`, which doesn't compile. Names are now sanitized (`skein-tests` -> `SkeinTests`) and prefixed with `Skein` when they don't start with a letter.
+- **Ctrl+C exits cleanly** — long-running commands (`skein lsp`, `skein run`) no longer drop into the BEAM `BREAK:` menu on Ctrl+C (`+Bd` in vm.args).
+
+### VS Code Extension (0.1.2)
+
+- **The packaged extension actually loads** — `.vscodeignore` excluded `node_modules`, so the `.vsix` shipped without `vscode-languageclient`; the extension module failed to load, which broke activation, the palette commands ("command 'skein.restartServer' not found"), and the language client. Production dependencies are now packaged.
+
+## v0.1.3 (2026-06-10)
 
 First-run UX release: fixes for the CLI paper cuts hit in real first-use sessions, plus `skein lsp` so editor support works with just the standalone binary.
 

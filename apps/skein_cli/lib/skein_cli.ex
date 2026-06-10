@@ -113,7 +113,7 @@ defmodule Skein.CLI do
   end
 
   defp main_skein(name) do
-    module_name = name |> Macro.camelize()
+    module_name = module_name_from(name)
 
     """
     module #{module_name} {
@@ -125,7 +125,7 @@ defmodule Skein.CLI do
   end
 
   defp main_test_skein(name) do
-    module_name = name |> Macro.camelize()
+    module_name = module_name_from(name)
 
     """
     module #{module_name}Test {
@@ -138,6 +138,17 @@ defmodule Skein.CLI do
       }
     }
     """
+  end
+
+  # Project directory names like "my-app" or "my app" must still produce a
+  # valid Skein module name (Macro.camelize only splits on underscores).
+  defp module_name_from(name) do
+    base =
+      name
+      |> String.replace(~r/[^A-Za-z0-9_]/, "_")
+      |> Macro.camelize()
+
+    if base =~ ~r/^[A-Z]/, do: base, else: "Skein#{base}"
   end
 
   # ------------------------------------------------------------------

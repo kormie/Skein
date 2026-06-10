@@ -87,7 +87,7 @@ npm run package
 ### Installing from VSIX
 
 ```
-code --install-extension skein-lang-0.1.1.vsix
+code --install-extension skein-lang-0.1.2.vsix
 ```
 
 ## Architecture
