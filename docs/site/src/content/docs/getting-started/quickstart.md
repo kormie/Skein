@@ -74,7 +74,7 @@ skein compile src/main.skein
 ## Build the Whole Project
 
 ```bash
-skein build .
+skein build
 ```
 
 This compiles every `.skein` file in `src/`.
@@ -82,7 +82,7 @@ This compiles every `.skein` file in `src/`.
 ## Run Tests
 
 ```bash
-skein test .
+skein test
 ```
 
 Discovers and runs all test files in `src/` and `test/`.
@@ -92,7 +92,7 @@ Discovers and runs all test files in `src/` and `test/`.
 If your project has HTTP, queue, or schedule handlers:
 
 ```bash
-skein run .
+skein run
 # → Server running on port 4000
 ```
 

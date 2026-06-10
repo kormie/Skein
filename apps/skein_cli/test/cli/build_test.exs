@@ -73,9 +73,60 @@ defmodule Skein.CLI.BuildTest do
       assert message =~ "No .skein files"
     end
 
-    test "returns error with no arguments" do
+    test "defaults to the current directory with no arguments" do
+      # The CLI app has no src/ directory, so the default-dir search fails
       assert {:error, message} = CLI.build([])
-      assert message =~ "Usage"
+      assert message =~ "No .skein files found"
+      assert message =~ Path.expand(".")
+    end
+
+    test "rejects unknown flags instead of treating them as a directory", %{tmp_dir: tmp} do
+      assert {:error, message} = CLI.build(["-v", tmp])
+      assert message =~ "Unknown option: -v"
+    end
+
+    test "rejects a second positional argument", %{tmp_dir: tmp} do
+      assert {:error, message} = CLI.build([tmp, "extra"])
+      assert message =~ "Unexpected argument: extra"
+    end
+
+    test "errors when --output is missing its value", %{tmp_dir: tmp} do
+      assert {:error, message} = CLI.build([tmp, "--output"])
+      assert message =~ "Missing value for --output"
+    end
+
+    test "points at stray root-level .skein files when src/ is empty", %{tmp_dir: tmp} do
+      File.write!(Path.join(tmp, "hello.skein"), """
+      module Hello {
+        fn hi() -> String { "hi" }
+      }
+      """)
+
+      assert {:error, message} = CLI.build([tmp])
+      assert message =~ "hello.skein"
+      assert message =~ "src/"
+      assert message =~ "skein compile"
+    end
+
+    test "failed builds carry structured errors with the file path", %{
+      tmp_dir: tmp,
+      src_dir: src
+    } do
+      bad = Path.join(src, "bad.skein")
+
+      File.write!(bad, """
+      module Bad {
+        fn hi() -> String {
+          "hi";
+        }
+      }
+      """)
+
+      assert {:ok, result} = CLI.build([tmp])
+      assert result.errors == 1
+      assert [%{file: ^bad, errors: [error]}] = result.failed
+      assert error.location.file == bad
+      assert error.fix_hint =~ "semicolons"
     end
 
     test "compiled modules are callable", %{tmp_dir: tmp, src_dir: src} do

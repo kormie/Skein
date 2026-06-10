@@ -36,3 +36,6 @@ erl_crash.dump
 node_modules/
 docs/site/dist/
 docs/site/public/api/
+
+# ExUnit tmp_dir artifacts
+/apps/*/tmp/

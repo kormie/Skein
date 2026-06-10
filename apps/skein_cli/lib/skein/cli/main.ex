@@ -69,7 +69,7 @@ defmodule Skein.CLI.Main do
 
         if result.errors > 0 do
           for f <- result.failed do
-            IO.puts(:stderr, "  Failed: #{f.file}")
+            IO.puts(:stderr, format_error(f.errors))
           end
 
           System.halt(1)
@@ -88,11 +88,22 @@ defmodule Skein.CLI.Main do
       {:ok, result} ->
         IO.puts("Tests: #{result.passed} passed, #{result.failed} failed (#{result.total} total)")
 
-        if result.failed > 0 do
-          for r <- result.results, r.status == :failed do
-            IO.puts(:stderr, "  FAIL: #{r.description} — #{Map.get(r, :error, "unknown")}")
-          end
+        for r <- result.results, r.status == :failed do
+          IO.puts(:stderr, "  FAIL: #{r.description} — #{Map.get(r, :error, "unknown")}")
+        end
 
+        if result.compile_errors > 0 do
+          IO.puts(
+            :stderr,
+            "#{result.compile_errors} file(s) failed to compile and were not tested:"
+          )
+
+          for f <- result.compile_failed do
+            IO.puts(:stderr, format_error(f.errors))
+          end
+        end
+
+        if result.failed > 0 or result.compile_errors > 0 do
           System.halt(1)
         else
           System.halt(0)
@@ -133,6 +144,20 @@ defmodule Skein.CLI.Main do
     end
   end
 
+  def dispatch(["lsp" | _]) do
+    # The LSP owns stdout — route logging to stderr so protocol frames
+    # stay clean.
+    :logger.remove_handler(:default)
+
+    :logger.add_handler(:default, :logger_std_h, %{
+      config: %{type: :standard_error},
+      formatter: Logger.default_formatter()
+    })
+
+    {:ok, _pid} = SkeinLsp.start()
+    Process.sleep(:infinity)
+  end
+
   def dispatch(["version" | _]) do
     IO.puts("skein #{version()}")
     System.halt(0)
@@ -163,9 +188,10 @@ defmodule Skein.CLI.Main do
     Commands:
       compile <file.skein>       Compile a single .skein file
       new <project-dir>          Scaffold a new Skein project
-      build <project-dir>        Compile all .skein files in a project
-      test <project-dir>         Run all tests in a project
-      run <project-dir>          Start the Skein service
+      build [project-dir]        Compile all .skein files in a project (default: .)
+      test [project-dir]         Run all tests in a project (default: .)
+      run [project-dir]          Start the Skein service (default: .)
+      lsp                        Start the language server (stdio, for editors)
       trace [options]            View recent trace spans
       version                    Print version
       help                       Show this help
@@ -187,8 +213,13 @@ defmodule Skein.CLI.Main do
   defp format_error(reason) when is_list(reason),
     do: Enum.map_join(reason, "\n", &format_error/1)
 
-  defp format_error(%{message: msg, location: %{file: f, line: l}}) do
-    "#{f}:#{l}: #{msg}"
+  defp format_error(%{message: msg, location: %{file: f, line: l}} = error) do
+    base = "#{f}:#{l}: #{msg}"
+
+    case Map.get(error, :fix_hint) do
+      hint when is_binary(hint) and hint != "" -> base <> "\n  hint: #{hint}"
+      _ -> base
+    end
   end
 
   defp format_error(reason), do: inspect(reason)

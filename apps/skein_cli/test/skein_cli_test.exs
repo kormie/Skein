@@ -3,6 +3,10 @@ defmodule Skein.CLITest do
 
   alias Skein.CLI
 
+  test "skein_lsp is available for the lsp subcommand" do
+    assert Code.ensure_loaded?(SkeinLsp)
+  end
+
   @fixtures_dir Path.expand("fixtures", __DIR__)
 
   setup do

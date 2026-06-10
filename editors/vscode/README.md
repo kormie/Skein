@@ -42,17 +42,30 @@ Full Language Server Protocol support powered by the Skein compiler:
 ## Requirements
 
 - VS Code 1.80+
-- Elixir/OTP installed (for the language server)
-- A Skein project with `mix.exs` in the workspace root
+- For the language server, one of:
+  - the standalone `skein` binary (v0.1.3+) on your `PATH` — no Elixir needed
+    ([install instructions](https://github.com/kormie/Skein#getting-started)), or
+  - an Elixir/OTP checkout of the Skein repo (the extension runs `mix skein.lsp`)
+
+Syntax highlighting and snippets work with no requirements at all.
 
 ## Extension Settings
 
 | Setting | Default | Description |
 |---------|---------|-------------|
 | `skein.lsp.enabled` | `true` | Enable/disable the language server |
-| `skein.lsp.path` | `""` | Path to the Skein project root (defaults to workspace root) |
-| `skein.lsp.mixCommand` | `"mix"` | Path to the `mix` executable |
+| `skein.lsp.serverCommand` | `"auto"` | `skein` (standalone binary), `mix` (compiler checkout), or `auto` (mix only inside the Skein repo) |
+| `skein.lsp.skeinPath` | `"skein"` | Path to the `skein` binary |
+| `skein.lsp.path` | `""` | Working directory for the server (defaults to workspace root) |
+| `skein.lsp.mixCommand` | `"mix"` | Path to the `mix` executable (mix mode only) |
 | `skein.trace.server` | `"off"` | Trace LSP communication (`off`, `messages`, `verbose`) |
+
+## Commands
+
+| Command | Description |
+|---------|-------------|
+| `Skein: Restart Language Server` | Restart the LSP after changing settings or updating the binary |
+| `Skein: Show Language Server Output` | Open the server's output channel for troubleshooting |
 
 ## Development
 
@@ -74,7 +87,7 @@ npm run package
 ### Installing from VSIX
 
 ```
-code --install-extension skein-lang-0.1.0.vsix
+code --install-extension skein-lang-0.1.1.vsix
 ```
 
 ## Architecture
@@ -84,4 +97,4 @@ The extension consists of two parts:
 1. **VS Code Client** (TypeScript) — Manages the editor integration, starts the language server, and communicates over stdio
 2. **Skein Language Server** (Elixir) — An OTP application (`skein_lsp`) built with [GenLSP](https://github.com/elixir-tools/gen_lsp) that uses the Skein compiler for analysis
 
-The language server runs as `mix skein.lsp` and communicates via stdin/stdout.
+The language server runs as `skein lsp` (standalone binary) or `mix skein.lsp` (compiler checkout) and communicates via stdin/stdout.

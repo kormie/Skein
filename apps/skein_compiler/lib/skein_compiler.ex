@@ -11,11 +11,12 @@ defmodule Skein.Compiler do
   alias Skein.Analyzer
   alias Skein.CodeGen.CoreErlang
 
-  @spec compile_file(String.t()) :: {:module, module()} | {:error, [Skein.Error.t()]}
+  @spec compile_file(String.t()) ::
+          {:module, module()} | {:error, [Skein.Error.t()] | String.t()}
   def compile_file(path) do
-    with {:ok, source} <- File.read(path),
-         {:ok, tokens} <- Lexer.tokenize(source),
-         {:ok, ast} <- Parser.parse(tokens),
+    with {:ok, source} <- read_source(path),
+         {:ok, tokens} <- tag_errors(Lexer.tokenize(source), path),
+         {:ok, ast} <- Parser.parse(tokens, path),
          {:ok, annotated_ast} <- normalize_analyze(Analyzer.analyze(ast, source_text: source)),
          {:ok, beam_binary} <- CoreErlang.generate(annotated_ast) do
       module_name = module_name_from_ast(annotated_ast)
@@ -40,11 +41,11 @@ defmodule Skein.Compiler do
   write .beam files to disk.
   """
   @spec compile_to_binary(String.t()) ::
-          {:ok, module(), binary()} | {:error, [Skein.Error.t()]}
+          {:ok, module(), binary()} | {:error, [Skein.Error.t()] | String.t()}
   def compile_to_binary(path) do
-    with {:ok, source} <- File.read(path),
-         {:ok, tokens} <- Lexer.tokenize(source),
-         {:ok, ast} <- Parser.parse(tokens),
+    with {:ok, source} <- read_source(path),
+         {:ok, tokens} <- tag_errors(Lexer.tokenize(source), path),
+         {:ok, ast} <- Parser.parse(tokens, path),
          {:ok, annotated_ast} <- normalize_analyze(Analyzer.analyze(ast, source_text: source)),
          {:ok, beam_binary} <- CoreErlang.generate(annotated_ast) do
       module_name = module_name_from_ast(annotated_ast)
@@ -55,6 +56,31 @@ defmodule Skein.Compiler do
   # Normalize analyzer results: {:ok, ast, warnings} -> {:ok, ast}
   defp normalize_analyze({:ok, ast, _warnings}), do: {:ok, ast}
   defp normalize_analyze(other), do: other
+
+  # Read a source file, translating POSIX errors into readable messages
+  defp read_source(path) do
+    case File.read(path) do
+      {:ok, source} ->
+        {:ok, source}
+
+      {:error, :enoent} ->
+        {:error, "File not found: #{path}"}
+
+      {:error, :eisdir} ->
+        {:error,
+         "#{path} is a directory - pass a .skein file, or use 'skein build #{path}' to compile a project"}
+
+      {:error, posix} ->
+        {:error, "Cannot read #{path}: #{:file.format_error(posix)}"}
+    end
+  end
+
+  # Lexer errors carry file: "unknown" — stamp them with the real path
+  defp tag_errors({:error, errors}, path) when is_list(errors) do
+    {:error, Enum.map(errors, &put_in(&1.location.file, path))}
+  end
+
+  defp tag_errors(other, _path), do: other
 
   defp module_name_from_ast(%Skein.AST.Module{name: name}),
     do: String.to_atom("Elixir.Skein.User.#{name}")

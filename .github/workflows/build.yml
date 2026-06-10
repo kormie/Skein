@@ -6,6 +6,13 @@ on:
     tags: ["v*"]
   pull_request:
     branches: [main]
+    # Only run on PRs that can affect the release build; docs-only PRs skip it
+    paths:
+      - "mix.exs"
+      - "mix.lock"
+      - "apps/**"
+      - "config/**"
+      - ".github/workflows/build.yml"
   workflow_dispatch:
 
 permissions:
@@ -54,6 +61,12 @@ jobs:
       - name: Compile
         run: mix compile --warnings-as-errors
 
+      # PRs only smoke-test the release path (prod compile + assembly +
+      # Burrito wrap) with the native target; main and tags build all four.
+      - name: Limit PR builds to the native Linux target
+        if: github.event_name == 'pull_request'
+        run: echo "BURRITO_TARGET=linux" >> "$GITHUB_ENV"
+
       - name: Build release
         run: mix release skein --overwrite
 
@@ -61,6 +74,7 @@ jobs:
         run: ls -lah burrito_out/
 
       - name: Upload Linux x86_64 binary
+        if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@v4
         with:
           name: skein-linux-x86_64
@@ -68,6 +82,7 @@ jobs:
           if-no-files-found: error
 
       - name: Upload Linux aarch64 binary
+        if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@v4
         with:
           name: skein-linux-aarch64
@@ -75,6 +90,7 @@ jobs:
           if-no-files-found: warn
 
       - name: Upload macOS x86_64 binary
+        if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@v4
         with:
           name: skein-macos-x86_64
@@ -82,6 +98,7 @@ jobs:
           if-no-files-found: warn
 
       - name: Upload macOS aarch64 binary
+        if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@v4
         with:
           name: skein-macos-aarch64

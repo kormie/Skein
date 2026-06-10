@@ -4,7 +4,7 @@ defmodule Skein.MixProject do
   def project do
     [
       apps_path: "apps",
-      version: "0.1.2",
+      version: "0.1.3",
       start_permanent: Mix.env() == :prod,
       deps: deps(),
       aliases: aliases(),
@@ -71,7 +71,8 @@ defmodule Skein.MixProject do
         applications: [
           skein_cli: :permanent,
           skein_compiler: :permanent,
-          skein_runtime: :permanent
+          skein_runtime: :permanent,
+          skein_lsp: :permanent
         ],
         steps: [:assemble, &Burrito.wrap/1],
         burrito: [

@@ -109,7 +109,10 @@ The LSP server is built with [GenLSP](https://github.com/elixir-tools/gen_lsp), 
 ### Running the Server
 
 ```bash
-# Via mix task (used by VS Code extension)
+# Via the standalone binary (used by the VS Code extension by default)
+skein lsp
+
+# Via mix task (inside a Skein compiler checkout)
 mix skein.lsp
 
 # Programmatically

@@ -925,6 +925,22 @@ defmodule Skein.Analyzer do
           :error -> {:unknown, []}
         end
 
+      # `return` is not a Skein construct — give a targeted hint instead of
+      # the generic did-you-mean suggestion
+      name == "return" ->
+        {:unknown,
+         [
+           %Error{
+             code: "E0010",
+             severity: :error,
+             message: "Unknown identifier 'return'",
+             location: location_from_meta(meta, env.file),
+             fix_hint:
+               "Skein has no 'return' statement; a function returns the value of its last expression",
+             fix_code: ""
+           }
+         ]}
+
       true ->
         suggestion = suggest_identifier(name, env)
 

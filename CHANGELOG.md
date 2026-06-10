@@ -1,5 +1,33 @@
 # Changelog
 
+## v0.1.3 (unreleased)
+
+First-run UX release: fixes for the CLI paper cuts hit in real first-use sessions, plus `skein lsp` so editor support works with just the standalone binary.
+
+### CLI
+
+- **`skein lsp`** — the standalone binary now embeds the language server (stdio transport). The VS Code extension no longer needs an Elixir checkout.
+- **Errors name the file** — compiler errors print `src/main.skein:3:` instead of `unknown:3:`, and CLI output includes each error's `fix_hint`.
+- **Readable file errors** — `File not found: …` and `… is a directory — pass a .skein file, or use 'skein build …'` instead of raw `:enoent` / `:eisdir`.
+- **`skein build` / `skein test` / `skein run` default to the current directory** — matching the README that `skein new` generates.
+- **Unknown flags are rejected** — `skein build -v .` now errors with `Unknown option: -v` instead of treating `-v` as the project directory.
+- **`skein build` prints the actual compile errors** for failing files (with hints), not just the file name.
+- **`skein test` reports files that fail to compile** — previously a broken file was silently skipped and the run reported `0 passed, 0 failed`. Compile failures are now printed and fail the run.
+- **Stray-source hint** — when `src/` has no sources but `.skein` files sit in the project root, the error says so and points at `skein compile <file>`.
+
+### Compiler
+
+- **Targeted hints for habits from other languages** — `;` explains that Skein has no semicolons; `return` explains that a function returns the value of its last expression.
+
+### CI
+
+- **Lighter PR binary builds** — pull requests build only the native Linux target (release-assembly smoke test) and skip artifact uploads; docs-only PRs skip the job entirely. The full four-target matrix still runs on `main` pushes and `v*` tags.
+
+### VS Code Extension (0.1.1)
+
+- **Command palette entries actually appear** — `Skein: Restart Language Server` and `Skein: Show Language Server Output` were registered but never declared in the manifest. They also work (with a warning) when the server is disabled.
+- **Standalone-binary language server** — the extension launches `skein lsp` by default and only uses `mix skein.lsp` inside a Skein compiler checkout. New settings: `skein.lsp.serverCommand` (`auto`/`skein`/`mix`) and `skein.lsp.skeinPath`.
+
 ## v0.1.2 (2026-06-10)
 
 Hardening release: full codebase audit resolution plus demo-readiness fixes across the compiler, runtime, examples, and docs.

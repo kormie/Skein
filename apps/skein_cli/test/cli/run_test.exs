@@ -53,9 +53,16 @@ defmodule Skein.CLI.RunTest do
       GenServer.stop(pid)
     end
 
-    test "returns error with no arguments" do
+    test "defaults to the current directory with no arguments" do
+      # The CLI app has no src/ directory, so the default-dir search fails
       assert {:error, message} = CLI.run([])
-      assert message =~ "Usage"
+      assert message =~ "No .skein files found"
+      assert message =~ Path.expand(".")
+    end
+
+    test "rejects unknown flags", %{tmp_dir: tmp} do
+      assert {:error, message} = CLI.run_config([tmp, "--prot", "4000"])
+      assert message =~ "Unknown option: --prot"
     end
 
     test "returns error when no .skein files found", %{tmp_dir: tmp} do
