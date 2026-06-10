@@ -899,7 +899,12 @@ defmodule Skein.Analyzer do
 
       true ->
         suggestion = suggest_identifier(name, env)
-        fix_hint = if suggestion, do: "Did you mean '#{suggestion}'?", else: "Did you mean to declare this variable?"
+
+        fix_hint =
+          if suggestion,
+            do: "Did you mean '#{suggestion}'?",
+            else: "Did you mean to declare this variable?"
+
         fix_code = suggestion
 
         {:unknown,
@@ -1396,7 +1401,11 @@ defmodule Skein.Analyzer do
     %{env | variables: Map.put(env.variables, name, subject_type)}
   end
 
-  defp bind_pattern(%AST.Call{target: %AST.Identifier{name: "Ok"}, args: [arg]}, subject_type, env) do
+  defp bind_pattern(
+         %AST.Call{target: %AST.Identifier{name: "Ok"}, args: [arg]},
+         subject_type,
+         env
+       ) do
     ok_type =
       case subject_type do
         {:result, ok_t, _err_t} -> ok_t
@@ -1406,7 +1415,11 @@ defmodule Skein.Analyzer do
     bind_pattern(arg, ok_type, env)
   end
 
-  defp bind_pattern(%AST.Call{target: %AST.Identifier{name: "Err"}, args: [arg]}, subject_type, env) do
+  defp bind_pattern(
+         %AST.Call{target: %AST.Identifier{name: "Err"}, args: [arg]},
+         subject_type,
+         env
+       ) do
     err_type =
       case subject_type do
         {:result, _ok_t, err_t} -> err_t
@@ -1416,7 +1429,11 @@ defmodule Skein.Analyzer do
     bind_pattern(arg, err_type, env)
   end
 
-  defp bind_pattern(%AST.Call{target: %AST.Identifier{name: variant_name}, args: args}, subject_type, env) do
+  defp bind_pattern(
+         %AST.Call{target: %AST.Identifier{name: variant_name}, args: args},
+         subject_type,
+         env
+       ) do
     # Try to find enum variant and bind fields
     case subject_type do
       {:enum, enum_name} ->
@@ -2736,7 +2753,7 @@ defmodule Skein.Analyzer do
 
     Enum.reduce(Enum.with_index(s_chars, 1), first_row, fn {s_char, i}, prev_row ->
       Enum.reduce(Enum.with_index(t_chars, 1), {[i], prev_row}, fn {t_char, j},
-                                                                    {curr_row, prev} ->
+                                                                   {curr_row, prev} ->
         cost = if s_char == t_char, do: 0, else: 1
         prev_val = Enum.at(prev, j)
         left_val = List.last(curr_row)

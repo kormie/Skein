@@ -690,10 +690,15 @@ defmodule Skein.CodeGen.CoreErlang do
     # let Events = element(Size, Result) in
     # let Merged = acc ++ Events in
     # setelement(Size, Result, Merged)
-    :cerl.c_let([result_var], result,
-      :cerl.c_let([size_var], tuple_size_call,
-        :cerl.c_let([events_var], get_events,
-          :cerl.c_let([merged_var], merge_call, set_events))))
+    :cerl.c_let(
+      [result_var],
+      result,
+      :cerl.c_let(
+        [size_var],
+        tuple_size_call,
+        :cerl.c_let([events_var], get_events, :cerl.c_let([merged_var], merge_call, set_events))
+      )
+    )
   end
 
   defp phase_atom(name) when is_binary(name) do

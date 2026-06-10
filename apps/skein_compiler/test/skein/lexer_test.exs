@@ -18,7 +18,8 @@ defmodule Skein.LexerTest do
     end
 
     test "contextual keywords tokenize as identifiers" do
-      contextual = ~w(input output errors policy description state strategy child replay given expect assert)
+      contextual =
+        ~w(input output errors policy description state strategy child replay given expect assert)
 
       for kw <- contextual do
         assert {:ok, [{:ident, {1, 1}, ^kw}, {:eof, _}]} = Lexer.tokenize(kw)

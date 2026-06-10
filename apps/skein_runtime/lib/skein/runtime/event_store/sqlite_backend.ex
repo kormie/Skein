@@ -63,9 +63,13 @@ defmodule Skein.Runtime.EventStore.SqliteBackend do
     # Store the full event as JSON (minus internal _key)
     data = enriched |> Map.delete(:_key) |> encode_event()
 
-    Ecto.Adapters.SQL.query!(Repo, """
-    INSERT INTO #{@table_name} (id, kind, timestamp, data) VALUES (?1, ?2, ?3, ?4)
-    """, [id, kind, timestamp, data])
+    Ecto.Adapters.SQL.query!(
+      Repo,
+      """
+      INSERT INTO #{@table_name} (id, kind, timestamp, data) VALUES (?1, ?2, ?3, ?4)
+      """,
+      [id, kind, timestamp, data]
+    )
 
     :ok
   end

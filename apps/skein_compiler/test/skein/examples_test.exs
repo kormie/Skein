@@ -513,9 +513,7 @@ defmodule Skein.ExamplesTest do
 
     test "has correct phase definitions" do
       {:module, mod} =
-        Compiler.compile_file(
-          Path.join(project_root(), "examples/market_research/agent.skein")
-        )
+        Compiler.compile_file(Path.join(project_root(), "examples/market_research/agent.skein"))
 
       phases = mod.__phases__()
       phase_names = Enum.map(phases, & &1.name)
@@ -529,9 +527,7 @@ defmodule Skein.ExamplesTest do
 
     test "phase transitions are correct" do
       {:module, mod} =
-        Compiler.compile_file(
-          Path.join(project_root(), "examples/market_research/agent.skein")
-        )
+        Compiler.compile_file(Path.join(project_root(), "examples/market_research/agent.skein"))
 
       phases = mod.__phases__()
 
@@ -555,9 +551,7 @@ defmodule Skein.ExamplesTest do
 
     test "Complete phase handler calls stop" do
       {:module, mod} =
-        Compiler.compile_file(
-          Path.join(project_root(), "examples/market_research/agent.skein")
-        )
+        Compiler.compile_file(Path.join(project_root(), "examples/market_research/agent.skein"))
 
       result = mod.__phase_handler__(:complete, %{}, [])
       assert {:stop, %{}, []} = result
@@ -565,9 +559,7 @@ defmodule Skein.ExamplesTest do
 
     test "has all phase handlers" do
       {:module, mod} =
-        Compiler.compile_file(
-          Path.join(project_root(), "examples/market_research/agent.skein")
-        )
+        Compiler.compile_file(Path.join(project_root(), "examples/market_research/agent.skein"))
 
       phases = mod.__phases__()
       phase_names = Enum.map(phases, & &1.name)
@@ -580,9 +572,7 @@ defmodule Skein.ExamplesTest do
 
     test "start handler triggers transition to Briefing" do
       {:module, mod} =
-        Compiler.compile_file(
-          Path.join(project_root(), "examples/market_research/agent.skein")
-        )
+        Compiler.compile_file(Path.join(project_root(), "examples/market_research/agent.skein"))
 
       result = mod.__start_handler__(%{topic: "AI chips", industry: "semiconductors"}, [])
       assert {:transition, :briefing, _, _} = result
@@ -657,9 +647,7 @@ defmodule Skein.ExamplesTest do
 
     test "has three HTTP handlers" do
       {:module, mod} =
-        Compiler.compile_file(
-          Path.join(project_root(), "examples/market_research/service.skein")
-        )
+        Compiler.compile_file(Path.join(project_root(), "examples/market_research/service.skein"))
 
       handlers = mod.__handlers__()
       assert length(handlers) == 3
@@ -670,9 +658,7 @@ defmodule Skein.ExamplesTest do
 
     test "has correct routes" do
       {:module, mod} =
-        Compiler.compile_file(
-          Path.join(project_root(), "examples/market_research/service.skein")
-        )
+        Compiler.compile_file(Path.join(project_root(), "examples/market_research/service.skein"))
 
       handlers = mod.__handlers__()
       routes = Enum.map(handlers, &{&1.method, &1.route})
@@ -684,9 +670,7 @@ defmodule Skein.ExamplesTest do
 
     test "has tool declarations" do
       {:module, mod} =
-        Compiler.compile_file(
-          Path.join(project_root(), "examples/market_research/service.skein")
-        )
+        Compiler.compile_file(Path.join(project_root(), "examples/market_research/service.skein"))
 
       tools = mod.__tools__()
       assert length(tools) == 3
@@ -699,9 +683,7 @@ defmodule Skein.ExamplesTest do
 
     test "has supervisor metadata" do
       {:module, mod} =
-        Compiler.compile_file(
-          Path.join(project_root(), "examples/market_research/service.skein")
-        )
+        Compiler.compile_file(Path.join(project_root(), "examples/market_research/service.skein"))
 
       supervisors = mod.__supervisors__()
       assert length(supervisors) >= 1
@@ -709,11 +691,12 @@ defmodule Skein.ExamplesTest do
 
     test "start handler parses typed JSON body" do
       {:module, mod} =
-        Compiler.compile_file(
-          Path.join(project_root(), "examples/market_research/service.skein")
-        )
+        Compiler.compile_file(Path.join(project_root(), "examples/market_research/service.skein"))
 
-      req = %{body: ~s({"topic":"AI chips","industry":"semiconductors","focus_areas":"market share"})}
+      req = %{
+        body: ~s({"topic":"AI chips","industry":"semiconductors","focus_areas":"market share"})
+      }
+
       result = mod.__handler_0__(req)
       assert {:respond_json, 201, body} = result
       assert is_map(body)
@@ -722,9 +705,7 @@ defmodule Skein.ExamplesTest do
 
     test "resume handler parses typed JSON body" do
       {:module, mod} =
-        Compiler.compile_file(
-          Path.join(project_root(), "examples/market_research/service.skein")
-        )
+        Compiler.compile_file(Path.join(project_root(), "examples/market_research/service.skein"))
 
       req = %{body: ~s({"refined_topic":"AI chips for edge","notes":"narrow to edge computing"})}
       result = mod.__handler_2__(req)

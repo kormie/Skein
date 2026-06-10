@@ -9,7 +9,8 @@ defmodule Skein.Runtime.EventLogTest do
 
   describe "log/3" do
     test "logs an event and returns :ok" do
-      assert :ok = EventLog.log("user.login", %{user_id: "u1"}, [%{kind: "event.log", params: []}])
+      assert :ok =
+               EventLog.log("user.login", %{user_id: "u1"}, [%{kind: "event.log", params: []}])
     end
 
     test "logged event is retrievable" do

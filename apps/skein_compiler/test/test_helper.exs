@@ -19,6 +19,7 @@ if File.dir?(umbrella_build) do
         # Try to find it from Erlang's root
         otp_root = :code.root_dir()
         lib_dir = Path.join([to_string(otp_root), "lib"])
+
         if File.dir?(lib_dir) do
           lib_dir
           |> File.ls!()
@@ -28,12 +29,24 @@ if File.dir?(umbrella_build) do
             if File.dir?(ebin), do: :code.add_pathz(String.to_charlist(ebin))
           end)
         end
+
       path ->
         :code.add_pathz(path)
     end
   end
 
-  for app <- [:crypto, :asn1, :public_key, :ssl, :inets, :ecto, :ecto_sql, :telemetry, :db_connection, :decimal] do
+  for app <- [
+        :crypto,
+        :asn1,
+        :public_key,
+        :ssl,
+        :inets,
+        :ecto,
+        :ecto_sql,
+        :telemetry,
+        :db_connection,
+        :decimal
+      ] do
     Application.ensure_all_started(app)
   end
 

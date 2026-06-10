@@ -39,7 +39,8 @@ defmodule Skein.Runtime.LlmTraceTest do
       {:ok, _} = Llm.chat("test-model", "System", long_input, @capabilities)
       [span] = Trace.recent_spans(1)
 
-      assert String.length(span.input) == 203  # 200 + "..."
+      # 200 + "..."
+      assert String.length(span.input) == 203
     end
 
     test "chat traces work with structured input" do
