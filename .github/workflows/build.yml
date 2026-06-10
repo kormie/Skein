@@ -12,6 +12,8 @@ on:
       - "mix.lock"
       - "apps/**"
       - "config/**"
+      - "rel/**"
+      - "editors/vscode/**"
       - ".github/workflows/build.yml"
   workflow_dispatch:
 
@@ -105,9 +107,35 @@ jobs:
           path: burrito_out/skein_macos_arm
           if-no-files-found: warn
 
+  build-extension:
+    name: Build VS Code extension
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: editors/vscode/package-lock.json
+
+      - name: Package extension
+        working-directory: editors/vscode
+        run: |
+          npm ci
+          npx vsce package -o skein-vscode.vsix
+
+      - name: Upload extension
+        uses: actions/upload-artifact@v4
+        with:
+          name: skein-vscode-extension
+          path: editors/vscode/skein-vscode.vsix
+          if-no-files-found: error
+
   release:
     name: Create GitHub Release
-    needs: build
+    needs: [build, build-extension]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
 
@@ -124,7 +152,8 @@ jobs:
           cp artifacts/skein-linux-aarch64/skein_linux_arm release/skein-linux-aarch64 || true
           cp artifacts/skein-macos-x86_64/skein_macos release/skein-macos-x86_64 || true
           cp artifacts/skein-macos-aarch64/skein_macos_arm release/skein-macos-aarch64 || true
-          chmod +x release/*
+          cp artifacts/skein-vscode-extension/skein-vscode.vsix release/skein-vscode.vsix
+          chmod +x release/skein-*64
           cd release && sha256sum * > checksums.txt
 
       - name: Create GitHub Release

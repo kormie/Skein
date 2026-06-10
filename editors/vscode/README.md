@@ -67,6 +67,17 @@ Syntax highlighting and snippets work with no requirements at all.
 | `Skein: Restart Language Server` | Restart the LSP after changing settings or updating the binary |
 | `Skein: Show Language Server Output` | Open the server's output channel for troubleshooting |
 
+## Installing
+
+### From a GitHub Release (easiest)
+
+Every release ships a prebuilt `skein-vscode.vsix` — download it from the
+[Releases page](https://github.com/kormie/Skein/releases) and install:
+
+```bash
+code --install-extension skein-vscode.vsix
+```
+
 ## Development
 
 ### Building the Extension
@@ -87,7 +98,7 @@ npm run package
 ### Installing from VSIX
 
 ```
-code --install-extension skein-lang-0.1.1.vsix
+code --install-extension skein-lang-0.1.2.vsix
 ```
 
 ## Architecture

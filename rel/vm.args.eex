@@ -1,0 +1,3 @@
+## Disable the BEAM break handler so Ctrl+C exits the CLI immediately
+## instead of presenting the BREAK: (a)bort menu.
++Bd

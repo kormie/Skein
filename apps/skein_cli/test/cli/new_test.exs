@@ -50,6 +50,32 @@ defmodule Skein.CLI.NewTest do
       assert {:ok, _tokens} = Skein.Lexer.tokenize(source)
     end
 
+    test "hyphenated project names produce a valid module name that builds", %{tmp_dir: tmp} do
+      project_dir = Path.join(tmp, "skein-tests")
+      {:ok, _} = CLI.new([project_dir])
+
+      source = File.read!(Path.join(project_dir, "src/main.skein"))
+      assert source =~ "module SkeinTests {"
+
+      assert {:ok, result} = CLI.build([project_dir])
+      assert result.errors == 0
+
+      assert {:ok, tests} = CLI.test_all([project_dir])
+      assert tests.compile_errors == 0
+      assert tests.passed == 1
+    end
+
+    test "names not starting with a letter get a Skein prefix", %{tmp_dir: tmp} do
+      project_dir = Path.join(tmp, "9lives")
+      {:ok, _} = CLI.new([project_dir])
+
+      source = File.read!(Path.join(project_dir, "src/main.skein"))
+      assert source =~ "module Skein9lives {"
+
+      assert {:ok, result} = CLI.build([project_dir])
+      assert result.errors == 0
+    end
+
     test "generates a compilable test file", %{tmp_dir: tmp} do
       project_dir = Path.join(tmp, "test_app")
       {:ok, _} = CLI.new([project_dir])

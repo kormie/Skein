@@ -2,7 +2,7 @@
   "name": "skein-lang",
   "displayName": "Skein Language",
   "description": "Full language support for the Skein programming language — syntax highlighting, diagnostics, completions, hover, go-to-definition, and more.",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "publisher": "kormie",
   "license": "MIT",
   "repository": {
