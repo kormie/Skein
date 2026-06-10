@@ -195,6 +195,63 @@ defmodule Skein.CLI.McpTest do
       assert {:ok, %{"ok" => true, "files_checked" => 2}} = Jason.decode(text)
     end
 
+    test "warnings-only file reports ok true with populated warnings", %{tmp_dir: tmp} do
+      path = Path.join(tmp, "warny.skein")
+
+      # Declared but never exercised capability -> W0002
+      File.write!(path, """
+      module Warny {
+        capability http.out("example.com")
+
+        fn pure() -> Int { 42 }
+      }
+      """)
+
+      {is_error, text} = call_tool("skein_compile_check", %{"path" => path})
+
+      assert is_error == false
+      assert {:ok, result} = Jason.decode(text)
+      assert result["ok"] == true
+      assert result["errors"] == []
+      assert [warning | _] = result["warnings"]
+      assert warning["code"] == "W0002"
+      assert warning["severity"] == "warning"
+      assert warning["location"]["line"]
+      assert is_binary(warning["fix_hint"])
+    end
+
+    test "project mode checks test/ files too and reports their warnings", %{tmp_dir: tmp} do
+      project = Path.join(tmp, "proj_with_tests")
+      File.mkdir_p!(Path.join(project, "src"))
+      File.mkdir_p!(Path.join(project, "test"))
+
+      File.write!(Path.join(project, "src/main.skein"), """
+      module Main {
+        fn one() -> Int { 1 }
+      }
+      """)
+
+      File.write!(Path.join(project, "test/main_test.skein"), """
+      module MainTest {
+        capability http.out("never.used")
+
+        test "one is one" {
+          assert 1 == 1
+        }
+      }
+      """)
+
+      {is_error, text} = call_tool("skein_compile_check", %{"path" => project})
+
+      assert is_error == false
+      assert {:ok, result} = Jason.decode(text)
+      assert result["ok"] == true
+      assert result["files_checked"] == 2
+      assert [warning] = result["warnings"]
+      assert warning["code"] == "W0002"
+      assert warning["location"]["file"] =~ "test/main_test.skein"
+    end
+
     test "errors for a missing path" do
       {is_error, text} = call_tool("skein_compile_check", %{"path" => "/nope/missing.skein"})
 

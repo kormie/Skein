@@ -82,7 +82,9 @@ title with the matching lines:
 ### `skein_compile_check`
 
 Compiles a `.skein` file — or every file under a project's `src/` when given
-a directory — and returns the compiler's structured JSON errors directly:
+a directory (checking `src/` and `test/`, matching `skein test`'s
+discovery) — and returns the compiler's structured JSON diagnostics
+directly. Warnings are included; `ok` reflects errors only:
 
 ```json
 { "path": "src/main.skein" }
@@ -100,6 +102,16 @@ a directory — and returns the compiler's structured JSON errors directly:
       "location": { "file": "src/main.skein", "line": 3, "col": 13 },
       "fix_hint": "Add the capability declaration to the module",
       "fix_code": "capability http.out(\"example.com\")"
+    }
+  ],
+  "warnings": [
+    {
+      "code": "W0002",
+      "severity": "warning",
+      "message": "Unused capability 'store.table' — declared but never exercised",
+      "location": { "file": "src/main.skein", "line": 4, "col": 3 },
+      "fix_hint": "Remove this capability declaration if it is no longer needed",
+      "fix_code": ""
     }
   ]
 }

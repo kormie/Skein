@@ -60,13 +60,16 @@ defmodule Skein.CLI.Mcp do
       "name" => "skein_compile_check",
       "description" =>
         "Compile a .skein file or a Skein project directory and return structured " <>
-          "JSON compile results. Errors include code, message, location, fix_hint, and fix_code.",
+          "JSON compile results, matching what `skein test` reports. Errors AND " <>
+          "warnings include code, severity, message, location, fix_hint, and " <>
+          "fix_code; ok reflects errors only.",
       "inputSchema" => %{
         "type" => "object",
         "properties" => %{
           "path" => %{
             "type" => "string",
-            "description" => "Path to a .skein file or a project directory (compiles src/)"
+            "description" =>
+              "Path to a .skein file or a project directory (checks src/ and test/)"
           }
         },
         "required" => ["path"]
@@ -289,11 +292,14 @@ defmodule Skein.CLI.Mcp do
 
     cond do
       File.dir?(expanded) ->
+        # Match skein test's discovery: src/ first, then test/
         files =
-          expanded
-          |> Path.join("src/**/*.skein")
-          |> Path.wildcard()
-          |> Enum.sort()
+          Enum.flat_map(["src", "test"], fn dir ->
+            expanded
+            |> Path.join("#{dir}/**/*.skein")
+            |> Path.wildcard()
+            |> Enum.sort()
+          end)
 
         if files == [] do
           {:error, "No .skein files found in #{Path.join(expanded, "src")}/"}
@@ -310,18 +316,32 @@ defmodule Skein.CLI.Mcp do
   end
 
   defp check_files(files) do
-    errors =
-      Enum.flat_map(files, fn file ->
-        case Compiler.compile_file(file) do
-          {:module, _mod} -> []
-          {:error, errors} -> errors |> List.wrap() |> Enum.map(&normalize_error(&1, file))
+    results =
+      Enum.map(files, fn file ->
+        case Compiler.check_file(file) do
+          {:ok, diagnostics} ->
+            diagnostics
+
+          {:error, message} ->
+            %{errors: [normalize_error(message, file)], warnings: []}
         end
       end)
 
-    Jason.encode!(%{ok: errors == [], files_checked: length(files), errors: errors})
+    errors = Enum.flat_map(results, & &1.errors) |> Enum.map(&normalize_error(&1, nil))
+    warnings = Enum.flat_map(results, & &1.warnings) |> Enum.map(&normalize_error(&1, nil))
+
+    # ok stays errors-only — warnings must not flip agents into failure
+    # handling, but they ARE the diagnostics skein test prints.
+    Jason.encode!(%{
+      ok: errors == [],
+      files_checked: length(files),
+      errors: errors,
+      warnings: warnings
+    })
   end
 
   defp normalize_error(%Skein.Error{} = error, _file), do: error
+  defp normalize_error(%{} = error, _file), do: error
   defp normalize_error(message, file) when is_binary(message), do: %{file: file, message: message}
   defp normalize_error(other, file), do: %{file: file, message: inspect(other)}
 
