@@ -44,10 +44,10 @@ capability <namespace>.<kind>(<params>)
 | `memory.kv` | Scoped KV memory | Namespace name |
 | `model` | LLM model access | Provider, model identifier |
 | `tool.use` | Tool execution | Tool name |
-| `queue.in` | Inbound queue handlers | Queue name (optional) |
+| `queue.consume` | Inbound queue handlers | Queue name (optional) |
 | `topic.publish` | Publish to a named topic | Topic name |
 | `topic.consume` | Subscribe to a named topic | Topic name |
-| `schedule.in` | Cron-based schedule handlers | Cron expression (optional) |
+| `schedule.trigger` | Cron-based schedule handlers | Cron expression (optional) |
 | `process.spawn` | Spawn supervised processes | Pool name (optional) |
 | `timer` | One-shot and recurring timers | Timer namespace (optional) |
 | `event.log` | Structured event logging | Log namespace (optional) |
@@ -105,10 +105,10 @@ Memory is scoped by namespace. Each namespace requires a `capability memory.kv("
 ### LLM Effects
 
 ```skein
-llm.chat("claude-sonnet-4-5", "system prompt", input)
-llm.json[RefundDecision]("claude-sonnet-4-5", "system prompt", input)
-llm.stream("claude-sonnet-4-5", "system prompt", input)
-llm.embed("text-embedding-3-small", input)
+llm.chat("claude-opus-4-8", "system prompt", input)
+llm.json[RefundDecision]("claude-opus-4-8", "system prompt", input)
+llm.stream("claude-opus-4-8", "system prompt", input)
+llm.embed("voyage-3-large", input)
 ```
 
 `llm.chat` returns unstructured text. `llm.json[T]` returns a parsed map constrained by a JSON schema derived from type `T` at compile time. `llm.stream` returns the assembled response text after streaming all chunks. `llm.embed` returns a vector (list of floats) for use in semantic search and RAG patterns. All four require a `capability model(...)` declaration.
@@ -125,10 +125,10 @@ module RefundService {
     reason: String
   }
 
-  capability model("anthropic", "claude-sonnet-4-5")
+  capability model("anthropic", "claude-opus-4-8")
 
   fn decide(ticket: String) -> String {
-    llm.json[RefundDecision]("claude-sonnet-4-5", "Decide if this warrants a refund.", ticket)
+    llm.json[RefundDecision]("claude-opus-4-8", "Decide if this warrants a refund.", ticket)
   }
 }
 ```
@@ -150,7 +150,7 @@ The generated schema for `RefundDecision` includes all type information and cons
 You can also call `llm.json` without a type parameter for untyped JSON responses:
 
 ```skein
-llm.json("claude-sonnet-4-5", "Return JSON.", input)
+llm.json("claude-opus-4-8", "Return JSON.", input)
 ```
 
 This uses an empty schema (`{}`) which accepts any valid JSON.
@@ -235,13 +235,13 @@ In agents, use `trace.annotate` to enrich trace context with business-relevant d
 
 ```skein
 agent RefundAgent {
-  capability model("gpt-4")
+  capability model("claude-opus-4-8")
   capability memory.kv
 
   on phase(Phase.Review) -> {
     let order = memory.get("order_id")
     trace.annotate("ticket_id", order)
-    let decision = llm.chat("gpt-4", "Evaluate refund", order)
+    let decision = llm.chat("claude-opus-4-8", "Evaluate refund", order)
     trace.annotate("decision", decision)
     memory.put("decision", decision)
     transition(Phase.Approved)

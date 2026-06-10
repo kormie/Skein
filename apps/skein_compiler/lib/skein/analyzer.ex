@@ -104,7 +104,7 @@ defmodule Skein.Analyzer do
   }
 
   # Store operations: store.<table>.<method>(...)
-  @store_methods ["get", "put", "delete", "query"]
+  @store_methods ["get", "get!", "put", "put!", "delete", "query"]
 
   # Standard library function registry: {Module, function} -> {param_types, return_type}
   @stdlib_registry %{
@@ -585,14 +585,28 @@ defmodule Skein.Analyzer do
       []
     else
       source_label = handler_source_label(source)
+      deprecated_alias = deprecated_capability_alias(required_capability)
+
+      has_deprecated_alias =
+        deprecated_alias != nil and
+          Enum.any?(env.capabilities, fn %AST.Capability{kind: kind} ->
+            kind == deprecated_alias
+          end)
+
+      message =
+        if has_deprecated_alias do
+          "Capability '#{deprecated_alias}' was renamed to '#{required_capability}'. " <>
+            "Update the declaration: capability #{required_capability}"
+        else
+          "Capability '#{required_capability}' required but not declared. " <>
+            "#{source_label} handlers require this capability."
+        end
 
       [
         %Error{
           code: "E0012",
           severity: :error,
-          message:
-            "Capability '#{required_capability}' required but not declared. " <>
-              "#{source_label} handlers require this capability.",
+          message: message,
           location: location_from_meta(meta, env.file),
           fix_hint:
             "Add a capability declaration to the module: capability #{required_capability}",
@@ -698,10 +712,15 @@ defmodule Skein.Analyzer do
   defp validate_declaration(_, _env), do: []
 
   defp handler_required_capability("http"), do: "http.in"
-  defp handler_required_capability("queue"), do: "queue.in"
-  defp handler_required_capability("schedule"), do: "schedule.in"
+  defp handler_required_capability("queue"), do: "queue.consume"
+  defp handler_required_capability("schedule"), do: "schedule.trigger"
   defp handler_required_capability("topic"), do: "topic.consume"
   defp handler_required_capability(_), do: "unknown"
+
+  # Pre-1.0 renames: declaring the old name gets a targeted migration hint.
+  defp deprecated_capability_alias("queue.consume"), do: "queue.in"
+  defp deprecated_capability_alias("schedule.trigger"), do: "schedule.in"
+  defp deprecated_capability_alias(_), do: nil
 
   defp handler_source_label("http"), do: "HTTP"
   defp handler_source_label("queue"), do: "Queue"
@@ -2544,7 +2563,7 @@ defmodule Skein.Analyzer do
       end)
       |> Enum.reject(&is_nil/1)
 
-    # Check handlers (they require http.in/queue.in/schedule.in)
+    # Check handlers (they require http.in/queue.consume/schedule.trigger)
     handler_caps =
       declarations
       |> Enum.filter(&match?(%AST.Handler{}, &1))

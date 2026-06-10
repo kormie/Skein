@@ -265,13 +265,13 @@ Provider-agnostic LLM client. Provides unstructured chat, schema-constrained JSO
 **API:**
 
 ```elixir
-Skein.Runtime.Llm.chat("claude-3-5-sonnet", "You are helpful", "What is 2+2?", capabilities)
+Skein.Runtime.Llm.chat("claude-opus-4-8", "You are helpful", "What is 2+2?", capabilities)
 #=> {:ok, "4"}
 
-Skein.Runtime.Llm.json("claude-3-5-sonnet", "Evaluate refund", input, schema, capabilities)
+Skein.Runtime.Llm.json("claude-opus-4-8", "Evaluate refund", input, schema, capabilities)
 #=> {:ok, %{"action" => "approve", "amount" => 100}}
 
-Skein.Runtime.Llm.stream("claude-3-5-sonnet", "Be helpful", "Hello", on_chunk_fn, capabilities)
+Skein.Runtime.Llm.stream("claude-opus-4-8", "Be helpful", "Hello", on_chunk_fn, capabilities)
 #=> {:ok, "Hello, world!"}  (chunks delivered to on_chunk_fn as they arrive)
 ```
 
@@ -445,10 +445,10 @@ call 'Elixir.Skein.Runtime.Memory':'put'("sessions", Key, Value, Capabilities)
 
 ```skein
 -- Skein source:
-llm.chat("claude-3-5-sonnet", "system prompt", input)
+llm.chat("claude-opus-4-8", "system prompt", input)
 
 -- Compiles to (Core Erlang):
-call 'Elixir.Skein.Runtime.Llm':'chat'("claude-3-5-sonnet", "system prompt", Input, Capabilities)
+call 'Elixir.Skein.Runtime.Llm':'chat'("claude-opus-4-8", "system prompt", Input, Capabilities)
 ```
 
 Where `Capabilities` is a literal list built from the module's `capability` declarations at compile time.

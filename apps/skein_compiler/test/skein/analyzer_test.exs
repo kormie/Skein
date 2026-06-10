@@ -2013,8 +2013,8 @@ defmodule Skein.AnalyzerTest do
   # Queue handler capability checking (Phase 8e)
   # ------------------------------------------------------------------
 
-  describe "queue handler checking - queue.in capability" do
-    test "queue handler without queue.in capability produces error" do
+  describe "queue handler checking - queue.consume capability" do
+    test "queue handler without queue.consume capability produces error" do
       errors =
         analyze_errors("""
         module M {
@@ -2027,15 +2027,15 @@ defmodule Skein.AnalyzerTest do
       assert length(errors) >= 1
       error = Enum.find(errors, &(&1.code == "E0012"))
       assert error != nil
-      assert error.message =~ "queue.in"
-      assert error.fix_code == "capability queue.in"
+      assert error.message =~ "queue.consume"
+      assert error.fix_code == "capability queue.consume"
     end
 
-    test "queue handler with queue.in capability passes" do
+    test "queue handler with queue.consume capability passes" do
       assert {:ok, _} =
                analyze("""
                module M {
-                 capability queue.in
+                 capability queue.consume
 
                  handler queue "events" (msg) -> {
                    respond.json(200, "ok")
@@ -2044,7 +2044,45 @@ defmodule Skein.AnalyzerTest do
                """)
     end
 
-    test "multiple queue handlers all require queue.in" do
+    test "deprecated queue.in capability produces a rename hint" do
+      errors =
+        analyze_errors("""
+        module M {
+          capability queue.in
+
+          handler queue "events" (msg) -> {
+            respond.json(200, "ok")
+          }
+        }
+        """)
+
+      error = Enum.find(errors, &(&1.code == "E0012"))
+      assert error != nil
+      assert error.message =~ "renamed"
+      assert error.message =~ "queue.consume"
+      assert error.fix_code == "capability queue.consume"
+    end
+
+    test "deprecated schedule.in capability produces a rename hint" do
+      errors =
+        analyze_errors("""
+        module M {
+          capability schedule.in
+
+          handler schedule "0 * * * *" () -> {
+            respond.json(200, "ok")
+          }
+        }
+        """)
+
+      error = Enum.find(errors, &(&1.code == "E0012"))
+      assert error != nil
+      assert error.message =~ "renamed"
+      assert error.message =~ "schedule.trigger"
+      assert error.fix_code == "capability schedule.trigger"
+    end
+
+    test "multiple queue handlers all require queue.consume" do
       errors =
         analyze_errors("""
         module M {
@@ -2062,8 +2100,8 @@ defmodule Skein.AnalyzerTest do
   # Schedule handler capability checking (Phase 8e)
   # ------------------------------------------------------------------
 
-  describe "schedule handler checking - schedule.in capability" do
-    test "schedule handler without schedule.in capability produces error" do
+  describe "schedule handler checking - schedule.trigger capability" do
+    test "schedule handler without schedule.trigger capability produces error" do
       errors =
         analyze_errors("""
         module M {
@@ -2076,15 +2114,15 @@ defmodule Skein.AnalyzerTest do
       assert length(errors) >= 1
       error = Enum.find(errors, &(&1.code == "E0012"))
       assert error != nil
-      assert error.message =~ "schedule.in"
-      assert error.fix_code == "capability schedule.in"
+      assert error.message =~ "schedule.trigger"
+      assert error.fix_code == "capability schedule.trigger"
     end
 
-    test "schedule handler with schedule.in capability passes" do
+    test "schedule handler with schedule.trigger capability passes" do
       assert {:ok, _} =
                analyze("""
                module M {
-                 capability schedule.in
+                 capability schedule.trigger
 
                  handler schedule "0 * * * *" () -> {
                    respond.json(200, "hourly")
@@ -2109,8 +2147,8 @@ defmodule Skein.AnalyzerTest do
 
       messages = Enum.map(capability_errors, & &1.message)
       assert Enum.any?(messages, &(&1 =~ "http.in"))
-      assert Enum.any?(messages, &(&1 =~ "queue.in"))
-      assert Enum.any?(messages, &(&1 =~ "schedule.in"))
+      assert Enum.any?(messages, &(&1 =~ "queue.consume"))
+      assert Enum.any?(messages, &(&1 =~ "schedule.trigger"))
     end
 
     test "all capabilities declared passes for mixed handlers" do
@@ -2118,8 +2156,8 @@ defmodule Skein.AnalyzerTest do
                analyze("""
                module M {
                  capability http.in
-                 capability queue.in
-                 capability schedule.in
+                 capability queue.consume
+                 capability schedule.trigger
 
                  handler http GET "/test" (req) -> { respond.json(200, "ok") }
                  handler queue "events" (msg) -> { respond.json(200, "ok") }
@@ -2221,7 +2259,7 @@ defmodule Skein.AnalyzerTest do
 
       messages = Enum.map(capability_errors, & &1.message)
       assert Enum.any?(messages, &(&1 =~ "http.in"))
-      assert Enum.any?(messages, &(&1 =~ "queue.in"))
+      assert Enum.any?(messages, &(&1 =~ "queue.consume"))
       assert Enum.any?(messages, &(&1 =~ "topic.consume"))
     end
 
@@ -2230,7 +2268,7 @@ defmodule Skein.AnalyzerTest do
                analyze("""
                module M {
                  capability http.in
-                 capability queue.in
+                 capability queue.consume
                  capability topic.consume("notifications")
 
                  handler http GET "/test" (req) -> { respond.json(200, "ok") }
@@ -2857,7 +2895,7 @@ defmodule Skein.AnalyzerTest do
       assert {:ok, _} =
                analyze("""
                module M {
-                 capability queue.in
+                 capability queue.consume
                  handler queue "jobs" (msg) -> {
                    idempotent("key-1")
                    respond.json(200, "ok")

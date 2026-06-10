@@ -380,6 +380,60 @@ defmodule Skein.ParserTest do
       assert {:ok, %AST.Module{declarations: [fn_decl]}} = parse(source)
       assert %AST.Block{expressions: [%AST.UnaryOp{op: :propagate}]} = fn_decl.body
     end
+
+    test "method!(args) parses as unwrap of the call" do
+      source = "module M { fn f(id: String) -> Int { store.users.get!(id) } }"
+
+      assert {:ok, %AST.Module{declarations: [fn_decl]}} = parse(source)
+
+      assert %AST.Block{
+               expressions: [
+                 %AST.UnaryOp{
+                   op: :unwrap,
+                   operand: %AST.Call{
+                     target: %AST.FieldAccess{
+                       subject: %AST.FieldAccess{
+                         subject: %AST.Identifier{name: "store"},
+                         field: "users"
+                       },
+                       field: "get"
+                     },
+                     args: [%AST.Identifier{name: "id"}]
+                   }
+                 }
+               ]
+             } = fn_decl.body
+    end
+
+    test "method?(args) parses as propagate of the call" do
+      source = "module M { fn f(k: String) -> Int { memory.get?(k) } }"
+
+      assert {:ok, %AST.Module{declarations: [fn_decl]}} = parse(source)
+
+      assert %AST.Block{
+               expressions: [
+                 %AST.UnaryOp{
+                   op: :propagate,
+                   operand: %AST.Call{args: [%AST.Identifier{name: "k"}]}
+                 }
+               ]
+             } = fn_decl.body
+    end
+
+    test "chained postfix after bang-call continues the chain" do
+      source = "module M { fn f(id: String) -> Int { store.users.get!(id).name } }"
+
+      assert {:ok, %AST.Module{declarations: [fn_decl]}} = parse(source)
+
+      assert %AST.Block{
+               expressions: [
+                 %AST.FieldAccess{
+                   subject: %AST.UnaryOp{op: :unwrap, operand: %AST.Call{}},
+                   field: "name"
+                 }
+               ]
+             } = fn_decl.body
+    end
   end
 
   describe "parse/1 - type declarations" do
@@ -1754,7 +1808,7 @@ defmodule Skein.ParserTest do
     test "parses a queue handler" do
       source = """
       module M {
-        capability queue.in
+        capability queue.consume
         handler queue "order-events" (msg) -> {
           let data = msg
           respond.json(200, data)
@@ -1773,7 +1827,7 @@ defmodule Skein.ParserTest do
     test "parses queue handler with different queue name" do
       source = """
       module M {
-        capability queue.in
+        capability queue.consume
         handler queue "user-notifications" (message) -> {
           respond.json(200, "ok")
         }
@@ -1789,7 +1843,7 @@ defmodule Skein.ParserTest do
     test "parses multiple queue handlers" do
       source = """
       module M {
-        capability queue.in
+        capability queue.consume
 
         handler queue "events-a" (msg) -> {
           respond.json(200, "a")
@@ -1810,7 +1864,7 @@ defmodule Skein.ParserTest do
       source = """
       module M {
         capability http.in
-        capability queue.in
+        capability queue.consume
 
         handler http GET "/status" (req) -> {
           respond.json(200, "ok")
@@ -1838,7 +1892,7 @@ defmodule Skein.ParserTest do
     test "parses a schedule handler with cron expression" do
       source = """
       module M {
-        capability schedule.in
+        capability schedule.trigger
         handler schedule "*/5 * * * *" () -> {
           respond.json(200, "tick")
         }
@@ -1856,7 +1910,7 @@ defmodule Skein.ParserTest do
     test "parses schedule handler with hourly cron" do
       source = """
       module M {
-        capability schedule.in
+        capability schedule.trigger
         handler schedule "0 * * * *" () -> {
           respond.json(200, "hourly")
         }
@@ -1870,7 +1924,7 @@ defmodule Skein.ParserTest do
     test "parses schedule handler with daily cron" do
       source = """
       module M {
-        capability schedule.in
+        capability schedule.trigger
         handler schedule "0 0 * * *" () -> {
           respond.json(200, "daily")
         }
@@ -1884,7 +1938,7 @@ defmodule Skein.ParserTest do
     test "parses multiple schedule handlers" do
       source = """
       module M {
-        capability schedule.in
+        capability schedule.trigger
 
         handler schedule "*/5 * * * *" () -> {
           respond.json(200, "five_min")
@@ -1905,8 +1959,8 @@ defmodule Skein.ParserTest do
       source = """
       module M {
         capability http.in
-        capability queue.in
-        capability schedule.in
+        capability queue.consume
+        capability schedule.trigger
 
         handler http GET "/health" (req) -> {
           respond.json(200, "ok")
@@ -2282,7 +2336,7 @@ defmodule Skein.ParserTest do
       source = """
       module M {
         capability http.in
-        capability queue.in
+        capability queue.consume
         capability topic.consume("notifications")
 
         handler http GET "/status" (req) -> {
@@ -2323,7 +2377,7 @@ defmodule Skein.ParserTest do
     test "parses idempotent with string literal" do
       source = """
       module M {
-        capability queue.in
+        capability queue.consume
         handler queue "jobs" (msg) -> {
           idempotent("unique-key-123")
           respond.json(200, "ok")
@@ -2346,7 +2400,7 @@ defmodule Skein.ParserTest do
     test "parses idempotent with variable reference" do
       source = """
       module M {
-        capability queue.in
+        capability queue.consume
         handler queue "jobs" (msg) -> {
           let key = "abc"
           idempotent(key)
@@ -2369,7 +2423,7 @@ defmodule Skein.ParserTest do
     test "parses idempotent with field access" do
       source = """
       module M {
-        capability queue.in
+        capability queue.consume
         handler queue "jobs" (msg) -> {
           idempotent(msg.id)
           respond.json(200, "ok")
@@ -2395,7 +2449,7 @@ defmodule Skein.ParserTest do
     test "preserves source location for idempotent" do
       source = """
       module M {
-        capability queue.in
+        capability queue.consume
         handler queue "jobs" (msg) -> {
           idempotent("key")
         }

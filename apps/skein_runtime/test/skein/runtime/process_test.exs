@@ -7,6 +7,20 @@ defmodule Skein.Runtime.ProcessTest do
     on_exit(fn -> SpawnProcess.reset_all() end)
   end
 
+  describe "spawn/2 with a task name (compiled process.spawn(\"name\") calls)" do
+    test "spawns a supervised task for a string task name" do
+      assert {:ok, pid} =
+               SpawnProcess.spawn("image-resize", [%{kind: "process.spawn", params: ["workers"]}])
+
+      assert is_pid(pid)
+    end
+
+    test "string task name without capability is blocked" do
+      assert {:error, message} = SpawnProcess.spawn("image-resize", [])
+      assert message =~ "process.spawn"
+    end
+  end
+
   describe "spawn/2" do
     test "spawns a function and returns {:ok, pid}" do
       test_pid = self()

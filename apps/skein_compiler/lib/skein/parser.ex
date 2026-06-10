@@ -2040,6 +2040,16 @@ defmodule Skein.Parser do
     end
   end
 
+  # method!(args) / method?(args): the bang or question mark binds to the
+  # result of the call — `store.users.get!(id)` is "call get, then unwrap".
+  defp parse_postfix_chain(expr, [{:bang, {bline, bcol}}, {:lparen, _} = lparen | rest], file) do
+    parse_unwrapped_call(expr, :unwrap, {bline, bcol}, [lparen | rest], file)
+  end
+
+  defp parse_postfix_chain(expr, [{:question, {qline, qcol}}, {:lparen, _} = lparen | rest], file) do
+    parse_unwrapped_call(expr, :propagate, {qline, qcol}, [lparen | rest], file)
+  end
+
   defp parse_postfix_chain(expr, [{:lparen, {line, col}} | rest], file) do
     # Function call
     case parse_args(rest, file, []) do
@@ -2124,6 +2134,33 @@ defmodule Skein.Parser do
 
   defp parse_postfix_chain(expr, rest, _file) do
     {:ok, expr, rest}
+  end
+
+  # Shared body for `target!(args)` and `target?(args)`: parse the call,
+  # wrap its result in the unary op, then continue the postfix chain so
+  # forms like `store.users.get!(id).name` keep working.
+  defp parse_unwrapped_call(expr, op, {line, col}, [{:lparen, {pline, pcol}} | rest], file) do
+    case parse_args(rest, file, []) do
+      {:ok, args, rest2} ->
+        args = maybe_convert_tool_ref_arg(expr, args)
+
+        call = %AST.Call{
+          target: expr,
+          args: args,
+          meta: %{line: pline, col: pcol, file: file}
+        }
+
+        wrapped = %AST.UnaryOp{
+          op: op,
+          operand: call,
+          meta: %{line: line, col: col, file: file}
+        }
+
+        parse_postfix_chain(wrapped, rest2, file)
+
+      {:error, _} = error ->
+        error
+    end
   end
 
   # ------------------------------------------------------------------

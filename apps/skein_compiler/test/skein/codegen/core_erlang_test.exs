@@ -279,6 +279,130 @@ defmodule Skein.CodeGen.CoreErlangTest do
       assert mod.describe(42) == "other"
     end
 
+    test "match on string literal patterns" do
+      mod =
+        compile!("""
+        module MatchString {
+          fn route(decision: String) -> String {
+            match decision {
+              "approve" -> "refunding"
+              "deny"    -> "closed"
+              _         -> "unknown"
+            }
+          }
+        }
+        """)
+
+      assert mod.route("approve") == "refunding"
+      assert mod.route("deny") == "closed"
+      assert mod.route("escalate") == "unknown"
+    end
+
+    test "non-exhaustive string match compiles and raises case_clause on miss" do
+      mod =
+        compile!("""
+        module MatchNoWild {
+          fn route(decision: String) -> String {
+            match decision {
+              "approve" -> "refunding"
+              "deny"    -> "closed"
+            }
+          }
+        }
+        """)
+
+      assert mod.route("approve") == "refunding"
+      assert mod.route("deny") == "closed"
+      assert_raise CaseClauseError, fn -> mod.route("escalate") end
+    end
+
+    test "match on empty string pattern" do
+      mod =
+        compile!("""
+        module MatchEmpty {
+          fn check(s: String) -> String {
+            match s {
+              "" -> "blank"
+              _  -> "present"
+            }
+          }
+        }
+        """)
+
+      assert mod.check("") == "blank"
+      assert mod.check("x") == "present"
+    end
+
+    test "match on string in agent phase handler" do
+      mod =
+        compile!("""
+        agent StringMatchAgent {
+          capability memory.kv
+
+          enum Phase {
+            Decide -> [Done]
+            Done -> []
+          }
+
+          on start(decision: String) -> {
+            memory.put("decision", decision)
+            transition(Phase.Decide)
+          }
+
+          on phase(Phase.Decide) -> {
+            let d = memory.get("decision")
+            match d {
+              "approve" -> transition(Phase.Done)
+              _         -> transition(Phase.Done)
+            }
+          }
+
+          on phase(Phase.Done) -> {
+            stop()
+          }
+        }
+        """)
+
+      assert function_exported?(mod, :__phases__, 0)
+    end
+
+    test "state field access in nested expression positions" do
+      mod =
+        compile!("""
+        agent StateAccess {
+          capability memory.kv
+
+          state {
+            ticket_id: String
+          }
+
+          enum Phase {
+            Decide -> [Done]
+            Done -> []
+          }
+
+          on start(ticket_id: String) -> {
+            transition(Phase.Decide)
+          }
+
+          on phase(Phase.Decide) -> {
+            let id = state.ticket_id
+            match id {
+              "go" -> transition(Phase.Done)
+              _    -> transition(Phase.Done)
+            }
+          }
+
+          on phase(Phase.Done) -> {
+            stop()
+          }
+        }
+        """)
+
+      assert {:transition, :done, _state, _events} =
+               mod.__phase_handler__(:decide, %{ticket_id: "go"}, [])
+    end
+
     test "match on boolean with block body" do
       mod =
         compile!("""
@@ -829,6 +953,44 @@ defmodule Skein.CodeGen.CoreErlangTest do
 
       result = mod.find("u1")
       assert {:ok, %{id: "u1", name: "Alice"}} = result
+    end
+  end
+
+  describe "store.get! and store.put! codegen" do
+    test "store.users.get! returns the record directly" do
+      mod =
+        compile!("""
+        module StoreGetBang {
+          capability store.table("users")
+
+          fn find(id: String) -> String {
+            store.users.get!(id)
+          }
+        }
+        """)
+
+      Skein.Runtime.Store.clear("users")
+      caps = [%{kind: "store.table", params: ["users"]}]
+      {:ok, _} = Skein.Runtime.Store.put("users", %{id: "u1", name: "Alice"}, caps)
+
+      assert %{id: "u1", name: "Alice"} = mod.find("u1")
+      assert_raise ErlangError, fn -> mod.find("missing") end
+    end
+
+    test "store.users.put! returns the record directly" do
+      mod =
+        compile!("""
+        module StorePutBang {
+          capability store.table("users")
+
+          fn save(id: String) -> String {
+            store.users.put!({ id: id, status: "active" })
+          }
+        }
+        """)
+
+      Skein.Runtime.Store.clear("users")
+      assert %{id: "u9"} = mod.save("u9")
     end
   end
 
@@ -1941,7 +2103,7 @@ defmodule Skein.CodeGen.CoreErlangTest do
       mod =
         compile!("""
         module QueueHandlerMeta {
-          capability queue.in
+          capability queue.consume
 
           handler queue "order-events" (msg) -> {
             respond.json(200, "processed")
@@ -1961,7 +2123,7 @@ defmodule Skein.CodeGen.CoreErlangTest do
       mod =
         compile!("""
         module QueueHandlerCall {
-          capability queue.in
+          capability queue.consume
 
           handler queue "events" (msg) -> {
             respond.json(200, "received")
@@ -1977,7 +2139,7 @@ defmodule Skein.CodeGen.CoreErlangTest do
       mod =
         compile!("""
         module QueueHandlerParam {
-          capability queue.in
+          capability queue.consume
 
           handler queue "events" (msg) -> {
             let data = msg
@@ -1994,7 +2156,7 @@ defmodule Skein.CodeGen.CoreErlangTest do
       mod =
         compile!("""
         module QueueHandlerMulti {
-          capability queue.in
+          capability queue.consume
 
           handler queue "events-a" (msg) -> {
             respond.json(200, "a")
@@ -2025,7 +2187,7 @@ defmodule Skein.CodeGen.CoreErlangTest do
       mod =
         compile!("""
         module ScheduleHandlerMeta {
-          capability schedule.in
+          capability schedule.trigger
 
           handler schedule "*/5 * * * *" () -> {
             respond.json(200, "tick")
@@ -2045,7 +2207,7 @@ defmodule Skein.CodeGen.CoreErlangTest do
       mod =
         compile!("""
         module ScheduleHandlerCall {
-          capability schedule.in
+          capability schedule.trigger
 
           handler schedule "0 * * * *" () -> {
             respond.json(200, "hourly")
@@ -2061,7 +2223,7 @@ defmodule Skein.CodeGen.CoreErlangTest do
       mod =
         compile!("""
         module ScheduleHandlerLogic {
-          capability schedule.in
+          capability schedule.trigger
 
           handler schedule "0 0 * * *" () -> {
             let result = 1 + 2
@@ -2085,8 +2247,8 @@ defmodule Skein.CodeGen.CoreErlangTest do
         compile!("""
         module MixedHandlers {
           capability http.in
-          capability queue.in
-          capability schedule.in
+          capability queue.consume
+          capability schedule.trigger
 
           handler http GET "/health" (req) -> {
             respond.json(200, "ok")
@@ -2223,7 +2385,7 @@ defmodule Skein.CodeGen.CoreErlangTest do
         compile!("""
         module MixedWithTopic {
           capability http.in
-          capability queue.in
+          capability queue.consume
           capability topic.consume("events")
 
           handler http GET "/health" (req) -> {

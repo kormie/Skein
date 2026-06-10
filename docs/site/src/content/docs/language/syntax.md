@@ -209,7 +209,7 @@ Agents are state machines with phases, transitions, and event-driven handlers:
 ```skein
 agent RefundBot {
   capability memory.kv("sessions")
-  capability model("claude-3-5-sonnet")
+  capability model("claude-opus-4-8")
 
   enum Phase {
     Review -> Approved, Denied
@@ -230,7 +230,7 @@ agent RefundBot {
   }
 
   on phase(Review) {
-    let decision = llm.chat("claude-3-5-sonnet", "Evaluate this refund", state.amount)
+    let decision = llm.chat("claude-opus-4-8", "Evaluate this refund", state.amount)
     match decision {
       "approve" -> transition(Approved)
       "deny" -> transition(Denied)

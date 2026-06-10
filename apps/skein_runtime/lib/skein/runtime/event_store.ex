@@ -68,9 +68,11 @@ defmodule Skein.Runtime.EventStore do
   Logs a structured user event. This is the runtime entry point for the
   `event.log(name, data)` effect call in Skein source.
 
-  The capabilities argument is passed by compiled Skein code for consistency
-  with other effect calls but is not checked here (capability checking happens
-  at compile time via the analyzer).
+  The capabilities argument is checked for the presence of an `event.log`
+  capability; calls without one are blocked. The capability's stream
+  parameter (e.g. `event.log("audit")`) is validated at compile time by the
+  analyzer — the runtime call carries the event name, not the stream, so
+  per-stream runtime enforcement is a planned extension.
 
   Returns `:ok`.
   """

@@ -5,7 +5,7 @@
 
 module SkeinAssistant {
   capability http.in
-  capability model("anthropic", "claude-sonnet-4-5")
+  capability model("anthropic", "claude-opus-4-8")
   capability memory.kv
 
   -- Ask a question about Skein. Session history is stored in memory.
@@ -14,7 +14,7 @@ module SkeinAssistant {
     let question = req.body
     let history = memory.get(session_id)
     let prompt = "You are a Skein programming language assistant. Help the user write correct Skein code. Answer concisely."
-    let answer = llm.chat("claude-sonnet-4-5", prompt, question)
+    let answer = llm.chat("claude-opus-4-8", prompt, question)
     memory.put(session_id, answer)
     respond.json(200, answer)
   }

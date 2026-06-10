@@ -403,36 +403,36 @@ LLM calls have special handling for each method:
 
 **`llm.chat`** -- standard text response:
 ```skein
-llm.chat("claude-3-5-sonnet", "System prompt", input)
+llm.chat("claude-opus-4-8", "System prompt", input)
 
 -- Compiles to:
-call 'Elixir.Skein.Runtime.Llm':'chat'("claude-3-5-sonnet", "System prompt", Input, Capabilities)
+call 'Elixir.Skein.Runtime.Llm':'chat'("claude-opus-4-8", "System prompt", Input, Capabilities)
 ```
 
 **`llm.json[T]`** -- schema-constrained JSON. The type parameter is compiled into a JSON Schema literal using `SchemaGen`:
 ```skein
-llm.json[Decision]("claude-3-5-sonnet", "Decide action", input)
+llm.json[Decision]("claude-opus-4-8", "Decide action", input)
 
 -- Compiles to:
-call 'Elixir.Skein.Runtime.Llm':'json'("claude-3-5-sonnet", "Decide action", Input, Schema, Capabilities)
+call 'Elixir.Skein.Runtime.Llm':'json'("claude-opus-4-8", "Decide action", Input, Schema, Capabilities)
 ```
 
 Where `Schema` is the JSON Schema derived from the `Decision` type definition at compile time.
 
 **`llm.stream`** -- streaming response:
 ```skein
-llm.stream("claude-3-5-sonnet", "Generate report", data)
+llm.stream("claude-opus-4-8", "Generate report", data)
 
 -- Compiles to:
-call 'Elixir.Skein.Runtime.Llm':'stream'("claude-3-5-sonnet", "Generate report", Data, NoOpCallback, Capabilities)
+call 'Elixir.Skein.Runtime.Llm':'stream'("claude-opus-4-8", "Generate report", Data, NoOpCallback, Capabilities)
 ```
 
 **`llm.embed`** -- embedding vector:
 ```skein
-llm.embed("text-embedding-3-small", input)
+llm.embed("voyage-3-large", input)
 
 -- Compiles to:
-call 'Elixir.Skein.Runtime.Llm':'embed'("text-embedding-3-small", Input, Capabilities)
+call 'Elixir.Skein.Runtime.Llm':'embed'("voyage-3-large", Input, Capabilities)
 ```
 
 ### Tool effect compilation

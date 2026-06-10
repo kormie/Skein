@@ -4,7 +4,7 @@
 -- and suspend/resume for human-in-the-loop review.
 
 agent RefundAgent {
-  capability model("anthropic", "claude-sonnet-4-5")
+  capability model("anthropic", "claude-opus-4-8")
   capability memory.kv
 
   state {
@@ -29,7 +29,7 @@ agent RefundAgent {
   on phase(Phase.Review) -> {
     let order = memory.get("order_id")
     trace.annotate("ticket_id", order)
-    let decision = llm.chat("gpt-4", "Evaluate refund", order)
+    let decision = llm.chat("claude-opus-4-8", "Evaluate refund", order)
     trace.annotate("decision", decision)
     memory.put("decision", decision)
     transition(Phase.Approved)

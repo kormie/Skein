@@ -85,11 +85,11 @@ declaration = capability | fn_decl | type_decl | enum_decl | handler
 capability  = "capability" cap_kind "(" cap_params ")"
 cap_kind    = "http.out" | "http.in" | "store.table" | "memory.kv"
             | "event.log" | "topic.publish" | "topic.consume"
-            | "queue.publish" | "queue.consume" | "model"
-            | "tool.use" | "process.spawn" | "timer"
+            | "queue.publish" | "queue.consume" | "schedule.trigger"
+            | "model" | "tool.use" | "process.spawn" | "timer"
 cap_params  = (string | identifier | named_arg) ("," (string | identifier | named_arg))*
               -- tool.use params are dotted identifiers: tool.use(Stripe.CreateRefund)
-              -- other capabilities use strings: store.table("users"), model("anthropic", "claude-sonnet-4-5")
+              -- other capabilities use strings: store.table("users"), model("anthropic", "claude-opus-4-8")
 named_arg   = lower_ident ":" expr
 identifier  = dotted_name
 ```
@@ -674,7 +674,7 @@ an agent for the refund workflow, and a supervisor for process management.
 ```
 -- Types and tools for the refund service
 module RefundService {
-  capability model("anthropic", "claude-sonnet-4-5")
+  capability model("anthropic", "claude-opus-4-8")
   capability tool.use(Stripe.CreateRefund)
   capability store.table("tickets")
 
@@ -724,7 +724,7 @@ module RefundService {
 ```
 -- The refund agent: processes refund requests through multiple phases
 agent RefundAgent {
-  capability model("claude-sonnet-4-5")
+  capability model("claude-opus-4-8")
   capability memory.kv("refund_sessions")
 
   state {
@@ -750,7 +750,7 @@ agent RefundAgent {
     let ticket = store.tickets.get!(ticket_id)
 
     let decision = llm.json[RefundDecision](
-      "claude-sonnet-4-5",
+      "claude-opus-4-8",
       "Decide if this ticket warrants a refund. Return JSON.",
       ticket
     )
