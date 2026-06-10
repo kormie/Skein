@@ -197,6 +197,18 @@ defmodule Skein.CLI.Main do
     Process.sleep(:infinity)
   end
 
+  def dispatch(["completions" | rest]) do
+    case Skein.CLI.completions(rest) do
+      {:ok, script} ->
+        IO.puts(script)
+        System.halt(0)
+
+      {:error, message} ->
+        IO.puts(:stderr, message)
+        System.halt(1)
+    end
+  end
+
   def dispatch(["version" | _]) do
     IO.puts("skein #{version()}")
     System.halt(0)
@@ -219,7 +231,16 @@ defmodule Skein.CLI.Main do
   end
 
   defp print_usage do
-    IO.puts("""
+    IO.puts(usage_text())
+  end
+
+  @doc """
+  The skein help text. Public so the completion drift test can assert
+  every listed subcommand appears in the generated completion script.
+  """
+  @spec usage_text() :: String.t()
+  def usage_text do
+    """
     Skein #{version()} — AI-native language for the BEAM
 
     Usage: skein <command> [options]
@@ -234,6 +255,7 @@ defmodule Skein.CLI.Main do
       mcp                        Start the MCP server (stdio, for coding agents)
       lsp                        Start the language server (stdio, for editors)
       trace [options]            View recent trace spans
+      completions zsh            Print the zsh completion script
       version                    Print version
       help                       Show this help
 
@@ -244,7 +266,7 @@ defmodule Skein.CLI.Main do
       run --port <port>          Server port (default: 4000)
       trace --last <n>           Number of traces (default: 10)
       trace --kind <kind>        Filter by span kind
-    """)
+    """
   end
 
   defp version do

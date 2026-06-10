@@ -39,7 +39,6 @@ Testing agents burns real Anthropic spend. An OpenAI-compatible backend plus `[e
 
 ### Tier 3: Polish & Developer Experience
 
-- **zsh tab-completion for `skein`** (#101) — `skein completions zsh`, with a test pinning completions to the real command surface.
 - **Spec section 8 sweep** (#77) — every spec example should compile (and be covered by `spec_examples_test.exs`) or carry an explicit "Planned" annotation.
 - **Enum value-level exhaustiveness warning** (#76) — variant coverage is checked, but literal field patterns without a wildcard can still `case_clause` at runtime; the analyzer should warn.
 - **LSP code actions from `fix_hint`/`fix_code`** (#108) — every compiler error already carries fix data; surface it as editor quickfixes (and machine-applicable edits for agents).
@@ -112,6 +111,7 @@ Everything below is implemented and tested.
 | Capability naming | `queue.consume` / `schedule.trigger` (old names get a targeted rename hint) |
 | Cross-module `tool.call` | `implement` blocks compile to callable entry points; tools registered at module load (v0.1.5) |
 | Variant construction | `Ok(x)`, `Err(e)`, `Event.Charge(n)`, `ErrName.from(cause)`, and zero-field forms (`Status.Active`, bare `Active`) all compile in expression position; unknown variants and wrong arity are structured errors |
+| zsh tab-completion | `skein completions zsh` (drift-tested against the help text) |
 | MCP compile_check fidelity | Warnings included (`Compiler.check_file/1`); project mode checks `src/` + `test/` like `skein test` |
 | Structured assertion failures | Failing asserts report operands, rendered expression, and `file:line` (Skein.Runtime.AssertionError) |
 | `skein new` git init | Repo + baseline `.gitignore` scaffolded by default (`--no-git` to skip; never nests inside an existing work tree) |

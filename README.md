@@ -270,6 +270,15 @@ skein new my-agent
 skein help
 ```
 
+#### zsh tab-completion (optional)
+
+```bash
+mkdir -p ~/.zfunc
+skein completions zsh > ~/.zfunc/_skein
+# in ~/.zshrc, before compinit:
+#   fpath=(~/.zfunc $fpath)
+```
+
 ### Option B: Build from source
 
 #### Prerequisites
