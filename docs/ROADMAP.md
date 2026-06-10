@@ -28,26 +28,7 @@ The remaining gaps are listed below. Field-testing v0.1.5 (2026-06-10) surfaced 
 
 ## Tier 1: Language Surface
 
-### 1. Enum Variant Construction Completeness `[M]`
-
-**Issue:** [#96](https://github.com/kormie/Skein/issues/96)
-
-**Problem:** v0.1.5 made call-form variant construction work (`Ok(x)`, `Err(e)`, `Event.Charge(n)`, `ErrName.from(cause)`), but zero-field variants still cannot be constructed in expression position: `Status.Active` hits a misleading E0020 ("Cannot access field 'Active' on type Status") and bare `Active` crashes codegen with an unstructured `core_lint` `unbound_var`. Constructor calls also aren't validated — unknown variants and wrong arity pass the analyzer as `:unknown` and crash at codegen instead of producing structured errors.
-
-**Scope:**
-- Analyzer: type `Status.Active` field access on an enum as `{:enum, "Status"}`; structured errors for unknown variants (closest-name `fix_code`) and wrong constructor arity/types
-- Codegen: lower zero-field variants to their snake_case atom, matching pattern-side `variant_pattern_atom/1`
-
-**Acceptance criteria:**
-- Zero-field (`Status.Active`) and data (`Status.Banned("spam")`) constructions round-trip through `match` at runtime
-- `Status.Nope` and wrong-arity constructor calls fail at compile time with structured errors
-- No `:core_lint` E0001 crashes remain for any construction form
-
-**Depends on:** Nothing.
-
----
-
-### 2. Capability Checking Covers Test Blocks `[M]`
+### 1. Capability Checking Covers Test Blocks `[M]`
 
 **Issue:** [#104](https://github.com/kormie/Skein/issues/104)
 
@@ -67,7 +48,7 @@ The remaining gaps are listed below. Field-testing v0.1.5 (2026-06-10) surfaced 
 
 ## Tier 2: Runtime Completeness
 
-### 3. Schedule Handler Auto-Firing `[M]`
+### 2. Schedule Handler Auto-Firing `[M]`
 
 **Issue:** [#71](https://github.com/kormie/Skein/issues/71)
 
@@ -88,7 +69,7 @@ The remaining gaps are listed below. Field-testing v0.1.5 (2026-06-10) surfaced 
 
 ---
 
-### 4. Agent `emit` Events to EventStore `[M]`
+### 3. Agent `emit` Events to EventStore `[M]`
 
 **Issue:** [#72](https://github.com/kormie/Skein/issues/72)
 
@@ -107,7 +88,7 @@ The remaining gaps are listed below. Field-testing v0.1.5 (2026-06-10) surfaced 
 
 ---
 
-### 5. Replay Backend Injection `[L]`
+### 4. Replay Backend Injection `[L]`
 
 **Issue:** [#73](https://github.com/kormie/Skein/issues/73)
 
@@ -127,7 +108,7 @@ The remaining gaps are listed below. Field-testing v0.1.5 (2026-06-10) surfaced 
 
 ---
 
-### 6. Stream/Pool-Scoped Runtime Capability Checks `[M]` *(needs surface design first)*
+### 5. Stream/Pool-Scoped Runtime Capability Checks `[M]` *(needs surface design first)*
 
 **Issues:** [#69](https://github.com/kormie/Skein/issues/69) (surface decision), [#57](https://github.com/kormie/Skein/issues/57) (enforcement)
 
@@ -146,7 +127,7 @@ The remaining gaps are listed below. Field-testing v0.1.5 (2026-06-10) surfaced 
 
 ---
 
-### 7. `process.spawn` Task Bodies `[M]`
+### 6. `process.spawn` Task Bodies `[M]`
 
 **Issue:** [#74](https://github.com/kormie/Skein/issues/74)
 
@@ -164,7 +145,7 @@ The remaining gaps are listed below. Field-testing v0.1.5 (2026-06-10) surfaced 
 
 ---
 
-### 8. Local LLM Backends for Dev (OpenAI-Compatible + `skein.toml` Profiles) `[XL]`
+### 7. Local LLM Backends for Dev (OpenAI-Compatible + `skein.toml` Profiles) `[XL]`
 
 **Issue:** [#107](https://github.com/kormie/Skein/issues/107)
 
@@ -186,7 +167,7 @@ The remaining gaps are listed below. Field-testing v0.1.5 (2026-06-10) surfaced 
 
 ## Tier 3: Polish & Developer Experience
 
-### 9. Test Failures Show Expected vs Actual + Location `[M]`
+### 8. Test Failures Show Expected vs Actual + Location `[M]`
 
 **Issue:** [#105](https://github.com/kormie/Skein/issues/105)
 
@@ -205,7 +186,7 @@ The remaining gaps are listed below. Field-testing v0.1.5 (2026-06-10) surfaced 
 
 ---
 
-### 10. MCP `skein_compile_check` Fidelity `[M]`
+### 9. MCP `skein_compile_check` Fidelity `[M]`
 
 **Issue:** [#109](https://github.com/kormie/Skein/issues/109)
 
@@ -223,7 +204,7 @@ The remaining gaps are listed below. Field-testing v0.1.5 (2026-06-10) surfaced 
 
 ---
 
-### 11. `skein new` Git Init + Baseline `.gitignore` `[S]`
+### 10. `skein new` Git Init + Baseline `.gitignore` `[S]`
 
 **Issue:** [#106](https://github.com/kormie/Skein/issues/106)
 
@@ -235,7 +216,7 @@ The remaining gaps are listed below. Field-testing v0.1.5 (2026-06-10) surfaced 
 
 ---
 
-### 12. zsh Tab-Completion for `skein` `[S]`
+### 11. zsh Tab-Completion for `skein` `[S]`
 
 **Issue:** [#101](https://github.com/kormie/Skein/issues/101)
 
@@ -247,7 +228,7 @@ The remaining gaps are listed below. Field-testing v0.1.5 (2026-06-10) surfaced 
 
 ---
 
-### 13. Spec Section 8 Sweep `[M]`
+### 12. Spec Section 8 Sweep `[M]`
 
 **Issue:** [#77](https://github.com/kormie/Skein/issues/77)
 
@@ -264,7 +245,7 @@ The remaining gaps are listed below. Field-testing v0.1.5 (2026-06-10) surfaced 
 
 ---
 
-### 14. Enum Value-Level Exhaustiveness Warning `[S]`
+### 13. Enum Value-Level Exhaustiveness Warning `[S]`
 
 **Issue:** [#76](https://github.com/kormie/Skein/issues/76)
 
@@ -282,7 +263,7 @@ The remaining gaps are listed below. Field-testing v0.1.5 (2026-06-10) surfaced 
 
 ---
 
-### 15. LSP Code Actions from `fix_hint`/`fix_code` `[L]`
+### 14. LSP Code Actions from `fix_hint`/`fix_code` `[L]`
 
 **Issue:** [#108](https://github.com/kormie/Skein/issues/108)
 
@@ -345,6 +326,7 @@ All of the following are done and tested:
 - LSP: completions, hover, diagnostics, semantic tokens, document symbols, go-to-definition (+ request/response integration tests)
 - CLI: new, build (`--output`), test, run, trace; structured errors for malformed flags
 - Distribution: Burrito binaries (Linux x86_64/ARM64, macOS x86_64/ARM64), GitHub Release automation on `v*` tags
+- Enum variant construction completeness (#96): zero-field variants construct in expression position (`Status.Active`, bare `Active`, `Status.Active()` — all lower to `:active`, matching patterns); unknown variants and wrong constructor arity/types are structured E0010/E0020 with closest-name fix_code (no core_lint crashes remain)
 - Types usable from agents (#70): module types are visible to nested agents and the derived JSON Schema flows into `llm.json[T]` requests from agent handlers (verified via recording backend); agents never declare their own `type` blocks — nesting is the route (spec §3.7)
 - Agent nesting inside modules (#63): `module Foo { agent Bar }` compiles to `Skein.User.Foo` + `Skein.Agent.Foo.Bar`; module types and capabilities apply to the nested agent; spec §8.4 and `market_research/single_file.skein` ship the nested shape
 - Named arguments in calls (#56): `f(name: value)` for local fns and documented effect signatures; positional-then-named mixing, analyzer rewrites to positional order (E0026 for unknown/duplicate/misordered names), spec grammar + section 8 updated

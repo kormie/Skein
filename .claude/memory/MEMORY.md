@@ -22,7 +22,7 @@
 - Tools are the ONLY cross-module seam (#85, spec §3.1). Cross-module calls = `tool.call`.
 - Codegen compiles each `implement` block to exported `__tool_impl_N__/1` (N = tool's declaration index); `__tools__/0` metadata carries `impl:` atom. Input fields bound via `map_get(atom, InputMap)`.
 - `Skein.Runtime.Tool.register_module(mod)` reads `__tools__/0` and registers tools; idempotent (ETS set keyed by name). CLI compile/build/test/run all call it after loading a module.
-- Expression-position variant construction exists now: `Ok(x)` → `{:ok, x}`, `Err(e)` → `{:error, e}`, `Enum.Variant(args)` → `{:variant, args...}`, `ErrName.from(e)` → `{:err_name, e}`. Guarded by uppercase-first-char (`binary_part(name, 0, 1) >= "A"` works in guards). **Call forms only**: zero-field variants (`Status.Active` field-access form, bare `Active`) still fail (misleading E0020 / core_lint unbound_var), and unknown-variant/wrong-arity constructor calls crash codegen unstructured — issue #96 / ROADMAP item 4.
+- Expression-position variant construction exists now: `Ok(x)` → `{:ok, x}`, `Err(e)` → `{:error, e}`, `Enum.Variant(args)` → `{:variant, args...}`, `ErrName.from(e)` → `{:err_name, e}`. Guarded by uppercase-first-char (`binary_part(name, 0, 1) >= "A"` works in guards). Zero-field variants also construct now (#96): `Status.Active`, bare `Active`, and `Status.Active()` all lower to the bare snake atom (`:active`), matching patterns; unknown variants / wrong arity / wrong arg types are structured E0010/E0020 (check_variant_construction + unknown_constructor_error in analyzer).
 - `variant_pattern_atom("Err")` → `:error` (NOT `:err`) — patterns and constructors align with runtime `{:ok,_}/{:error,_}`.
 - Parser REQUIRES `implement` block on every tool (E0001 without it) — `impl: nil` only possible in hand-rolled metadata.
 - `Http.post/put/patch` accept map bodies (JSON-encoded). Map body + no `http.out` capability = deterministic offline denial (capability checked inside the Trace span, after encoding).
@@ -173,6 +173,12 @@
 - DECISION: agents never declare own `type` blocks; nesting is the one route (spec §3.7 prose added)
 - Test-local backends implementing Skein.Runtime.Llm.Backend work fine with set_backend; reset via on_exit back to TestBackend
 - Referencing runtime-compiled modules in tests warns "module not available" — use `Module.concat(["Skein", "Agent", ...])` to keep test compile warning-free
+
+## Enum Variant Construction (issue #96 — 2026-06-10)
+- Analyzer: FieldAccess clause for enum heads (declared-enum name + Uppercase field) BEFORE generic field access; bindings shadow enum names; data-variant-without-args is E0020 with `Enum.Variant(fields)` fix_code
+- Bare uppercase identifiers in expr position: known variant → {:enum, E}; unknown → E0010 (Ok/Err exempt); bare TYPE names as expressions are now also E0010 (old analyzer_test used `Ok(Profile)` as a stand-in value — rewritten to a map literal; such programs never survived codegen anyway)
+- Codegen: zero-arg constructor calls and no-call variant references lower to BARE ATOM (not 1-tuple) — must match pattern-side variant_pattern_atom; bare uppercase Identifier clause guarded `binary_part(name,0,1) in A..Z` before the generic var clause
+- infer_type clause-grouping: new helpers must go AFTER the catch-all infer_type clause (ungrouped-clauses warning is an error in CI)
 
 ## Known Bug Found 2026-06-10 (filed as issue)
 - **Int string interpolation emits raw codepoint**: `"${n}"` with n=42 yields "*" (binary segment treats Int as a byte) — needs to_string coercion in codegen interpolation

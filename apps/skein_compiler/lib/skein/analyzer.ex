@@ -1221,8 +1221,15 @@ defmodule Skein.Analyzer do
       String.match?(name, ~r/^[A-Z]/) ->
         # Could be an enum variant — check all enums for this variant name
         case find_enum_variant(name, env) do
-          {:ok, enum_name} -> {{:enum, enum_name}, []}
-          :error -> {:unknown, []}
+          {:ok, enum_name} ->
+            {{:enum, enum_name}, []}
+
+          :error ->
+            if name in ["Ok", "Err"] do
+              {:unknown, []}
+            else
+              {:unknown, [unknown_constructor_error(name, meta, env)]}
+            end
         end
 
       # `return` is not a Skein construct — give a targeted hint instead of
@@ -1654,17 +1661,61 @@ defmodule Skein.Analyzer do
             {fn_info.return_type, args_errors ++ arity_errors ++ type_errors}
         end
 
-      # Qualified call with a non-stdlib UpperIdent head: Module.fn(args).
+      # Qualified call with a non-stdlib UpperIdent head: either a variant
+      # constructor (Enum.Variant(args)) or a cross-module call attempt.
       # Functions are module-private (spec section 3.1) — tools are the only
-      # cross-module seam — so this is a structured E0016, never a silent
-      # fallthrough. Local enum/type names and tool error names are exempt:
-      # they are not module references.
+      # cross-module seam — so the latter is a structured E0016, never a
+      # silent fallthrough. Local enum/type names and tool error names are
+      # exempt: they are not module references.
       %AST.FieldAccess{subject: %AST.Identifier{name: mod_name}, field: fn_name} ->
-        if cross_module_call_head?(mod_name, env) do
-          {:unknown,
-           args_errors ++ [cross_module_call_error(mod_name, fn_name, length(args), meta, env)]}
-        else
-          {:unknown, args_errors}
+        cond do
+          Map.has_key?(env.enums, mod_name) ->
+            {type, ctor_errors} =
+              check_variant_construction(mod_name, fn_name, args, args_results, meta, env)
+
+            {type, args_errors ++ ctor_errors}
+
+          cross_module_call_head?(mod_name, env) ->
+            {:unknown,
+             args_errors ++ [cross_module_call_error(mod_name, fn_name, length(args), meta, env)]}
+
+          true ->
+            {:unknown, args_errors}
+        end
+
+      # Bare constructor call: Ok(x), Err(e), or Variant(args)
+      %AST.Identifier{name: <<c, _::binary>> = name} when c in ?A..?Z ->
+        cond do
+          name in ["Ok", "Err"] ->
+            arity_errors =
+              if length(args) == 1 do
+                []
+              else
+                [
+                  %Error{
+                    code: "E0020",
+                    severity: :error,
+                    message: "Constructor '#{name}' expects 1 argument, got #{length(args)}",
+                    location: location_from_meta(meta, env.file),
+                    fix_hint: "Wrap exactly one value: #{name}(value)",
+                    fix_code: "#{name}(value)"
+                  }
+                ]
+              end
+
+            {:unknown, args_errors ++ arity_errors}
+
+          true ->
+            case find_enum_variant(name, env) do
+              {:ok, enum_name} ->
+                {type, ctor_errors} =
+                  check_variant_construction(enum_name, name, args, args_results, meta, env)
+
+                {type, args_errors ++ ctor_errors}
+
+              :error ->
+                {:unknown, args_errors ++ [unknown_constructor_error(name, meta, env)]}
+            end
         end
 
       _ ->
@@ -1688,8 +1739,92 @@ defmodule Skein.Analyzer do
     end
   end
 
+  # Enum variant reference: Status.Active — zero-field construction.
+  # The head must be a declared enum NAME (a binding of the same name wins).
+  defp infer_type(
+         %AST.FieldAccess{
+           subject: %AST.Identifier{name: enum_name},
+           field: <<c, _::binary>> = variant_name,
+           meta: meta
+         },
+         env
+       )
+       when c in ?A..?Z do
+    cond do
+      Map.has_key?(env.variables, enum_name) ->
+        infer_field_access_type(
+          %AST.Identifier{name: enum_name, meta: meta},
+          variant_name,
+          meta,
+          env
+        )
+
+      Map.has_key?(env.enums, enum_name) ->
+        %AST.EnumDecl{variants: variants} = Map.fetch!(env.enums, enum_name)
+
+        case Enum.find(variants, &(&1.name == variant_name)) do
+          nil ->
+            {:unknown, [unknown_variant_error(enum_name, variant_name, variants, meta, env)]}
+
+          %AST.Variant{fields: []} ->
+            {{:enum, enum_name}, []}
+
+          %AST.Variant{fields: fields} ->
+            {{:enum, enum_name},
+             [
+               %Error{
+                 code: "E0020",
+                 severity: :error,
+                 message:
+                   "Variant '#{enum_name}.#{variant_name}' has #{length(fields)} field(s) — construct it with arguments",
+                 location: location_from_meta(meta, env.file),
+                 fix_hint: variant_construction_hint(enum_name, variant_name, fields),
+                 fix_code: variant_construction_skeleton(enum_name, variant_name, fields)
+               }
+             ]}
+        end
+
+      true ->
+        infer_field_access_type(
+          %AST.Identifier{name: enum_name, meta: meta},
+          variant_name,
+          meta,
+          env
+        )
+    end
+  end
+
   # Field access
   defp infer_type(%AST.FieldAccess{subject: subject, field: field, meta: meta}, env) do
+    infer_field_access_type(subject, field, meta, env)
+  end
+
+  # FnRef
+  defp infer_type(%AST.FnRef{}, _env) do
+    {:unknown, []}
+  end
+
+  # Let (standalone — shouldn't appear outside blocks, but handle gracefully)
+  defp infer_type(%AST.Let{value: value}, env) do
+    infer_type(value, env)
+  end
+
+  defp infer_type(%AST.MapLit{entries: entries}, env) do
+    errors =
+      Enum.flat_map(entries, fn {_key, value} ->
+        {_type, errs} = infer_type(value, env)
+        errs
+      end)
+
+    {{:map, :string, :unknown}, errors}
+  end
+
+  # Catch-all
+  defp infer_type(_expr, _env) do
+    {:unknown, []}
+  end
+
+  defp infer_field_access_type(subject, field, meta, env) do
     {subject_type, subject_errors} = infer_type(subject, env)
 
     case subject_type do
@@ -1742,29 +1877,113 @@ defmodule Skein.Analyzer do
     end
   end
 
-  # FnRef
-  defp infer_type(%AST.FnRef{}, _env) do
-    {:unknown, []}
+  # Validates Enum.Variant(args) / Variant(args) construction: the variant
+  # must exist and the arguments must match its declared fields.
+  defp check_variant_construction(enum_name, variant_name, args, args_results, meta, env) do
+    %AST.EnumDecl{variants: variants} = Map.fetch!(env.enums, enum_name)
+
+    case Enum.find(variants, &(&1.name == variant_name)) do
+      nil ->
+        {:unknown, [unknown_variant_error(enum_name, variant_name, variants, meta, env)]}
+
+      %AST.Variant{fields: fields} ->
+        expected_arity = length(fields)
+        actual_arity = length(args)
+
+        cond do
+          expected_arity != actual_arity ->
+            {{:enum, enum_name},
+             [
+               %Error{
+                 code: "E0020",
+                 severity: :error,
+                 message:
+                   "Variant '#{enum_name}.#{variant_name}' expects #{expected_arity} argument(s), got #{actual_arity}",
+                 location: location_from_meta(meta, env.file),
+                 fix_hint: variant_construction_hint(enum_name, variant_name, fields),
+                 fix_code: variant_construction_skeleton(enum_name, variant_name, fields)
+               }
+             ]}
+
+          true ->
+            arg_types = Enum.map(args_results, &elem(&1, 0))
+
+            type_errors =
+              Enum.zip(fields, arg_types)
+              |> Enum.flat_map(fn {%AST.Field{name: field_name, type: type_ref}, actual} ->
+                expected = resolve_type(type_ref, env.types)
+
+                if actual != :unknown and not types_compatible?(expected, actual) do
+                  [
+                    %Error{
+                      code: "E0020",
+                      severity: :error,
+                      message:
+                        "Type mismatch in '#{enum_name}.#{variant_name}': field '#{field_name}' expects #{format_type(expected)}, got #{format_type(actual)}",
+                      location: location_from_meta(meta, env.file),
+                      fix_hint: "Pass a #{format_type(expected)} for '#{field_name}'",
+                      fix_code: variant_construction_skeleton(enum_name, variant_name, fields)
+                    }
+                  ]
+                else
+                  []
+                end
+              end)
+
+            {{:enum, enum_name}, type_errors}
+        end
+    end
   end
 
-  # Let (standalone — shouldn't appear outside blocks, but handle gracefully)
-  defp infer_type(%AST.Let{value: value}, env) do
-    infer_type(value, env)
+  defp unknown_variant_error(enum_name, variant_name, variants, meta, env) do
+    variant_names = Enum.map(variants, & &1.name)
+
+    %Error{
+      code: "E0010",
+      severity: :error,
+      message: "Enum '#{enum_name}' has no variant '#{variant_name}'",
+      location: location_from_meta(meta, env.file),
+      fix_hint: "Declared variants: #{Enum.join(variant_names, ", ")}",
+      fix_code: "#{enum_name}.#{closest_name(variant_name, variant_names)}"
+    }
   end
 
-  defp infer_type(%AST.MapLit{entries: entries}, env) do
-    errors =
-      Enum.flat_map(entries, fn {_key, value} ->
-        {_type, errs} = infer_type(value, env)
-        errs
+  defp unknown_constructor_error(name, meta, env) do
+    candidates =
+      env.enums
+      |> Enum.flat_map(fn {_enum, %AST.EnumDecl{variants: variants}} ->
+        Enum.map(variants, & &1.name)
       end)
 
-    {{:map, :string, :unknown}, errors}
+    %Error{
+      code: "E0010",
+      severity: :error,
+      message: "Unknown constructor '#{name}' — no declared enum has this variant",
+      location: location_from_meta(meta, env.file),
+      fix_hint:
+        case candidates do
+          [] -> "Declare an enum with this variant, or use Ok(value)/Err(reason)"
+          names -> "Declared variants: #{Enum.join(Enum.uniq(names), ", ")}"
+        end,
+      fix_code: closest_name(name, candidates ++ ["Ok", "Err"])
+    }
   end
 
-  # Catch-all
-  defp infer_type(_expr, _env) do
-    {:unknown, []}
+  defp variant_construction_hint(enum_name, variant_name, []) do
+    "'#{enum_name}.#{variant_name}' takes no arguments"
+  end
+
+  defp variant_construction_hint(enum_name, variant_name, fields) do
+    "Construct it as #{variant_construction_skeleton(enum_name, variant_name, fields)}"
+  end
+
+  defp variant_construction_skeleton(enum_name, variant_name, []) do
+    "#{enum_name}.#{variant_name}"
+  end
+
+  defp variant_construction_skeleton(enum_name, variant_name, fields) do
+    args = Enum.map_join(fields, ", ", & &1.name)
+    "#{enum_name}.#{variant_name}(#{args})"
   end
 
   # ------------------------------------------------------------------

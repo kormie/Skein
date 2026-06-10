@@ -1948,8 +1948,11 @@ defmodule Skein.CodeGen.CoreErlang do
   # always a variant constructor.
   defp generate_expr(%AST.Call{target: %AST.Identifier{name: name}, args: args}, scope)
        when binary_part(name, 0, 1) >= "A" and binary_part(name, 0, 1) <= "Z" do
-    args_exprs = Enum.map(args, &generate_expr(&1, scope))
-    :cerl.c_tuple([:cerl.c_atom(variant_pattern_atom(name)) | args_exprs])
+    case Enum.map(args, &generate_expr(&1, scope)) do
+      # Zero-field variants are bare atoms, matching the pattern side
+      [] -> :cerl.c_atom(variant_pattern_atom(name))
+      args_exprs -> :cerl.c_tuple([:cerl.c_atom(variant_pattern_atom(name)) | args_exprs])
+    end
   end
 
   # Error conversion: ErrName.from(cause) wraps a cause in a declared error
@@ -1988,8 +1991,11 @@ defmodule Skein.CodeGen.CoreErlang do
        )
        when binary_part(enum_name, 0, 1) >= "A" and binary_part(enum_name, 0, 1) <= "Z" and
               binary_part(variant_name, 0, 1) >= "A" and binary_part(variant_name, 0, 1) <= "Z" do
-    args_exprs = Enum.map(args, &generate_expr(&1, scope))
-    :cerl.c_tuple([:cerl.c_atom(variant_pattern_atom(variant_name)) | args_exprs])
+    case Enum.map(args, &generate_expr(&1, scope)) do
+      # Zero-field variants are bare atoms, matching the pattern side
+      [] -> :cerl.c_atom(variant_pattern_atom(variant_name))
+      args_exprs -> :cerl.c_tuple([:cerl.c_atom(variant_pattern_atom(variant_name)) | args_exprs])
+    end
   end
 
   # Function call
@@ -2029,6 +2035,18 @@ defmodule Skein.CodeGen.CoreErlang do
       :cerl.c_atom(:map_get),
       [:cerl.c_atom(String.to_atom(field)), :cerl.c_var(state_var)]
     )
+  end
+
+  # Zero-field enum variant reference: Status.Active -> :active. Stdlib
+  # and effect namespaces only have lowercase fields, so Upper.Upper here
+  # is always a variant reference (the analyzer has already validated it).
+  defp generate_expr(
+         %AST.FieldAccess{subject: %AST.Identifier{name: enum_name}, field: variant_name},
+         _scope
+       )
+       when binary_part(enum_name, 0, 1) >= "A" and binary_part(enum_name, 0, 1) <= "Z" and
+              binary_part(variant_name, 0, 1) >= "A" and binary_part(variant_name, 0, 1) <= "Z" do
+    :cerl.c_atom(variant_pattern_atom(variant_name))
   end
 
   # Field access
@@ -2121,6 +2139,16 @@ defmodule Skein.CodeGen.CoreErlang do
   end
 
   # Identifier
+  defp generate_expr(%AST.Identifier{name: name}, scope)
+       when binary_part(name, 0, 1) >= "A" and binary_part(name, 0, 1) <= "Z" do
+    case Map.get(scope, name) do
+      # Bindings are lowercase by grammar, so an unbound uppercase
+      # identifier is a zero-field variant reference (analyzer-validated)
+      nil -> :cerl.c_atom(variant_pattern_atom(name))
+      var -> :cerl.c_var(var)
+    end
+  end
+
   defp generate_expr(%AST.Identifier{name: name}, scope) do
     case Map.get(scope, name) do
       nil ->
