@@ -2697,4 +2697,181 @@ defmodule Skein.ParserTest do
       assert error.fix_code == "\"/path\""
     end
   end
+
+  describe "targeted missing-token errors" do
+    # Issue #83: a known section/entry name followed by the wrong token must
+    # name the actual problem (the missing token), not re-list alternatives.
+
+    test "tool description missing its colon gets a targeted error" do
+      source = """
+      module M {
+        tool T {
+          description "creates a refund"
+          input { amount: Int }
+          output { ok: Bool }
+          implement { "done" }
+        }
+      }
+      """
+
+      assert {:error, [error]} = parse(source)
+      assert error.code == "E0001"
+      assert error.message =~ "Missing ':' after 'description'"
+      assert error.fix_hint =~ "':'"
+      assert error.fix_code == ":"
+      # Points at the section name on line 3
+      assert error.location.line == 3
+    end
+
+    test "tool input missing its brace gets a targeted error" do
+      source = """
+      module M {
+        tool T {
+          input amount: Int
+          output { ok: Bool }
+          implement { "done" }
+        }
+      }
+      """
+
+      assert {:error, [error]} = parse(source)
+      assert error.message =~ "Missing '{' after 'input'"
+      assert error.fix_code == "{"
+    end
+
+    test "tool output missing its brace gets a targeted error" do
+      source = """
+      module M {
+        tool T {
+          input { amount: Int }
+          output ok: Bool
+          implement { "done" }
+        }
+      }
+      """
+
+      assert {:error, [error]} = parse(source)
+      assert error.message =~ "Missing '{' after 'output'"
+      assert error.fix_code == "{"
+    end
+
+    test "tool errors section missing its brace gets a targeted error" do
+      source = """
+      module M {
+        tool T {
+          input { amount: Int }
+          output { ok: Bool }
+          errors NotFound
+          implement { "done" }
+        }
+      }
+      """
+
+      assert {:error, [error]} = parse(source)
+      assert error.message =~ "Missing '{' after 'errors'"
+      assert error.fix_code == "{"
+    end
+
+    test "unknown tool section still lists the alternatives" do
+      source = """
+      module M {
+        tool T {
+          banana: "yellow"
+        }
+      }
+      """
+
+      assert {:error, [error]} = parse(source)
+      assert error.message =~ "tool section"
+      assert error.message =~ "description, input, output, errors, implement"
+    end
+
+    test "supervisor strategy missing its colon gets a targeted error" do
+      source = """
+      module M {
+        supervisor Pool {
+          child Worker
+          strategy one_for_one
+        }
+      }
+      """
+
+      assert {:error, [error]} = parse(source)
+      assert error.message =~ "Missing ':' after 'strategy'"
+      assert error.fix_code == ":"
+    end
+
+    test "invalid supervisor strategy value names the valid strategies" do
+      source = """
+      module M {
+        supervisor Pool {
+          child Worker
+          strategy: round_robin
+        }
+      }
+      """
+
+      assert {:error, [error]} = parse(source)
+      assert error.message =~ "one_for_one, one_for_all, rest_for_one"
+      assert error.fix_code == "one_for_one"
+    end
+
+    test "supervisor max_restarts missing its colon gets a targeted error" do
+      source = """
+      module M {
+        supervisor Pool {
+          child Worker
+          max_restarts 3 per 60s
+        }
+      }
+      """
+
+      assert {:error, [error]} = parse(source)
+      assert error.message =~ "Missing ':' after 'max_restarts'"
+      assert error.fix_code == ":"
+    end
+
+    test "malformed max_restarts value names the expected form" do
+      source = """
+      module M {
+        supervisor Pool {
+          child Worker
+          max_restarts: 3 every 60s
+        }
+      }
+      """
+
+      assert {:error, [error]} = parse(source)
+      assert error.message =~ "N per Ns"
+      assert error.fix_code == "3 per 60s"
+    end
+
+    test "field declaration missing its colon names the ':' token" do
+      source = """
+      module M {
+        type User {
+          name String
+        }
+      }
+      """
+
+      assert {:error, [error]} = parse(source)
+      assert error.message =~ "Expected ':'"
+      assert error.fix_hint =~ "':'"
+      assert error.fix_code == ":"
+    end
+
+    test "agent state block missing its brace names the '{' token" do
+      source = """
+      agent A {
+        state
+          count: Int
+      }
+      """
+
+      assert {:error, [error]} = parse(source)
+      assert error.message =~ "Expected '{'"
+      assert error.fix_code == "{"
+    end
+  end
 end

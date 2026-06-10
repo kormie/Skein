@@ -738,6 +738,17 @@ defmodule Skein.Parser do
     end
   end
 
+  # A known section name not followed by its required token gets a targeted
+  # error naming the missing token instead of re-listing the alternatives.
+  defp parse_tool_body([{:ident, {line, col}, "description"} | _], file, _acc) do
+    missing_token_after_error("description", ":", {line, col}, file)
+  end
+
+  defp parse_tool_body([{:ident, {line, col}, section} | _], file, _acc)
+       when section in ["input", "output", "errors"] do
+    missing_token_after_error(section, "{", {line, col}, file)
+  end
+
   defp parse_tool_body(tokens, file, _acc) do
     unexpected_token_error(
       tokens,
@@ -1328,6 +1339,53 @@ defmodule Skein.Parser do
          _max_restarts
        ) do
     parse_supervisor_body(rest, file, children, strategy, {max_count, period})
+  end
+
+  # A known entry name with a wrong following token gets a targeted error
+  # naming the actual problem instead of re-listing the alternatives.
+  defp parse_supervisor_body(
+         [{:ident, _, "strategy"}, {:colon, _} | rest],
+         file,
+         _children,
+         _strategy,
+         _max_restarts
+       ) do
+    unexpected_token_error(
+      rest,
+      file,
+      "a supervisor strategy (one_for_one, one_for_all, rest_for_one)",
+      "one_for_one"
+    )
+  end
+
+  defp parse_supervisor_body(
+         [{:ident, {line, col}, "strategy"} | _],
+         file,
+         _children,
+         _strategy,
+         _max_restarts
+       ) do
+    missing_token_after_error("strategy", ":", {line, col}, file)
+  end
+
+  defp parse_supervisor_body(
+         [{:ident, _, "max_restarts"}, {:colon, _} | rest],
+         file,
+         _children,
+         _strategy,
+         _max_restarts
+       ) do
+    unexpected_token_error(rest, file, "'N per Ns' (e.g., 3 per 60s)", "3 per 60s")
+  end
+
+  defp parse_supervisor_body(
+         [{:ident, {line, col}, "max_restarts"} | _],
+         file,
+         _children,
+         _strategy,
+         _max_restarts
+       ) do
+    missing_token_after_error("max_restarts", ":", {line, col}, file)
   end
 
   defp parse_supervisor_body(tokens, file, _children, _strategy, _max_restarts) do
@@ -2402,16 +2460,17 @@ defmodule Skein.Parser do
 
   defp expect(expected, tokens, file) do
     {line, col} = token_location(tokens)
+    expected_text = token_text(expected)
 
     {:error,
      [
        %Error{
          code: "E0001",
          severity: :error,
-         message: "Expected '#{expected}', got #{describe_token(tokens)}",
+         message: "Expected '#{expected_text}', got #{describe_token(tokens)}",
          location: %{file: file, line: line, col: col},
-         fix_hint: "Add '#{expected}' here",
-         fix_code: token_text(expected)
+         fix_hint: "Add '#{expected_text}' here",
+         fix_code: expected_text
        }
      ]}
   end
@@ -2528,6 +2587,10 @@ defmodule Skein.Parser do
   defp meta_from_tokens(_, file), do: %{line: 0, col: 0, file: file}
 
   defp unexpected_token_error(tokens, file, expected) do
+    unexpected_token_error(tokens, file, expected, default_fix_code(expected))
+  end
+
+  defp unexpected_token_error(tokens, file, expected, fix_code) do
     {line, col} = token_location(tokens)
 
     {:error,
@@ -2538,7 +2601,23 @@ defmodule Skein.Parser do
          message: "Expected #{expected}, got #{describe_token(tokens)}",
          location: %{file: file, line: line, col: col},
          fix_hint: "Expected #{expected}",
-         fix_code: default_fix_code(expected)
+         fix_code: fix_code
+       }
+     ]}
+  end
+
+  # Targeted error for a known section/entry name followed by the wrong
+  # token (issue #83): names the missing token so the fix is mechanical.
+  defp missing_token_after_error(keyword, token, {line, col}, file) do
+    {:error,
+     [
+       %Error{
+         code: "E0001",
+         severity: :error,
+         message: "Missing '#{token}' after '#{keyword}'",
+         location: %{file: file, line: line, col: col},
+         fix_hint: "Add '#{token}' after '#{keyword}'",
+         fix_code: token
        }
      ]}
   end
