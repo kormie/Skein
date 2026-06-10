@@ -245,7 +245,7 @@ Skein.Runtime.Memory.list("sessions", "user:", capabilities)
 
 Every operation:
 1. Validates `memory.kv` capability for the target namespace
-2. Performs the ETS operation in the namespace-specific table (`skein_memory_<namespace>`)
+2. Performs the ETS operation in the shared `:skein_memory` table, keyed by `{namespace, key}` (a single static table — namespace strings are never converted to atoms)
 3. Records a trace span with timing and outcome via the unified EventStore
 4. Each mutation (put/delete) also emits a `:state_change` event for audit and replay
 5. Returns `{:ok, _}` or `{:error, _}`
@@ -344,6 +344,8 @@ Skein.Runtime.Request.json(req_map, json_schema)
 ### `Skein.Runtime.EventStore`
 
 Unified append-only event log for the entire runtime. All trace spans, user events (`event.log`), memory state changes, and annotations flow through a single ETS ordered set (`:skein_events`).
+
+The in-memory log is size-bounded: once it grows past the configured maximum (`config :skein_runtime, :event_store_max_events`, default 100,000), the oldest events are evicted on append. Services that need full history should enable the SQLite backend (`Skein.Runtime.EventStore.SqliteBackend`), which persists every event.
 
 **API:**
 

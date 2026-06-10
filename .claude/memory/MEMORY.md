@@ -28,7 +28,7 @@
 - Parser: `parse_handler` branches on source type (http/queue/schedule)
 - Analyzer: `handler_required_capability/1` maps source -> capability name (http.in/queue.in/schedule.in)
 - CodeGen: `__handlers__/0` includes `source` field (:http, :queue, :schedule)
-- Runtime Queue/Schedule: GenServer-based, self-starting via `ensure_started/0`
+- Runtime Queue/Topic/Schedule/Timer/Process: supervised under SkeinRuntime.Application; `ensure_started/0` remains as a race-safe fallback for --no-start environments
 - Compilation: `compile_file/1` and `compile_string/1` in `Skein.Compiler`
 - Analyzer helper functions must come after all clauses of a `validate_declaration` defp to avoid ungrouped clauses warning
 
@@ -42,7 +42,16 @@
 - Ecto tests need `async: false` and explicit Repo start/stop with try/catch for cleanup
 - Type mapping: String→:string, Int→:integer, Float→:float, Bool→:boolean, Uuid→:binary_id, Instant→:utc_datetime
 - Dependencies: ecto v3.12.5, ecto_sql v3.12.1, ecto_sqlite3 v0.17.5, exqlite v0.24.2
-- All git deps with override: true (no hex.pm access in this env)
+- decimal needs override: true at the umbrella root
+
+## Audit 2026-06-09 Resolutions (all Critical/Major fixed)
+- Store/Memory use SINGLE static ETS tables (`:skein_store` keyed `{table, id}`, `:skein_memory` keyed `{namespace, key}`) — never String.to_atom on table/namespace names
+- Router whitelists HTTP methods (405 for unknown) — never String.to_atom on wire input
+- EventStore is size-bounded: `:event_store_max_events` config (default 100k), oldest evicted on append
+- StoreEcto.query validates filter keys against schema fields before `field(r, ^key)`
+- CI: `.github/workflows/ci.yml` enforces format/compile --warnings-as-errors/tests
+- All parser/lexer errors carry fix_code (token_text/1 and default_fix_code/1 helpers in parser)
+- gen_var counter resets at each CodeGen.generate/1 entry (still process-dictionary based)
 
 ## Common Issues
 - ETS race condition: Always wrap `:ets.new` in try/rescue when called from multiple processes
@@ -51,8 +60,11 @@
 - Parser: `from` and `trace` in golden tests are identifiers, not keywords
 - GenServer cleanup race: `on_exit` callbacks may run after GenServer dies — wrap in try/catch :exit
 - Schedule/Queue nil handling: method is nil for non-HTTP handlers, param is nil for schedule handlers
-- Hex.pm unreachable: All dependencies must be git-based with override: true
+- Hex.pm availability varies by environment: deps are declared as hex packages; if hex is unreachable, switch to git deps with override: true
 - exqlite NIF: Compiles from C source when precompiled binary unavailable — needs gcc
+- gen_lsp: `lsp.assigns` is the Assigns agent PID, NOT a map — read state via `assigns(lsp)`
+- gen_lsp: buffer calls System.stop() on transport close unless `config :gen_lsp, :exit_on_end, false` (set in skein_lsp test_helper)
+- LSP integration tests use GenLSP.Test (server/client/request/notify/assert_result) over real TCP — needs generous assert_receive_timeout
 
 ## File Locations
 - Parser: `apps/skein_compiler/lib/skein/parser.ex`
