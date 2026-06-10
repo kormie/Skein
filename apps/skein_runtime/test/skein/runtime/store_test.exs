@@ -70,6 +70,23 @@ defmodule Skein.Runtime.StoreTest do
     end
   end
 
+  describe "get!/3 and put!/3" do
+    test "get!/3 returns the record directly" do
+      {:ok, _} = Store.put("users", %{id: "u1", name: "Alice"}, @caps)
+      assert %{id: "u1", name: "Alice"} = Store.get!("users", "u1", @caps)
+    end
+
+    test "get!/3 raises on missing record" do
+      assert_raise RuntimeError, fn -> Store.get!("users", "missing", @caps) end
+    end
+
+    test "put!/3 returns the record directly and raises without capability" do
+      record = %{id: "u2", name: "Bob"}
+      assert ^record = Store.put!("users", record, @caps)
+      assert_raise RuntimeError, fn -> Store.put!("orders", record, @caps) end
+    end
+  end
+
   # ------------------------------------------------------------------
   # store.delete
   # ------------------------------------------------------------------

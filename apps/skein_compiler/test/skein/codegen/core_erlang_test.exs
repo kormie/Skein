@@ -366,6 +366,43 @@ defmodule Skein.CodeGen.CoreErlangTest do
       assert function_exported?(mod, :__phases__, 0)
     end
 
+    test "state field access in nested expression positions" do
+      mod =
+        compile!("""
+        agent StateAccess {
+          capability memory.kv
+
+          state {
+            ticket_id: String
+          }
+
+          enum Phase {
+            Decide -> [Done]
+            Done -> []
+          }
+
+          on start(ticket_id: String) -> {
+            transition(Phase.Decide)
+          }
+
+          on phase(Phase.Decide) -> {
+            let id = state.ticket_id
+            match id {
+              "go" -> transition(Phase.Done)
+              _    -> transition(Phase.Done)
+            }
+          }
+
+          on phase(Phase.Done) -> {
+            stop()
+          }
+        }
+        """)
+
+      assert {:transition, :done, _state, _events} =
+               mod.__phase_handler__(:decide, %{ticket_id: "go"}, [])
+    end
+
     test "match on boolean with block body" do
       mod =
         compile!("""
@@ -916,6 +953,44 @@ defmodule Skein.CodeGen.CoreErlangTest do
 
       result = mod.find("u1")
       assert {:ok, %{id: "u1", name: "Alice"}} = result
+    end
+  end
+
+  describe "store.get! and store.put! codegen" do
+    test "store.users.get! returns the record directly" do
+      mod =
+        compile!("""
+        module StoreGetBang {
+          capability store.table("users")
+
+          fn find(id: String) -> String {
+            store.users.get!(id)
+          }
+        }
+        """)
+
+      Skein.Runtime.Store.clear("users")
+      caps = [%{kind: "store.table", params: ["users"]}]
+      {:ok, _} = Skein.Runtime.Store.put("users", %{id: "u1", name: "Alice"}, caps)
+
+      assert %{id: "u1", name: "Alice"} = mod.find("u1")
+      assert_raise ErlangError, fn -> mod.find("missing") end
+    end
+
+    test "store.users.put! returns the record directly" do
+      mod =
+        compile!("""
+        module StorePutBang {
+          capability store.table("users")
+
+          fn save(id: String) -> String {
+            store.users.put!({ id: id, status: "active" })
+          }
+        }
+        """)
+
+      Skein.Runtime.Store.clear("users")
+      assert %{id: "u9"} = mod.save("u9")
     end
   end
 

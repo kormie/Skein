@@ -380,6 +380,60 @@ defmodule Skein.ParserTest do
       assert {:ok, %AST.Module{declarations: [fn_decl]}} = parse(source)
       assert %AST.Block{expressions: [%AST.UnaryOp{op: :propagate}]} = fn_decl.body
     end
+
+    test "method!(args) parses as unwrap of the call" do
+      source = "module M { fn f(id: String) -> Int { store.users.get!(id) } }"
+
+      assert {:ok, %AST.Module{declarations: [fn_decl]}} = parse(source)
+
+      assert %AST.Block{
+               expressions: [
+                 %AST.UnaryOp{
+                   op: :unwrap,
+                   operand: %AST.Call{
+                     target: %AST.FieldAccess{
+                       subject: %AST.FieldAccess{
+                         subject: %AST.Identifier{name: "store"},
+                         field: "users"
+                       },
+                       field: "get"
+                     },
+                     args: [%AST.Identifier{name: "id"}]
+                   }
+                 }
+               ]
+             } = fn_decl.body
+    end
+
+    test "method?(args) parses as propagate of the call" do
+      source = "module M { fn f(k: String) -> Int { memory.get?(k) } }"
+
+      assert {:ok, %AST.Module{declarations: [fn_decl]}} = parse(source)
+
+      assert %AST.Block{
+               expressions: [
+                 %AST.UnaryOp{
+                   op: :propagate,
+                   operand: %AST.Call{args: [%AST.Identifier{name: "k"}]}
+                 }
+               ]
+             } = fn_decl.body
+    end
+
+    test "chained postfix after bang-call continues the chain" do
+      source = "module M { fn f(id: String) -> Int { store.users.get!(id).name } }"
+
+      assert {:ok, %AST.Module{declarations: [fn_decl]}} = parse(source)
+
+      assert %AST.Block{
+               expressions: [
+                 %AST.FieldAccess{
+                   subject: %AST.UnaryOp{op: :unwrap, operand: %AST.Call{}},
+                   field: "name"
+                 }
+               ]
+             } = fn_decl.body
+    end
   end
 
   describe "parse/1 - type declarations" do

@@ -1506,7 +1506,7 @@ defmodule Skein.CodeGen.CoreErlang do
          },
          scope
        )
-       when method in ["get", "put", "delete", "query"] do
+       when method in ["get", "get!", "put", "put!", "delete", "query"] do
     method_atom = String.to_atom(method)
     args_exprs = Enum.map(args, &generate_expr(&1, scope))
 
@@ -1841,6 +1841,22 @@ defmodule Skein.CodeGen.CoreErlang do
     target_expr = generate_expr(target, scope)
     args_exprs = Enum.map(args, &generate_expr(&1, scope))
     generate_call(target_expr, args_exprs)
+  end
+
+  # Agent state access in nested expression positions (let values, call
+  # args, match subjects). The top-level case is handled by
+  # generate_agent_expr; this clause covers everything routed through plain
+  # generate_expr. A user binding named "state" takes precedence.
+  defp generate_expr(
+         %AST.FieldAccess{subject: %AST.Identifier{name: "state"}, field: field},
+         %{__state_var__: state_var} = scope
+       )
+       when not is_map_key(scope, "state") do
+    :cerl.c_call(
+      :cerl.c_atom(:erlang),
+      :cerl.c_atom(:map_get),
+      [:cerl.c_atom(String.to_atom(field)), :cerl.c_var(state_var)]
+    )
   end
 
   # Field access

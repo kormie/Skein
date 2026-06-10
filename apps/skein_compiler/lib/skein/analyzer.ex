@@ -104,7 +104,7 @@ defmodule Skein.Analyzer do
   }
 
   # Store operations: store.<table>.<method>(...)
-  @store_methods ["get", "put", "delete", "query"]
+  @store_methods ["get", "get!", "put", "put!", "delete", "query"]
 
   # Standard library function registry: {Module, function} -> {param_types, return_type}
   @stdlib_registry %{

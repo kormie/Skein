@@ -45,6 +45,19 @@ defmodule Skein.Runtime.Store do
   end
 
   @doc """
+  Retrieves a record by its primary key, raising on a missing record or
+  missing capability. Backs the `store.<table>.get!(id)` form in Skein
+  source (let-it-crash semantics).
+  """
+  @spec get!(String.t(), any(), [map()]) :: map()
+  def get!(table_name, id, capabilities) do
+    case get(table_name, id, capabilities) do
+      {:ok, record} -> record
+      {:error, reason} -> raise RuntimeError, reason
+    end
+  end
+
+  @doc """
   Inserts or updates a record. The record must be a map with an `:id` field
   (or `"id"` key) used as the primary key.
 
@@ -71,6 +84,18 @@ defmodule Skein.Runtime.Store do
           error
       end
     end)
+  end
+
+  @doc """
+  Inserts or updates a record, raising on failure. Backs the
+  `store.<table>.put!(record)` form in Skein source.
+  """
+  @spec put!(String.t(), map(), [map()]) :: map()
+  def put!(table_name, record, capabilities) do
+    case put(table_name, record, capabilities) do
+      {:ok, stored} -> stored
+      {:error, reason} -> raise RuntimeError, reason
+    end
   end
 
   @doc """
