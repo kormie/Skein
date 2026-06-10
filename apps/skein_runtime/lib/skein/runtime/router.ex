@@ -20,6 +20,8 @@ defmodule Skein.Runtime.Router do
       conn = router.call(conn, router.init([]))
   """
 
+  require Logger
+
   alias Skein.Runtime.Handler
   alias Skein.Runtime.Trace
 
@@ -99,7 +101,18 @@ defmodule Skein.Runtime.Router do
   # ------------------------------------------------------------------
 
   defp dispatch_handler(conn, skein_module) do
-    method = method_atom(conn.method)
+    case method_atom(conn.method) do
+      {:ok, method} ->
+        dispatch_handler(conn, skein_module, method)
+
+      :error ->
+        conn
+        |> Plug.Conn.put_resp_content_type("application/json")
+        |> Plug.Conn.send_resp(405, ~s({"error":"Method Not Allowed"}))
+    end
+  end
+
+  defp dispatch_handler(conn, skein_module, method) do
     path = conn.request_path
     headers = Map.new(conn.req_headers)
     body = conn.assigns[:raw_body] || ""
@@ -117,7 +130,12 @@ defmodule Skein.Runtime.Router do
           |> Plug.Conn.send_resp(404, ~s({"error":"Not Found"}))
       end
     rescue
-      _exception ->
+      exception ->
+        Logger.error(
+          "Skein handler crashed for #{conn.method} #{path}: " <>
+            Exception.format(:error, exception, __STACKTRACE__)
+        )
+
         conn
         |> Plug.Conn.put_resp_content_type("application/json")
         |> Plug.Conn.send_resp(500, ~s({"error":"Internal Server Error"}))
@@ -139,17 +157,24 @@ defmodule Skein.Runtime.Router do
 
       {:more, _partial, conn} ->
         # For now, we don't handle chunked bodies
+        Logger.warning("Skein router: request body exceeded read limit; treating body as empty")
         Plug.Conn.assign(conn, :raw_body, "")
 
-      {:error, _reason} ->
+      {:error, reason} ->
+        Logger.warning("Skein router: failed to read request body: #{inspect(reason)}")
         Plug.Conn.assign(conn, :raw_body, "")
     end
   end
 
-  defp method_atom("GET"), do: :get
-  defp method_atom("POST"), do: :post
-  defp method_atom("PUT"), do: :put
-  defp method_atom("PATCH"), do: :patch
-  defp method_atom("DELETE"), do: :delete
-  defp method_atom(other), do: String.downcase(other) |> String.to_atom()
+  # Only whitelisted methods are converted to atoms. The method string comes
+  # straight off the wire, so an open-ended String.to_atom/1 here would let
+  # any client exhaust the atom table.
+  defp method_atom("GET"), do: {:ok, :get}
+  defp method_atom("POST"), do: {:ok, :post}
+  defp method_atom("PUT"), do: {:ok, :put}
+  defp method_atom("PATCH"), do: {:ok, :patch}
+  defp method_atom("DELETE"), do: {:ok, :delete}
+  defp method_atom("HEAD"), do: {:ok, :head}
+  defp method_atom("OPTIONS"), do: {:ok, :options}
+  defp method_atom(_other), do: :error
 end

@@ -21,6 +21,8 @@ defmodule Skein.Runtime.MigrationGen do
   """
   @spec generate_create_table(String.t(), [map()]) :: String.t()
   def generate_create_table(table_name, fields) when is_binary(table_name) do
+    EctoSchema.validate_name!(table_name, "table name")
+    Enum.each(fields, fn f -> EctoSchema.validate_name!(f.name, "field name") end)
     table_atom = String.to_atom(table_name)
 
     # Find primary key
@@ -77,6 +79,8 @@ defmodule Skein.Runtime.MigrationGen do
   """
   @spec build_migration(String.t(), [map()]) :: {:ok, module()} | {:error, String.t()}
   def build_migration(table_name, fields) when is_binary(table_name) do
+    EctoSchema.validate_name!(table_name, "table name")
+    Enum.each(fields, fn f -> EctoSchema.validate_name!(f.name, "field name") end)
     table_atom = String.to_atom(table_name)
 
     # Find primary key

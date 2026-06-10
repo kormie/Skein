@@ -166,8 +166,7 @@ defmodule Skein.Runtime.Topic do
         else
           declared = caps |> Enum.flat_map(fn cap -> cap.params end) |> Enum.join(", ")
 
-          {:error,
-           "'#{name}' not declared in #{kind} capabilities. Declared: #{declared}"}
+          {:error, "'#{name}' not declared in #{kind} capabilities. Declared: #{declared}"}
         end
     end
   end
@@ -188,9 +187,18 @@ defmodule Skein.Runtime.Topic do
     end
   end
 
+  # Fallback for environments where the application supervisor isn't
+  # running (e.g. tests with --no-start). Tolerates concurrent start races.
   defp ensure_started do
-    unless Process.whereis(__MODULE__) do
-      start_link()
+    case Process.whereis(__MODULE__) do
+      nil ->
+        case start_link() do
+          {:ok, _pid} -> :ok
+          {:error, {:already_started, _pid}} -> :ok
+        end
+
+      _pid ->
+        :ok
     end
   end
 end

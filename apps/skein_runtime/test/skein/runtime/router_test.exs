@@ -110,6 +110,23 @@ defmodule Skein.Runtime.RouterTest do
       assert conn.resp_body =~ "Not Found"
     end
 
+    test "unknown HTTP method returns 405 without minting atoms" do
+      mod =
+        compile_module!("""
+        module RouterUnknownMethod {
+          capability http.in
+
+          handler http GET "/hello" (req) -> {
+            respond.json(200, "hi")
+          }
+        }
+        """)
+
+      conn = call_router(mod, "BREW", "/hello")
+      assert conn.status == 405
+      assert conn.resp_body =~ "Method Not Allowed"
+    end
+
     test "multiple handlers route correctly" do
       mod =
         compile_module!("""
