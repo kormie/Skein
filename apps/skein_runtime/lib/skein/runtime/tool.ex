@@ -54,6 +54,75 @@ defmodule Skein.Runtime.Tool do
   end
 
   @doc """
+  Registers every tool declared by a compiled Skein module.
+
+  Scans the module's `__tools__/0` metadata (emitted by the code
+  generator for each `tool` declaration) and registers each tool under
+  its declared name. Tools with an `implement` block dispatch to the
+  module's compiled `__tool_impl_N__/1` entry point; tools without one
+  are registered with a stub that returns an execution error, so
+  `tool.list()` and `tool.schema(...)` still see them.
+
+  Registration is idempotent: the registry is keyed by tool name, so
+  reloading a module simply overwrites its previous entries.
+
+  Modules with no `__tools__/0` function are a no-op.
+  """
+  @spec register_module(module()) :: :ok
+  def register_module(mod) when is_atom(mod) do
+    if function_exported?(mod, :__tools__, 0) do
+      Enum.each(mod.__tools__(), &register_declared_tool(mod, &1))
+    end
+
+    :ok
+  end
+
+  defp register_declared_tool(mod, %{name: name} = tool_meta) do
+    impl_fn = Map.get(tool_meta, :impl)
+
+    field_names =
+      tool_meta
+      |> Map.get(:input, [])
+      |> Enum.map(& &1.name)
+
+    impl =
+      if impl_fn do
+        fn input ->
+          normalized = normalize_input_keys(input, field_names)
+
+          case apply(mod, impl_fn, [normalized]) do
+            {:ok, _} = ok -> ok
+            {:error, _} = error -> error
+            bare -> {:ok, bare}
+          end
+        end
+      else
+        fn _input ->
+          {:error, "Tool '#{name}' declares no implement block"}
+        end
+      end
+
+    register(name, Map.delete(tool_meta, :impl), impl)
+  end
+
+  # Compiled implement bodies read input fields with atom keys; callers
+  # (HTTP, tests) may pass string keys. Remap only the declared field
+  # names — their atoms already exist from the compiled module.
+  defp normalize_input_keys(input, field_names) when is_map(input) do
+    Map.new(input, fn {key, value} ->
+      with true <- is_binary(key),
+           true <- key in field_names,
+           atom when not is_nil(atom) <- safe_to_atom(key) do
+        {atom, value}
+      else
+        _ -> {key, value}
+      end
+    end)
+  end
+
+  defp normalize_input_keys(input, _field_names), do: input
+
+  @doc """
   Calls a registered tool by name with the given input.
 
   Returns `{:ok, result_map}` or `{:error, %Tool.Error{}}`.
@@ -247,6 +316,13 @@ defmodule Skein.Runtime.Tool do
 
   defp get_input_spec(%{input_schema: %{"properties" => _} = schema}), do: {:json_schema, schema}
   defp get_input_spec(_), do: nil
+
+  defp check_fields(input, {:json_schema, schema}) when not is_map(input) do
+    case Map.get(schema, "required", []) do
+      [] -> []
+      _required -> ["input expected an object, got #{inspect(input)}"]
+    end
+  end
 
   defp check_fields(input, {:json_schema, schema}) do
     properties = Map.get(schema, "properties", %{})

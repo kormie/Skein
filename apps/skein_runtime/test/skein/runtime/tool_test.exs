@@ -419,6 +419,148 @@ defmodule Skein.Runtime.ToolTest do
   end
 
   # ------------------------------------------------------------------
+  # register_module/1 — registering compiled Skein tool declarations
+  # ------------------------------------------------------------------
+
+  defmodule FakeCompiledModule do
+    @moduledoc false
+    # Mirrors the shape of a compiled Skein module's __tools__/0 metadata
+    # and __tool_impl_N__/1 entry points.
+
+    def __tools__ do
+      [
+        %{
+          name: "Fake.Add",
+          description: "Adds two integers",
+          input: [%{name: "a", type: "Int"}, %{name: "b", type: "Int"}],
+          input_schema: %{
+            "type" => "object",
+            "properties" => %{"a" => %{"type" => "integer"}, "b" => %{"type" => "integer"}},
+            "required" => ["a", "b"]
+          },
+          output: [%{name: "sum", type: "Int"}],
+          output_schema: %{
+            "type" => "object",
+            "properties" => %{"sum" => %{"type" => "integer"}},
+            "required" => ["sum"]
+          },
+          impl: :__tool_impl_0__
+        },
+        %{
+          name: "Fake.Declared",
+          description: "Declared without an implement block",
+          input: [],
+          input_schema: %{"type" => "object", "properties" => %{}, "required" => []},
+          output: [],
+          output_schema: %{"type" => "object", "properties" => %{}, "required" => []},
+          impl: nil
+        },
+        %{
+          name: "Fake.Bare",
+          description: "Implement body returns a bare value",
+          input: [],
+          input_schema: %{"type" => "object", "properties" => %{}, "required" => []},
+          output: [],
+          output_schema: %{"type" => "object", "properties" => %{}, "required" => []},
+          impl: :__tool_impl_2__
+        }
+      ]
+    end
+
+    def __tool_impl_0__(input), do: {:ok, %{sum: input.a + input.b}}
+    def __tool_impl_2__(_input), do: "bare value"
+  end
+
+  defmodule FakeModuleWithoutTools do
+    @moduledoc false
+    def unrelated, do: :ok
+  end
+
+  describe "register_module/1" do
+    @fake_caps [%{kind: "tool.use", params: []}]
+
+    test "registers all declared tools from __tools__/0 metadata" do
+      assert :ok = Tool.register_module(FakeCompiledModule)
+
+      assert {:ok, tools} = Tool.list(@fake_caps)
+      names = Enum.map(tools, & &1.name) |> Enum.sort()
+      assert names == ["Fake.Add", "Fake.Bare", "Fake.Declared"]
+    end
+
+    test "registered tool is callable through Tool.call/3" do
+      Tool.register_module(FakeCompiledModule)
+
+      assert {:ok, %{sum: 5}} = Tool.call("Fake.Add", %{a: 2, b: 3}, @fake_caps)
+    end
+
+    test "string-keyed input is normalized to the declared atom fields" do
+      Tool.register_module(FakeCompiledModule)
+
+      assert {:ok, %{sum: 7}} = Tool.call("Fake.Add", %{"a" => 3, "b" => 4}, @fake_caps)
+    end
+
+    test "input validation against the declared schema still applies" do
+      Tool.register_module(FakeCompiledModule)
+
+      assert {:error, %Tool.Error{kind: :validation_error} = error} =
+               Tool.call("Fake.Add", %{a: 2}, @fake_caps)
+
+      assert Enum.any?(error.detail.violations, &(&1 =~ "b"))
+    end
+
+    test "non-map input to a tool with required fields is a validation error" do
+      Tool.register_module(FakeCompiledModule)
+
+      assert {:error, %Tool.Error{kind: :validation_error}} =
+               Tool.call("Fake.Add", "not a map", @fake_caps)
+    end
+
+    test "registration is idempotent — re-registering does not duplicate" do
+      Tool.register_module(FakeCompiledModule)
+      Tool.register_module(FakeCompiledModule)
+
+      assert {:ok, tools} = Tool.list(@fake_caps)
+      add_entries = Enum.filter(tools, &(&1.name == "Fake.Add"))
+      assert length(add_entries) == 1
+    end
+
+    test "tool declared without an implement block returns execution_error on call" do
+      Tool.register_module(FakeCompiledModule)
+
+      assert {:error, %Tool.Error{kind: :execution_error} = error} =
+               Tool.call("Fake.Declared", %{}, @fake_caps)
+
+      assert error.detail.error =~ "implement"
+    end
+
+    test "tool without implement still exposes its schema" do
+      Tool.register_module(FakeCompiledModule)
+
+      assert {:ok, schema} = Tool.schema("Fake.Declared", @fake_caps)
+      assert schema.name == "Fake.Declared"
+      assert schema.input_schema["type"] == "object"
+    end
+
+    test "bare (non-tuple) implement return values are wrapped in {:ok, _}" do
+      Tool.register_module(FakeCompiledModule)
+
+      assert {:ok, "bare value"} = Tool.call("Fake.Bare", %{}, @fake_caps)
+    end
+
+    test "module without __tools__/0 is a no-op" do
+      assert :ok = Tool.register_module(FakeModuleWithoutTools)
+      assert {:ok, []} = Tool.list(@fake_caps)
+    end
+
+    test "registry schema does not leak the :impl key" do
+      Tool.register_module(FakeCompiledModule)
+
+      assert {:ok, schema} = Tool.schema("Fake.Add", @fake_caps)
+      refute Map.has_key?(schema, :impl)
+    end
+  end
+
+  # ------------------------------------------------------------------
   # Tool.Error
   # ------------------------------------------------------------------
 
