@@ -9,9 +9,14 @@ Fixes from v0.1.3 field testing.
 - **`skein new my-app` generates a valid module name** — hyphens (or anything else that isn't a letter/digit/underscore) in the project directory name produced `module Skein-tests {`, which doesn't compile. Names are now sanitized (`skein-tests` -> `SkeinTests`) and prefixed with `Skein` when they don't start with a letter.
 - **Ctrl+C exits cleanly** — long-running commands (`skein lsp`, `skein run`) no longer drop into the BEAM `BREAK:` menu on Ctrl+C (`+Bd` in vm.args).
 
+### CI
+
+- **Prebuilt VS Code extension** — CI packages `skein-vscode.vsix` and attaches it to releases, so installing the extension is a download + `code --install-extension` instead of a local npm build.
+
 ### VS Code Extension (0.1.2)
 
 - **The packaged extension actually loads** — `.vscodeignore` excluded `node_modules`, so the `.vsix` shipped without `vscode-languageclient`; the extension module failed to load, which broke activation, the palette commands ("command 'skein.restartServer' not found"), and the language client. Production dependencies are now packaged.
+- **Supervised language server** — the GenLSP process tree (buffer, assigns, task supervisor, server) now runs under a `:one_for_all` supervisor, so a crash in a handler restarts the server instead of killing the whole VM.
 
 ## v0.1.3 (2026-06-10)
 

@@ -7,6 +7,17 @@ The Skein VS Code extension provides a complete editing experience powered by a 
 
 ## Installation
 
+### From a GitHub Release (easiest)
+
+Every release ships a prebuilt `skein-vscode.vsix` — download it from the
+[Releases page](https://github.com/kormie/Skein/releases) and install it with:
+
+```bash
+code --install-extension skein-vscode.vsix
+```
+
+(or in VS Code: **Extensions: Install from VSIX**).
+
 ### From Source
 
 ```bash
