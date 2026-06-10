@@ -12,7 +12,10 @@ The compiler and toolchain are implemented in Elixir. The runtime is a set of OT
 skein/
 ├── CLAUDE.md                    # This file
 ├── mix.exs                      # Root umbrella project
-├── .github/workflows/           # CI (format check, compile, tests) + binary builds + docs deploy
+├── .github/
+│   ├── workflows/               # CI (format/compile/tests), binary builds, docs deploy, milestone sync
+│   ├── ISSUE_TEMPLATE/          # Issue forms (bug/feature/chore) — auto-label status/triage
+│   └── milestones.json          # Milestones-as-code (synced by workflows/milestones.yml)
 ├── docs/
 │   ├── SKEIN_SPEC.md            # Complete language specification
 │   ├── ARCHITECTURE.md          # Compiler and runtime architecture
@@ -200,11 +203,10 @@ end
 
 **TDD is mandatory.** Write tests before or alongside implementation — never after. Every public function must have tests covering its happy path and error cases before the implementation is considered done.
 
-- Every compiler phase has its own test directory under `spec/`
-- Spec tests use `.skein` source files as input and compare against expected output
-- Use snapshot testing for AST and Core Erlang output (store expected output in `.expected` files)
+- Tests live under each app's `test/` directory (`apps/skein_compiler/test/skein/`, etc.)
+- Spec alignment is enforced by `spec_examples_test.exs` — section 8 examples compile or carry a "Planned" annotation
 - Runtime tests use ExUnit with Skein-specific helpers
-- Integration tests compile `.skein` source to BEAM and call the resulting functions
+- Integration tests compile `.skein` source to BEAM and call the resulting functions (`compile_string/1` for inline source, `compile_file/1` for `examples/`)
 
 **Property Testing** is required for components with wide input spaces:
 
@@ -247,9 +249,10 @@ end
 ```
 
 ### Git Conventions
-- Branch naming: `phase-N/description` (e.g., `phase-1/lexer-core-tokens`)
-- Commit messages: `[phase-N] component: description`
-- Each phase from the implementation plan is a PR
+- Branch naming: `<topic>/<short-description>` (e.g., `compiler/named-args`)
+- Commit messages: `[component] description` (e.g., `[parser] accept named arguments in calls`)
+- One roadmap item / issue per PR; reference it with `Closes #NN`
+- All numbered phases shipped — work is now driven by `docs/ROADMAP.md` items and their linked GitHub issues
 
 ## Compilation Pipeline
 
@@ -376,11 +379,12 @@ mix test
 # Format code
 mix format
 
-# Compile a Skein file (once CLI exists)
+# CLI via Mix aliases: skein.compile / skein.new / skein.build / skein.test / skein.run / skein.trace
 mix skein.compile path/to/file.skein
+mix skein.test path/to/project
 
-# Run spec tests (once test harness exists)
-mix skein.spec
+# Or the standalone binary (additionally: skein lsp, skein mcp, skein agents, skein version)
+skein build my_project --output _build/beam
 ```
 
 ## Documentation Site
@@ -422,6 +426,13 @@ The `github-pages-astro` plugin (`.claude/plugins/github-pages-astro/`) provides
 ## Session Memory
 
 Accumulated learnings, gotchas, and project state are stored in `.claude/memory/MEMORY.md`. Consult this file at the start of each session for up-to-date context on completed phases, known pitfalls (e.g., `input` is a keyword, `stop()` needs parens, GenServer race conditions in tests), architecture notes, and user preferences.
+
+## Issue Tracking & Milestones
+
+- GitHub issues are the unit of work; `docs/ROADMAP.md` is the prioritized index, and every active roadmap item links its tracking issue. Keep the two in sync when scope changes.
+- Labels: `type/{bug,feature,chore}`, `area/{compiler,runtime,cli,docs,ci,security}`, `priority/{p0,p1,p2}`, plus `status/triage` (auto-applied by the issue forms; remove after setting priority + milestone).
+- Milestones: **Alpha Release** (the gate for making the repo public) and **Beta Release** (post-alpha hardening). Defined in `.github/milestones.json` and synced by `.github/workflows/milestones.yml` — edit the JSON rather than creating milestones by hand.
+- The contributor-facing version of this workflow lives in `CONTRIBUTING.md`.
 
 ## What Not To Do
 

@@ -5,7 +5,7 @@
 
 This is the forward-looking work list for Skein. Items are ordered by impact — the top items close the biggest gaps between the language's stated goals and its current reality.
 
-Every item is self-contained. Pick the top incomplete one and work it.
+Every item is self-contained and links its tracking issue — keep the two in sync when scope changes. Pick the top incomplete one and work it. Milestones: Tier 1–4 items below are the **Alpha Release** gate (repo goes public) except where their issue says otherwise; see `.github/milestones.json`.
 
 **Every item requires:**
 - TDD — tests first, implementation second
@@ -18,7 +18,7 @@ Every item is self-contained. Pick the top incomplete one and work it.
 
 ## Current State
 
-The compilation pipeline works end-to-end: lexer, parser, analyzer, codegen, and runtime are functional. **1,413 tests + 189 property tests pass.** Fourteen example programs (thirteen single-file + one multi-file) compile and run, all covered by integration tests. The LSP, CLI, docs site, and binary distribution (Burrito) are operational.
+The compilation pipeline works end-to-end: lexer, parser, analyzer, codegen, and runtime are functional. **1,547 tests + 195 property tests pass** (verified against `main` CI at v0.1.5). Fourteen example programs (thirteen single-file + one multi-file) compile and run, all covered by integration tests. The LSP, CLI, docs site, and binary distribution (Burrito, four targets) are operational. v0.1.5 shipped cross-module `tool.call` end-to-end.
 
 Most of the foundational gap-closing work from earlier roadmap revisions is **done**: real type inference for field access and pattern bindings, schema derivation for nested types and enum variants, the production Anthropic LLM backend, runtime capability enforcement for tool/LLM/topic (name- and model-aware), agent instance-scoped memory, error `context` + `fix_code` on all compiler errors, float-aware division, multi-`emit` accumulation, tool input validation, contextual (non-reserved) keywords, the persistent SQLite EventStore backend, string-literal match patterns, `store.<table>.get!/put!`, and the `queue.consume`/`schedule.trigger` capability naming.
 
@@ -29,6 +29,8 @@ The remaining gaps are listed below.
 ## Tier 1: Language Surface
 
 ### 1. Named Arguments in Calls `[L]`
+
+**Issue:** [#56](https://github.com/kormie/Skein/issues/56)
 
 **Problem:** The spec grammar (section 3.2) allows named arguments (`named_arg = lower_ident ":" expr`), and the first-principles document shows calls like `llm.json[T](model: "...", system: PROMPT)`. The parser only supports positional arguments — `parse_args` has no named-argument production. All shipped examples and docs use the positional form.
 
@@ -50,6 +52,8 @@ The remaining gaps are listed below.
 
 ### 2. Agent Nesting Inside Modules `[M]`
 
+**Issue:** [#63](https://github.com/kormie/Skein/issues/63)
+
 **Problem:** The spec (section 8.4) shows `agent RefundAgent { ... }` nested inside `module RefundService { ... }`, but `parse_declaration` doesn't accept `agent` as a module-level declaration. The `examples/market_research/` project works around this with one file per construct.
 
 **Scope:**
@@ -68,6 +72,8 @@ The remaining gaps are listed below.
 
 ### 3. Types Usable from Agents `[M]`
 
+**Issue:** [#70](https://github.com/kormie/Skein/issues/70)
+
 **Problem:** Agents cannot declare `type` blocks, and (until item 2 lands) cannot live inside modules that do. As a result `llm.json[SomeType]` is unusable from agent bodies — the canonical "schema-constrained LLM decision" pattern only works in module functions today.
 
 **Scope:**
@@ -82,9 +88,30 @@ The remaining gaps are listed below.
 
 ---
 
+### 4. Enum Variant Construction Completeness `[M]`
+
+**Issue:** [#96](https://github.com/kormie/Skein/issues/96)
+
+**Problem:** v0.1.5 made call-form variant construction work (`Ok(x)`, `Err(e)`, `Event.Charge(n)`, `ErrName.from(cause)`), but zero-field variants still cannot be constructed in expression position: `Status.Active` hits a misleading E0020 ("Cannot access field 'Active' on type Status") and bare `Active` crashes codegen with an unstructured `core_lint` `unbound_var`. Constructor calls also aren't validated — unknown variants and wrong arity pass the analyzer as `:unknown` and crash at codegen instead of producing structured errors.
+
+**Scope:**
+- Analyzer: type `Status.Active` field access on an enum as `{:enum, "Status"}`; structured errors for unknown variants (closest-name `fix_code`) and wrong constructor arity/types
+- Codegen: lower zero-field variants to their snake_case atom, matching pattern-side `variant_pattern_atom/1`
+
+**Acceptance criteria:**
+- Zero-field (`Status.Active`) and data (`Status.Banned("spam")`) constructions round-trip through `match` at runtime
+- `Status.Nope` and wrong-arity constructor calls fail at compile time with structured errors
+- No `:core_lint` E0001 crashes remain for any construction form
+
+**Depends on:** Nothing.
+
+---
+
 ## Tier 2: Runtime Completeness
 
-### 4. Schedule Handler Auto-Firing `[M]`
+### 5. Schedule Handler Auto-Firing `[M]`
+
+**Issue:** [#71](https://github.com/kormie/Skein/issues/71)
 
 **Problem:** Schedule handlers register their cron expression but never fire automatically — only manual `Schedule.trigger/1` works. A `handler schedule "*/5 * * * *"` does nothing in a running service.
 
@@ -103,7 +130,9 @@ The remaining gaps are listed below.
 
 ---
 
-### 5. Agent `emit` Events to EventStore `[M]`
+### 6. Agent `emit` Events to EventStore `[M]`
+
+**Issue:** [#72](https://github.com/kormie/Skein/issues/72)
 
 **Problem:** Events emitted inside agents accumulate in `gen_statem` data but are never appended to the EventStore. If the agent crashes, emitted events are lost, and `EventStore.query/1` can't see agent events.
 
@@ -120,7 +149,9 @@ The remaining gaps are listed below.
 
 ---
 
-### 6. Replay Backend Injection `[L]`
+### 7. Replay Backend Injection `[L]`
+
+**Issue:** [#73](https://github.com/kormie/Skein/issues/73)
 
 **Problem:** `Skein.Runtime.Replay` can load traces, rebuild memory, and holds replay state (`with_replay/2`, `next_response/1`), but the LLM/HTTP/tool runtimes never consult it — `Llm.chat` always calls the configured backend. Recorded-mode replay therefore can't actually intercept live effects.
 
@@ -138,7 +169,9 @@ The remaining gaps are listed below.
 
 ---
 
-### 7. Stream/Pool-Scoped Runtime Capability Checks `[M]` *(needs surface design first)*
+### 8. Stream/Pool-Scoped Runtime Capability Checks `[M]` *(needs surface design first)*
+
+**Issues:** [#69](https://github.com/kormie/Skein/issues/69) (surface decision), [#57](https://github.com/kormie/Skein/issues/57) (enforcement)
 
 **Problem:** `process.spawn`, `timer`, and `event.log` check capability *presence* at runtime but not parameters. Full enforcement is blocked on a language-surface question: the capability parameter names a pool/stream label (`capability event.log("audit")`), while the runtime call carries a different value (the event name: `event.log("user.login", data)`), so there is nothing to match the declared label against at the call site.
 
@@ -155,7 +188,9 @@ The remaining gaps are listed below.
 
 ---
 
-### 8. `process.spawn` Task Bodies `[M]`
+### 9. `process.spawn` Task Bodies `[M]`
+
+**Issue:** [#74](https://github.com/kormie/Skein/issues/74)
 
 **Problem:** `process.spawn("name")` spawns a supervised no-op task carrying the name in its trace span. There is no way to attach actual work to the spawned process from Skein source.
 
@@ -173,7 +208,9 @@ The remaining gaps are listed below.
 
 ## Tier 3: Polish
 
-### 9. Enum Value-Level Exhaustiveness Warning `[S]`
+### 10. Enum Value-Level Exhaustiveness Warning `[S]`
+
+**Issue:** [#76](https://github.com/kormie/Skein/issues/76)
 
 **Problem:** Exhaustiveness checking is variant-level only. `match e { Event.Charge(5) -> ... }` satisfies "Charge is covered", but `Event.Charge(10)` raises `case_clause` at runtime. (Plain literal matches without a catch-all now compile to an explicit `case_clause` raise — the gap is the missing *warning*.)
 
@@ -189,7 +226,9 @@ The remaining gaps are listed below.
 
 ---
 
-### 10. Spec Section 8 Sweep `[M]`
+### 11. Spec Section 8 Sweep `[M]`
+
+**Issue:** [#77](https://github.com/kormie/Skein/issues/77)
 
 **Problem:** Spec examples are largely aligned and covered by `spec_examples_test.exs`, but a few forms remain aspirational (named args — item 1, nested agents — item 2, `agent.run_sync()` in testing docs, tuple destructuring, unit type `()`).
 
@@ -204,7 +243,31 @@ The remaining gaps are listed below.
 
 ---
 
+## Tier 4: Release & Infrastructure
+
+### 12. Release Automation & Public-Repo Polish `[L]`
+
+**Issue:** [#100](https://github.com/kormie/Skein/issues/100)
+
+**Problem:** Releases are hand-cut — a version-bump PR merges, then someone must remember to push the annotated `v*` tag that triggers the binary build matrix. The README has no badges, and the published docs site only ever reflects latest `main` (nothing version-pinned for the binary you're running or for agents consuming `llms-full.txt`).
+
+**Scope:**
+- Auto-tag: a workflow on green `main` CI reads `version` from `mix.exs`, verifies the `CHANGELOG.md` section, and pushes the tag (design around the GITHUB_TOKEN-doesn't-trigger-workflows gotcha)
+- README badges (CI, latest release, docs)
+- Versioned docs snapshots published on releases
+
+**Acceptance criteria:**
+- Merging a version-bump PR publishes the release with no manual tag step; a red merge never tags
+- README shows live CI/release badges
+- Docs for a released version remain reachable after later merges to `main`
+
+**Depends on:** Nothing.
+
+---
+
 ## Post-MVP Backlog
+
+**Issue:** [#78](https://github.com/kormie/Skein/issues/78) (tracking)
 
 Planned but not yet scoped or prioritized:
 
@@ -227,6 +290,11 @@ All of the following are done and tested:
 - Phases 1–7: full compilation pipeline (lexer, parser, analyzer, codegen)
 - Phase 8a–8f: test infrastructure, Ecto/SQLite storage, HTTP server (Bandit + Plug), canonical examples, queue/schedule handlers, LLM streaming
 - Phase 10: unified event store (+ optional persistent SQLite backend)
+- Cross-module `tool.call` end-to-end (v0.1.5): `implement` blocks compile to exported entry points, CLI registers tools at module load; tools are the only cross-module seam (E0016 rejects cross-module function calls)
+- Expression-position variant construction, call forms (v0.1.5): `Ok(x)`, `Err(e)`, `Event.Charge(n)`, `ErrName.from(cause)` — zero-field forms tracked in item 4
+- Prefix unary minus; targeted parser errors for known names missing their token (v0.1.5)
+- Agent context injection (v0.1.5): `skein new` scaffolds AGENTS.md, `skein agents` regenerates it, `skein mcp` serves spec lookup/docs search/compile checks over stdio
+- Two-phase `skein test` runner (compile + load all of src/ and test/, then run); `skein new` scaffolds co-located tests + a cross-module integration test
 - Type inference: field access through user-defined types, pattern bindings carry `Result`/variant inner types
 - Schema derivation: nested user types, enum `oneOf`, `Map[K, V]` `additionalProperties`, circular-reference safety
 - Production LLM backend: Anthropic Messages API (chat, json, stream) with retry and structured errors; current model IDs throughout
