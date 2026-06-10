@@ -7,3 +7,6 @@ tsconfig.json
 **/.gitignore
 .vscodeignore
 package-lock.json
+# The extension is bundled with esbuild (vscode-languageclient is compiled
+# into out/extension.js), so runtime deps don't need to ship in the vsix.
+node_modules/**
