@@ -107,26 +107,7 @@ The remaining gaps are listed below. Field-testing v0.1.5 (2026-06-10) surfaced 
 
 ## Tier 3: Polish & Developer Experience
 
-### 5. Test Failures Show Expected vs Actual + Location `[M]`
-
-**Issue:** [#105](https://github.com/kormie/Skein/issues/105)
-
-**Problem:** A failing `assert` prints only "Assertion failed" — no operands, no `file:line`. Codegen lowers `__assert__` to a single boolean and raises a constant `RuntimeError`, discarding the operands and the meta location the parser already carries. The failure message is also what a coding agent debugs from.
-
-**Scope:**
-- New structured `Skein.Runtime.AssertionError` (`op`, `left`, `right`, `expr`, `file`, `line`)
-- Codegen special-cases `__assert__` over comparison `BinaryOp`s: bind operands, raise with both inspected values + location; bare truthy asserts keep location
-- CLI FAIL lines print `file:line` and left/right
-
-**Acceptance criteria:**
-- `assert a == b` failure shows inspected left and right values and the assert's `file:line`
-- Scenario `expect` and golden tests inherit the output via the shared `__test_N__` lowering
-
-**Depends on:** Nothing.
-
----
-
-### 6. MCP `skein_compile_check` Fidelity `[M]`
+### 5. MCP `skein_compile_check` Fidelity `[M]`
 
 **Issue:** [#109](https://github.com/kormie/Skein/issues/109)
 
@@ -144,7 +125,7 @@ The remaining gaps are listed below. Field-testing v0.1.5 (2026-06-10) surfaced 
 
 ---
 
-### 7. zsh Tab-Completion for `skein` `[S]`
+### 6. zsh Tab-Completion for `skein` `[S]`
 
 **Issue:** [#101](https://github.com/kormie/Skein/issues/101)
 
@@ -156,7 +137,7 @@ The remaining gaps are listed below. Field-testing v0.1.5 (2026-06-10) surfaced 
 
 ---
 
-### 8. Spec Section 8 Sweep `[M]`
+### 7. Spec Section 8 Sweep `[M]`
 
 **Issue:** [#77](https://github.com/kormie/Skein/issues/77)
 
@@ -173,7 +154,7 @@ The remaining gaps are listed below. Field-testing v0.1.5 (2026-06-10) surfaced 
 
 ---
 
-### 9. Enum Value-Level Exhaustiveness Warning `[S]`
+### 8. Enum Value-Level Exhaustiveness Warning `[S]`
 
 **Issue:** [#76](https://github.com/kormie/Skein/issues/76)
 
@@ -191,7 +172,7 @@ The remaining gaps are listed below. Field-testing v0.1.5 (2026-06-10) surfaced 
 
 ---
 
-### 10. LSP Code Actions from `fix_hint`/`fix_code` `[L]`
+### 9. LSP Code Actions from `fix_hint`/`fix_code` `[L]`
 
 **Issue:** [#108](https://github.com/kormie/Skein/issues/108)
 
@@ -254,6 +235,7 @@ All of the following are done and tested:
 - LSP: completions, hover, diagnostics, semantic tokens, document symbols, go-to-definition (+ request/response integration tests)
 - CLI: new, build (`--output`), test, run, trace; structured errors for malformed flags
 - Distribution: Burrito binaries (Linux x86_64/ARM64, macOS x86_64/ARM64), GitHub Release automation on `v*` tags
+- Assertion failures show expected vs actual + location (#105): failing asserts raise structured Skein.Runtime.AssertionError (op/left/right/rendered expr/file:line); comparison operands bound and reported; CLI FAIL lines print the location; scenario/golden inherit via the shared lowering
 - `skein new` git init + `.gitignore` (#106): cargo-style — init by default (skipped inside an existing work tree, with --no-git, or when git is missing), baseline .gitignore always written
 - Agent `emit` -> EventStore (#72): handler-emitted events flush to the EventStore as :user_event (tagged agent/instance_id/phase) BEFORE the result is acted on, so they survive crashes; get_events/1 still reads gen_statem data; property pins N emits across M transitions = N stored events
 - Schedule handler auto-firing (#71): periodic tick (1s, configurable) evaluates full 5-field cron matching (`*`, `n`, `a-b`, `*/n`, lists; DOM/DOW OR rule) with per-minute dedup; `Server` registers `:schedule` handlers from `__handlers__/0`; invalid crons rejected at registration; deterministic `tick_at/1` + firing-count property for tests

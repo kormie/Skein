@@ -201,6 +201,12 @@
 - cargo-style: init by default; skipped when inside a work tree (git rev-parse --is-inside-work-tree), --no-git, or git missing (app env :skein_cli :git_executable, :missing sentinel for tests); .gitignore ALWAYS written; no auto-commit
 - new_test's repo tmp dir is inside the Skein work tree — git-init-happens tests must use System.tmp_dir!
 
+## Structured Assertion Failures (issue #105 — 2026-06-10)
+- `Skein.Runtime.AssertionError` (defexception op/left/right/expr/file/line + location/1); codegen __assert__ special-cases comparison BinaryOps (operands bound to vars, erlang op names: != -> :"/=", <= -> :"=<"), exception struct built as c_map with __struct__/__exception__ literals + runtime operand vars
+- `render_source/1` in codegen: best-effort AST->source for failure headers (display only)
+- CLI result maps gain optional :location ("file:line"); main.ex FAIL lines print it
+- erlang:error(struct-with-__exception__) rescues as that exception in Elixir
+
 ## Known Bug Found 2026-06-10 (filed as issue)
 - **Int string interpolation emits raw codepoint**: `"${n}"` with n=42 yields "*" (binary segment treats Int as a byte) — needs to_string coercion in codegen interpolation
 

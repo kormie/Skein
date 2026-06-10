@@ -752,6 +752,7 @@ defmodule Skein.CLI do
         rescue
           e ->
             %{description: desc, status: :failed, kind: kind, error: Exception.message(e)}
+            |> put_failure_location(e)
         end
       end)
 
@@ -785,7 +786,19 @@ defmodule Skein.CLI do
             kind: kind,
             error: Exception.message(e)
           }
+          |> put_failure_location(e)
       end
     end)
   end
+
+  # Structured assertion failures carry their own file:line — surface it
+  # on the FAIL line so failures are locatable without print-debugging.
+  defp put_failure_location(result, %Skein.Runtime.AssertionError{} = error) do
+    case Skein.Runtime.AssertionError.location(error) do
+      nil -> result
+      location -> Map.put(result, :location, location)
+    end
+  end
+
+  defp put_failure_location(result, _error), do: result
 end

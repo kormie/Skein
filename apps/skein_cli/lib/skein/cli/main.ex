@@ -89,7 +89,16 @@ defmodule Skein.CLI.Main do
         IO.puts("Tests: #{result.passed} passed, #{result.failed} failed (#{result.total} total)")
 
         for r <- result.results, r.status == :failed do
-          IO.puts(:stderr, "  FAIL: #{r.description} — #{Map.get(r, :error, "unknown")}")
+          location =
+            case Map.get(r, :location) do
+              nil -> ""
+              loc -> " (#{loc})"
+            end
+
+          IO.puts(
+            :stderr,
+            "  FAIL: #{r.description}#{location} — #{Map.get(r, :error, "unknown")}"
+          )
         end
 
         if result.compile_errors > 0 do

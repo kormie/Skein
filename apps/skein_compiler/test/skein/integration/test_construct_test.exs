@@ -111,7 +111,7 @@ defmodule Skein.Integration.TestConstructTest do
         }
         """)
 
-      assert_raise RuntimeError, ~r/Assertion failed/, fn ->
+      assert_raise Skein.Runtime.AssertionError, ~r/Assertion failed/, fn ->
         mod.__test_0__()
       end
     end
@@ -201,7 +201,7 @@ defmodule Skein.Integration.TestConstructTest do
         }
         """)
 
-      assert_raise RuntimeError, ~r/Assertion failed/, fn ->
+      assert_raise Skein.Runtime.AssertionError, ~r/Assertion failed/, fn ->
         mod.__test_0__()
       end
     end
@@ -344,7 +344,7 @@ defmodule Skein.Integration.TestConstructTest do
         }
         """)
 
-      assert_raise RuntimeError, ~r/Assertion failed/, fn ->
+      assert_raise Skein.Runtime.AssertionError, ~r/Assertion failed/, fn ->
         mod.__test_0__()
       end
     end
