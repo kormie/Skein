@@ -217,17 +217,23 @@ defmodule Skein.SpecExamplesTest do
      """},
     {"8.5 Tests",
      """
-     module RefundServiceTest {
-       test "greet returns hello message" {
-         let result = Hello.greet("world")
+     module RefundService {
+       fn eligible(amount: Int) -> Bool {
+         amount <= 5000
+       }
+
+       fn greeting(name: String) -> String {
+         "Hello, ${name}!"
+       }
+
+       test "greeting returns hello message" {
+         let result = greeting("world")
          assert result == "Hello, world!"
        }
 
-       test "refund agent approves eligible ticket" {
-         let ticket_id = Uuid.parse!("abc-123")
-         let decision = { action: "approve", amount: 2500, reason: "eligible" }
-         assert decision.action == "approve"
-         assert decision.amount == 2500
+       test "small refunds are eligible" {
+         assert eligible(2500) == true
+         assert eligible(9900) == false
        }
 
        scenario "high-value refund requires manual review" {

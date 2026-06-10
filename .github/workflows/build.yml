@@ -31,7 +31,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Set up Erlang & Elixir
         uses: erlef/setup-beam@v1
@@ -45,7 +45,7 @@ jobs:
           version: 0.15.2
 
       - name: Cache deps and build
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             deps
@@ -77,7 +77,7 @@ jobs:
 
       - name: Upload Linux x86_64 binary
         if: github.event_name != 'pull_request'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: skein-linux-x86_64
           path: burrito_out/skein_linux
@@ -85,7 +85,7 @@ jobs:
 
       - name: Upload Linux aarch64 binary
         if: github.event_name != 'pull_request'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: skein-linux-aarch64
           path: burrito_out/skein_linux_arm
@@ -93,7 +93,7 @@ jobs:
 
       - name: Upload macOS x86_64 binary
         if: github.event_name != 'pull_request'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: skein-macos-x86_64
           path: burrito_out/skein_macos
@@ -101,7 +101,7 @@ jobs:
 
       - name: Upload macOS aarch64 binary
         if: github.event_name != 'pull_request'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: skein-macos-aarch64
           path: burrito_out/skein_macos_arm
@@ -112,9 +112,9 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: "22"
           cache: npm
@@ -127,7 +127,7 @@ jobs:
           npx vsce package -o skein-vscode.vsix
 
       - name: Upload extension
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: skein-vscode-extension
           path: editors/vscode/skein-vscode.vsix
@@ -141,7 +141,7 @@ jobs:
 
     steps:
       - name: Download all artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: artifacts
 
@@ -157,7 +157,7 @@ jobs:
           cd release && sha256sum * > checksums.txt
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           generate_release_notes: true
           files: release/*

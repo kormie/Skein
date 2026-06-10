@@ -20,6 +20,14 @@ module StdlibDemo {
     Int.parse(text)
   }
 
+  fn temperature_label(celsius: Int) -> String {
+    let clamped = Int.clamp(celsius, -40, 50)
+    match clamped < -18 {
+      true  -> "freezing"
+      false -> "normal"
+    }
+  }
+
   fn round_price(amount: Float, decimals: Int) -> Float {
     Float.round(amount, decimals)
   }
