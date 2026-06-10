@@ -12,6 +12,13 @@ defmodule Skein.Runtime.EventStore.SqliteBackend do
 
   @table_name "skein_events"
 
+  # @table_name is interpolated into the SQL strings below, which is only
+  # safe while it stays a static identifier. Fail the build if it is ever
+  # changed to something that could enable SQL injection.
+  unless Regex.match?(~r/^[a-zA-Z_][a-zA-Z0-9_]*$/, @table_name) do
+    raise ArgumentError, "@table_name must be a plain SQL identifier, got: #{@table_name}"
+  end
+
   @doc """
   Creates the skein_events table if it doesn't exist.
   """

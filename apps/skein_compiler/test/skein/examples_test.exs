@@ -232,6 +232,42 @@ defmodule Skein.ExamplesTest do
   end
 
   # ------------------------------------------------------------------
+  # hello_llm.skein
+  # ------------------------------------------------------------------
+
+  describe "hello_llm.skein" do
+    test "compiles successfully" do
+      assert {:module, mod} =
+               Compiler.compile_file(Path.join(project_root(), "examples/hello_llm.skein"))
+
+      assert is_atom(mod)
+    end
+
+    test "has correct phase definitions and transitions" do
+      {:module, mod} =
+        Compiler.compile_file(Path.join(project_root(), "examples/hello_llm.skein"))
+
+      phases = mod.__phases__()
+      phase_names = Enum.map(phases, & &1.name) |> Enum.sort()
+      assert phase_names == [:done, :start]
+
+      start = Enum.find(phases, &(&1.name == :start))
+      assert start.transitions == [:done]
+
+      done = Enum.find(phases, &(&1.name == :done))
+      assert done.transitions == []
+    end
+
+    test "phase handlers transition and stop" do
+      {:module, mod} =
+        Compiler.compile_file(Path.join(project_root(), "examples/hello_llm.skein"))
+
+      assert {:transition, :done, _, _} = mod.__phase_handler__(:start, %{}, [])
+      assert {:stop, %{}, []} = mod.__phase_handler__(:done, %{}, [])
+    end
+  end
+
+  # ------------------------------------------------------------------
   # incident_triage.skein — compilation test
   # ------------------------------------------------------------------
 
