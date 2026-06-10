@@ -1982,7 +1982,7 @@ defmodule Skein.Parser do
   end
 
   # ------------------------------------------------------------------
-  # Unary: prefix !, postfix ! and ?
+  # Unary: prefix ! and -, postfix ! and ?
   # ------------------------------------------------------------------
 
   defp parse_unary_expr([{:bang, {line, col}} | rest], file) do
@@ -1990,6 +1990,24 @@ defmodule Skein.Parser do
       {:ok, operand, rest} ->
         node = %AST.UnaryOp{
           op: :not,
+          operand: operand,
+          meta: %{line: line, col: col, file: file}
+        }
+
+        {:ok, node, rest}
+
+      {:error, _} = error ->
+        error
+    end
+  end
+
+  # Prefix minus (arithmetic negation): binds tighter than binary
+  # arithmetic, so `-2 + 3` is `(-2) + 3` and `-x.field` is `-(x.field)`.
+  defp parse_unary_expr([{:minus, {line, col}} | rest], file) do
+    case parse_unary_expr(rest, file) do
+      {:ok, operand, rest} ->
+        node = %AST.UnaryOp{
+          op: :negate,
           operand: operand,
           meta: %{line: line, col: col, file: file}
         }

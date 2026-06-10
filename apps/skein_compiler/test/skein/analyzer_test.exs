@@ -67,6 +67,39 @@ defmodule Skein.AnalyzerTest do
                """)
     end
 
+    test "negation of an Int types as Int" do
+      assert {:ok, _} =
+               analyze("""
+               module M {
+                 fn negate(n: Int) -> Int {
+                   -n
+                 }
+               }
+               """)
+    end
+
+    test "negation of a Float types as Float" do
+      assert {:ok, _} =
+               analyze("""
+               module M {
+                 fn negate(x: Float) -> Float {
+                   -x
+                 }
+               }
+               """)
+    end
+
+    test "negative integer literal types as Int" do
+      assert {:ok, _} =
+               analyze("""
+               module M {
+                 fn freezing() -> Int {
+                   -18
+                 }
+               }
+               """)
+    end
+
     test "match expression with consistent arm types" do
       assert {:ok, _} =
                analyze("""
@@ -293,6 +326,40 @@ defmodule Skein.AnalyzerTest do
         module M {
           fn bad(n: Int) -> Bool {
             !n
+          }
+        }
+        """)
+
+      assert length(errors) >= 1
+      assert hd(errors).code == "E0020"
+    end
+
+    test "arithmetic negation of a String is an error with a hint" do
+      errors =
+        analyze_errors("""
+        module M {
+          fn bad() -> Int {
+            -"foo"
+          }
+        }
+        """)
+
+      assert length(errors) >= 1
+      error = hd(errors)
+      assert error.code == "E0020"
+      assert error.severity == :error
+      assert error.message =~ "'-'"
+      assert error.message =~ "String"
+      assert error.fix_hint != nil
+      assert error.fix_code != nil
+    end
+
+    test "arithmetic negation of a Bool is an error" do
+      errors =
+        analyze_errors("""
+        module M {
+          fn bad() -> Int {
+            -true
           }
         }
         """)

@@ -1301,6 +1301,14 @@ defmodule Skein.CodeGen.CoreErlang do
     )
   end
 
+  defp generate_expr(%AST.UnaryOp{op: :negate, operand: operand}, scope) do
+    :cerl.c_call(
+      :cerl.c_atom(:erlang),
+      :cerl.c_atom(:-),
+      [generate_expr(operand, scope)]
+    )
+  end
+
   defp generate_expr(%AST.UnaryOp{op: :unwrap, operand: operand}, scope) do
     # Unwrap Result: pattern match, crash on error
     result_var = :cerl.c_var(gen_var())

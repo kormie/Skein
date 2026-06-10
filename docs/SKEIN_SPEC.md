@@ -66,6 +66,9 @@ string      = "..." with ${expr} interpolation     -- "hello ${name}"
 boolean     = true | false
 ```
 
+Number literals are unsigned; negative numbers use the prefix `-` operator
+(`-3`, `-1.5`), which is part of the expression grammar (§3.11), not the token.
+
 ---
 
 ## 3. Grammar
@@ -257,7 +260,7 @@ transition_expr = "transition" "(" expr ")"
 respond_expr  = "respond" "." lower_ident "(" expr* ")"
 call_expr     = (ident | field_access) "(" args ")"
 binary_op     = expr op expr
-unary_op      = expr ("!" | "?")
+unary_op      = ("-" | "!") expr | expr ("!" | "?")
 field_access  = expr "." lower_ident
 fn_ref        = "&" lower_ident
 block         = "{" expr* "}"
@@ -267,6 +270,11 @@ pattern       = ident | literal | UpperIdent ["(" pattern* ")"]
              | "(" pattern ("," pattern)+ ")"   -- tuple destructure
              | "_"                               -- wildcard
 ```
+
+Prefix operators bind tighter than binary operators: `-2 + 3` is `(-2) + 3`,
+and `-(2 + 3)` negates the sum. There is no negative-literal token; negative
+numbers are written with prefix `-` applied to a literal. Negation requires an
+`Int` or `Float` operand and preserves its type.
 
 ---
 

@@ -1108,6 +1108,37 @@ defmodule Skein.Analyzer do
     {:bool, operand_errors ++ errors}
   end
 
+  # Unary minus (arithmetic negation)
+  defp infer_type(%AST.UnaryOp{op: :negate, operand: operand, meta: meta}, env) do
+    {operand_type, operand_errors} = infer_type(operand, env)
+
+    case operand_type do
+      :int ->
+        {:int, operand_errors}
+
+      :float ->
+        {:float, operand_errors}
+
+      :unknown ->
+        {:unknown, operand_errors}
+
+      other ->
+        {:unknown,
+         operand_errors ++
+           [
+             %Error{
+               code: "E0020",
+               severity: :error,
+               message:
+                 "Operator '-' (negation) requires Int or Float operand, got #{format_type(other)}",
+               location: location_from_meta(meta, env.file),
+               fix_hint: "Negate only Int or Float values",
+               fix_code: "-0"
+             }
+           ]}
+    end
+  end
+
   # Unwrap (!) operator
   defp infer_type(%AST.UnaryOp{op: :unwrap, operand: operand, meta: meta}, env) do
     {operand_type, operand_errors} = infer_type(operand, env)
