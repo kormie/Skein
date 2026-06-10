@@ -1,9 +1,10 @@
 # Skein Project Memory
 
 ## Project State
-- Phases 1-7 + 8a + 8b + 8c + 8d + 8e + 8f are complete (all Phase 8 subphases done)
+- All phases complete (1-8f plus unified event store / Phase 10) — MVP reached
 - Distribution prerequisites complete: enum variant matching, supervisors, build --output
-- All core phases complete — MVP reached
+- Current version: 0.1.2 (demo-readiness pass done 2026-06-10; see session section below)
+- Remaining work tracked in docs/ROADMAP.md (named args, agent nesting, schedule auto-fire, etc.)
 - Elixir 1.19.5, OTP 28, managed by mise
 
 ## Key Patterns
