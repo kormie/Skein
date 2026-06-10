@@ -741,6 +741,19 @@ defmodule Skein.Integration.ToolTest do
 
       assert mod.wrap("timeout") == {:search_error, "timeout"}
     end
+
+    test "undeclared ErrorName.from(cause) is rejected as a cross-module call" do
+      assert {:error, [error | _]} =
+               Skein.Compiler.compile_string("""
+               module VariantFromUndeclared {
+                 fn wrap(cause: String) -> String {
+                   SearchError.from(cause)
+                 }
+               }
+               """)
+
+      assert error.code == "E0016"
+    end
   end
 
   # ------------------------------------------------------------------

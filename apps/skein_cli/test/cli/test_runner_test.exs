@@ -141,6 +141,76 @@ defmodule Skein.CLI.TestRunnerTest do
     end
   end
 
+  describe "test_all/1 two-phase runner (compile everything, then test)" do
+    test "test/ file exercising a tool defined in src/ passes", %{
+      tmp_dir: tmp,
+      src_dir: src,
+      test_dir: test_dir
+    } do
+      Skein.Runtime.Tool.clear_registry()
+
+      # Named so the test/ file sorts before the src/ file in a naive
+      # combined ordering: the runner must load all of src/ before
+      # running anything from test/.
+      File.write!(Path.join(src, "z_tools.skein"), """
+      module RunnerToolService {
+        tool Runner.Add {
+          description: "Adds two integers"
+          input {
+            a: Int
+            b: Int
+          }
+          output { sum: Int }
+          implement { Ok({ sum: a + b }) }
+        }
+      }
+      """)
+
+      File.write!(Path.join(test_dir, "a_integration_test.skein"), """
+      module RunnerIntegrationTest {
+        capability tool.use(Runner.Add)
+
+        test "calls the tool from src/" {
+          let result = tool.call(Runner.Add, { a: 2, b: 3 })!
+          assert result.sum == 5
+        }
+      }
+      """)
+
+      assert {:ok, result} = CLI.test_all([tmp])
+      assert result.compile_errors == 0
+      assert result.total == 1
+      assert result.passed == 1
+      assert result.failed == 0
+    end
+
+    test "src/ tests still run when a test/ file fails to compile", %{
+      tmp_dir: tmp,
+      src_dir: src,
+      test_dir: test_dir
+    } do
+      File.write!(Path.join(src, "good.skein"), """
+      module TwoPhaseGood {
+        fn ok(x: Int) -> Int { x }
+        test "src test runs" { assert ok(1) == 1 }
+      }
+      """)
+
+      File.write!(Path.join(test_dir, "broken_test.skein"), """
+      module TwoPhaseBroken {
+        fn broken( -> { }
+      }
+      """)
+
+      assert {:ok, result} = CLI.test_all([tmp])
+      assert result.total == 1
+      assert result.passed == 1
+      assert result.compile_errors == 1
+      assert [%{file: file}] = result.compile_failed
+      assert file =~ "broken_test.skein"
+    end
+  end
+
   describe "test_all/1 with scenario and golden tests (Phase 8a)" do
     test "discovers and runs scenario tests", %{tmp_dir: tmp, test_dir: test_dir} do
       File.write!(Path.join(test_dir, "scenario_test.skein"), """

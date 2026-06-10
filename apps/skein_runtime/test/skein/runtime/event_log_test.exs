@@ -11,6 +11,10 @@ defmodule Skein.Runtime.EventLogTest do
   alias Skein.Runtime.EventLog
 
   setup do
+    # Reset before each test, not just after: the EventStore is a shared
+    # ETS table, and any traced operation elsewhere in the suite appends
+    # to it — assertions like count() == 0 must not depend on seed order.
+    EventLog.reset_all()
     on_exit(fn -> EventLog.reset_all() end)
   end
 
