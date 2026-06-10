@@ -48,6 +48,38 @@ defmodule Skein.Runtime.HttpTest do
       assert {:error, _} = Http.get("https://api.example.com/data", [])
     end
 
+    test "post/3 accepts a map body and JSON-encodes it" do
+      # Spec section 8.4 implement blocks pass map literals to http.post.
+      # Capability is denied, so this never reaches the network — the map
+      # body must survive to the capability check instead of crashing on
+      # the binary guard.
+      capabilities = [%{kind: "http.out", params: ["api.allowed.com"]}]
+
+      assert {:error, reason} =
+               Http.post("https://api.blocked.com/data", %{query: "ai", n: 1}, capabilities)
+
+      assert reason =~ "not declared"
+    end
+
+    test "put/3 and patch/3 accept map bodies" do
+      capabilities = []
+
+      assert {:error, reason} = Http.put("https://api.example.com/x", %{a: 1}, capabilities)
+      assert reason =~ "not declared"
+
+      assert {:error, reason} = Http.patch("https://api.example.com/x", %{a: 1}, capabilities)
+      assert reason =~ "not declared"
+    end
+
+    test "post/3 reports unencodable map bodies as errors" do
+      capabilities = [%{kind: "http.out", params: []}]
+
+      assert {:error, reason} =
+               Http.post("https://api.example.com/x", %{bad: {:ok, "tuple"}}, capabilities)
+
+      assert reason =~ "JSON"
+    end
+
     test "get/2 with wildcard capability allows any host" do
       # Wildcard = http.out with no params
       capabilities = [%{kind: "http.out", params: []}]

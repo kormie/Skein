@@ -3,6 +3,11 @@
 Every example in this directory compiles and runs against the current compiler —
 all of them are covered by the integration suite
 (`apps/skein_compiler/test/skein/examples_test.exs`), so they can't silently rot.
+Coverage goes beyond compiling: handlers are invoked, agent phase handlers are
+driven, and the `market_research` agent→service `tool.call` path is executed
+end-to-end. Paths that need live backends (LLM chat phases, real outbound HTTP,
+embeddings) are exercised up to that boundary and documented in each example's
+notes.
 
 ## Running the examples
 
