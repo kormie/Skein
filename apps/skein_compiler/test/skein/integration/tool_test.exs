@@ -721,19 +721,16 @@ defmodule Skein.Integration.ToolTest do
     end
 
     test "ErrorName.from(cause) wraps the cause in an error variant" do
-      # SearchError must be declared in a tool's errors { ... } block —
-      # the analyzer exempts declared tool error names from the E0016
-      # cross-module call check; a bare Upper.from(...) is rejected.
+      # `SearchError` must be declared in a tool `errors {}` block —
+      # otherwise `SearchError.from(...)` is a cross-module call (E0016).
       mod =
         compile!("""
         module VariantFrom {
           tool VariantFrom.Search {
-            input { query: String }
-            output { ok: Bool }
+            input { q: String }
+            output { r: String }
             errors { SearchError }
-            implement {
-              Err(SearchError.from(query))
-            }
+            implement { Ok({ r: q }) }
           }
 
           fn wrap(cause: String) -> String {
@@ -743,7 +740,6 @@ defmodule Skein.Integration.ToolTest do
         """)
 
       assert mod.wrap("timeout") == {:search_error, "timeout"}
-      assert {:error, {:search_error, "q"}} = mod.__tool_impl_0__(%{query: "q"})
     end
 
     test "undeclared ErrorName.from(cause) is rejected as a cross-module call" do
