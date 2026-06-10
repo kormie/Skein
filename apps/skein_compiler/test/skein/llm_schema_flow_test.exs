@@ -6,6 +6,11 @@ defmodule Skein.LlmSchemaFlowTest do
   """
   use ExUnit.Case, async: false
 
+  # Generated and loaded at test runtime by the Skein compiler — does not
+  # exist when this file is compiled. Scoped exception; other undefined
+  # module references still warn.
+  @compile {:no_warn_undefined, Skein.Agent.SchemaFromAgent.Decider}
+
   alias Skein.Compiler
 
   defmodule SchemaRecordingBackend do
@@ -101,7 +106,7 @@ defmodule Skein.LlmSchemaFlowTest do
     }
     """)
 
-    agent_mod = Module.concat(["Skein", "Agent", "SchemaFromAgent", "Decider"])
+    agent_mod = Skein.Agent.SchemaFromAgent.Decider
 
     assert {:transition, :done, _state, _events} =
              agent_mod.__phase_handler__(:analyze, %{}, [])

@@ -7,6 +7,11 @@ defmodule Skein.ExamplesTest do
   """
   use ExUnit.Case, async: false
 
+  # Generated and loaded at test runtime from the single-file example —
+  # does not exist when this file is compiled. Scoped exception; other
+  # undefined module references still warn.
+  @compile {:no_warn_undefined, Skein.Agent.MarketResearch.MarketResearchAgent}
+
   alias Skein.Compiler
 
   defp project_root do
@@ -807,7 +812,7 @@ defmodule Skein.ExamplesTest do
           Path.join(project_root(), "examples/market_research/single_file.skein")
         )
 
-      agent_mod = Module.concat(["Skein", "Agent", "MarketResearch", "MarketResearchAgent"])
+      agent_mod = Skein.Agent.MarketResearch.MarketResearchAgent
       phase_names = agent_mod.__phases__() |> Enum.map(& &1.name) |> Enum.sort()
       assert phase_names == [:analyzing, :briefing, :complete, :gathering, :reporting]
     end
