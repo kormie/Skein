@@ -412,7 +412,13 @@ defmodule Skein.AnalyzerPropertyTest do
   property "N distinct effect calls without capability produce N errors" do
     check all(
             methods <-
-              StreamData.uniq_list_of(http_method_gen(), min_length: 1, max_length: 3)
+              StreamData.uniq_list_of(http_method_gen(),
+                min_length: 1,
+                max_length: 3,
+                # drawing unique elements from only 5 methods trips the
+                # default max_tries: 10 on unlucky seeds (CI flake)
+                max_tries: 100
+              )
           ) do
       fn_defs =
         methods
