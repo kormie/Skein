@@ -24,6 +24,11 @@ on:
   workflow_run:
     workflows: ["CI"]
     types: [completed]
+    # Only consider CI runs whose head branch is main. This filters out the
+    # pull_request CI completions (head branch = the PR's feature branch), so a
+    # merge produces a single Release run instead of one per CI completion. The
+    # tag job's `event == 'push'` guard remains as a backstop.
+    branches: [main]
 
 permissions:
   contents: write
