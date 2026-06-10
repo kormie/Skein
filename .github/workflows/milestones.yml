@@ -11,6 +11,7 @@ on:
   workflow_dispatch:
 
 permissions:
+  contents: read # checkout of a private repo fails without this once permissions are declared
   issues: write
 
 jobs:
