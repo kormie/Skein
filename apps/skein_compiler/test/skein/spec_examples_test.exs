@@ -90,7 +90,7 @@ defmodule Skein.SpecExamplesTest do
        }
      }
      """},
-    {"8.4 Agent with LLM and Tools — Module",
+    {"8.4 Agent with LLM and Tools (nested agent)",
      """
      module RefundService {
        capability model("anthropic", "claude-opus-4-8")
@@ -137,81 +137,80 @@ defmodule Skein.SpecExamplesTest do
          strategy: one_for_one
          max_restarts: 10 per 60s
        }
-     }
-     """},
-    {"8.4 Agent with LLM and Tools — Agent",
-     """
-     agent RefundAgent {
-       capability model("claude-opus-4-8")
-       capability memory.kv("refund_sessions")
 
-       state {
-         ticket_id: String
-         customer_id: String
-       }
+       -- The refund agent: processes refund requests through multiple phases.
+       -- Module-level capabilities (model, store.table) apply here too.
+       agent RefundAgent {
+         capability memory.kv("refund_sessions")
 
-       enum Phase {
-         Analyze  -> [Refund, Done]
-         Refund   -> [Done, Failed]
-         Failed   -> [Analyze]
-         Done     -> []
-       }
+         state {
+           ticket_id: String
+           customer_id: String
+         }
 
-       on start(ticket_id: String, customer_id: String) -> {
-         memory.put("ticket_id", ticket_id)
-         memory.put("customer_id", customer_id)
-         transition(Phase.Analyze)
-       }
+         enum Phase {
+           Analyze  -> [Refund, Done]
+           Refund   -> [Done, Failed]
+           Failed   -> [Analyze]
+           Done     -> []
+         }
 
-       on phase(Phase.Analyze) -> {
-         let ticket_id = memory.get!("ticket_id")
-         let ticket = store.tickets.get!(ticket_id)
+         on start(ticket_id: String, customer_id: String) -> {
+           memory.put("ticket_id", ticket_id)
+           memory.put("customer_id", customer_id)
+           transition(Phase.Analyze)
+         }
 
-         let decision = llm.json[RefundDecision](
-           model: "claude-opus-4-8",
-           system: "Decide if this ticket warrants a refund. Return JSON.",
-           input: ticket
-         )
+         on phase(Phase.Analyze) -> {
+           let ticket_id = memory.get!("ticket_id")
+           let ticket = store.tickets.get!(ticket_id)
 
-         match decision {
-           Ok(d) -> {
-             memory.put("decision", d)
-             match d.action {
-               "approve" -> transition(Phase.Refund)
-               "deny"    -> transition(Phase.Done)
+           let decision = llm.json[RefundDecision](
+             model: "claude-opus-4-8",
+             system: "Decide if this ticket warrants a refund. Return JSON.",
+             input: ticket
+           )
+
+           match decision {
+             Ok(d) -> {
+               memory.put("decision", d)
+               match d.action {
+                 "approve" -> transition(Phase.Refund)
+                 "deny"    -> transition(Phase.Done)
+               }
+             }
+             Err(e) -> {
+               emit AnalysisError { ticket_id: ticket_id }
+               transition(Phase.Failed)
              }
            }
-           Err(e) -> {
-             emit AnalysisError { ticket_id: ticket_id }
-             transition(Phase.Failed)
+         }
+
+         on phase(Phase.Refund) -> {
+           let d = memory.get!("decision")
+           let customer_id = memory.get!("customer_id")
+           let result = tool.call(Stripe.CreateRefund, {
+             customer_id: customer_id,
+             amount: d.amount
+           })
+
+           match result {
+             Ok(refund) -> {
+               let tid = memory.get!("ticket_id")
+               emit RefundIssued { ticket_id: tid, refund_id: refund.id }
+               transition(Phase.Done)
+             }
+             Err(e) -> {
+               let tid = memory.get!("ticket_id")
+               emit RefundFailed { ticket_id: tid }
+               transition(Phase.Failed)
+             }
            }
          }
-       }
 
-       on phase(Phase.Refund) -> {
-         let d = memory.get!("decision")
-         let customer_id = memory.get!("customer_id")
-         let result = tool.call(Stripe.CreateRefund, {
-           customer_id: customer_id,
-           amount: d.amount
-         })
-
-         match result {
-           Ok(refund) -> {
-             let tid = memory.get!("ticket_id")
-             emit RefundIssued { ticket_id: tid, refund_id: refund.id }
-             transition(Phase.Done)
-           }
-           Err(e) -> {
-             let tid = memory.get!("ticket_id")
-             emit RefundFailed { ticket_id: tid }
-             transition(Phase.Failed)
-           }
+         on phase(Phase.Failed) -> {
+           suspend("Requires human review")
          }
-       }
-
-       on phase(Phase.Failed) -> {
-         suspend("Requires human review")
        }
      }
      """},

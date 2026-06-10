@@ -190,10 +190,17 @@ The analyzer runs multiple passes:
 - Verify all non-terminal phases have at least one `transition()` call
 - Warn on unreachable phases
 
+**Nested agents.** Agents declared inside a module are analyzed with the
+full agent pass suite using an env enriched with the module's types, enums,
+and capabilities (module-level capabilities apply to the nested agent; the
+agent's own declarations win on name collisions).
+
 ### 1.5 Code Generator (`Skein.CodeGen.CoreErlang`)
 
 **Input:** Annotated AST
-**Output:** Core Erlang module (via `:cerl` AST nodes)
+**Output:** Named BEAM binaries (via `:cerl` AST nodes) — one for the module
+plus one per nested agent (`module Foo { agent Bar }` produces
+`Skein.User.Foo` and `Skein.Agent.Foo.Bar`)
 
 The code generator translates Skein constructs to Core Erlang + Skein runtime calls:
 

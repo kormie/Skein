@@ -305,6 +305,12 @@ defmodule Skein.Analyzer do
     # Later passes and codegen only ever see positional arguments.
     {ast, errors} = resolve_named_args(ast, env)
 
+    nested_agents = Enum.filter(ast.declarations, &match?(%AST.Agent{}, &1))
+
+    # Fn-shaped views of nested agent bodies, so module-level usage passes
+    # (unused capabilities) see effects exercised inside nested agents.
+    nested_agent_views = Enum.flat_map(nested_agents, &agent_decl_views/1)
+
     # Pass 0: Check for duplicate definitions
     errors = errors ++ check_duplicate_definitions(ast.declarations, env)
 
@@ -323,8 +329,8 @@ defmodule Skein.Analyzer do
     # Pass 4: Unused binding warnings
     errors = errors ++ check_unused_bindings_in_declarations(ast.declarations, env)
 
-    # Pass 5: Unused capability warnings
-    errors = errors ++ check_unused_capabilities(ast.declarations, env)
+    # Pass 5: Unused capability warnings (nested agent usage counts)
+    errors = errors ++ check_unused_capabilities(ast.declarations ++ nested_agent_views, env)
 
     # Pass 6: Unreachable code after stop() warnings
     errors = errors ++ check_unreachable_after_stop(ast.declarations)
@@ -335,6 +341,14 @@ defmodule Skein.Analyzer do
     # Pass 8: idempotent() outside handler check
     errors = errors ++ check_idempotent_outside_handler(ast.declarations, env)
 
+    # Pass 9: Nested agents — run the full agent pass suite with the
+    # module's types, enums, and capabilities in scope
+    errors =
+      errors ++
+        Enum.flat_map(nested_agents, fn agent ->
+          run_agent_passes(agent, build_nested_agent_env(agent, env))
+        end)
+
     filter_result(errors, ast, env)
   end
 
@@ -344,8 +358,16 @@ defmodule Skein.Analyzer do
     # Pass 0a: Resolve named arguments into positional order (desugaring).
     {ast, errors} = resolve_named_args(ast, env)
 
+    errors = errors ++ run_agent_passes(ast, env)
+
+    filter_result(errors, ast, env)
+  end
+
+  # All agent-specific analysis passes. Used both for top-level agents
+  # and for agents nested inside modules (with a module-enriched env).
+  defp run_agent_passes(%AST.Agent{} = ast, env) do
     # Pass 1: Validate state field types
-    errors = errors ++ validate_agent_state(ast.state, env)
+    errors = validate_agent_state(ast.state, env)
 
     # Pass 2: Validate phase transitions
     errors = errors ++ validate_phase_transitions(ast, env)
@@ -359,13 +381,7 @@ defmodule Skein.Analyzer do
     # Pass 5: Type-check agent function bodies
     errors = errors ++ check_functions(ast.fns, env)
 
-    # Convert agent handlers to Fn-shaped nodes for reuse with existing passes
-    handler_decls =
-      Enum.map(ast.handlers, fn h ->
-        %AST.Fn{name: "__handler__", params: [], return_type: nil, body: h.body, meta: h.meta}
-      end)
-
-    all_decls = ast.fns ++ handler_decls
+    all_decls = agent_decl_views(ast)
 
     # Pass 6: Unreachable code after stop() warnings
     errors = errors ++ check_unreachable_after_stop(all_decls)
@@ -373,13 +389,26 @@ defmodule Skein.Analyzer do
     # Pass 7: Capability checking — verify effect calls have covering capabilities
     errors = errors ++ check_capabilities(all_decls, env)
 
-    # Pass 8: Unused capability warnings
-    errors = errors ++ check_unused_capabilities(all_decls, env)
+    # Pass 8: Unused capability warnings — only the agent's OWN capability
+    # declarations are candidates (a nested agent's env also carries the
+    # enclosing module's capabilities for coverage checking; their usage
+    # is accounted for at module level)
+    own_caps_env = %{env | capabilities: Map.get(env, :own_capabilities, env.capabilities)}
+    errors = errors ++ check_unused_capabilities(all_decls, own_caps_env)
 
     # idempotent() in agent fns (not handlers) is invalid
-    errors = errors ++ check_idempotent_in_agent_fns(ast.fns, env)
+    errors ++ check_idempotent_in_agent_fns(ast.fns, env)
+  end
 
-    filter_result(errors, ast, env)
+  # Fn-shaped views of an agent's fns and handler bodies, for reuse with
+  # the declaration-driven passes (capabilities, unreachable code, ...).
+  defp agent_decl_views(%AST.Agent{} = ast) do
+    handler_decls =
+      Enum.map(ast.handlers, fn h ->
+        %AST.Fn{name: "__handler__", params: [], return_type: nil, body: h.body, meta: h.meta}
+      end)
+
+    ast.fns ++ handler_decls
   end
 
   defp put_source_text(env, opts) do
@@ -486,17 +515,19 @@ defmodule Skein.Analyzer do
     {%{named | value: value}, errors}
   end
 
-  defp resolve_named_args(%_{} = node, env) do
-    node
-    |> Map.from_struct()
-    |> Enum.reduce({node, []}, fn
-      {:meta, _value}, acc ->
-        acc
+  # Inside an agent, calls resolve against the agent's own fns —
+  # swap the callable set before walking the agent's body.
+  defp resolve_named_args(%AST.Agent{fns: fns} = agent, env) do
+    functions =
+      Map.new(fns, fn %AST.Fn{name: name, params: params} ->
+        {name, %{params: params, return_type: :unknown}}
+      end)
 
-      {key, value}, {node_acc, errors_acc} ->
-        {value, errors} = resolve_named_args(value, env)
-        {Map.put(node_acc, key, value), errors_acc ++ errors}
-    end)
+    resolve_named_args_fields(agent, %{env | functions: functions})
+  end
+
+  defp resolve_named_args(%_{} = node, env) do
+    resolve_named_args_fields(node, env)
   end
 
   defp resolve_named_args(nodes, env) when is_list(nodes) do
@@ -514,6 +545,19 @@ defmodule Skein.Analyzer do
   end
 
   defp resolve_named_args(other, _env), do: {other, []}
+
+  defp resolve_named_args_fields(%_{} = node, env) do
+    node
+    |> Map.from_struct()
+    |> Enum.reduce({node, []}, fn
+      {:meta, _value}, acc ->
+        acc
+
+      {key, value}, {node_acc, errors_acc} ->
+        {value, errors} = resolve_named_args(value, env)
+        {Map.put(node_acc, key, value), errors_acc ++ errors}
+    end)
+  end
 
   defp resolve_call_named_args(%AST.Call{args: args} = call, env) do
     if Enum.any?(args, &match?(%AST.NamedArg{}, &1)) do
@@ -2412,6 +2456,48 @@ defmodule Skein.Analyzer do
       file: file
     }
   end
+
+  # Env for an agent nested inside a module: the agent's own env enriched
+  # with the enclosing module's types, enums, capabilities, and tool error
+  # names. The agent's own declarations win on name collisions (e.g. Phase).
+  defp build_nested_agent_env(%AST.Agent{} = agent, module_env) do
+    agent_env = build_agent_env(agent)
+
+    # A capability declared at both module and agent level (e.g. the same
+    # tool.use) is one grant, not a duplicate — dedup structurally so the
+    # duplicate-tool-name check doesn't fire across the two scopes.
+    merged_capabilities =
+      Enum.uniq_by(
+        agent_env.capabilities ++ module_env.capabilities,
+        &capability_dedup_key/1
+      )
+
+    %{
+      agent_env
+      | types: Map.merge(module_env.types, agent_env.types),
+        enums: Map.merge(module_env.enums, agent_env.enums),
+        capabilities: merged_capabilities,
+        tool_error_names: module_env.tool_error_names,
+        file: module_env.file
+    }
+    |> Map.put(:own_capabilities, agent_env.capabilities)
+    |> Map.put(:source_lines, Map.get(module_env, :source_lines))
+  end
+
+  defp capability_dedup_key(%AST.Capability{kind: kind, params: params}) do
+    {kind, Enum.map(params, &capability_param_fingerprint/1)}
+  end
+
+  defp capability_param_fingerprint(%AST.StringLit{segments: segments}),
+    do: {:string, segments}
+
+  defp capability_param_fingerprint(%AST.Identifier{name: name}), do: {:ident, name}
+  defp capability_param_fingerprint(%AST.ToolRef{name: name}), do: {:tool, name}
+
+  defp capability_param_fingerprint(%AST.FieldAccess{subject: subject, field: field}),
+    do: {:field, capability_param_fingerprint(subject), field}
+
+  defp capability_param_fingerprint(other), do: other
 
   # ------------------------------------------------------------------
   # Agent state validation

@@ -22,6 +22,18 @@ A properly architected example following the spec section 8.4 pattern (RefundSer
 └─────────────────────────────┘     └──────────────────────────────┘
 ```
 
+## One File or Two — Both Shapes Work
+
+The same program ships in two equivalent shapes:
+
+- **Two files** — `service.skein` (module) + `agent.skein` (agent), one
+  construct per file.
+- **One file** — `single_file.skein`, with the agent nested inside the module
+  (`module MarketResearch { ... agent MarketResearchAgent { ... } }`). The
+  nested agent compiles to its own BEAM module
+  (`Skein.Agent.MarketResearch.MarketResearchAgent`) and sees the module's
+  types and capabilities in addition to its own.
+
 ## Key Design Principle
 
 **Modules declare tools. Agents call tools.** The agent is pure workflow logic:

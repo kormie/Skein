@@ -159,6 +159,15 @@
 - Generic AST rewrite walker: struct-reflection (skip :meta), lists, 2-tuples (`{:interpolation, e}` segments + MapLit `{key, e}` entries)
 - StreamData permutations: `uniq_list_of` over small int ranges hits TooManyDuplicatesError — derive permutation from random sort keys with index tiebreak instead
 
+## Agent Nesting Inside Modules (issue #63 — 2026-06-10)
+- Parser: `agent` clause in parse_declaration → existing parse_agent; AST.Module.declarations can carry AST.Agent
+- Analyzer: agent passes extracted to `run_agent_passes/2`; nested agents analyzed with `build_nested_agent_env` (module types/enums/caps merged, agent wins collisions; `:own_capabilities` keeps W0002 scoped to the agent's own decls; module W0002 counts nested-agent usage via `agent_decl_views`)
+- Merged caps DEDUP structurally (`capability_dedup_key`) — same tool.use at module+agent level would otherwise trip E0015 duplicate short names
+- **CoreErlang.generate/1 contract changed**: returns `{:ok, [{module_atom, binary}]}` (primary first, nested agents after); Compiler.compile_file/compile_string load all, return primary `{:module, mod}`; compile_to_binary returns the list; CLI build writes one .beam per entry
+- Nested agent codegen: `generate_agent(ast, opts)` takes namespace/capabilities/type_decls; module atom `Skein.Agent.<Module>.<Agent>`; type_decls threaded into start/phase handler scopes (`__type_decls__`) so llm.json[T] schema resolution works in agent handlers (was missing even for top-level agents)
+- Field access on llm.json results uses `map_get(:atom, map)` but backends return STRING keys — `.action` on a decoded result crashes (pre-existing; spec 8.4 `d.action` would crash at runtime)
+- Spec 8.4 now shows the nested shape; spec_examples_test's two 8.4 entries merged into one; `examples/market_research/single_file.skein` is the generated-from-two-files single-file variant
+
 ## Known Bug Found 2026-06-10 (filed as issue)
 - **Int string interpolation emits raw codepoint**: `"${n}"` with n=42 yields "*" (binary segment treats Int as a byte) — needs to_string coercion in codegen interpolation
 

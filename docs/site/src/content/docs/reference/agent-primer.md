@@ -138,8 +138,10 @@ let result = tool.call(Billing.CreateRefund, { customer_id: cid, amount: 500 })
 
 ## Agents, Phases, and Transitions
 
-Agents are top-level declarations (not nested in modules) with state, a
-`Phase` enum declaring legal transitions, and `on` handlers. Transitions are
+Agents declare state, a `Phase` enum with legal transitions, and `on`
+handlers. They can be top-level (one per file) or nested inside a module —
+a nested agent compiles to its own BEAM module and sees the enclosing
+module's types and capabilities in addition to its own. Transitions are
 checked at compile time — `transition()` to a phase not listed in the current
 phase's `-> [...]` list is an error (E0030), and every phase needs an
 `on phase` handler (E0032).
@@ -184,7 +186,8 @@ agent instance.
   bare context argument.
 - Match arms must all return the same type, and enum matches must cover every
   variant (or use `_`).
-- One module (or one agent) per file; modules cannot contain agents.
+- One top-level module (or agent) per file; agents may be nested inside a
+  module's body.
 - `handler queue`/`handler topic` take the queue/topic name as a string route;
   `handler schedule` handlers take no payload parameter.
 - String interpolation is `${expr}`; comments are `--` (not `//` or `#`).

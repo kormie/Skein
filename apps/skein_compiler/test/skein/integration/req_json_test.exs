@@ -6,8 +6,7 @@ defmodule Skein.Integration.ReqJsonTest do
     {:ok, tokens} = Skein.Lexer.tokenize(source)
     {:ok, ast} = Skein.Parser.parse(tokens)
     analyzed = analyze_ok!(Skein.Analyzer.analyze(ast))
-    {:ok, beam} = Skein.CodeGen.CoreErlang.generate(analyzed)
-    module_name = String.to_atom("Elixir.Skein.User.#{ast.name}")
+    {:ok, [{module_name, beam} | _]} = Skein.CodeGen.CoreErlang.generate(analyzed)
     {:module, mod} = :code.load_binary(module_name, ~c"nofile", beam)
     mod
   end
