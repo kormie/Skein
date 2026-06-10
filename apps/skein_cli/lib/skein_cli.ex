@@ -285,9 +285,12 @@ defmodule Skein.CLI do
   @doc """
   Discovers and runs all tests across a Skein project.
 
-  Searches both `src/` and `test/` directories for `.skein` files,
-  compiles each, and runs any test declarations found. Files that
-  fail to compile are tracked separately.
+  Runs in two phases. First, every discovered `.skein` file — `src/`
+  before `test/` — is compiled and loaded (registering any declared
+  tools); files that fail to compile are tracked separately. Then tests
+  run for the modules that compiled. This ordering lets a test in
+  `test/` exercise anything provided by a `src/` module, most
+  importantly `tool.call` to a tool declared there.
 
   Returns `{:ok, %{total: n, passed: n, failed: n, files: n, compile_errors: n,
   compile_failed: [...], results: [...]}}`. `compile_failed` carries the
@@ -300,28 +303,34 @@ defmodule Skein.CLI do
       project_dir = Path.expand(project_dir)
 
       skein_files =
-        (discover_skein_files(project_dir, "test") ++
-           discover_skein_files(project_dir, "src"))
+        (discover_skein_files(project_dir, "src") ++
+           discover_skein_files(project_dir, "test"))
         |> Enum.uniq()
 
       if skein_files == [] do
         no_files_error(project_dir, ["src", "test"])
       else
-        {all_results, compile_failed} =
+        # Phase 1: compile and load everything before any test runs
+        {compiled, compile_failed} =
           skein_files
-          |> Enum.reduce({[], []}, fn file, {results_acc, failed_acc} ->
+          |> Enum.reduce({[], []}, fn file, {compiled_acc, failed_acc} ->
             case Compiler.compile_file(file) do
               {:module, mod} ->
                 register_tools(mod)
-                file_results = run_tests_for_file(mod, file)
-                {results_acc ++ file_results, failed_acc}
+                {[{file, mod} | compiled_acc], failed_acc}
 
               {:error, errors} ->
-                {results_acc, [%{file: file, errors: errors} | failed_acc]}
+                {compiled_acc, [%{file: file, errors: errors} | failed_acc]}
             end
           end)
 
+        compiled = Enum.reverse(compiled)
         compile_failed = Enum.reverse(compile_failed)
+
+        # Phase 2: run tests for the modules that compiled
+        all_results =
+          Enum.flat_map(compiled, fn {file, mod} -> run_tests_for_file(mod, file) end)
+
         passed = Enum.count(all_results, &(&1.status == :passed))
         failed = Enum.count(all_results, &(&1.status == :failed))
         files_tested = all_results |> Enum.map(& &1.file) |> Enum.uniq() |> length()
