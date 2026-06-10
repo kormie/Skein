@@ -152,14 +152,9 @@ defmodule Skein.Runtime.Timer do
       ArgumentError -> :ok
     end
 
-    try do
-      if Process.whereis(__MODULE__) do
-        GenServer.stop(__MODULE__, :normal)
-      end
-    catch
-      :exit, _ -> :ok
-    end
-
+    # Note: do NOT stop the GenServer here. The timer table holds all state,
+    # and the process is supervised — repeated stops would exhaust the
+    # supervisor's restart intensity and take the whole application down.
     :ok
   end
 
