@@ -144,19 +144,7 @@ The remaining gaps are listed below. Field-testing v0.1.5 (2026-06-10) surfaced 
 
 ---
 
-### 7. `skein new` Git Init + Baseline `.gitignore` `[S]`
-
-**Issue:** [#106](https://github.com/kormie/Skein/issues/106)
-
-**Problem:** The scaffold ships without version control, and the first `git add .` after `skein build --output` drags `.beam`/`_build` artifacts (and eventually `erl_crash.dump`) into the repo.
-
-**Scope:** cargo-style `git init` by default (skipped inside an existing work tree, when `git` is missing, or with `--no-git`); always write a baseline `.gitignore` (build artifacts, crash dumps, local SQLite state); no auto-commit.
-
-**Depends on:** Nothing.
-
----
-
-### 8. zsh Tab-Completion for `skein` `[S]`
+### 7. zsh Tab-Completion for `skein` `[S]`
 
 **Issue:** [#101](https://github.com/kormie/Skein/issues/101)
 
@@ -168,7 +156,7 @@ The remaining gaps are listed below. Field-testing v0.1.5 (2026-06-10) surfaced 
 
 ---
 
-### 9. Spec Section 8 Sweep `[M]`
+### 8. Spec Section 8 Sweep `[M]`
 
 **Issue:** [#77](https://github.com/kormie/Skein/issues/77)
 
@@ -185,7 +173,7 @@ The remaining gaps are listed below. Field-testing v0.1.5 (2026-06-10) surfaced 
 
 ---
 
-### 10. Enum Value-Level Exhaustiveness Warning `[S]`
+### 9. Enum Value-Level Exhaustiveness Warning `[S]`
 
 **Issue:** [#76](https://github.com/kormie/Skein/issues/76)
 
@@ -203,7 +191,7 @@ The remaining gaps are listed below. Field-testing v0.1.5 (2026-06-10) surfaced 
 
 ---
 
-### 11. LSP Code Actions from `fix_hint`/`fix_code` `[L]`
+### 10. LSP Code Actions from `fix_hint`/`fix_code` `[L]`
 
 **Issue:** [#108](https://github.com/kormie/Skein/issues/108)
 
@@ -266,6 +254,7 @@ All of the following are done and tested:
 - LSP: completions, hover, diagnostics, semantic tokens, document symbols, go-to-definition (+ request/response integration tests)
 - CLI: new, build (`--output`), test, run, trace; structured errors for malformed flags
 - Distribution: Burrito binaries (Linux x86_64/ARM64, macOS x86_64/ARM64), GitHub Release automation on `v*` tags
+- `skein new` git init + `.gitignore` (#106): cargo-style — init by default (skipped inside an existing work tree, with --no-git, or when git is missing), baseline .gitignore always written
 - Agent `emit` -> EventStore (#72): handler-emitted events flush to the EventStore as :user_event (tagged agent/instance_id/phase) BEFORE the result is acted on, so they survive crashes; get_events/1 still reads gen_statem data; property pins N emits across M transitions = N stored events
 - Schedule handler auto-firing (#71): periodic tick (1s, configurable) evaluates full 5-field cron matching (`*`, `n`, `a-b`, `*/n`, lists; DOM/DOW OR rule) with per-minute dedup; `Server` registers `:schedule` handlers from `__handlers__/0`; invalid crons rejected at registration; deterministic `tick_at/1` + firing-count property for tests
 - Capability checks cover test blocks (#104): test/scenario/golden bodies feed both capability passes — effects inside tests require capabilities (E0012) and count as usage (no W0002 on the `skein new` scaffold; pinned by a scaffold-analyzes-warning-free CLI test)

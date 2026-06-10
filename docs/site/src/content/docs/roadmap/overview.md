@@ -41,7 +41,6 @@ Testing agents burns real Anthropic spend. An OpenAI-compatible backend plus `[e
 
 - **Test failures show expected vs actual + location** (#105) — a failing `assert` currently prints only "Assertion failed"; it should print both operands and the assert's `file:line`.
 - **MCP `skein_compile_check` fidelity** (#109) — the MCP tool drops analyzer warnings and skips `test/` in project mode, reporting clean on projects `skein test` flags.
-- **`skein new` git init + `.gitignore`** (#106) — cargo-style version-control scaffolding so build artifacts never land in the first commit.
 - **zsh tab-completion for `skein`** (#101) — `skein completions zsh`, with a test pinning completions to the real command surface.
 - **Spec section 8 sweep** (#77) — every spec example should compile (and be covered by `spec_examples_test.exs`) or carry an explicit "Planned" annotation.
 - **Enum value-level exhaustiveness warning** (#76) — variant coverage is checked, but literal field patterns without a wildcard can still `case_clause` at runtime; the analyzer should warn.
@@ -115,6 +114,7 @@ Everything below is implemented and tested.
 | Capability naming | `queue.consume` / `schedule.trigger` (old names get a targeted rename hint) |
 | Cross-module `tool.call` | `implement` blocks compile to callable entry points; tools registered at module load (v0.1.5) |
 | Variant construction | `Ok(x)`, `Err(e)`, `Event.Charge(n)`, `ErrName.from(cause)`, and zero-field forms (`Status.Active`, bare `Active`) all compile in expression position; unknown variants and wrong arity are structured errors |
+| `skein new` git init | Repo + baseline `.gitignore` scaffolded by default (`--no-git` to skip; never nests inside an existing work tree) |
 | Agent events to EventStore | `emit` flushes durably as `:user_event` (agent/instance/phase tags); crash-safe |
 | Schedule auto-firing | Cron tick with per-minute dedup; Server registers schedule handlers; `tick_at/1` for deterministic tests |
 | Capability checks in test blocks | Effects inside `test`/`scenario`/`golden` require capabilities (E0012) and count as usage (no scaffold W0002) |

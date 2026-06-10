@@ -230,6 +230,7 @@ defmodule Skein.CLI.Main do
 
     Options:
       new --no-agents            Skip generating AGENTS.md / CLAUDE.md
+      new --no-git               Skip git init (a .gitignore is always written)
       build --output <dir>       Write .beam files to directory
       run --port <port>          Server port (default: 4000)
       trace --last <n>           Number of traces (default: 10)
