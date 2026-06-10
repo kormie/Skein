@@ -180,6 +180,10 @@
 - Codegen: zero-arg constructor calls and no-call variant references lower to BARE ATOM (not 1-tuple) — must match pattern-side variant_pattern_atom; bare uppercase Identifier clause guarded `binary_part(name,0,1) in A..Z` before the generic var clause
 - infer_type clause-grouping: new helpers must go AFTER the catch-all infer_type clause (ungrouped-clauses warning is an error in CI)
 
+## Capability Checks in Test Blocks (issue #104 — 2026-06-10)
+- `test_decl_views/1` wraps Test/Scenario(expect_body)/Golden bodies as Fn-shaped nodes; fed to check_capabilities (E0012) AND check_unused_capabilities (W0002) in the Module pass
+- Scaffold warning-free is pinned by a CLI test (new_test.exs "scaffold sources analyze without warnings")
+
 ## Known Bug Found 2026-06-10 (filed as issue)
 - **Int string interpolation emits raw codepoint**: `"${n}"` with n=42 yields "*" (binary segment treats Int as a byte) — needs to_string coercion in codegen interpolation
 

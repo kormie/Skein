@@ -19,10 +19,6 @@ The end-to-end pipeline works: `.skein` source files lex, parse, analyze, genera
 
 ### Tier 1: Language Surface
 
-#### 1. Capability Checks Cover Test Blocks (#104)
-
-The analyzer's capability passes skip `test`/`scenario`/`golden` bodies: the fresh `skein new` scaffold warns W0002 on its own `tool.use` capability, and missing capabilities inside test blocks escape E0012 until runtime.
-
 ### Tier 2: Runtime Completeness
 
 #### 2. Schedule Auto-Firing (#71)
@@ -127,6 +123,7 @@ Everything below is implemented and tested.
 | Capability naming | `queue.consume` / `schedule.trigger` (old names get a targeted rename hint) |
 | Cross-module `tool.call` | `implement` blocks compile to callable entry points; tools registered at module load (v0.1.5) |
 | Variant construction | `Ok(x)`, `Err(e)`, `Event.Charge(n)`, `ErrName.from(cause)`, and zero-field forms (`Status.Active`, bare `Active`) all compile in expression position; unknown variants and wrong arity are structured errors |
+| Capability checks in test blocks | Effects inside `test`/`scenario`/`golden` require capabilities (E0012) and count as usage (no scaffold W0002) |
 | Named arguments in calls | `f(name: value)` for local fns and documented effect signatures; analyzer rewrites to positional order at compile time (E0026 on misuse) |
 | Agent nesting inside modules | `module Foo { agent Bar }` → `Skein.Agent.Foo.Bar`; module types and capabilities apply to the nested agent |
 | Types usable from agents | Module types visible to nested agents; derived JSON Schema flows into `llm.json[T]` from agent handlers |

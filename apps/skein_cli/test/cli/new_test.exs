@@ -123,6 +123,28 @@ defmodule Skein.CLI.NewTest do
       assert {:ok, _tokens} = Skein.Lexer.tokenize(source)
     end
 
+    test "scaffold sources analyze without warnings (issue #104)", %{tmp_dir: tmp} do
+      project_dir = Path.join(tmp, "warn_free")
+      {:ok, _} = CLI.new([project_dir])
+
+      for relative <- ["src/main.skein", "test/main_test.skein"] do
+        source = File.read!(Path.join(project_dir, relative))
+        {:ok, tokens} = Skein.Lexer.tokenize(source)
+        {:ok, ast} = Skein.Parser.parse(tokens, relative)
+
+        case Skein.Analyzer.analyze(ast, source_text: source) do
+          {:ok, _ast} ->
+            :ok
+
+          {:ok, _ast, warnings} ->
+            flunk("#{relative} analyzed with warnings: #{inspect(warnings)}")
+
+          {:error, errors} ->
+            flunk("#{relative} failed analysis: #{inspect(errors)}")
+        end
+      end
+    end
+
     test "derives project name from directory basename", %{tmp_dir: tmp} do
       project_dir = Path.join(tmp, "my_awesome_service")
       {:ok, _} = CLI.new([project_dir])
