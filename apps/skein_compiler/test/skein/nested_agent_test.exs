@@ -242,7 +242,7 @@ defmodule Skein.NestedAgentTest do
       mod = compile!(@nested_source)
       assert mod == Skein.User.Orders
 
-      agent_mod = Skein.Agent.Orders.OrderAgent
+      agent_mod = Module.concat(["Skein", "Agent", "Orders", "OrderAgent"])
       assert Code.ensure_loaded?(agent_mod)
 
       phase_names = agent_mod.__phases__() |> Enum.map(& &1.name) |> Enum.sort()
@@ -251,7 +251,7 @@ defmodule Skein.NestedAgentTest do
 
     test "nested agent handlers execute" do
       compile!(@nested_source)
-      agent_mod = Skein.Agent.Orders.OrderAgent
+      agent_mod = Module.concat(["Skein", "Agent", "Orders", "OrderAgent"])
 
       assert {:transition, :done, %{}, []} = agent_mod.__phase_handler__(:pending, %{}, [])
       assert {:stop, %{}, []} = agent_mod.__phase_handler__(:done, %{}, [])
@@ -259,7 +259,7 @@ defmodule Skein.NestedAgentTest do
 
     test "module-level capability is honored by nested agent effects at runtime" do
       compile!(@nested_source)
-      agent_mod = Skein.Agent.Orders.OrderAgent
+      agent_mod = Module.concat(["Skein", "Agent", "Orders", "OrderAgent"])
 
       Skein.Runtime.Memory.clear("orders")
       # on start writes through the module-declared memory.kv capability
@@ -296,7 +296,7 @@ defmodule Skein.NestedAgentTest do
       }
       """)
 
-      agent_mod = Skein.Agent.Refunds.RefundAgent
+      agent_mod = Module.concat(["Skein", "Agent", "Refunds", "RefundAgent"])
 
       # The ! unwrap would crash this handler if llm.json failed — reaching
       # the transition proves the schema-typed call executed end-to-end.

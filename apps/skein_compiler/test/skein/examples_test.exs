@@ -784,7 +784,10 @@ defmodule Skein.ExamplesTest do
                )
 
       assert mod == Skein.User.MarketResearch
-      assert Code.ensure_loaded?(Skein.Agent.MarketResearch.MarketResearchAgent)
+
+      assert Code.ensure_loaded?(
+               Module.concat(["Skein", "Agent", "MarketResearch", "MarketResearchAgent"])
+             )
     end
 
     test "module keeps its tools, handlers, and supervisor" do
@@ -804,7 +807,7 @@ defmodule Skein.ExamplesTest do
           Path.join(project_root(), "examples/market_research/single_file.skein")
         )
 
-      agent_mod = Skein.Agent.MarketResearch.MarketResearchAgent
+      agent_mod = Module.concat(["Skein", "Agent", "MarketResearch", "MarketResearchAgent"])
       phase_names = agent_mod.__phases__() |> Enum.map(& &1.name) |> Enum.sort()
       assert phase_names == [:analyzing, :briefing, :complete, :gathering, :reporting]
     end
