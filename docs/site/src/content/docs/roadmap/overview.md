@@ -77,9 +77,6 @@ Testing agents burns real Anthropic spend. An OpenAI-compatible backend plus `[e
 - **Enum value-level exhaustiveness warning** (#76) — variant coverage is checked, but literal field patterns without a wildcard can still `case_clause` at runtime; the analyzer should warn.
 - **LSP code actions from `fix_hint`/`fix_code`** (#108) — every compiler error already carries fix data; surface it as editor quickfixes (and machine-applicable edits for agents).
 
-### Tier 4: Release & Infrastructure
-
-- **Release automation & public-repo polish** (#100) — auto-tag green merges to `main` (no manual `v*` tag step), README badges, and versioned docs snapshots on releases. Implementation in flight (#102).
 
 ### Post-MVP Backlog
 
@@ -191,5 +188,6 @@ Everything below is implemented and tested.
 
 - **Burrito binaries** for Linux x86_64/ARM64 and macOS x86_64/ARM64
 - **GitHub Release automation** — binaries published automatically on `v*` tags
+- **Auto-tagged releases** — a green version-bump merge to `main` tags, builds, and publishes the release with no manual steps; each release carries a docs snapshot (incl. `llms*.txt`)
 - `skein build --output` writes `.beam` files to disk
 - See [Distribution](/Skein/roadmap/distribution/) for remaining packaging work

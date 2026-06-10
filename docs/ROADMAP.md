@@ -360,28 +360,6 @@ The remaining gaps are listed below. Field-testing v0.1.5 (2026-06-10) surfaced 
 
 ---
 
-## Tier 4: Release & Infrastructure
-
-### 19. Release Automation & Public-Repo Polish `[L]`
-
-**Issue:** [#100](https://github.com/kormie/Skein/issues/100) — implementation in flight in [PR #102](https://github.com/kormie/Skein/pull/102)
-
-**Problem:** Releases are hand-cut — a version-bump PR merges, then someone must remember to push the annotated `v*` tag that triggers the binary build matrix. The README has no badges, and the published docs site only ever reflects latest `main` (nothing version-pinned for the binary you're running or for agents consuming `llms-full.txt`).
-
-**Scope:**
-- Auto-tag: a workflow on green `main` CI reads `version` from `mix.exs`, verifies the `CHANGELOG.md` section, and pushes the tag (design around the GITHUB_TOKEN-doesn't-trigger-workflows gotcha)
-- README badges (CI, latest release, docs)
-- Versioned docs snapshots published on releases
-
-**Acceptance criteria:**
-- Merging a version-bump PR publishes the release with no manual tag step; a red merge never tags
-- README shows live CI/release badges
-- Docs for a released version remain reachable after later merges to `main`
-
-**Depends on:** Nothing.
-
----
-
 ## Post-MVP Backlog
 
 **Issue:** [#78](https://github.com/kormie/Skein/issues/78) (tracking)
@@ -427,5 +405,6 @@ All of the following are done and tested:
 - LSP: completions, hover, diagnostics, semantic tokens, document symbols, go-to-definition (+ request/response integration tests)
 - CLI: new, build (`--output`), test, run, trace; structured errors for malformed flags
 - Distribution: Burrito binaries (Linux x86_64/ARM64, macOS x86_64/ARM64), GitHub Release automation on `v*` tags
+- Release automation (#100, PR #102): green version-bump merges to `main` auto-tag and release (no manual tag step), README badges, per-release docs snapshots incl. `llms*.txt`; superseded PR runs cancel, main/release builds never do
 - Docs site: Astro + Starlight at https://kormie.github.io/Skein/ with `llms.txt` endpoints
 - CI: format check, `--warnings-as-errors` compile, full test suite

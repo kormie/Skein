@@ -11,7 +11,7 @@
 ## Repo Hygiene / Issue Tracking (2026-06-10 audit session)
 - All 20 open issues map to ROADMAP items (roadmap links each issue inline; 19 items across 4 tiers); #78 tracks the post-MVP backlog
 - v0.1.5 field-testing wave (#101, #104–#109) triaged same day: #104 W0002/E0012 test-block gap, #105 assertion output, #106 git init, #107 local LLM backends, #108 LSP code actions, #109 MCP compile_check fidelity
-- PR #102 (separate session) implements #100 (auto-tag releases, badges, docs snapshots) — check its state before re-scoping #100
+- PR #102 MERGED 2026-06-10 20:37 → #100 closed (first Alpha item done): auto-tag on green version-bump merges (release.yml via workflow_call into build.yml), README badges, per-release docs snapshots; PR-run concurrency cancels superseded runs, never main/release builds
 - Milestones-as-code: `.github/milestones.json` + `workflows/milestones.yml` (gh api, runs on push when the JSON changes; never closes/deletes). **Alpha Release** = public-repo gate (#56 #63 #70 #71 #72 #77 #96 #100 #101 #104 #105 #106 #109); **Beta Release** = #57 #69 #73 #74 #76 #107 #108
 - Issue forms in `.github/ISSUE_TEMPLATE/` (bug/feature/chore + config contact links) auto-label `type/*` + `status/triage`; triage flow + label glossary in CONTRIBUTING.md; PR template in `.github/pull_request_template.md`
 - PR #53 (stale Feb repo-hygiene PR with generic templates) superseded by the 2026-06-10 hygiene PR and closed
