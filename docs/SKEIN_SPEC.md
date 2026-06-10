@@ -79,6 +79,71 @@ declaration = capability | fn_decl | type_decl | enum_decl | handler
             | agent | tool_decl | supervisor | test_decl
 ```
 
+A program may span multiple files; each file declares one module (or agent).
+
+#### Module Boundaries: Tools Are the Only Cross-Module Seam
+
+A module's functions, types, enums, and handlers are **private to that module**.
+There is no `import`, no `use`, and no qualified cross-module function call —
+`OtherModule.fn_name(args)` is not Skein. The only way for code in one module to
+invoke code in another is a tool call:
+
+```
+-- Module A: declare the grant, then call
+capability tool.use(Billing.CreateRefund)
+let result = tool.call(Billing.CreateRefund, { ticket_id: id })
+
+-- Module B: declare and implement the tool
+tool Billing.CreateRefund { input { ... } output { ... } implement { ... } }
+```
+
+Dotted calls with an uppercase head (`String.upcase(s)`) are reserved for the
+standard library (§5), which is ambient — available in every module with no
+declaration and no capability. The stdlib is part of the language, not a
+cross-module mechanism; user modules cannot define functions in stdlib
+namespaces or expose their own.
+
+**Why tools-only.** This is a deliberate design decision, not an implementation
+gap:
+
+1. **Capability propagation stays explicit.** If module A could call
+   `B.fetch_data()` and that function performs `http.out`, either A must
+   re-declare B's capabilities (implementation details leak across the
+   boundary; refactoring B breaks A's declarations) or the effect travels
+   silently under B's declarations (reading A's source no longer tells you what
+   effects a call can perform). Tools dissolve the dilemma:
+   `capability tool.use(B.FetchData)` *is* the explicit cross-module grant,
+   checked at the call site.
+2. **Schemas at every boundary.** Tool inputs and outputs are typed and derive
+   JSON Schema; every cross-module payload is validated.
+3. **Everything is traceable.** Every tool call produces a trace span, so
+   cross-module behavior is auditable from the event store.
+4. **One way to do things.** A second seam — even one restricted to pure
+   functions — would mean two cross-module mechanisms and a purity check in the
+   analyzer.
+
+**The trade-off, acknowledged.** Wrapping a pure helper (a string formatter, a
+validator) in a tool is heavyweight: schema, registry, `Result`, trace span.
+Skein accepts this cost. Pure-function sharing is served by the standard
+library and by keeping a module and its helpers in one file — a module is
+intended to fit in one context window: code, capabilities, tools, and tests
+together. If field experience shows this failing for the agent-service domain,
+the decision can be revisited; until then no import surface will be added.
+
+**Compiler behavior.** A qualified call whose head is not a stdlib module is a
+compile-time error (`E0016`) with a fix hint pointing at the tool seam — never
+a silent unknown-symbol fallthrough.
+
+**Testing.** Unit tests are co-located: `test`, `scenario`, and `golden` are
+module-body declarations that live next to the code they exercise (§3.10,
+§8.5). Cross-module (integration) tests exercise tools via `tool.call`, exactly
+as production callers do, with `capability tool.use(...)` declared on the test
+module.
+
+**Packages (future).** A package will distribute modules whose public surface
+is its tool declarations plus the JSON Schemas their types derive. The stdlib
+remains the only ambient dependency.
+
 ### 3.2 Capabilities
 
 ```
@@ -558,6 +623,7 @@ All errors are JSON-serializable with this structure:
 | E0013 | Capability | Capability parameter mismatch |
 | E0014 | Tool | Tool name not declared in `capability tool.use` params |
 | E0015 | Tool | Duplicate short tool name in `capability tool.use` params |
+| E0016 | Name | Cross-module function call (functions are module-private; expose a tool instead) |
 | E0020 | Type | Type mismatch |
 | E0021 | Type | Non-exhaustive match |
 | E0022 | Type | Invalid `!` on non-Result |
@@ -800,21 +866,28 @@ agent RefundAgent {
 
 ### 8.5 Tests
 
+Tests are co-located with the code they exercise (§3.1 Module Boundaries):
+`test`, `scenario`, and `golden` are declarations in the module body, so the
+function under test is in scope directly.
+
 ```
-module RefundServiceTest {
-  test "greet returns hello message" {
-    let result = Hello.greet("world")
+module RefundService {
+  fn eligible(amount: Int) -> Bool {
+    amount <= 5000
+  }
+
+  fn greeting(name: String) -> String {
+    "Hello, ${name}!"
+  }
+
+  test "greeting returns hello message" {
+    let result = greeting("world")
     assert result == "Hello, world!"
   }
 
-  test "refund agent approves eligible ticket" {
-    -- Start the agent and verify it reaches the expected phase.
-    -- Stubs and synchronous agent execution are planned features;
-    -- for now, test individual functions and phase transitions.
-    let ticket_id = Uuid.parse!("abc-123")
-    let decision = { action: "approve", amount: 2500, reason: "eligible" }
-    assert decision.action == "approve"
-    assert decision.amount == 2500
+  test "small refunds are eligible" {
+    assert eligible(2500) == true
+    assert eligible(9900) == false
   }
 
   scenario "high-value refund requires manual review" {
@@ -831,6 +904,10 @@ module RefundServiceTest {
   }
 }
 ```
+
+Cross-module (integration) tests use the same seam as production code: declare
+`capability tool.use(Other.Tool)` on the test's module and exercise the tool
+with `tool.call` — there is no cross-module function access to test against.
 
 > **Planned features for testing (not yet implemented):**
 > - `Agent.run_sync()` — synchronous agent execution for tests
