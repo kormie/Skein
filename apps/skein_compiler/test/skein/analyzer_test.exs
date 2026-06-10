@@ -3484,4 +3484,247 @@ defmodule Skein.AnalyzerTest do
       assert decoded["context"] != nil
     end
   end
+
+  # ------------------------------------------------------------------
+  # Cross-module function calls (E0016)
+  # ------------------------------------------------------------------
+
+  describe "cross-module function calls (E0016)" do
+    test "qualified call to another module's function produces E0016" do
+      errors =
+        analyze_errors("""
+        module Other {
+          fn run() -> String {
+            Hello.greet("world")
+          }
+        }
+        """)
+
+      assert [error] = Enum.filter(errors, &(&1.code == "E0016"))
+      assert error.severity == :error
+      assert error.message =~ "Hello.greet"
+      assert error.message =~ "module-private"
+      assert error.fix_hint =~ "tool"
+      assert error.fix_code =~ "capability tool.use(Hello.Greet)"
+      assert error.fix_code =~ "tool.call(Hello.Greet"
+    end
+
+    test "E0016 fix_code camelizes snake_case function names into tool names" do
+      errors =
+        analyze_errors("""
+        module Other {
+          fn run() -> String {
+            Billing.fetch_data("acct")
+          }
+        }
+        """)
+
+      assert [error] = Enum.filter(errors, &(&1.code == "E0016"))
+      assert error.fix_code =~ "capability tool.use(Billing.FetchData)"
+      assert error.fix_code =~ "tool.call(Billing.FetchData"
+    end
+
+    test "E0016 fires in module handler bodies" do
+      errors =
+        analyze_errors("""
+        module Web {
+          capability http.in
+
+          handler http GET "/charge" (req) -> {
+            Billing.charge(1)
+          }
+        }
+        """)
+
+      assert Enum.any?(errors, &(&1.code == "E0016" and &1.message =~ "Billing.charge"))
+    end
+
+    test "E0016 fires in agent function bodies" do
+      errors =
+        analyze_errors("""
+        agent A {
+          enum Phase {
+            Init -> [Done]
+            Done -> []
+          }
+
+          on start(ticket_id: String) -> {
+            transition(Phase.Init)
+          }
+
+          on phase(Phase.Init) -> {
+            transition(Phase.Done)
+          }
+
+          on phase(Phase.Done) -> {
+            stop()
+          }
+
+          fn helper(x: Int) -> Int {
+            Math.square(x)
+          }
+        }
+        """)
+
+      assert Enum.any?(errors, &(&1.code == "E0016" and &1.message =~ "Math.square"))
+    end
+
+    test "self-qualified call inside the same module produces E0016 with a direct-call hint" do
+      errors =
+        analyze_errors("""
+        module Hello {
+          fn greet(name: String) -> String {
+            "Hello, ${name}!"
+          }
+
+          fn run() -> String {
+            Hello.greet("world")
+          }
+        }
+        """)
+
+      assert [error] = Enum.filter(errors, &(&1.code == "E0016"))
+      assert error.fix_hint =~ "greet"
+      assert error.fix_code =~ "greet("
+      refute error.fix_code =~ "tool.call"
+    end
+
+    test "E0016 location points at the offending call" do
+      errors =
+        analyze_errors("""
+        module Other {
+          fn run() -> String {
+            Hello.greet("world")
+          }
+        }
+        """)
+
+      assert [error] = Enum.filter(errors, &(&1.code == "E0016"))
+      assert error.location.line == 3
+    end
+
+    test "stdlib calls do not produce E0016" do
+      assert {:ok, _} =
+               analyze("""
+               module M {
+                 fn shout(s: String) -> String {
+                   String.upcase(s)
+                 }
+
+                 fn count(l: List[Int]) -> Int {
+                   List.length(l)
+                 }
+               }
+               """)
+    end
+
+    test "enum variant constructor calls do not produce E0016" do
+      errors =
+        analyze_errors("""
+        module Demo {
+          enum Status {
+            Active
+            Banned(reason: String)
+          }
+
+          fn ban() -> Status {
+            Status.Banned("spam")
+          }
+        }
+        """)
+
+      refute Enum.any?(errors, &(&1.code == "E0016"))
+    end
+
+    test "agent phase references do not produce E0016" do
+      assert {:ok, _} =
+               analyze("""
+               agent A {
+                 enum Phase {
+                   Init -> [Done]
+                   Done -> []
+                 }
+
+                 on start(ticket_id: String) -> {
+                   transition(Phase.Init)
+                 }
+
+                 on phase(Phase.Init) -> {
+                   transition(Phase.Done)
+                 }
+
+                 on phase(Phase.Done) -> {
+                   stop()
+                 }
+               }
+               """)
+    end
+
+    test "dotted tool names in tool.call and capability tool.use do not produce E0016" do
+      assert {:ok, _} =
+               analyze("""
+               module M {
+                 capability tool.use(Stripe.CreateRefund)
+
+                 fn f(args: String) -> String {
+                   tool.call(Stripe.CreateRefund, args)
+                 }
+               }
+               """)
+    end
+
+    test "tool error type names are exempt from E0016" do
+      errors =
+        analyze_errors("""
+        module M {
+          tool DoThing {
+            input { x: String }
+            output { y: String }
+            errors { SearchError }
+            implement { "ok" }
+          }
+
+          fn f(e: String) -> String {
+            SearchError.from(e)
+          }
+        }
+        """)
+
+      refute Enum.any?(errors, &(&1.code == "E0016"))
+    end
+
+    test "lowercase effect namespaces do not produce E0016" do
+      assert {:ok, _} =
+               analyze("""
+               module M {
+                 capability http.out("api.example.com")
+
+                 fn fetch() -> String {
+                   let r = http.get("https://api.example.com/x")
+                   "done"
+                 }
+               }
+               """)
+    end
+
+    test "E0016 errors serialize to JSON" do
+      errors =
+        analyze_errors("""
+        module Other {
+          fn run() -> String {
+            Hello.greet("world")
+          }
+        }
+        """)
+
+      error = Enum.find(errors, &(&1.code == "E0016"))
+      json = Skein.Error.to_json(error)
+      decoded = Jason.decode!(json)
+
+      assert decoded["code"] == "E0016"
+      assert decoded["severity"] == "error"
+      assert decoded["fix_hint"] =~ "tool"
+      assert decoded["fix_code"] =~ "tool.call"
+    end
+  end
 end
