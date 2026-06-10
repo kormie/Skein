@@ -2251,6 +2251,24 @@ defmodule Skein.Parser do
     parse_args(rest, file, acc)
   end
 
+  # Named argument: `name: expr`. The two-token lookahead (ident then
+  # colon) is unambiguous — no expression can start that way.
+  defp parse_args([{:ident, {line, col}, name}, {:colon, _} | rest], file, acc) do
+    case parse_expression(rest, file) do
+      {:ok, value, rest2} ->
+        named = %AST.NamedArg{
+          name: name,
+          value: value,
+          meta: %{line: line, col: col, file: file}
+        }
+
+        parse_args(rest2, file, [named | acc])
+
+      {:error, _} = error ->
+        error
+    end
+  end
+
   defp parse_args(tokens, file, acc) do
     case parse_expression(tokens, file) do
       {:ok, expr, rest} ->

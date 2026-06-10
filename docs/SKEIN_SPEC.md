@@ -265,7 +265,8 @@ field_access  = expr "." lower_ident
 fn_ref        = "&" lower_ident
 block         = "{" expr* "}"
 
-args          = (expr ("," expr)*)? | (named_arg ("," named_arg)*)?
+args          = (arg ("," arg)*)?               -- positional args first, then named
+arg           = named_arg | expr
 pattern       = ident | literal | UpperIdent ["(" pattern* ")"]
              | "(" pattern ("," pattern)+ ")"   -- tuple destructure
              | "_"                               -- wildcard
@@ -275,6 +276,16 @@ Prefix operators bind tighter than binary operators: `-2 + 3` is `(-2) + 3`,
 and `-(2 + 3)` negates the sum. There is no negative-literal token; negative
 numbers are written with prefix `-` applied to a literal. Negation requires an
 `Int` or `Float` operand and preserves its type.
+
+Call arguments may be passed by name: `f(name: value)`. Named arguments must
+come after all positional arguments; together they must cover each remaining
+parameter exactly once, in any order. The compiler resolves named arguments
+against the callee's declared parameter names at compile time — there is no
+runtime cost. Named arguments work for calls to functions in the same
+module/agent and for effect calls with documented signatures (section 6);
+unknown or duplicate names, a positional argument after a named one, and named
+arguments on a callee without a known signature are all compile errors
+(`E0026`). Patterns never use named arguments.
 
 ---
 
@@ -638,6 +649,7 @@ All errors are JSON-serializable with this structure:
 | E0023 | Type | Invalid `?` on non-Result (or enclosing fn doesn't return Result) |
 | E0024 | Type | Unknown type name |
 | E0025 | Type | Constraint annotation on wrong type |
+| E0026 | Type | Invalid named argument (unknown/duplicate name, positional after named, callee without named-argument support) |
 | E0030 | Agent | Invalid phase transition |
 | E0031 | Agent | Unreachable phase |
 | E0032 | Agent | Phase handler missing |
@@ -824,9 +836,9 @@ agent RefundAgent {
     let ticket = store.tickets.get!(ticket_id)
 
     let decision = llm.json[RefundDecision](
-      "claude-opus-4-8",
-      "Decide if this ticket warrants a refund. Return JSON.",
-      ticket
+      model: "claude-opus-4-8",
+      system: "Decide if this ticket warrants a refund. Return JSON.",
+      input: ticket
     )
 
     match decision {

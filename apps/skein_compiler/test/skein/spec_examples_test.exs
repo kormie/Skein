@@ -93,7 +93,7 @@ defmodule Skein.SpecExamplesTest do
     {"8.4 Agent with LLM and Tools — Module",
      """
      module RefundService {
-       capability model("anthropic", "claude-sonnet-4-5")
+       capability model("anthropic", "claude-opus-4-8")
        capability tool.use(Stripe.CreateRefund)
        capability store.table("tickets")
 
@@ -142,7 +142,7 @@ defmodule Skein.SpecExamplesTest do
     {"8.4 Agent with LLM and Tools — Agent",
      """
      agent RefundAgent {
-       capability model("claude-sonnet-4-5")
+       capability model("claude-opus-4-8")
        capability memory.kv("refund_sessions")
 
        state {
@@ -168,9 +168,9 @@ defmodule Skein.SpecExamplesTest do
          let ticket = store.tickets.get!(ticket_id)
 
          let decision = llm.json[RefundDecision](
-           "claude-sonnet-4-5",
-           "Decide if this ticket warrants a refund. Return JSON.",
-           ticket
+           model: "claude-opus-4-8",
+           system: "Decide if this ticket warrants a refund. Return JSON.",
+           input: ticket
          )
 
          match decision {
