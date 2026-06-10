@@ -108,11 +108,28 @@ mod.__tools__()
 #     input: [%{name: "customer_id", type: "String"}, %{name: "amount", type: "Int"}],
 #     input_schema: %{"type" => "object", "properties" => %{...}, "required" => [...]},
 #     output: [%{name: "id", type: "String"}, %{name: "status", type: "String"}],
-#     output_schema: %{"type" => "object", "properties" => %{...}, "required" => [...]}
+#     output_schema: %{"type" => "object", "properties" => %{...}, "required" => [...]},
+#     impl: :__tool_impl_0__
 #   }]
 ```
 
-The `input_schema` and `output_schema` fields are proper JSON Schema objects suitable for passing directly to LLM function-calling APIs.
+The `input_schema` and `output_schema` fields are proper JSON Schema objects suitable for passing directly to LLM function-calling APIs. `impl` names the compiled entry point for the tool's `implement` block.
+
+## How Tools Are Registered
+
+Tools are the one cross-module seam in Skein: a `tool.call` in one module
+resolves to a `tool` declaration in another through the runtime tool
+registry. When `skein build`, `skein test`, or `skein run` loads a compiled
+module, every tool it declares is registered automatically — the declared
+schemas are kept for input validation and the `implement` block becomes the
+tool's executable body. Registration is idempotent: reloading a module
+overwrites its previous entries.
+
+From Elixir, the same wiring is available directly:
+
+```elixir
+Skein.Runtime.Tool.register_module(mod)
+```
 
 ## Calling Tools
 
