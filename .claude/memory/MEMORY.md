@@ -197,6 +197,10 @@
 - Stored shape: kind: :user_event, event: name, data: fields-minus-:event, agent:, instance_id:, phase:, wall_time:
 - skein_runtime tests can compile real Skein agents (Skein.Compiler available as test dep); await agent exit via Process.monitor before asserting
 
+## skein new git init (issue #106 — 2026-06-10)
+- cargo-style: init by default; skipped when inside a work tree (git rev-parse --is-inside-work-tree), --no-git, or git missing (app env :skein_cli :git_executable, :missing sentinel for tests); .gitignore ALWAYS written; no auto-commit
+- new_test's repo tmp dir is inside the Skein work tree — git-init-happens tests must use System.tmp_dir!
+
 ## Known Bug Found 2026-06-10 (filed as issue)
 - **Int string interpolation emits raw codepoint**: `"${n}"` with n=42 yields "*" (binary segment treats Int as a byte) — needs to_string coercion in codegen interpolation
 

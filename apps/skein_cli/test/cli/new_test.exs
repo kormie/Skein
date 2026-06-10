@@ -210,6 +210,65 @@ defmodule Skein.CLI.NewTest do
       refute File.exists?(Path.join(project_dir, "CLAUDE.md"))
     end
 
+    test "git init creates a repo with a .gitignore (outside any work tree)" do
+      # The repo tmp dir lives inside the Skein work tree, where init is
+      # intentionally skipped — use the system tmp dir instead.
+      outside =
+        Path.join(System.tmp_dir!(), "skein_new_git_#{System.unique_integer([:positive])}")
+
+      on_exit(fn -> File.rm_rf!(outside) end)
+
+      {:ok, _} = CLI.new([outside])
+
+      assert File.dir?(Path.join(outside, ".git"))
+      gitignore = File.read!(Path.join(outside, ".gitignore"))
+      assert gitignore =~ "_build/"
+      assert gitignore =~ "*.beam"
+      assert gitignore =~ "erl_crash.dump"
+      assert gitignore =~ "*.db"
+    end
+
+    test "inside an existing work tree: no nested repo, .gitignore still written", %{
+      tmp_dir: tmp
+    } do
+      project_dir = Path.join(tmp, "nested_app")
+      {:ok, _} = CLI.new([project_dir])
+
+      refute File.dir?(Path.join(project_dir, ".git"))
+      assert File.exists?(Path.join(project_dir, ".gitignore"))
+    end
+
+    test "--no-git skips init but still writes .gitignore" do
+      outside =
+        Path.join(System.tmp_dir!(), "skein_new_nogit_#{System.unique_integer([:positive])}")
+
+      on_exit(fn -> File.rm_rf!(outside) end)
+
+      {:ok, _} = CLI.new([outside, "--no-git"])
+
+      refute File.dir?(Path.join(outside, ".git"))
+      assert File.exists?(Path.join(outside, ".gitignore"))
+    end
+
+    test "a missing git binary does not fail scaffolding" do
+      Application.put_env(:skein_cli, :git_executable, :missing)
+      on_exit(fn -> Application.delete_env(:skein_cli, :git_executable) end)
+
+      outside =
+        Path.join(
+          System.tmp_dir!(),
+          "skein_new_missing_git_#{System.unique_integer([:positive])}"
+        )
+
+      on_exit(fn -> File.rm_rf!(outside) end)
+
+      {:ok, _} = CLI.new([outside])
+
+      refute File.dir?(Path.join(outside, ".git"))
+      assert File.exists?(Path.join(outside, ".gitignore"))
+      assert File.exists?(Path.join(outside, "skein.toml"))
+    end
+
     test "unknown flags are rejected", %{tmp_dir: tmp} do
       project_dir = Path.join(tmp, "flagged_app")
 

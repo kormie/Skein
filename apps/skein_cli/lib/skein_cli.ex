@@ -67,7 +67,7 @@ defmodule Skein.CLI do
   """
   @spec new([String.t()]) :: {:ok, String.t()} | {:error, String.t()}
   def new([]) do
-    {:error, "Usage: skein new <project-directory> [--no-agents]"}
+    {:error, "Usage: skein new <project-directory> [--no-agents] [--no-git]"}
   end
 
   def new(args) do
@@ -75,21 +75,21 @@ defmodule Skein.CLI do
 
     with :ok <- validate_new_flags(flags),
          [project_dir | _] <- positional do
-      do_new(project_dir, "--no-agents" not in flags)
+      do_new(project_dir, "--no-agents" not in flags, "--no-git" not in flags)
     else
-      [] -> {:error, "Usage: skein new <project-directory> [--no-agents]"}
+      [] -> {:error, "Usage: skein new <project-directory> [--no-agents] [--no-git]"}
       {:error, _} = err -> err
     end
   end
 
   defp validate_new_flags(flags) do
-    case Enum.reject(flags, &(&1 == "--no-agents")) do
+    case Enum.reject(flags, &(&1 in ["--no-agents", "--no-git"])) do
       [] -> :ok
       [flag | _] -> {:error, "Unknown option: #{flag} (run 'skein help' for usage)"}
     end
   end
 
-  defp do_new(project_dir, write_agents_md?) do
+  defp do_new(project_dir, write_agents_md?, git_init?) do
     project_dir = Path.expand(project_dir)
     name = Path.basename(project_dir)
 
@@ -105,13 +105,77 @@ defmodule Skein.CLI do
       File.write!(Path.join(project_dir, "src/main.skein"), main_skein(name))
       File.write!(Path.join(project_dir, "test/main_test.skein"), main_test_skein(name))
 
+      # Always written, even when init is skipped — still correct inside
+      # a parent repo (keeps .beam/_build noise out of git status)
+      File.write!(Path.join(project_dir, ".gitignore"), gitignore())
+
       if write_agents_md? do
         File.write!(Path.join(project_dir, "AGENTS.md"), AgentsMd.render())
         File.write!(Path.join(project_dir, "CLAUDE.md"), AgentsMd.claude_md_pointer())
       end
 
+      if git_init?, do: maybe_git_init(project_dir)
+
       {:ok, project_dir}
     end
+  end
+
+  # Mirrors cargo new: init by default, but never nest a repo inside an
+  # existing work tree, and never fail the scaffold over a missing git.
+  # No auto-commit — the first commit is the user's.
+  defp maybe_git_init(project_dir) do
+    case git_executable() do
+      nil ->
+        IO.puts("note: git not found on PATH — skipping git init (project scaffolded fine)")
+        :ok
+
+      git ->
+        if inside_git_work_tree?(git, project_dir) do
+          :ok
+        else
+          {_out, _status} = System.cmd(git, ["init", "--quiet"], cd: project_dir)
+          :ok
+        end
+    end
+  end
+
+  # Overridable in tests via the :git_executable app env (:missing
+  # simulates git being absent from PATH).
+  defp git_executable do
+    case Application.get_env(:skein_cli, :git_executable) do
+      nil -> System.find_executable("git")
+      :missing -> nil
+      path when is_binary(path) -> path
+    end
+  end
+
+  defp inside_git_work_tree?(git, dir) do
+    case System.cmd(git, ["rev-parse", "--is-inside-work-tree"],
+           cd: dir,
+           stderr_to_stdout: true
+         ) do
+      {out, 0} -> String.trim(out) == "true"
+      _ -> false
+    end
+  end
+
+  defp gitignore do
+    """
+    # skein build --output artifacts
+    _build/
+    build/
+    *.beam
+
+    # BEAM crash dumps
+    erl_crash.dump
+
+    # local runtime state (SQLite-backed store/event log)
+    *.db
+    *.db-shm
+    *.db-wal
+
+    .DS_Store
+    """
   end
 
   # ------------------------------------------------------------------
@@ -160,6 +224,9 @@ defmodule Skein.CLI do
     A Skein service.
 
     ## Getting Started
+
+    The project is scaffolded with a git repository (and a baseline
+    `.gitignore`) — make the first commit when you're ready.
 
     ```bash
     # Build the project
