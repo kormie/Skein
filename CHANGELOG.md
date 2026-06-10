@@ -1,6 +1,16 @@
 # Changelog
 
-## v0.1.4 (unreleased)
+## v0.1.5 (unreleased)
+
+### CI
+
+- **Node 24-ready GitHub Actions** — every workflow action bumped to its latest major (`checkout` v6, `setup-node` v6, `cache` v5, `upload-artifact` v7, `download-artifact` v8, `upload-pages-artifact` v5, `deploy-pages` v5, `action-gh-release` v3) ahead of GitHub forcing actions onto the Node 24 runtime on 2026-06-16. The release job's artifact-name -> file-path mapping is unchanged across the artifact-action majors.
+
+### VS Code Extension (0.1.3)
+
+- **Bundled with esbuild** — `src/extension.ts` is now compiled to a single `out/extension.js` (with `vscode-languageclient` inlined), so the `.vsix` no longer ships `node_modules`: 9 files / ~120 KB instead of 211 files, with faster activation. `tsc` remains as a typecheck-only `npm run check`.
+
+## v0.1.4 (2026-06-10)
 
 Fixes from v0.1.3 field testing.
 
