@@ -16,32 +16,14 @@ defmodule Skein.Runtime.Llm.AnthropicBackendTest do
     end
   end
 
-  describe "map_model/1" do
-    test "maps gpt-4 to claude-sonnet-4-20250514" do
-      assert AnthropicBackend.map_model("gpt-4") == "claude-sonnet-4-20250514"
-    end
-
-    test "maps gpt-4o to claude-sonnet-4-20250514" do
-      assert AnthropicBackend.map_model("gpt-4o") == "claude-sonnet-4-20250514"
-    end
-
-    test "passes through claude models" do
-      assert AnthropicBackend.map_model("claude-sonnet-4-20250514") == "claude-sonnet-4-20250514"
-    end
-
-    test "passes through unknown models" do
-      assert AnthropicBackend.map_model("my-custom-model") == "my-custom-model"
-    end
-  end
-
   describe "build_request_body/4" do
     test "builds correct structure" do
       body =
-        AnthropicBackend.build_request_body("claude-sonnet-4-20250514", "Be helpful", "hello",
+        AnthropicBackend.build_request_body("claude-opus-4-8", "Be helpful", "hello",
           stream: false
         )
 
-      assert body["model"] == "claude-sonnet-4-20250514"
+      assert body["model"] == "claude-opus-4-8"
       assert body["system"] == "Be helpful"
       assert body["messages"] == [%{"role" => "user", "content" => "hello"}]
       assert body["max_tokens"] == 4096
@@ -50,19 +32,19 @@ defmodule Skein.Runtime.Llm.AnthropicBackendTest do
 
     test "adds stream flag when streaming" do
       body =
-        AnthropicBackend.build_request_body("claude-sonnet-4-20250514", "sys", "hi", stream: true)
+        AnthropicBackend.build_request_body("claude-opus-4-8", "sys", "hi", stream: true)
 
       assert body["stream"] == true
     end
 
-    test "maps gpt models in body" do
-      body = AnthropicBackend.build_request_body("gpt-4", "sys", "hi", stream: false)
-      assert body["model"] == "claude-sonnet-4-20250514"
+    test "passes the requested model through unchanged" do
+      body = AnthropicBackend.build_request_body("claude-haiku-4-5", "sys", "hi", stream: false)
+      assert body["model"] == "claude-haiku-4-5"
     end
 
     test "inspects non-string input" do
       body =
-        AnthropicBackend.build_request_body("claude-sonnet-4-20250514", "sys", %{key: "val"},
+        AnthropicBackend.build_request_body("claude-opus-4-8", "sys", %{key: "val"},
           stream: false
         )
 
@@ -135,14 +117,14 @@ defmodule Skein.Runtime.Llm.AnthropicBackendTest do
     test "builds Response with text, model, usage, and stop_reason" do
       raw = %{
         "content" => [%{"type" => "text", "text" => "Hello!"}],
-        "model" => "claude-sonnet-4-20250514",
+        "model" => "claude-opus-4-8",
         "stop_reason" => "end_turn",
         "usage" => %{"input_tokens" => 10, "output_tokens" => 5}
       }
 
       assert {:ok, %Response{} = resp} = AnthropicBackend.build_response(raw)
       assert resp.text == "Hello!"
-      assert resp.model == "claude-sonnet-4-20250514"
+      assert resp.model == "claude-opus-4-8"
       assert resp.stop_reason == :end
       assert resp.usage.input_tokens == 10
       assert resp.usage.output_tokens == 5
@@ -180,7 +162,7 @@ defmodule Skein.Runtime.Llm.AnthropicBackendTest do
   describe "embed/2" do
     test "always returns unsupported error" do
       assert {:error, %Error{kind: :provider_error, detail: %{code: "unsupported"}}} =
-               AnthropicBackend.embed("claude-sonnet-4-20250514", "some text")
+               AnthropicBackend.embed("claude-opus-4-8", "some text")
     end
   end
 

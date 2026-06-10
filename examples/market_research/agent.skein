@@ -3,7 +3,7 @@
 -- Follows the spec section 8.4 pattern — agent calls tools, knows nothing about HTTP.
 
 agent MarketResearchAgent {
-  capability model("anthropic", "claude-sonnet-4-5")
+  capability model("anthropic", "claude-opus-4-8")
   capability memory.kv
   capability tool.use(Research.SearchMarket)
   capability tool.use(Research.AnalyzeCompetitor)
@@ -34,7 +34,7 @@ agent MarketResearchAgent {
 
     -- Ask LLM if scope is focused enough
     let scope_check = llm.chat(
-      "claude-sonnet-4-5",
+      "claude-opus-4-8",
       "Is this research scope focused enough for a competitive analysis? Answer only 'yes' or 'no'.",
       topic
     )

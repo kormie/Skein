@@ -4,7 +4,7 @@
 -- and suspend/resume for human escalation review.
 
 agent IncidentTriage {
-  capability model("gpt-4")
+  capability model("anthropic", "claude-opus-4-8")
   capability memory.kv
 
   state {
@@ -29,7 +29,7 @@ agent IncidentTriage {
 
   on phase(Phase.Classify) -> {
     let data = memory.get("alert_id")
-    let severity = llm.chat("gpt-4", "Classify incident severity", data)
+    let severity = llm.chat("claude-opus-4-8", "Classify incident severity", data)
     memory.put("severity", severity)
     transition(Phase.Investigate)
   }
@@ -37,7 +37,7 @@ agent IncidentTriage {
   on phase(Phase.Investigate) -> {
     let severity = memory.get("severity")
     let data = memory.get("alert_id")
-    let analysis = llm.chat("gpt-4", "Investigate root cause", data)
+    let analysis = llm.chat("claude-opus-4-8", "Investigate root cause", data)
     memory.put("analysis", analysis)
     transition(Phase.Resolve)
   }

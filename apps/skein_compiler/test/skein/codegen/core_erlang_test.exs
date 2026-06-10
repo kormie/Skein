@@ -1941,7 +1941,7 @@ defmodule Skein.CodeGen.CoreErlangTest do
       mod =
         compile!("""
         module QueueHandlerMeta {
-          capability queue.in
+          capability queue.consume
 
           handler queue "order-events" (msg) -> {
             respond.json(200, "processed")
@@ -1961,7 +1961,7 @@ defmodule Skein.CodeGen.CoreErlangTest do
       mod =
         compile!("""
         module QueueHandlerCall {
-          capability queue.in
+          capability queue.consume
 
           handler queue "events" (msg) -> {
             respond.json(200, "received")
@@ -1977,7 +1977,7 @@ defmodule Skein.CodeGen.CoreErlangTest do
       mod =
         compile!("""
         module QueueHandlerParam {
-          capability queue.in
+          capability queue.consume
 
           handler queue "events" (msg) -> {
             let data = msg
@@ -1994,7 +1994,7 @@ defmodule Skein.CodeGen.CoreErlangTest do
       mod =
         compile!("""
         module QueueHandlerMulti {
-          capability queue.in
+          capability queue.consume
 
           handler queue "events-a" (msg) -> {
             respond.json(200, "a")
@@ -2025,7 +2025,7 @@ defmodule Skein.CodeGen.CoreErlangTest do
       mod =
         compile!("""
         module ScheduleHandlerMeta {
-          capability schedule.in
+          capability schedule.trigger
 
           handler schedule "*/5 * * * *" () -> {
             respond.json(200, "tick")
@@ -2045,7 +2045,7 @@ defmodule Skein.CodeGen.CoreErlangTest do
       mod =
         compile!("""
         module ScheduleHandlerCall {
-          capability schedule.in
+          capability schedule.trigger
 
           handler schedule "0 * * * *" () -> {
             respond.json(200, "hourly")
@@ -2061,7 +2061,7 @@ defmodule Skein.CodeGen.CoreErlangTest do
       mod =
         compile!("""
         module ScheduleHandlerLogic {
-          capability schedule.in
+          capability schedule.trigger
 
           handler schedule "0 0 * * *" () -> {
             let result = 1 + 2
@@ -2085,8 +2085,8 @@ defmodule Skein.CodeGen.CoreErlangTest do
         compile!("""
         module MixedHandlers {
           capability http.in
-          capability queue.in
-          capability schedule.in
+          capability queue.consume
+          capability schedule.trigger
 
           handler http GET "/health" (req) -> {
             respond.json(200, "ok")
@@ -2223,7 +2223,7 @@ defmodule Skein.CodeGen.CoreErlangTest do
         compile!("""
         module MixedWithTopic {
           capability http.in
-          capability queue.in
+          capability queue.consume
           capability topic.consume("events")
 
           handler http GET "/health" (req) -> {

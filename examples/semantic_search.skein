@@ -2,24 +2,30 @@
 -- A module demonstrating RAG-style semantic search using llm.embed.
 -- Embeds a user query, stores/retrieves context from memory,
 -- and uses llm.chat to generate an answer grounded in retrieved context.
+--
+-- Note: the bundled Anthropic backend does not implement embeddings
+-- (Anthropic has no embeddings API). llm.embed runs against a backend
+-- that implements embed/2 — e.g. a Voyage AI integration or one of the
+-- test backends. llm.chat works against the Anthropic backend as-is.
 
 module SemanticSearch {
-  capability model("anthropic", "text-embedding-3-small")
+  capability model("voyage", "voyage-3-large")
+  capability model("anthropic", "claude-opus-4-8")
   capability memory.kv
   capability http.in
 
   -- Embed text and store the vector in memory under the given key
   fn index(key: String, text: String) -> String {
-    let vector = llm.embed("text-embedding-3-small", text)
+    let vector = llm.embed("voyage-3-large", text)
     memory.put(key, text)
     "indexed"
   }
 
   -- Embed a query and generate an answer using the LLM
   fn search(query: String) -> String {
-    let query_vector = llm.embed("text-embedding-3-small", query)
+    let query_vector = llm.embed("voyage-3-large", query)
     let context = memory.get("doc_1")
-    let answer = llm.chat("text-embedding-3-small", "Answer using the provided context.", query)
+    let answer = llm.chat("claude-opus-4-8", "Answer using the provided context.", query)
     answer
   }
 

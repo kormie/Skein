@@ -5,8 +5,8 @@
 
 module QueueWorker {
   capability http.in
-  capability queue.in
-  capability schedule.in
+  capability queue.consume
+  capability schedule.trigger
 
   -- Health check for the worker service
   handler http GET "/health" (req) -> {

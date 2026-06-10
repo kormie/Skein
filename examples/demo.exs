@@ -42,14 +42,14 @@ IO.puts("📝 Compiling Skein module with LLM capability...")
 {:module, mod} =
   Skein.Compiler.compile_string("""
   module Demo {
-    capability model("anthropic", "claude-sonnet-4-20250514")
+    capability model("anthropic", "claude-opus-4-8")
 
     fn greet(name: String) -> String {
-      llm.chat("claude-sonnet-4-20250514", "You are a friendly greeter. Respond in exactly one sentence.", name)
+      llm.chat("claude-opus-4-8", "You are a friendly greeter. Respond in exactly one sentence.", name)
     }
 
     fn classify(text: String) -> String {
-      llm.chat("claude-sonnet-4-20250514", "Classify the sentiment of this text as positive, negative, or neutral. Respond with just the word.", text)
+      llm.chat("claude-opus-4-8", "Classify the sentiment of this text as positive, negative, or neutral. Respond with just the word.", text)
     }
   }
   """)

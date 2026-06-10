@@ -18,7 +18,7 @@ defmodule Skein.Runtime.Llm.ResponseTest do
       resp = %Response{
         text: "Hello",
         usage: %Usage{input_tokens: 10, output_tokens: 5},
-        model: "claude-sonnet-4-20250514",
+        model: "claude-opus-4-8",
         stop_reason: :end,
         raw: %{"id" => "msg_123"}
       }
@@ -26,7 +26,7 @@ defmodule Skein.Runtime.Llm.ResponseTest do
       assert resp.text == "Hello"
       assert resp.usage.input_tokens == 10
       assert resp.usage.output_tokens == 5
-      assert resp.model == "claude-sonnet-4-20250514"
+      assert resp.model == "claude-opus-4-8"
       assert resp.stop_reason == :end
     end
   end

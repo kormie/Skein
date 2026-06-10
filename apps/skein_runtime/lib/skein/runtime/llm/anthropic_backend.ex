@@ -13,10 +13,11 @@ defmodule Skein.Runtime.Llm.AnthropicBackend do
 
   Or set `ANTHROPIC_API_KEY` in the environment.
 
-  ## Model Mapping
+  ## Models
 
-  Any model name starting with `"gpt-"` is automatically mapped to
-  `"claude-sonnet-4-20250514"`. All other model names are passed through as-is.
+  The model name from the Skein program (e.g. `"claude-opus-4-8"`) is passed
+  to the API unchanged. Use a current model ID from
+  https://platform.claude.com/docs/en/about-claude/models/overview.
   """
 
   @behaviour Skein.Runtime.Llm.Backend
@@ -97,7 +98,7 @@ defmodule Skein.Runtime.Llm.AnthropicBackend do
   Anthropic does not provide an embeddings API.
 
   Returns an error directing users to use a dedicated embedding provider
-  (e.g., OpenAI, Voyage AI, or a local model).
+  (e.g. Voyage AI or a local model).
   """
   @impl true
   @spec embed(String.t(), String.t()) :: {:error, Error.t()}
@@ -106,17 +107,12 @@ defmodule Skein.Runtime.Llm.AnthropicBackend do
      Error.provider_error(
        "unsupported",
        "Anthropic does not provide an embeddings API. " <>
-         "Use a dedicated embedding provider such as OpenAI (text-embedding-3-small), " <>
-         "Voyage AI, or a local model."
+         "Use a dedicated embedding provider (e.g. Voyage AI) or a local model, " <>
+         "or configure a test backend that implements embed/2."
      )}
   end
 
   # -- Request Building ----------------------------------------------------
-
-  @doc false
-  @spec map_model(String.t()) :: String.t()
-  def map_model("gpt-" <> _rest), do: "claude-sonnet-4-20250514"
-  def map_model(model), do: model
 
   @doc false
   @spec build_request_body(String.t(), String.t(), any(), keyword()) :: map()
@@ -124,7 +120,7 @@ defmodule Skein.Runtime.Llm.AnthropicBackend do
     user_content = if is_binary(input), do: input, else: inspect(input)
 
     body = %{
-      "model" => map_model(model),
+      "model" => model,
       "max_tokens" => @default_max_tokens,
       "system" => system,
       "messages" => [

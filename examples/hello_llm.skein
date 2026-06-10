@@ -1,5 +1,5 @@
 agent Greeter {
-  capability model("claude-sonnet-4-20250514")
+  capability model("anthropic", "claude-opus-4-8")
 
   state { name: String }
 
@@ -9,7 +9,7 @@ agent Greeter {
   }
 
   on start(name: String) -> {
-    let greeting = llm.chat("claude-sonnet-4-20250514", "You are a friendly greeter. Greet the user warmly in one sentence.", name)
+    let greeting = llm.chat("claude-opus-4-8", "You are a friendly greeter. Greet the user warmly in one sentence.", name)
     emit Greeting { message: greeting }
     transition(Phase.Start)
   }

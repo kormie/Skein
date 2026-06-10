@@ -222,7 +222,7 @@ defmodule Skein.CodeGen.CoreErlangPropertyTest do
 
       source = """
       module #{mod_name} {
-        capability queue.in
+        capability queue.consume
 
         handler queue "#{queue_name}" (msg) -> {
           respond.json(200, "processed")
@@ -338,7 +338,7 @@ defmodule Skein.CodeGen.CoreErlangPropertyTest do
 
       source = """
       module #{mod_name} {
-        capability schedule.in
+        capability schedule.trigger
 
         handler schedule "#{cron}" () -> {
           respond.json(200, "tick")
