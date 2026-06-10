@@ -85,6 +85,28 @@ defmodule Skein.CLITest do
       assert results.failed == 1
     end
 
+    test "failing assertions report operands, expression, and location" do
+      fail_path = Path.join(@fixtures_dir, "fail_rich.skein")
+
+      File.write!(fail_path, """
+      module FailRichTest {
+        fn add(a: Int, b: Int) -> Int { a + b }
+
+        test "wrong assertion" {
+          assert add(2, 3) == 99
+        }
+      }
+      """)
+
+      assert {:ok, results} = CLI.test([fail_path])
+      [failure] = Enum.filter(results.results, &(&1.status == :failed))
+
+      assert failure.error =~ "add(2, 3) == 99"
+      assert failure.error =~ "left:  5"
+      assert failure.error =~ "right: 99"
+      assert failure.location =~ "fail_rich.skein:5"
+    end
+
     test "returns error with no arguments" do
       assert {:error, message} = CLI.test([])
       assert message =~ "Usage"

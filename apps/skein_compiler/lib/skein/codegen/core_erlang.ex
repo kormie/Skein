@@ -770,6 +770,80 @@ defmodule Skein.CodeGen.CoreErlang do
   # Strips the enum prefix (before the dot) if present and converts to snake_case atom.
   # "Err" maps to :error so Result values line up with the runtime's
   # {:ok, _} | {:error, _} convention ("Ok" -> :ok falls out naturally).
+  # erlang comparison function names for Skein comparison operators
+  defp comparison_erlang_op(:==), do: :==
+  defp comparison_erlang_op(:!=), do: :"/="
+  defp comparison_erlang_op(:<), do: :<
+  defp comparison_erlang_op(:>), do: :>
+  defp comparison_erlang_op(:<=), do: :"=<"
+  defp comparison_erlang_op(:>=), do: :>=
+
+  # Builds erlang:error(%Skein.Runtime.AssertionError{...}) with the
+  # operand VARS spliced in at runtime and the static context as literals.
+  defp raise_assertion_error(op, left_expr, right_expr, expr_ast, meta) do
+    error_map =
+      :cerl.c_map([
+        :cerl.c_map_pair(
+          :cerl.c_atom(:__struct__),
+          :cerl.c_atom(Skein.Runtime.AssertionError)
+        ),
+        :cerl.c_map_pair(:cerl.c_atom(:__exception__), :cerl.c_atom(true)),
+        :cerl.c_map_pair(:cerl.c_atom(:op), :cerl.c_atom(op)),
+        :cerl.c_map_pair(:cerl.c_atom(:left), left_expr),
+        :cerl.c_map_pair(:cerl.c_atom(:right), right_expr),
+        :cerl.c_map_pair(:cerl.c_atom(:expr), :cerl.abstract(render_source(expr_ast))),
+        :cerl.c_map_pair(:cerl.c_atom(:file), :cerl.abstract(Map.get(meta, :file))),
+        :cerl.c_map_pair(:cerl.c_atom(:line), :cerl.abstract(Map.get(meta, :line)))
+      ])
+
+    :cerl.c_call(:cerl.c_atom(:erlang), :cerl.c_atom(:error), [error_map])
+  end
+
+  # Best-effort source rendering of an assert expression for failure
+  # messages. Display-only — falls back to a placeholder for shapes it
+  # doesn't know.
+  defp render_source(%AST.BinaryOp{op: op, left: left, right: right}) do
+    "#{render_source(left)} #{op} #{render_source(right)}"
+  end
+
+  defp render_source(%AST.Call{target: target, args: args}) do
+    "#{render_source(target)}(#{Enum.map_join(args, ", ", &render_source/1)})"
+  end
+
+  defp render_source(%AST.FieldAccess{subject: subject, field: field}) do
+    "#{render_source(subject)}.#{field}"
+  end
+
+  defp render_source(%AST.Identifier{name: name}), do: name
+  defp render_source(%AST.IntLit{value: value}), do: Integer.to_string(value)
+  defp render_source(%AST.FloatLit{value: value}), do: Float.to_string(value)
+  defp render_source(%AST.BoolLit{value: value}), do: to_string(value)
+
+  defp render_source(%AST.StringLit{segments: segments}) do
+    inner =
+      Enum.map_join(segments, "", fn
+        {:literal, text} -> text
+        {:interpolation, expr} -> "${#{render_source(expr)}}"
+        _ -> ""
+      end)
+
+    ~s("#{inner}")
+  end
+
+  defp render_source(%AST.UnaryOp{op: :unwrap, operand: operand}),
+    do: "#{render_source(operand)}!"
+
+  defp render_source(%AST.UnaryOp{op: :propagate, operand: operand}),
+    do: "#{render_source(operand)}?"
+
+  defp render_source(%AST.UnaryOp{op: _, operand: operand}), do: "-#{render_source(operand)}"
+
+  defp render_source(%AST.ListLit{elements: elements}) do
+    "[#{Enum.map_join(elements, ", ", &render_source/1)}]"
+  end
+
+  defp render_source(_other), do: "expression"
+
   defp variant_pattern_atom(name) when is_binary(name) do
     # Take the part after the last dot (the variant name itself)
     base =
@@ -1909,29 +1983,67 @@ defmodule Skein.CodeGen.CoreErlang do
     )
   end
 
-  # Assert expression: __assert__(expr) — raises on falsy
+  # Assert expression: __assert__(expr) — raises a structured
+  # Skein.Runtime.AssertionError on falsy (issue #105). Comparison asserts
+  # bind both operands so the failure reports expected vs actual; every
+  # assert carries the rendered expression and its source location.
+  @comparison_ops [:==, :!=, :<, :>, :<=, :>=]
+
   defp generate_expr(
-         %AST.Call{target: %AST.Identifier{name: "__assert__"}, args: [expr]},
+         %AST.Call{
+           target: %AST.Identifier{name: "__assert__", meta: meta},
+           args: [%AST.BinaryOp{op: op, left: left, right: right} = expr]
+         },
+         scope
+       )
+       when op in @comparison_ops do
+    left_var = :cerl.c_var(gen_var())
+    right_var = :cerl.c_var(gen_var())
+    result_var = :cerl.c_var(gen_var())
+
+    compare =
+      :cerl.c_call(
+        :cerl.c_atom(:erlang),
+        :cerl.c_atom(comparison_erlang_op(op)),
+        [left_var, right_var]
+      )
+
+    ok_clause = :cerl.c_clause([:cerl.c_atom(true)], :cerl.c_atom(:ok))
+
+    fail_clause =
+      :cerl.c_clause(
+        [:cerl.c_var(:_AssertVal)],
+        raise_assertion_error(op, left_var, right_var, expr, meta)
+      )
+
+    :cerl.c_let(
+      [left_var],
+      generate_expr(left, scope),
+      :cerl.c_let(
+        [right_var],
+        generate_expr(right, scope),
+        :cerl.c_let(
+          [result_var],
+          compare,
+          :cerl.c_case(result_var, [ok_clause, fail_clause])
+        )
+      )
+    )
+  end
+
+  defp generate_expr(
+         %AST.Call{target: %AST.Identifier{name: "__assert__", meta: meta}, args: [expr]},
          scope
        ) do
     expr_val = generate_expr(expr, scope)
     result_var = :cerl.c_var(gen_var())
 
-    # If truthy, return :ok. If falsy, raise RuntimeError.
-    ok_clause =
-      :cerl.c_clause(
-        [:cerl.c_atom(true)],
-        :cerl.c_atom(:ok)
-      )
+    ok_clause = :cerl.c_clause([:cerl.c_atom(true)], :cerl.c_atom(:ok))
 
     fail_clause =
       :cerl.c_clause(
         [:cerl.c_var(:_AssertVal)],
-        :cerl.c_call(
-          :cerl.c_atom(:erlang),
-          :cerl.c_atom(:error),
-          [:cerl.abstract(%RuntimeError{message: "Assertion failed"})]
-        )
+        raise_assertion_error(nil, :cerl.c_atom(nil), :cerl.c_atom(nil), expr, meta)
       )
 
     :cerl.c_let(
