@@ -54,6 +54,7 @@ defmodule Skein.Runtime.Server do
     port = Keyword.get(opts, :port, 4000)
 
     router = Router.build(module)
+    register_schedule_handlers(module)
 
     case Bandit.start_link(plug: router, port: port, ip: {127, 0, 0, 1}) do
       {:ok, bandit_pid} ->
@@ -73,6 +74,20 @@ defmodule Skein.Runtime.Server do
   def terminate(_reason, state) do
     if Process.alive?(state.bandit_pid) do
       Supervisor.stop(state.bandit_pid)
+    end
+
+    :ok
+  end
+
+  # Schedule handlers fire on the runtime's cron tick rather than via
+  # HTTP routing — register each one so a running service auto-fires them.
+  defp register_schedule_handlers(module) do
+    if function_exported?(module, :__handlers__, 0) do
+      module.__handlers__()
+      |> Enum.filter(&(&1.source == :schedule))
+      |> Enum.each(fn handler ->
+        Skein.Runtime.Schedule.register(handler.route, module, handler.handler)
+      end)
     end
 
     :ok

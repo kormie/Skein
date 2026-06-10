@@ -184,6 +184,13 @@
 - `test_decl_views/1` wraps Test/Scenario(expect_body)/Golden bodies as Fn-shaped nodes; fed to check_capabilities (E0012) AND check_unused_capabilities (W0002) in the Module pass
 - Scaffold warning-free is pinned by a CLI test (new_test.exs "scaffold sources analyze without warnings")
 
+## Schedule Auto-Firing (issue #71 — 2026-06-10)
+- Schedule GenServer: `compile_cron/1` (validated matcher: :any | MapSet per field), `cron_match?/2` (DOM/DOW OR rule, weekday 7→0), tick via :timer.send_interval (config `schedule_tick_ms` 1s, `schedule_auto_tick`), per-minute dedup keyed {y,m,d,h,min} per expr; `tick_at/1` injects a deterministic clock for tests
+- config/config.exs sets `schedule_auto_tick: false` for config_env() == :test (wall-clock ticks would race deterministic tests)
+- register/register_fn now return {:error, reason} for invalid crons (existing prop/statem generators only emit valid forms)
+- Server.init registers `:schedule` entries from `__handlers__/0` — note: queue/topic subscribe have NO production call site (Server only wires HTTP + schedule); gap filed as issue
+- trigger/1 stays dedup-free (manual test path)
+
 ## Known Bug Found 2026-06-10 (filed as issue)
 - **Int string interpolation emits raw codepoint**: `"${n}"` with n=42 yields "*" (binary segment treats Int as a byte) — needs to_string coercion in codegen interpolation
 
