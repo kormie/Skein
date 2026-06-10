@@ -117,7 +117,23 @@ module Calculator {
 }
 ```
 
-All functions are exported from the compiled BEAM module. There is currently no visibility modifier (all functions are public).
+All functions are exported from the compiled BEAM module for Elixir interop and runtime dispatch. There is no visibility modifier — but note that from *Skein* code, functions are module-private: another Skein module cannot call them (see Module Boundaries below).
+
+## Module Boundaries
+
+**Tools are the only cross-module seam.** A module's functions, types, and enums are private to that module. There is no `import`, no `use`, and no qualified cross-module function call — `OtherModule.fn_name(args)` is not Skein. To invoke code in another module, that module must expose a tool, and the caller must declare the grant:
+
+```skein
+-- Module A: declare the grant, then call
+capability tool.use(Billing.CreateRefund)
+let result = tool.call(Billing.CreateRefund, { ticket_id: id })
+```
+
+Dotted calls with an uppercase head (`String.upcase(s)`) are reserved for the standard library, which is ambient — available everywhere with no declaration.
+
+This is a deliberate design decision: tool boundaries keep capability grants explicit at the call site, validate every cross-module payload against a schema, and produce a trace span for every call. The full rationale lives in the spec's [Module Boundaries section](https://github.com/kormie/Skein/blob/main/docs/SKEIN_SPEC.md#module-boundaries-tools-are-the-only-cross-module-seam).
+
+Unit tests are co-located in the module body (`test`, `scenario`, `golden` declarations), where the functions under test are in scope. Cross-module integration tests go through `tool.call`, exactly as production callers do.
 
 ## How Functions Compile
 
