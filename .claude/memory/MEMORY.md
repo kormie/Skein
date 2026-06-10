@@ -14,6 +14,7 @@
 - All test constructs (test/scenario/golden) use `__test_N__/0` functions and `__tests__/0` metadata
 - Trace.init/0 uses try/rescue around ETS creation for concurrent safety
 - Parser uses `expect_ident_value` for contextual keywords (from, trace)
+- Parser targeted errors: known section/entry name + wrong following token → `missing_token_after_error` ("Missing ':' after 'description'", fix_code ":"); `expect/3` messages print source text (':' not 'colon'); `unexpected_token_error/4` takes explicit fix_code
 - `compile_string/1` is the test helper for integration tests
 - `compile_file/1` is the integration test helper for .skein file examples
 
