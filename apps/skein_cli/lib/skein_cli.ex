@@ -16,6 +16,7 @@ defmodule Skein.CLI do
   - `trace` — View recent trace spans
   """
 
+  alias Skein.CLI.AgentsMd
   alias Skein.Compiler
 
   # ------------------------------------------------------------------
@@ -49,6 +50,8 @@ defmodule Skein.CLI do
   Creates a project structure with:
   - `skein.toml` — project configuration
   - `README.md` — project readme
+  - `AGENTS.md` — Skein primer for coding agents (skip with `--no-agents`)
+  - `CLAUDE.md` — one-line pointer to AGENTS.md
   - `src/main.skein` — example source file
   - `test/main_test.skein` — example test file
 
@@ -56,10 +59,29 @@ defmodule Skein.CLI do
   """
   @spec new([String.t()]) :: {:ok, String.t()} | {:error, String.t()}
   def new([]) do
-    {:error, "Usage: skein new <project-directory>"}
+    {:error, "Usage: skein new <project-directory> [--no-agents]"}
   end
 
-  def new([project_dir | _]) do
+  def new(args) do
+    {flags, positional} = Enum.split_with(args, &String.starts_with?(&1, "-"))
+
+    with :ok <- validate_new_flags(flags),
+         [project_dir | _] <- positional do
+      do_new(project_dir, "--no-agents" not in flags)
+    else
+      [] -> {:error, "Usage: skein new <project-directory> [--no-agents]"}
+      {:error, _} = err -> err
+    end
+  end
+
+  defp validate_new_flags(flags) do
+    case Enum.reject(flags, &(&1 == "--no-agents")) do
+      [] -> :ok
+      [flag | _] -> {:error, "Unknown option: #{flag} (run 'skein help' for usage)"}
+    end
+  end
+
+  defp do_new(project_dir, write_agents_md?) do
     project_dir = Path.expand(project_dir)
     name = Path.basename(project_dir)
 
@@ -75,7 +97,37 @@ defmodule Skein.CLI do
       File.write!(Path.join(project_dir, "src/main.skein"), main_skein(name))
       File.write!(Path.join(project_dir, "test/main_test.skein"), main_test_skein(name))
 
+      if write_agents_md? do
+        File.write!(Path.join(project_dir, "AGENTS.md"), AgentsMd.render())
+        File.write!(Path.join(project_dir, "CLAUDE.md"), AgentsMd.claude_md_pointer())
+      end
+
       {:ok, project_dir}
+    end
+  end
+
+  # ------------------------------------------------------------------
+  # agents — create or refresh AGENTS.md in an existing project
+  # ------------------------------------------------------------------
+
+  @doc """
+  Creates `AGENTS.md` in a project (default: current directory) or
+  updates only the generated block of an existing one. User content
+  outside the marker comments is preserved. Regeneration is idempotent
+  for a given toolchain version.
+
+  Returns `{:ok, %{path: path, action: :created | :updated}}`.
+  """
+  @spec agents([String.t()]) :: {:ok, map()} | {:error, String.t()}
+  def agents(args) do
+    with {:ok, project_dir, _opts} <- parse_project_args(args, %{}) do
+      project_dir = Path.expand(project_dir)
+
+      if File.dir?(project_dir) do
+        AgentsMd.upsert(project_dir)
+      else
+        {:error, "No such directory: #{project_dir}"}
+      end
     end
   end
 

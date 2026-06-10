@@ -202,3 +202,11 @@
 - **process.spawn("name")**: string clause spawns a supervised no-op task (task name in trace span); task bodies are a roadmap item. event.log param-level runtime checks blocked on surface design (capability param is a stream label, call carries event name) — documented in ROADMAP item 7.
 - `examples/README.md` is the example index; examples_test covers all 14. `compile_string` success returns `{:module, mod}` (not `{:ok, mod}`).
 - llm.embed has no real backend (Anthropic has no embeddings API) — semantic_search example declares voyage model and documents this.
+
+## Agent Context Injection (issue #89 — 2026-06-10)
+- `skein new` scaffolds AGENTS.md (+ CLAUDE.md pointer); `--no-agents` skips; `skein agents` regenerates only the `<!-- skein:generated:start/end -->` block, preserving user content
+- Primer single source: `docs/site/src/content/docs/reference/agent-primer.md` — embedded into `Skein.CLI.AgentsMd` at compile time via `@external_resource` (body = from first `## ` heading, drops frontmatter/intro)
+- `skein mcp`: hand-rolled newline-delimited JSON-RPC stdio server in `Skein.CLI.Mcp` (no deps); SKEIN_SPEC.md embedded at build time, parsed into sections cached in :persistent_term
+- MCP tools: skein_spec_lookup (number or title fragment), skein_docs_search, skein_compile_check (Jason-encodes %Skein.Error{} directly — @derive Jason.Encoder)
+- mcp/lsp subcommands both must route :logger default handler to stderr (they own stdout)
+- Docs: editor/mcp-server.md + reference/agent-primer.md, both in astro.config.mjs sidebar

@@ -73,7 +73,9 @@ skein/
 │   │   │   ├── skein_cli.ex
 │   │   │   └── skein/
 │   │   │       └── cli/
-│   │   │           └── main.ex
+│   │   │           ├── main.ex
+│   │   │           ├── agents_md.ex     # AGENTS.md scaffolding/regen (skein new / skein agents)
+│   │   │           └── mcp.ex           # MCP stdio server (skein mcp)
 │   │   └── test/
 │   └── skein_lsp/               # Language Server Protocol implementation
 │       ├── lib/
