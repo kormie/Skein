@@ -394,6 +394,347 @@ defmodule Skein.Integration.ToolTest do
   end
 
   # ------------------------------------------------------------------
+  # Compiled implement blocks + module registration (issue #79)
+  # ------------------------------------------------------------------
+
+  describe "tool implement blocks compiled to entry points" do
+    test "__tools__ metadata carries the impl entry point" do
+      mod =
+        compile!("""
+        module ImplMetaService {
+          tool Meta.Implemented {
+            input { x: Int }
+            output { y: Int }
+            implement { Ok({ y: x }) }
+          }
+        }
+        """)
+
+      [tool] = mod.__tools__()
+      assert tool.impl == :__tool_impl_0__
+      assert function_exported?(mod, :__tool_impl_0__, 1)
+    end
+
+    test "tool without implement block is rejected by the parser" do
+      assert {:error, [error | _]} =
+               Skein.Compiler.compile_string("""
+               module ImplMetaNone {
+                 tool Meta.Unimplemented {
+                   input { x: Int }
+                   output { y: Int }
+                 }
+               }
+               """)
+
+      assert error.message =~ "implement"
+    end
+
+    test "impl entry point binds input fields and evaluates the body" do
+      mod =
+        compile!("""
+        module ImplDirectService {
+          tool Direct.Add {
+            input {
+              a: Int
+              b: Int
+            }
+            output { sum: Int }
+            implement { Ok({ sum: a + b }) }
+          }
+        }
+        """)
+
+      assert {:ok, %{sum: 5}} = mod.__tool_impl_0__(%{a: 2, b: 3})
+    end
+
+    test "implement block can call module-local functions" do
+      mod =
+        compile!("""
+        module ImplLocalFns {
+          fn greeting_for(name: String) -> String {
+            "Hello, ${name}!"
+          }
+
+          tool Local.Greet {
+            input { name: String }
+            output { greeting: String }
+            implement { Ok({ greeting: greeting_for(name) }) }
+          }
+        }
+        """)
+
+      assert {:ok, %{greeting: "Hello, Ada!"}} = mod.__tool_impl_0__(%{name: "Ada"})
+    end
+
+    test "each tool's impl entry point follows its declaration index" do
+      mod =
+        compile!("""
+        module ImplMixed {
+          tool Mixed.First {
+            input { x: Int }
+            output { y: Int }
+            implement { Ok({ y: x + 1 }) }
+          }
+
+          tool Mixed.Second {
+            input { x: Int }
+            output { y: Int }
+            implement { Ok({ y: x + 2 }) }
+          }
+        }
+        """)
+
+      [first, second] = mod.__tools__()
+      assert first.impl == :__tool_impl_0__
+      assert second.impl == :__tool_impl_1__
+      assert {:ok, %{y: 10}} = mod.__tool_impl_0__(%{x: 9})
+      assert {:ok, %{y: 11}} = mod.__tool_impl_1__(%{x: 9})
+    end
+  end
+
+  describe "cross-module tool.call end-to-end (definer + caller)" do
+    test "caller invokes a tool registered from another compiled module" do
+      definer =
+        compile!("""
+        module MathToolService {
+          tool Math.Add {
+            description: "Add two integers"
+            input {
+              a: Int
+              b: Int
+            }
+            output { sum: Int }
+            implement { Ok({ sum: a + b }) }
+          }
+        }
+        """)
+
+      Skein.Runtime.Tool.register_module(definer)
+
+      caller =
+        compile!("""
+        module MathToolCaller {
+          capability tool.use(Math.Add)
+
+          fn add_via_tool(a: Int, b: Int) -> Int {
+            let result = tool.call(Math.Add, { a: a, b: b })!
+            result.sum
+          }
+        }
+        """)
+
+      assert caller.add_via_tool(2, 3) == 5
+    end
+
+    test "caller can match on the tool result" do
+      definer =
+        compile!("""
+        module ParityToolService {
+          tool Parity.Check {
+            input { n: Int }
+            output { even: Bool }
+            implement { Ok({ even: n == 0 }) }
+          }
+        }
+        """)
+
+      Skein.Runtime.Tool.register_module(definer)
+
+      caller =
+        compile!("""
+        module ParityToolCaller {
+          capability tool.use(Parity.Check)
+
+          fn check(n: Int) -> String {
+            match tool.call(Parity.Check, { n: n }) {
+              Ok(r) -> "got result"
+              Err(e) -> "tool failed"
+            }
+          }
+        }
+        """)
+
+      assert caller.check(0) == "got result"
+    end
+
+    test "input validation against the declared schema applies cross-module" do
+      definer =
+        compile!("""
+        module StrictToolService {
+          tool Strict.Echo {
+            input { message: String }
+            output { echoed: String }
+            implement { Ok({ echoed: message }) }
+          }
+        }
+        """)
+
+      Skein.Runtime.Tool.register_module(definer)
+
+      caller =
+        compile!("""
+        module StrictToolCaller {
+          capability tool.use(Strict.Echo)
+
+          fn bad_call() -> String {
+            tool.call(Strict.Echo, { message: 42 })
+          }
+        }
+        """)
+
+      assert {:error, error} = caller.bad_call()
+      assert error.kind == :validation_error
+    end
+
+    test "implement Err(...) surfaces as execution_error to the caller" do
+      definer =
+        compile!("""
+        module FailingToolService {
+          tool Failing.Always {
+            input { reason: String }
+            output { ok: Bool }
+            errors { ToolFailure }
+            implement { Err(ToolFailure.from(reason)) }
+          }
+        }
+        """)
+
+      Skein.Runtime.Tool.register_module(definer)
+
+      caller =
+        compile!("""
+        module FailingToolCaller {
+          capability tool.use(Failing.Always)
+
+          fn call_it() -> String {
+            tool.call(Failing.Always, { reason: "nope" })
+          }
+        }
+        """)
+
+      assert {:error, error} = caller.call_it()
+      assert error.kind == :execution_error
+      assert error.detail.error =~ "tool_failure"
+    end
+
+    test "implement match arms route Ok and Err results" do
+      definer =
+        compile!("""
+        module BranchingToolService {
+          fn risky(n: Int) -> String {
+            match n {
+              0 -> Err("zero not allowed")
+              other -> Ok(other)
+            }
+          }
+
+          tool Branching.Compute {
+            input { n: Int }
+            output { value: Int }
+            implement {
+              match risky(n) {
+                Ok(v) -> Ok({ value: v })
+                Err(e) -> Err(e)
+              }
+            }
+          }
+        }
+        """)
+
+      Skein.Runtime.Tool.register_module(definer)
+
+      caps = [%{kind: "tool.use", params: ["Branching.Compute"]}]
+
+      assert {:ok, %{value: 7}} =
+               Skein.Runtime.Tool.call("Branching.Compute", %{n: 7}, caps)
+
+      assert {:error, error} = Skein.Runtime.Tool.call("Branching.Compute", %{n: 0}, caps)
+      assert error.kind == :execution_error
+      assert error.detail.error =~ "zero not allowed"
+    end
+  end
+
+  # ------------------------------------------------------------------
+  # Result/enum variant construction in expression position
+  # ------------------------------------------------------------------
+
+  describe "variant construction in expression position" do
+    test "Ok and Err construct runtime result tuples" do
+      mod =
+        compile!("""
+        module VariantResultExprs {
+          fn make_ok(x: Int) -> String { Ok(x) }
+          fn make_err(msg: String) -> String { Err(msg) }
+        }
+        """)
+
+      assert mod.make_ok(42) == {:ok, 42}
+      assert mod.make_err("boom") == {:error, "boom"}
+    end
+
+    test "constructed results round-trip through match patterns" do
+      mod =
+        compile!("""
+        module VariantRoundTrip {
+          fn make(n: Int) -> String {
+            match n {
+              0 -> Err("zero")
+              other -> Ok(other)
+            }
+          }
+
+          fn classify(n: Int) -> String {
+            match make(n) {
+              Ok(v) -> "ok"
+              Err(e) -> e
+            }
+          }
+        }
+        """)
+
+      assert mod.classify(3) == "ok"
+      assert mod.classify(0) == "zero"
+    end
+
+    test "dotted enum variant construction matches variant patterns" do
+      mod =
+        compile!("""
+        module VariantDotted {
+          enum Event {
+            Charge(amount: Int)
+            Refund(amount: Int)
+          }
+
+          fn charge(n: Int) -> String { Event.Charge(n) }
+
+          fn describe(n: Int) -> String {
+            match charge(n) {
+              Event.Charge(amount) -> "charged"
+              Event.Refund(amount) -> "refunded"
+            }
+          }
+        }
+        """)
+
+      assert mod.charge(5) == {:charge, 5}
+      assert mod.describe(5) == "charged"
+    end
+
+    test "ErrorName.from(cause) wraps the cause in an error variant" do
+      mod =
+        compile!("""
+        module VariantFrom {
+          fn wrap(cause: String) -> String {
+            SearchError.from(cause)
+          }
+        }
+        """)
+
+      assert mod.wrap("timeout") == {:search_error, "timeout"}
+    end
+  end
+
+  # ------------------------------------------------------------------
   # Tool identifier references — end-to-end (capability-as-import)
   # ------------------------------------------------------------------
 

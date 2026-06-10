@@ -14,6 +14,7 @@
 - All test constructs (test/scenario/golden) use `__test_N__/0` functions and `__tests__/0` metadata
 - Trace.init/0 uses try/rescue around ETS creation for concurrent safety
 - Parser uses `expect_ident_value` for contextual keywords (from, trace)
+- Parser targeted errors: known section/entry name + wrong following token → `missing_token_after_error` ("Missing ':' after 'description'", fix_code ":"); `expect/3` messages print source text (':' not 'colon'); `unexpected_token_error/4` takes explicit fix_code
 - `compile_string/1` is the test helper for integration tests
 - `compile_file/1` is the integration test helper for .skein file examples
 
@@ -27,6 +28,7 @@
 - Compiler errors get their file path from Parser.parse(tokens, path) meta; lexer errors are stamped after the fact in Skein.Compiler
 
 ## Key Technical Details
+- Prefix unary minus is `%AST.UnaryOp{op: :negate}` — parser `parse_unary_expr` minus clause, analyzer types it Int→Int/Float→Float (E0020 otherwise), codegen calls `erlang:'-'/1`. No negative-literal token; binds tighter than binary arithmetic.
 - `input` is a keyword token in Skein — use `ctx` or typed params in agents
 - `stop` must be called as `stop()` with parens in agent handlers
 - Handler AST: `%Handler{source, method, route, param, body, meta}` — `method` is nil for queue/schedule

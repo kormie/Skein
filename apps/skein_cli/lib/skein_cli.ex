@@ -35,10 +35,18 @@ defmodule Skein.CLI do
 
   def compile([path | _]) do
     case Compiler.compile_file(path) do
-      {:module, mod} -> {:ok, mod}
-      {:error, _} = err -> err
+      {:module, mod} ->
+        register_tools(mod)
+        {:ok, mod}
+
+      {:error, _} = err ->
+        err
     end
   end
+
+  # Every CLI path that loads a compiled module registers its declared
+  # tools so cross-module tool.call(...) resolves at runtime.
+  defp register_tools(mod), do: Skein.Runtime.Tool.register_module(mod)
 
   # ------------------------------------------------------------------
   # new — project scaffolding
@@ -241,6 +249,7 @@ defmodule Skein.CLI do
       |> Enum.reduce({[], []}, fn file, {mods, fails} ->
         case Compiler.compile_file(file) do
           {:module, mod} ->
+            register_tools(mod)
             {[mod | mods], fails}
 
           {:error, errors} ->
@@ -273,6 +282,7 @@ defmodule Skein.CLI do
 
             # Also load into VM for immediate use
             :code.load_binary(module_name, ~c"#{beam_path}", beam_binary)
+            register_tools(module_name)
 
             {[module_name | mods], [beam_path | beams], fails}
 
@@ -354,6 +364,7 @@ defmodule Skein.CLI do
           |> Enum.reduce({[], []}, fn file, {results_acc, failed_acc} ->
             case Compiler.compile_file(file) do
               {:module, mod} ->
+                register_tools(mod)
                 file_results = run_tests_for_file(mod, file)
                 {results_acc ++ file_results, failed_acc}
 
@@ -430,8 +441,12 @@ defmodule Skein.CLI do
         skein_files
         |> Enum.reduce([], fn file, acc ->
           case Compiler.compile_file(file) do
-            {:module, mod} -> [mod | acc]
-            {:error, _} -> acc
+            {:module, mod} ->
+              register_tools(mod)
+              [mod | acc]
+
+            {:error, _} ->
+              acc
           end
         end)
 

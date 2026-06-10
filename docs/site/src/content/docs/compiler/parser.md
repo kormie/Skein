@@ -45,7 +45,7 @@ parse_pipe_expr          level 1 (lowest): |>
         -> parse_compare level 5: <, >, <=, >=
           -> parse_add   level 6: +, -
             -> parse_mul level 7: *, /
-              -> parse_unary    level 8: ! (prefix)
+              -> parse_unary    level 8: !, - (prefix)
                 -> parse_postfix level 9: !, ? (postfix)
                   -> parse_primary  level 10: literals, identifiers, calls
 ```

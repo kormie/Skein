@@ -446,4 +446,101 @@ defmodule Skein.AnalyzerPropertyTest do
              "Expected #{length(methods)} E0012 errors, got #{length(capability_errors)}"
     end
   end
+
+  # ------------------------------------------------------------------
+  # Cross-module function calls (E0016)
+  # ------------------------------------------------------------------
+
+  @stdlib_modules ~w(String Int Float List Map Set Option Result Uuid Instant Duration)
+
+  defp upper_ident_gen do
+    gen all(
+          first <- StreamData.string([?A..?Z], length: 1),
+          rest <-
+            StreamData.string([?a..?z, ?A..?Z, ?0..?9, ?_], max_length: 8)
+        ) do
+      first <> rest
+    end
+  end
+
+  # Prefix with "z" so generated names never collide with keywords
+  defp fn_name_gen do
+    gen all(rest <- StreamData.string([?a..?z, ?0..?9, ?_], max_length: 8)) do
+      "z" <> rest
+    end
+  end
+
+  property "any non-stdlib UpperIdent call head produces E0016" do
+    check all(
+            mod_name <-
+              StreamData.filter(
+                upper_ident_gen(),
+                &(&1 not in @stdlib_modules and &1 != "Caller")
+              ),
+            fn_name <- fn_name_gen()
+          ) do
+      source = """
+      module Caller {
+        fn run() -> String {
+          #{mod_name}.#{fn_name}("x")
+        }
+      }
+      """
+
+      errors = analyze_errors(source)
+
+      assert Enum.any?(errors, &(&1.code == "E0016")),
+             "Expected E0016 for #{mod_name}.#{fn_name}, got: #{inspect(Enum.map(errors, & &1.code))}"
+    end
+  end
+
+  property "stdlib module call heads never produce E0016" do
+    check all(
+            mod_name <- StreamData.member_of(@stdlib_modules),
+            fn_name <- fn_name_gen()
+          ) do
+      source = """
+      module Caller {
+        fn run() -> String {
+          #{mod_name}.#{fn_name}("x")
+        }
+      }
+      """
+
+      errors = analyze_errors(source)
+
+      refute Enum.any?(errors, &(&1.code == "E0016")),
+             "Did not expect E0016 for stdlib head #{mod_name}.#{fn_name}"
+    end
+  end
+
+  property "E0016 errors always carry a tool-seam fix_hint and fix_code and serialize to JSON" do
+    check all(
+            mod_name <-
+              StreamData.filter(
+                upper_ident_gen(),
+                &(&1 not in @stdlib_modules and &1 != "Caller")
+              ),
+            fn_name <- fn_name_gen()
+          ) do
+      source = """
+      module Caller {
+        fn run() -> String {
+          #{mod_name}.#{fn_name}("x")
+        }
+      }
+      """
+
+      errors = analyze_errors(source)
+      e0016 = Enum.find(errors, &(&1.code == "E0016"))
+
+      assert e0016 != nil
+      assert e0016.fix_hint =~ "tool"
+      assert e0016.fix_code =~ "capability tool.use(#{mod_name}."
+      assert e0016.fix_code =~ "tool.call(#{mod_name}."
+
+      decoded = e0016 |> Skein.Error.to_json() |> Jason.decode!()
+      assert decoded["code"] == "E0016"
+    end
+  end
 end

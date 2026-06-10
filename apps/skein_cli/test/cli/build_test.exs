@@ -47,6 +47,52 @@ defmodule Skein.CLI.BuildTest do
       assert length(result.modules) == 2
     end
 
+    test "registers declared tools from compiled modules", %{tmp_dir: tmp, src_dir: src} do
+      Skein.Runtime.Tool.clear_registry()
+
+      File.write!(Path.join(src, "tools.skein"), """
+      module BuildToolService {
+        tool Build.Double {
+          description: "Doubles an integer"
+          input { n: Int }
+          output { doubled: Int }
+          implement { Ok({ doubled: n + n }) }
+        }
+      }
+      """)
+
+      assert {:ok, result} = CLI.build([tmp])
+      assert result.errors == 0
+
+      caps = [%{kind: "tool.use", params: ["Build.Double"]}]
+      assert {:ok, %{doubled: 8}} = Skein.Runtime.Tool.call("Build.Double", %{n: 4}, caps)
+    end
+
+    test "registers tools when building to disk with --output", %{
+      tmp_dir: tmp,
+      src_dir: src,
+      build_dir: build
+    } do
+      Skein.Runtime.Tool.clear_registry()
+
+      File.write!(Path.join(src, "tools.skein"), """
+      module BuildDiskToolService {
+        tool BuildDisk.Triple {
+          description: "Triples an integer"
+          input { n: Int }
+          output { tripled: Int }
+          implement { Ok({ tripled: n + n + n }) }
+        }
+      }
+      """)
+
+      assert {:ok, result} = CLI.build([tmp, "--output", build])
+      assert result.errors == 0
+
+      caps = [%{kind: "tool.use", params: ["BuildDisk.Triple"]}]
+      assert {:ok, %{tripled: 9}} = Skein.Runtime.Tool.call("BuildDisk.Triple", %{n: 3}, caps)
+    end
+
     test "reports compilation errors without stopping", %{tmp_dir: tmp, src_dir: src} do
       File.write!(Path.join(src, "good.skein"), """
       module Good {
