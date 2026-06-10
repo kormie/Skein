@@ -86,10 +86,12 @@ defmodule Skein.CodeGen.CoreErlang do
       |> Enum.filter(&match?(%AST.Handler{}, &1))
       |> Enum.with_index()
 
-    # Collect tool declarations
+    # Collect tool declarations. Each tool keeps its index so implement
+    # entry points (__tool_impl_N__/1) line up with __tools__/0 metadata.
     tools =
       ast.declarations
       |> Enum.filter(&match?(%AST.ToolDecl{}, &1))
+      |> Enum.with_index()
 
     # Collect supervisor declarations
     supervisors =
@@ -128,6 +130,23 @@ defmodule Skein.CodeGen.CoreErlang do
       Enum.map(handlers, fn {handler, index} ->
         fname = :cerl.c_fname(handler_fn_name(index), 1)
         fun = generate_handler_fn(handler, capabilities, fn_arities, type_decls)
+        {fname, fun}
+      end)
+
+    # Build tool implement entry points (__tool_impl_N__/1) for tools
+    # declaring an implement block
+    implemented_tools =
+      Enum.filter(tools, fn {tool, _index} -> tool.implement != nil end)
+
+    tool_impl_exports =
+      Enum.map(implemented_tools, fn {_tool, index} ->
+        :cerl.c_fname(tool_impl_fn_name(index), 1)
+      end)
+
+    tool_impl_defs =
+      Enum.map(implemented_tools, fn {tool, index} ->
+        fname = :cerl.c_fname(tool_impl_fn_name(index), 1)
+        fun = generate_tool_impl_fn(tool, capabilities, fn_arities, type_decls)
         {fname, fun}
       end)
 
@@ -178,7 +197,7 @@ defmodule Skein.CodeGen.CoreErlang do
         supervisors_fname
         | fn_exports
       ] ++
-        handler_exports ++ test_exports
+        handler_exports ++ tool_impl_exports ++ test_exports
 
     all_defs =
       [
@@ -189,7 +208,7 @@ defmodule Skein.CodeGen.CoreErlang do
         {tests_fname, tests_fun},
         {supervisors_fname, supervisors_fun}
         | fn_defs
-      ] ++ handler_defs ++ test_defs
+      ] ++ handler_defs ++ tool_impl_defs ++ test_defs
 
     mod =
       :cerl.c_module(
@@ -712,6 +731,8 @@ defmodule Skein.CodeGen.CoreErlang do
   # Convert enum variant name to a runtime atom.
   # "Event.Charge" -> :charge, "ChargeSucceeded" -> :charge_succeeded
   # Strips the enum prefix (before the dot) if present and converts to snake_case atom.
+  # "Err" maps to :error so Result values line up with the runtime's
+  # {:ok, _} | {:error, _} convention ("Ok" -> :ok falls out naturally).
   defp variant_pattern_atom(name) when is_binary(name) do
     # Take the part after the last dot (the variant name itself)
     base =
@@ -721,9 +742,15 @@ defmodule Skein.CodeGen.CoreErlang do
         parts -> List.last(parts)
       end
 
-    base
-    |> to_snake_case()
-    |> String.to_atom()
+    case base do
+      "Err" ->
+        :error
+
+      other ->
+        other
+        |> to_snake_case()
+        |> String.to_atom()
+    end
   end
 
   defp to_snake_case(name) do
@@ -884,15 +911,26 @@ defmodule Skein.CodeGen.CoreErlang do
   defp capability_param_to_string(%AST.Identifier{name: name}), do: name
   defp capability_param_to_string(_), do: ""
 
-  # Generate __tools__/0 function that returns tool metadata with JSON Schema
+  # Generate __tools__/0 function that returns tool metadata with JSON Schema.
+  # Takes {tool, index} pairs; tools with an implement block carry the name
+  # of their compiled __tool_impl_N__/1 entry point under :impl (nil otherwise).
   defp generate_tools_meta_fn(tools) do
     tools_list =
       tools
-      |> Enum.map(fn %AST.ToolDecl{name: name, description: desc, input: input, output: output} ->
+      |> Enum.map(fn {%AST.ToolDecl{name: name, description: desc, input: input, output: output} =
+                        tool, index} ->
         name_pair =
           :cerl.c_map_pair(
             :cerl.c_atom(:name),
             :cerl.abstract(name)
+          )
+
+        impl_atom = if tool.implement, do: tool_impl_fn_name(index), else: nil
+
+        impl_pair =
+          :cerl.c_map_pair(
+            :cerl.c_atom(:impl),
+            :cerl.abstract(impl_atom)
           )
 
         desc_pair =
@@ -958,12 +996,52 @@ defmodule Skein.CodeGen.CoreErlang do
           input_pair,
           input_schema_pair,
           output_pair,
-          output_schema_pair
+          output_schema_pair,
+          impl_pair
         ])
       end)
       |> :cerl.make_list()
 
     :cerl.c_fun([], tools_list)
+  end
+
+  defp tool_impl_fn_name(index), do: String.to_atom("__tool_impl_#{index}__")
+
+  # Generate a tool's implement block as a 1-arity function taking the
+  # input map. Each declared input field is bound from the map (atom keys,
+  # matching MapLit codegen) before the body runs, so the implement body
+  # references inputs as plain identifiers.
+  defp generate_tool_impl_fn(
+         %AST.ToolDecl{input: input, implement: body},
+         capabilities,
+         fn_arities,
+         type_decls
+       ) do
+    input_var = :cerl.c_var(:ToolInput)
+    fields = input || []
+
+    scope =
+      fields
+      |> Map.new(fn %AST.Field{name: name} -> {name, var_name(name)} end)
+      |> Map.put(:__capabilities__, capabilities)
+      |> Map.put(:__fn_arities__, fn_arities)
+      |> Map.put(:__type_decls__, type_decls)
+
+    inner_body = generate_expr(body, scope)
+
+    wrapped =
+      Enum.reduce(Enum.reverse(fields), inner_body, fn %AST.Field{name: name}, acc ->
+        extract =
+          :cerl.c_call(
+            :cerl.c_atom(:erlang),
+            :cerl.c_atom(:map_get),
+            [:cerl.c_atom(String.to_atom(name)), input_var]
+          )
+
+        :cerl.c_let([:cerl.c_var(var_name(name))], extract, acc)
+      end)
+
+    :cerl.c_fun([input_var], wrapped)
   end
 
   # Generate __tests__/0 function that returns test metadata
@@ -1818,6 +1896,57 @@ defmodule Skein.CodeGen.CoreErlang do
       expr_val,
       :cerl.c_case(result_var, [ok_clause, fail_clause])
     )
+  end
+
+  # Result/enum variant construction in expression position: Ok(x), Err(e),
+  # ChargeSucceeded(id, amount). Mirrors generate_pattern's variant handling
+  # so constructed values match their patterns: {:variant_atom, Arg1, ...}.
+  # Skein function names are lowercase, so an uppercase call target is
+  # always a variant constructor.
+  defp generate_expr(%AST.Call{target: %AST.Identifier{name: name}, args: args}, scope)
+       when binary_part(name, 0, 1) >= "A" and binary_part(name, 0, 1) <= "Z" do
+    args_exprs = Enum.map(args, &generate_expr(&1, scope))
+    :cerl.c_tuple([:cerl.c_atom(variant_pattern_atom(name)) | args_exprs])
+  end
+
+  # Error conversion: ErrName.from(cause) wraps a cause in a declared error
+  # variant, e.g. SearchError.from(e) -> {:search_error, E}. This is the
+  # spec section 8.4 pattern for implement-block error handling.
+  defp generate_expr(
+         %AST.Call{
+           target: %AST.FieldAccess{
+             subject: %AST.Identifier{name: error_name},
+             field: "from"
+           },
+           args: [arg]
+         },
+         scope
+       )
+       when binary_part(error_name, 0, 1) >= "A" and binary_part(error_name, 0, 1) <= "Z" do
+    :cerl.c_tuple([
+      :cerl.c_atom(variant_pattern_atom(error_name)),
+      generate_expr(arg, scope)
+    ])
+  end
+
+  # Dotted enum variant construction: Event.Charge(amount) -> {:charge, Amount}.
+  # Stdlib modules (String.upcase, Result.ok, ...) and effect namespaces are
+  # matched by earlier clauses, so an Upper.Upper(...) call here is always a
+  # variant constructor.
+  defp generate_expr(
+         %AST.Call{
+           target: %AST.FieldAccess{
+             subject: %AST.Identifier{name: enum_name},
+             field: variant_name
+           },
+           args: args
+         },
+         scope
+       )
+       when binary_part(enum_name, 0, 1) >= "A" and binary_part(enum_name, 0, 1) <= "Z" and
+              binary_part(variant_name, 0, 1) >= "A" and binary_part(variant_name, 0, 1) <= "Z" do
+    args_exprs = Enum.map(args, &generate_expr(&1, scope))
+    :cerl.c_tuple([:cerl.c_atom(variant_pattern_atom(variant_name)) | args_exprs])
   end
 
   # Function call

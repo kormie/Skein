@@ -2711,7 +2711,9 @@ defmodule Skein.CodeGen.CoreErlangTest do
         """)
 
       assert mod.unwrap_or({:ok, 42}, 0) == 42
-      assert mod.unwrap_or({:err, "oops"}, 0) == 0
+      # Err variants lower to :error, matching the runtime's {:ok, _} | {:error, _}
+      # Result convention and what Err(...) constructs in expression position.
+      assert mod.unwrap_or({:error, "oops"}, 0) == 0
     end
   end
 
