@@ -1,5 +1,10 @@
 # Skein
 
+[![Release](https://img.shields.io/github/v/release/kormie/Skein)](https://github.com/kormie/Skein/releases)
+[![CI](https://github.com/kormie/Skein/actions/workflows/ci.yml/badge.svg)](https://github.com/kormie/Skein/actions/workflows/ci.yml)
+[![Docs](https://github.com/kormie/Skein/actions/workflows/deploy-docs.yml/badge.svg)](https://github.com/kormie/Skein/actions/workflows/deploy-docs.yml)
+[![Downloads](https://img.shields.io/github/downloads/kormie/Skein/total)](https://github.com/kormie/Skein/releases)
+
 **A programming language where AI agents are first-class citizens.**
 
 Skein compiles to BEAM bytecode and runs on the Erlang VM — the same battle-tested runtime behind WhatsApp, Discord, and millions of telecom systems. It's designed for building cloud services where reliability matters and AI agents do real work.
@@ -253,7 +258,7 @@ note that workflow artifacts expire after a while — prefer a release.)
 chmod +x skein-*
 mv skein-* /usr/local/bin/skein
 
-skein version             # → skein 0.1.2
+skein version             # → skein 0.1.5
 
 # Compile a file
 skein compile hello.skein

@@ -1,0 +1,143 @@
+name: Release
+
+# Auto-tag + release on green merges to main.
+#
+# Releasing is "merge a PR that bumps the version" — there is no manual tag
+# step. The flow:
+#
+#   1. CI must pass on the push to main (a red merge never tags — this workflow
+#      only fires on a *successful* CI run for a push to the main branch).
+#   2. The root mix.exs version (which apps/skein_cli/mix.exs must agree with)
+#      decides the tag. If v{version} already exists this is a no-op — most
+#      merges don't bump the version.
+#   3. A new version must carry a dated CHANGELOG section and version strings in
+#      the docs that match, then an annotated tag is created and pushed.
+#   4. The release build is invoked directly via `workflow_call` on build.yml.
+#
+# Why workflow_call instead of letting the pushed tag trigger build.yml: a tag
+# pushed with the default GITHUB_TOKEN does NOT trigger other workflows, so
+# build.yml's `tags: ["v*"]` trigger would never fire. Calling it directly keeps
+# everything in-repo with no long-lived PAT. (Manually pushing a `v*` tag still
+# triggers build.yml the old way — that path is unchanged.)
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+
+permissions:
+  contents: write
+
+jobs:
+  tag:
+    name: Auto-tag version bumps
+    # Only act on a successful CI run for a push to main. PR runs (event ==
+    # 'pull_request') and red runs are ignored.
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main'
+    runs-on: ubuntu-latest
+    outputs:
+      tagged: ${{ steps.tag.outputs.tagged }}
+      tag: ${{ steps.tag.outputs.tag }}
+      version: ${{ steps.tag.outputs.version }}
+    steps:
+      - name: Check out the merged commit
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+
+      - name: Tag the release if the version bumped
+        id: tag
+        env:
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+
+          # Read the first `version: "x.y.z"` from a mix.exs.
+          read_version() {
+            grep -E '^[[:space:]]*version:[[:space:]]*"' "$1" | head -1 \
+              | sed -E 's/.*version:[[:space:]]*"([^"]+)".*/\1/'
+          }
+
+          VERSION="$(read_version mix.exs || true)"
+          CLI_VERSION="$(read_version apps/skein_cli/mix.exs || true)"
+          echo "Root mix.exs version:      ${VERSION:-<empty>}"
+          echo "skein_cli mix.exs version: ${CLI_VERSION:-<empty>}"
+
+          if [ -z "$VERSION" ]; then
+            echo "::error::Could not read a version from mix.exs"
+            exit 1
+          fi
+
+          # 1. The two version sources must agree.
+          if [ "$VERSION" != "$CLI_VERSION" ]; then
+            echo "::error::Version mismatch: mix.exs is '$VERSION' but apps/skein_cli/mix.exs is '$CLI_VERSION'. Bump both to the same version."
+            exit 1
+          fi
+
+          TAG="v$VERSION"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+          # 2. If the tag already exists, this merge didn't bump the version.
+          #    That is the common case — exit quietly without tagging.
+          if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
+            echo "Tag $TAG already exists — no version bump in this merge, nothing to release."
+            echo "tagged=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "Tag $TAG does not exist yet — treating this as a new release."
+
+          # 3. A new version must have a dated CHANGELOG section.
+          ESC="$(printf '%s' "$VERSION" | sed 's/\./\\./g')"
+          if grep -qE "^## v${ESC} \([0-9]{4}-[0-9]{2}-[0-9]{2}\)" CHANGELOG.md; then
+            echo "Found dated CHANGELOG section for $TAG."
+          elif grep -qE "^## v${ESC}([^0-9.]|$)" CHANGELOG.md; then
+            echo "::error::CHANGELOG.md has a '## v${VERSION}' section but it is not dated. Use the format '## v${VERSION} (YYYY-MM-DD)'."
+            exit 1
+          else
+            echo "::error::CHANGELOG.md has no '## v${VERSION} (YYYY-MM-DD)' section. Add a dated changelog entry before releasing."
+            exit 1
+          fi
+
+          # 4. Consistency lint: no doc may advertise a version string that has
+          #    drifted from the one we are about to ship (e.g. a quickstart that
+          #    still reads "skein 0.1.2"). CHANGELOG.md is exempt — it is the one
+          #    place old versions belong.
+          echo "Linting 'skein <version>' strings in README.md and docs/ ..."
+          DRIFT=0
+          while IFS= read -r match; do
+            [ -z "$match" ] && continue
+            found="$(printf '%s' "$match" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)"
+            if [ "$found" != "$VERSION" ]; then
+              echo "::error::Stale version string ($found, expected $VERSION): $match"
+              DRIFT=1
+            fi
+          done < <(grep -rEn '[Ss]kein [0-9]+\.[0-9]+\.[0-9]+' README.md docs --include='*.md' --include='*.mdx' 2>/dev/null || true)
+          if [ "$DRIFT" -ne 0 ]; then
+            echo "::error::Found version strings that disagree with release version $VERSION. Update them so the docs match the binary."
+            exit 1
+          fi
+          echo "No version drift found."
+
+          # 5. Create and push the annotated tag at the merged commit.
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$TAG" -m "Release $TAG" "$HEAD_SHA"
+          git push origin "refs/tags/$TAG"
+          echo "Pushed $TAG at $HEAD_SHA."
+          echo "tagged=true" >> "$GITHUB_OUTPUT"
+
+  release:
+    name: Build and publish release
+    needs: tag
+    if: needs.tag.outputs.tagged == 'true'
+    permissions:
+      contents: write
+    uses: ./.github/workflows/build.yml
+    with:
+      release_ref: ${{ needs.tag.outputs.tag }}
+      is_release: true

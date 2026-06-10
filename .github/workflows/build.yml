@@ -16,9 +16,31 @@ on:
       - "editors/vscode/**"
       - ".github/workflows/build.yml"
   workflow_dispatch:
+  # Called by release.yml after it tags a version bump. A tag pushed with the
+  # default GITHUB_TOKEN can't trigger the `tags: ["v*"]` path above, so the
+  # release flow invokes this workflow directly with the tag to build.
+  workflow_call:
+    inputs:
+      release_ref:
+        description: "Tag (or ref) to check out, build, and release"
+        required: false
+        type: string
+      is_release:
+        description: "Create a GitHub Release for release_ref"
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: write
+
+concurrency:
+  # Cancel superseded runs only on PRs (e.g. rapid pushes to the same PR). On
+  # main pushes, `v*` tags, and release workflow_call builds the group is unique
+  # (run_id), so those always run to completion — an in-flight release build is
+  # never cancelled by a later merge, so no version ships without its binaries.
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: true
 
 env:
   MIX_ENV: prod
@@ -32,6 +54,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.release_ref || github.ref }}
 
       - name: Set up Erlang & Elixir
         uses: erlef/setup-beam@v1
@@ -113,6 +137,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.release_ref || github.ref }}
 
       - uses: actions/setup-node@v6
         with:
@@ -133,10 +159,73 @@ jobs:
           path: editors/vscode/skein-vscode.vsix
           if-no-files-found: error
 
+  # Build the published docs site for this version and capture it as a release
+  # asset: the full built site as a tarball plus the agent-readable llms*.txt
+  # files, so every release carries its own version-pinned spec/docs. Only runs
+  # when releasing (a `v*` tag push or release.yml's workflow_call).
+  docs-snapshot:
+    name: Build docs snapshot
+    if: ${{ startsWith(github.ref, 'refs/tags/v') || inputs.is_release }}
+    runs-on: ubuntu-latest
+    env:
+      # ex_doc is a dev-only dep; the rest of this workflow runs in prod.
+      MIX_ENV: dev
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.release_ref || github.ref }}
+
+      - name: Set up Erlang & Elixir
+        uses: erlef/setup-beam@v1
+        with:
+          otp-version: ${{ env.OTP_VERSION }}
+          elixir-version: ${{ env.ELIXIR_VERSION }}
+
+      - name: Install dependencies
+        run: |
+          mix local.hex --force
+          mix local.rebar --force
+          mix deps.get
+
+      - name: Build API reference (ExDoc)
+        run: mix docs
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Build docs site
+        working-directory: docs/site
+        run: |
+          bun install
+          bunx astro build
+
+      - name: Package docs snapshot
+        run: |
+          set -euo pipefail
+          mkdir -p docs-snapshot
+          tar -czf docs-snapshot/skein-docs-site.tar.gz -C docs/site/dist .
+          # starlight-llms-txt emits these at the site root (docs/site/dist).
+          for f in llms.txt llms-full.txt llms-small.txt; do
+            match="$(find docs/site/dist -name "$f" -print -quit)"
+            if [ -z "$match" ]; then
+              echo "::error::Expected $f in docs/site/dist but it was not generated"
+              exit 1
+            fi
+            cp "$match" "docs-snapshot/$f"
+          done
+          ls -lah docs-snapshot
+
+      - name: Upload docs snapshot
+        uses: actions/upload-artifact@v7
+        with:
+          name: skein-docs-snapshot
+          path: docs-snapshot/
+          if-no-files-found: error
+
   release:
     name: Create GitHub Release
-    needs: [build, build-extension]
-    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [build, build-extension, docs-snapshot]
+    if: ${{ startsWith(github.ref, 'refs/tags/v') || inputs.is_release }}
     runs-on: ubuntu-latest
 
     steps:
@@ -153,11 +242,17 @@ jobs:
           cp artifacts/skein-macos-x86_64/skein_macos release/skein-macos-x86_64 || true
           cp artifacts/skein-macos-aarch64/skein_macos_arm release/skein-macos-aarch64 || true
           cp artifacts/skein-vscode-extension/skein-vscode.vsix release/skein-vscode.vsix
+          # Version-pinned docs snapshot (built site + agent-readable llms*.txt).
+          cp artifacts/skein-docs-snapshot/skein-docs-site.tar.gz release/skein-docs-site.tar.gz
+          cp artifacts/skein-docs-snapshot/llms.txt release/llms.txt
+          cp artifacts/skein-docs-snapshot/llms-full.txt release/llms-full.txt
+          cp artifacts/skein-docs-snapshot/llms-small.txt release/llms-small.txt
           chmod +x release/skein-*64
           cd release && sha256sum * > checksums.txt
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v3
         with:
+          tag_name: ${{ inputs.release_ref || github.ref_name }}
           generate_release_notes: true
           files: release/*
