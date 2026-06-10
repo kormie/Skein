@@ -208,6 +208,13 @@ on_handler  = "on" on_trigger "(" params ")" "->" block
 on_trigger  = "start" | "phase" "(" UpperIdent "." UpperIdent ")"
 ```
 
+Agents may be declared at the top level (one per file) or nested inside a
+module's body. Agents do not declare `type` blocks — to use named types in an
+agent (e.g. `llm.json[Decision]`), nest the agent inside the module that
+declares them; the module's types and capabilities apply to the nested agent
+(section 8.4). A nested agent compiles to its own BEAM module, namespaced
+under the parent.
+
 ### 3.8 Tools
 
 ```

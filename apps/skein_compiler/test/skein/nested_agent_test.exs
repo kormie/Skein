@@ -9,6 +9,13 @@ defmodule Skein.NestedAgentTest do
   """
   use ExUnit.Case, async: false
 
+  # These agent modules are generated and loaded at test runtime by the
+  # Skein compiler — they don't exist when this file is compiled. The
+  # directive scopes the undefined-module warning exception to exactly
+  # these names; any other undefined reference still warns.
+  @compile {:no_warn_undefined, Skein.Agent.Orders.OrderAgent}
+  @compile {:no_warn_undefined, Skein.Agent.Refunds.RefundAgent}
+
   alias Skein.AST
   alias Skein.Analyzer
   alias Skein.Compiler

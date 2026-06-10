@@ -19,41 +19,37 @@ The end-to-end pipeline works: `.skein` source files lex, parse, analyze, genera
 
 ### Tier 1: Language Surface
 
-#### 1. Types Usable from Agents (#70)
-
-With agent nesting landed, module-level types are visible to nested agents and `llm.json[SomeType]` runs in their phase handlers. Remaining: verify the derived JSON Schema reaches the LLM request, and settle the story for top-level agents.
-
-#### 2. Enum Variant Construction Completeness (#96)
+#### 1. Enum Variant Construction Completeness (#96)
 
 v0.1.5 made call-form constructors work (`Ok(x)`, `Err(e)`, `Event.Charge(n)`, `ErrName.from(cause)`), but zero-field variants (`Status.Active`) still can't be constructed in expression position, and unknown-variant or wrong-arity constructor calls crash codegen instead of producing structured compile-time errors.
 
-#### 3. Capability Checks Cover Test Blocks (#104)
+#### 2. Capability Checks Cover Test Blocks (#104)
 
 The analyzer's capability passes skip `test`/`scenario`/`golden` bodies: the fresh `skein new` scaffold warns W0002 on its own `tool.use` capability, and missing capabilities inside test blocks escape E0012 until runtime.
 
 ### Tier 2: Runtime Completeness
 
-#### 4. Schedule Auto-Firing (#71)
+#### 3. Schedule Auto-Firing (#71)
 
 Schedule handlers register their cron expression but only fire via manual `trigger/1`. A running service should fire them on schedule.
 
-#### 5. Agent Events to EventStore (#72)
+#### 4. Agent Events to EventStore (#72)
 
 Events emitted via `emit` inside agents live in `gen_statem` data but aren't appended to the EventStore, so they're lost on crash and invisible to `EventStore.query/1`.
 
-#### 6. Replay Backend Injection (#73)
+#### 5. Replay Backend Injection (#73)
 
 The replay engine can load traces and rebuild memory, but the LLM/HTTP/tool runtimes don't consult replay state — recorded-mode replay can't yet intercept live effects.
 
-#### 7. Stream/Pool-Scoped Runtime Capability Checks (#69, #57)
+#### 6. Stream/Pool-Scoped Runtime Capability Checks (#69, #57)
 
 `process.spawn`, `timer`, and `event.log` check capability *presence* at runtime but not parameters. Full enforcement needs a surface decision first: the declared capability names a pool/stream label, while the runtime call carries a different value (the task/event name).
 
-#### 8. `process.spawn` Task Bodies (#74)
+#### 7. `process.spawn` Task Bodies (#74)
 
 `process.spawn("name")` spawns a supervised, traced no-op task. Attaching real work to the spawned process needs a call-surface decision (likely a function reference argument).
 
-#### 9. Local LLM Backends for Dev (#107)
+#### 8. Local LLM Backends for Dev (#107)
 
 Testing agents burns real Anthropic spend. An OpenAI-compatible backend plus `[env.<name>.llm]` profiles in `skein.toml` (with `model_map`) would let `SKEIN_ENV=dev skein test` serve LLM calls from a local server (oMLX, Ollama, LM Studio, vLLM) with zero source edits — capabilities stay the code's contract.
 
@@ -137,6 +133,7 @@ Everything below is implemented and tested.
 | Variant construction (call forms) | `Ok(x)`, `Err(e)`, `Event.Charge(n)`, `ErrName.from(cause)` compile in expression position (v0.1.5) |
 | Named arguments in calls | `f(name: value)` for local fns and documented effect signatures; analyzer rewrites to positional order at compile time (E0026 on misuse) |
 | Agent nesting inside modules | `module Foo { agent Bar }` → `Skein.Agent.Foo.Bar`; module types and capabilities apply to the nested agent |
+| Types usable from agents | Module types visible to nested agents; derived JSON Schema flows into `llm.json[T]` from agent handlers |
 | Persistent EventStore | SQLite-backed event store (opt-in, ETS default) |
 | Error system | 22 error + 3 warning codes; `context` and `fix_code` populated on all analyzer/parser/lexer errors |
 

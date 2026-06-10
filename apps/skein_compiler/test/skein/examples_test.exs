@@ -7,6 +7,11 @@ defmodule Skein.ExamplesTest do
   """
   use ExUnit.Case, async: false
 
+  # Generated and loaded at test runtime from the single-file example —
+  # does not exist when this file is compiled. Scoped exception; other
+  # undefined module references still warn.
+  @compile {:no_warn_undefined, Skein.Agent.MarketResearch.MarketResearchAgent}
+
   alias Skein.Compiler
 
   defp project_root do
@@ -784,7 +789,10 @@ defmodule Skein.ExamplesTest do
                )
 
       assert mod == Skein.User.MarketResearch
-      assert Code.ensure_loaded?(Skein.Agent.MarketResearch.MarketResearchAgent)
+
+      assert Code.ensure_loaded?(
+               Module.concat(["Skein", "Agent", "MarketResearch", "MarketResearchAgent"])
+             )
     end
 
     test "module keeps its tools, handlers, and supervisor" do

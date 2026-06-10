@@ -28,25 +28,7 @@ The remaining gaps are listed below. Field-testing v0.1.5 (2026-06-10) surfaced 
 
 ## Tier 1: Language Surface
 
-### 1. Types Usable from Agents `[M]`
-
-**Issue:** [#70](https://github.com/kormie/Skein/issues/70)
-
-**Problem:** Agents cannot declare `type` blocks. Agent nesting (#63) landed the spec-aligned route: module-level types are now visible to nested agents, and `llm.json[SomeType]` compiles and runs in nested agent phase handlers. Remaining: verify the generated JSON Schema actually reaches the LLM request, and decide whether top-level (non-nested) agents also need type access.
-
-**Scope:**
-- Test that the schema derived from a module type flows into `llm.json` requests made from nested agent handlers (verifiable through a test backend)
-- Decide and document the story for top-level agents (own `type` blocks vs. "nest your agent")
-
-**Acceptance criteria:**
-- An agent phase handler can call `llm.json[RefundDecision](...)` with `RefundDecision` declared in the same compilation unit — DONE via #63
-- The generated JSON Schema appears in the LLM request (verifiable through a test backend)
-
-**Depends on:** Nothing (#63 landed).
-
----
-
-### 2. Enum Variant Construction Completeness `[M]`
+### 1. Enum Variant Construction Completeness `[M]`
 
 **Issue:** [#96](https://github.com/kormie/Skein/issues/96)
 
@@ -65,7 +47,7 @@ The remaining gaps are listed below. Field-testing v0.1.5 (2026-06-10) surfaced 
 
 ---
 
-### 3. Capability Checking Covers Test Blocks `[M]`
+### 2. Capability Checking Covers Test Blocks `[M]`
 
 **Issue:** [#104](https://github.com/kormie/Skein/issues/104)
 
@@ -85,7 +67,7 @@ The remaining gaps are listed below. Field-testing v0.1.5 (2026-06-10) surfaced 
 
 ## Tier 2: Runtime Completeness
 
-### 4. Schedule Handler Auto-Firing `[M]`
+### 3. Schedule Handler Auto-Firing `[M]`
 
 **Issue:** [#71](https://github.com/kormie/Skein/issues/71)
 
@@ -106,7 +88,7 @@ The remaining gaps are listed below. Field-testing v0.1.5 (2026-06-10) surfaced 
 
 ---
 
-### 5. Agent `emit` Events to EventStore `[M]`
+### 4. Agent `emit` Events to EventStore `[M]`
 
 **Issue:** [#72](https://github.com/kormie/Skein/issues/72)
 
@@ -125,7 +107,7 @@ The remaining gaps are listed below. Field-testing v0.1.5 (2026-06-10) surfaced 
 
 ---
 
-### 6. Replay Backend Injection `[L]`
+### 5. Replay Backend Injection `[L]`
 
 **Issue:** [#73](https://github.com/kormie/Skein/issues/73)
 
@@ -145,7 +127,7 @@ The remaining gaps are listed below. Field-testing v0.1.5 (2026-06-10) surfaced 
 
 ---
 
-### 7. Stream/Pool-Scoped Runtime Capability Checks `[M]` *(needs surface design first)*
+### 6. Stream/Pool-Scoped Runtime Capability Checks `[M]` *(needs surface design first)*
 
 **Issues:** [#69](https://github.com/kormie/Skein/issues/69) (surface decision), [#57](https://github.com/kormie/Skein/issues/57) (enforcement)
 
@@ -164,7 +146,7 @@ The remaining gaps are listed below. Field-testing v0.1.5 (2026-06-10) surfaced 
 
 ---
 
-### 8. `process.spawn` Task Bodies `[M]`
+### 7. `process.spawn` Task Bodies `[M]`
 
 **Issue:** [#74](https://github.com/kormie/Skein/issues/74)
 
@@ -182,7 +164,7 @@ The remaining gaps are listed below. Field-testing v0.1.5 (2026-06-10) surfaced 
 
 ---
 
-### 9. Local LLM Backends for Dev (OpenAI-Compatible + `skein.toml` Profiles) `[XL]`
+### 8. Local LLM Backends for Dev (OpenAI-Compatible + `skein.toml` Profiles) `[XL]`
 
 **Issue:** [#107](https://github.com/kormie/Skein/issues/107)
 
@@ -204,7 +186,7 @@ The remaining gaps are listed below. Field-testing v0.1.5 (2026-06-10) surfaced 
 
 ## Tier 3: Polish & Developer Experience
 
-### 10. Test Failures Show Expected vs Actual + Location `[M]`
+### 9. Test Failures Show Expected vs Actual + Location `[M]`
 
 **Issue:** [#105](https://github.com/kormie/Skein/issues/105)
 
@@ -223,7 +205,7 @@ The remaining gaps are listed below. Field-testing v0.1.5 (2026-06-10) surfaced 
 
 ---
 
-### 11. MCP `skein_compile_check` Fidelity `[M]`
+### 10. MCP `skein_compile_check` Fidelity `[M]`
 
 **Issue:** [#109](https://github.com/kormie/Skein/issues/109)
 
@@ -241,7 +223,7 @@ The remaining gaps are listed below. Field-testing v0.1.5 (2026-06-10) surfaced 
 
 ---
 
-### 12. `skein new` Git Init + Baseline `.gitignore` `[S]`
+### 11. `skein new` Git Init + Baseline `.gitignore` `[S]`
 
 **Issue:** [#106](https://github.com/kormie/Skein/issues/106)
 
@@ -253,7 +235,7 @@ The remaining gaps are listed below. Field-testing v0.1.5 (2026-06-10) surfaced 
 
 ---
 
-### 13. zsh Tab-Completion for `skein` `[S]`
+### 12. zsh Tab-Completion for `skein` `[S]`
 
 **Issue:** [#101](https://github.com/kormie/Skein/issues/101)
 
@@ -265,7 +247,7 @@ The remaining gaps are listed below. Field-testing v0.1.5 (2026-06-10) surfaced 
 
 ---
 
-### 14. Spec Section 8 Sweep `[M]`
+### 13. Spec Section 8 Sweep `[M]`
 
 **Issue:** [#77](https://github.com/kormie/Skein/issues/77)
 
@@ -282,7 +264,7 @@ The remaining gaps are listed below. Field-testing v0.1.5 (2026-06-10) surfaced 
 
 ---
 
-### 15. Enum Value-Level Exhaustiveness Warning `[S]`
+### 14. Enum Value-Level Exhaustiveness Warning `[S]`
 
 **Issue:** [#76](https://github.com/kormie/Skein/issues/76)
 
@@ -300,7 +282,7 @@ The remaining gaps are listed below. Field-testing v0.1.5 (2026-06-10) surfaced 
 
 ---
 
-### 16. LSP Code Actions from `fix_hint`/`fix_code` `[L]`
+### 15. LSP Code Actions from `fix_hint`/`fix_code` `[L]`
 
 **Issue:** [#108](https://github.com/kormie/Skein/issues/108)
 
@@ -363,6 +345,7 @@ All of the following are done and tested:
 - LSP: completions, hover, diagnostics, semantic tokens, document symbols, go-to-definition (+ request/response integration tests)
 - CLI: new, build (`--output`), test, run, trace; structured errors for malformed flags
 - Distribution: Burrito binaries (Linux x86_64/ARM64, macOS x86_64/ARM64), GitHub Release automation on `v*` tags
+- Types usable from agents (#70): module types are visible to nested agents and the derived JSON Schema flows into `llm.json[T]` requests from agent handlers (verified via recording backend); agents never declare their own `type` blocks — nesting is the route (spec §3.7)
 - Agent nesting inside modules (#63): `module Foo { agent Bar }` compiles to `Skein.User.Foo` + `Skein.Agent.Foo.Bar`; module types and capabilities apply to the nested agent; spec §8.4 and `market_research/single_file.skein` ship the nested shape
 - Named arguments in calls (#56): `f(name: value)` for local fns and documented effect signatures; positional-then-named mixing, analyzer rewrites to positional order (E0026 for unknown/duplicate/misordered names), spec grammar + section 8 updated
 - Release automation (#100, PR #102): green version-bump merges to `main` auto-tag and release (no manual tag step), README badges, per-release docs snapshots incl. `llms*.txt`; superseded PR runs cancel, main/release builds never do

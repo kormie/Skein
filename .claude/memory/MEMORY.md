@@ -168,6 +168,12 @@
 - Field access on llm.json results uses `map_get(:atom, map)` but backends return STRING keys — `.action` on a decoded result crashes (pre-existing; spec 8.4 `d.action` would crash at runtime)
 - Spec 8.4 now shows the nested shape; spec_examples_test's two 8.4 entries merged into one; `examples/market_research/single_file.skein` is the generated-from-two-files single-file variant
 
+## Types Usable from Agents (issue #70 — 2026-06-10)
+- Resolved BY #63: module types visible to nested agents; schema flows (codegen embeds SchemaGen.to_json_schema as literal → Llm.json/5 → backend.json/4 receives it) — verified with a test-local SchemaRecordingBackend (persistent_term capture)
+- DECISION: agents never declare own `type` blocks; nesting is the one route (spec §3.7 prose added)
+- Test-local backends implementing Skein.Runtime.Llm.Backend work fine with set_backend; reset via on_exit back to TestBackend
+- Referencing runtime-compiled modules in tests warns "module not available" — use `Module.concat(["Skein", "Agent", ...])` to keep test compile warning-free
+
 ## Known Bug Found 2026-06-10 (filed as issue)
 - **Int string interpolation emits raw codepoint**: `"${n}"` with n=42 yields "*" (binary segment treats Int as a byte) — needs to_string coercion in codegen interpolation
 
