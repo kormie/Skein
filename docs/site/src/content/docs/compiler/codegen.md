@@ -89,12 +89,20 @@ def generate(%AST.Module{} = ast) do
   )
 
   case :compile.forms(mod, [:from_core, :binary, :return_errors]) do
-    {:ok, _, beam_binary} -> {:ok, beam_binary}
-    {:ok, _, beam_binary, _warnings} -> {:ok, beam_binary}
+    {:ok, _, beam_binary} -> {:ok, [{module_atom, beam_binary}]}
+    {:ok, _, beam_binary, _warnings} -> {:ok, [{module_atom, beam_binary}]}
     {:error, errors, _warnings} -> {:error, format_errors(errors)}
   end
 end
 ```
+
+`generate/1` returns a list of **named binaries** — `{:ok, [{module, binary()}]}` —
+because one source file can produce several BEAM modules: a module with nested
+agents yields the module itself (`Skein.User.Foo`) followed by one entry per
+agent (`Skein.Agent.Foo.Bar`). Nested agents are generated with the module's
+capabilities and type declarations in scope, so `llm.json[T]` schema
+resolution works inside agent handlers. The compiler driver loads every entry
+and returns the first (primary) module.
 
 ## Function Generation
 
@@ -245,6 +253,28 @@ Multi-expression blocks use chained `let` bindings. Each expression except the l
 ```
 
 The last expression becomes the body of the innermost `let`.
+
+## Enum Variant Construction
+
+Variant constructors lower to the same shapes the pattern side matches:
+
+| Skein expression | Core Erlang value |
+|------------------|-------------------|
+| `Status.Active`, bare `Active`, `Status.Active()` | `:active` (bare atom) |
+| `Status.Banned("spam")`, bare `Banned("spam")` | `{:banned, "spam"}` |
+| `Ok(x)` / `Err(e)` | `{:ok, X}` / `{:error, E}` |
+| `SearchError.from(e)` | `{:search_error, E}` |
+
+Zero-field variants are **bare atoms**, not 1-tuples, so constructions
+round-trip through `match` arms (`Active -> ...` compiles to the atom
+pattern `:active`). Variant names are snake_cased (`ChargeSucceeded` ->
+`:charge_succeeded`).
+
+The analyzer validates constructions before codegen runs: unknown variants
+(E0010, with a closest-name `fix_code`), wrong arity, wrong argument types,
+and a data variant referenced without arguments (E0020, with a
+`Enum.Variant(fields)` skeleton) are all structured compile errors — never
+`core_lint` crashes.
 
 ## Variable Naming
 

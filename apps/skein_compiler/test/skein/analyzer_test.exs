@@ -3390,7 +3390,7 @@ defmodule Skein.AnalyzerTest do
                  }
 
                  fn get_profile() -> Result[Profile, String] {
-                   Ok(Profile)
+                   Ok({ name: "test" })
                  }
 
                  fn use_profile() -> String {
