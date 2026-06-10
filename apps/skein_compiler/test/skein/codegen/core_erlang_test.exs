@@ -3096,38 +3096,41 @@ defmodule Skein.CodeGen.CoreErlangTest do
 
   describe "map literal codegen" do
     test "compiles empty map literal" do
-      mod = compile!("""
-        module EmptyMapTest {
-          fn empty() -> Map[String, Int] {
-            {}
+      mod =
+        compile!("""
+          module EmptyMapTest {
+            fn empty() -> Map[String, Int] {
+              {}
+            }
           }
-        }
-      """)
+        """)
 
       assert mod.empty() == %{}
     end
 
     test "compiles map literal with string values" do
-      mod = compile!("""
-        module MapStrTest {
-          fn user() -> Map[String, String] {
-            { name: "Alice", role: "admin" }
+      mod =
+        compile!("""
+          module MapStrTest {
+            fn user() -> Map[String, String] {
+              { name: "Alice", role: "admin" }
+            }
           }
-        }
-      """)
+        """)
 
       result = mod.user()
       assert result == %{name: "Alice", role: "admin"}
     end
 
     test "compiles map literal with mixed value types" do
-      mod = compile!("""
-        module MapMixTest {
-          fn record() -> Map[String, Int] {
-            { label: "test", count: 42, active: true }
+      mod =
+        compile!("""
+          module MapMixTest {
+            fn record() -> Map[String, Int] {
+              { label: "test", count: 42, active: true }
+            }
           }
-        }
-      """)
+        """)
 
       result = mod.record()
       assert result.label == "test"
@@ -3136,38 +3139,41 @@ defmodule Skein.CodeGen.CoreErlangTest do
     end
 
     test "compiles map literal with variable references" do
-      mod = compile!("""
-        module MapVarTest {
-          fn make(name: String) -> Map[String, String] {
-            { name: name, kind: "user" }
+      mod =
+        compile!("""
+          module MapVarTest {
+            fn make(name: String) -> Map[String, String] {
+              { name: name, kind: "user" }
+            }
           }
-        }
-      """)
+        """)
 
       assert mod.make("Bob") == %{name: "Bob", kind: "user"}
     end
 
     test "compiles nested map literal" do
-      mod = compile!("""
-        module MapNestedTest {
-          fn nested() -> Map[String, Map[String, String]] {
-            { inner: { key: "value" } }
+      mod =
+        compile!("""
+          module MapNestedTest {
+            fn nested() -> Map[String, Map[String, String]] {
+              { inner: { key: "value" } }
+            }
           }
-        }
-      """)
+        """)
 
       result = mod.nested()
       assert result.inner == %{key: "value"}
     end
 
     test "map literal works in respond.json" do
-      mod = compile!("""
-        module MapRespondTest {
-          fn make_response() -> Map[String, String] {
-            { status: "ok", message: "done" }
+      mod =
+        compile!("""
+          module MapRespondTest {
+            fn make_response() -> Map[String, String] {
+              { status: "ok", message: "done" }
+            }
           }
-        }
-      """)
+        """)
 
       assert mod.make_response() == %{status: "ok", message: "done"}
     end

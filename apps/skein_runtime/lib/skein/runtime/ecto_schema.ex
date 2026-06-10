@@ -28,6 +28,28 @@ defmodule Skein.Runtime.EctoSchema do
   - `@unique` → unique constraint (enforced at migration level)
   """
 
+  @name_format ~r/^[a-zA-Z_][a-zA-Z0-9_]*$/
+  @max_name_length 64
+
+  @doc """
+  Validates that a table or field name is a safe identifier before it is
+  converted to an atom (atoms are never garbage-collected, so unchecked
+  conversion of arbitrary strings can exhaust the atom table).
+
+  Raises `ArgumentError` for names that are not `[a-zA-Z_][a-zA-Z0-9_]*`
+  or exceed #{@max_name_length} bytes.
+  """
+  @spec validate_name!(String.t(), String.t()) :: :ok
+  def validate_name!(name, kind \\ "name") when is_binary(name) do
+    if byte_size(name) <= @max_name_length and Regex.match?(@name_format, name) do
+      :ok
+    else
+      raise ArgumentError,
+            "invalid #{kind} #{inspect(name)}: must match [a-zA-Z_][a-zA-Z0-9_]* " <>
+              "and be at most #{@max_name_length} bytes"
+    end
+  end
+
   @doc """
   Generates a dynamic Ecto schema module for the given table and field definitions.
 
@@ -42,6 +64,8 @@ defmodule Skein.Runtime.EctoSchema do
   @spec build_schema(String.t(), [map()], keyword()) :: {:ok, module()} | {:error, String.t()}
   def build_schema(table_name, fields, opts \\ []) when is_binary(table_name) do
     _repo = Keyword.get(opts, :repo, Skein.Runtime.Repo)
+    validate_name!(table_name, "table name")
+    Enum.each(fields, fn f -> validate_name!(f.name, "field name") end)
     module_name = module_name_for(table_name)
 
     # Find primary key field (or default to :id)

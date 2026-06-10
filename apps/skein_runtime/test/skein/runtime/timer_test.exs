@@ -74,7 +74,9 @@ defmodule Skein.Runtime.TimerTest do
       test_pid = self()
 
       {:ok, ref} =
-        timer_after(500, fn -> send(test_pid, :should_not_fire) end, [%{kind: "timer", params: []}])
+        timer_after(500, fn -> send(test_pid, :should_not_fire) end, [
+          %{kind: "timer", params: []}
+        ])
 
       assert :ok = Timer.cancel(ref, [%{kind: "timer", params: []}])
       refute_receive :should_not_fire, 700

@@ -124,6 +124,10 @@ defmodule Skein.Runtime.Idempotent do
     end
   end
 
+  # The TTL is re-read from application config at each check and sweep. It
+  # is assumed to be effectively constant at runtime: changing it while keys
+  # are live shifts expiry for already-recorded keys (a key checked under
+  # one TTL may be swept under another). Configure it once at boot.
   defp ttl_ms do
     Application.get_env(:skein_runtime, :idempotent_ttl_ms, @default_ttl_ms)
   end

@@ -156,6 +156,15 @@ defmodule Skein.Runtime.Llm.AnthropicBackend do
     ]
   end
 
+  # Exception messages can embed request details; never let the API key
+  # through to logs or structured errors.
+  defp redact_api_key(message) do
+    case get_api_key() do
+      key when is_binary(key) and key != "" -> String.replace(message, key, "[REDACTED]")
+      _ -> message
+    end
+  end
+
   defp post(body) do
     case Req.post(@api_url, json: body, headers: headers(), receive_timeout: 120_000) do
       {:ok, %Req.Response{status: 200, body: response_body}} ->
@@ -168,7 +177,7 @@ defmodule Skein.Runtime.Llm.AnthropicBackend do
         {:error, Error.timeout(120_000)}
 
       {:error, exception} ->
-        {:error, Error.provider_error("transport", Exception.message(exception))}
+        {:error, Error.provider_error("transport", redact_api_key(Exception.message(exception)))}
     end
   end
 
@@ -189,7 +198,7 @@ defmodule Skein.Runtime.Llm.AnthropicBackend do
         {:error, Error.timeout(120_000)}
 
       {:error, exception} ->
-        {:error, Error.provider_error("transport", Exception.message(exception))}
+        {:error, Error.provider_error("transport", redact_api_key(Exception.message(exception)))}
     end
   end
 

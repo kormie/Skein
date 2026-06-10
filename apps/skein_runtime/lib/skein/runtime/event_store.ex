@@ -19,6 +19,15 @@ defmodule Skein.Runtime.EventStore do
   Backed by a single ETS ordered set (`:skein_events`). Events are keyed by
   `{monotonic_timestamp, unique_integer}` for stable chronological ordering.
 
+  The log is size-bounded: once it exceeds the configured maximum, the oldest
+  events are evicted on append. Configure the bound with:
+
+      config :skein_runtime, :event_store_max_events, 100_000
+
+  Long-running services that need the full history should enable the SQLite
+  backend (`Skein.Runtime.EventStore.SqliteBackend`), which persists every
+  event before it ages out of the in-memory window.
+
   Every event gets automatic metadata:
   - `id` — unique hex identifier
   - `timestamp` — monotonic microsecond timestamp
@@ -37,6 +46,7 @@ defmodule Skein.Runtime.EventStore do
   """
 
   @table :skein_events
+  @default_max_events 100_000
 
   @doc """
   Ensures the event store ETS table exists.
@@ -110,6 +120,7 @@ defmodule Skein.Runtime.EventStore do
       |> Map.put(:_key, key)
 
     :ets.insert(@table, {key, enriched})
+    evict_overflow()
     :ok
   end
 
@@ -225,5 +236,31 @@ defmodule Skein.Runtime.EventStore do
   defp generate_id do
     :crypto.strong_rand_bytes(16)
     |> Base.encode16(case: :lower)
+  end
+
+  # Drops the oldest events once the log exceeds the configured bound, so
+  # long-running services don't leak memory through unbounded event growth.
+  defp evict_overflow do
+    max = Application.get_env(:skein_runtime, :event_store_max_events, @default_max_events)
+    size = :ets.info(@table, :size)
+
+    if is_integer(size) and size > max do
+      evict_oldest(size - max)
+    end
+
+    :ok
+  end
+
+  defp evict_oldest(0), do: :ok
+
+  defp evict_oldest(n) do
+    case :ets.first(@table) do
+      :"$end_of_table" ->
+        :ok
+
+      key ->
+        :ets.delete(@table, key)
+        evict_oldest(n - 1)
+    end
   end
 end

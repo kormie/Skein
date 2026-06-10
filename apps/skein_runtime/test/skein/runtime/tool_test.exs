@@ -186,7 +186,11 @@ defmodule Skein.Runtime.ToolTest do
 
     test "wrong type for integer field is rejected" do
       assert {:error, %Tool.Error{kind: :validation_error} = err} =
-               Tool.call("ValidatedTool", %{amount: "not_an_int", customer_id: "cust_1"}, @validated_caps)
+               Tool.call(
+                 "ValidatedTool",
+                 %{amount: "not_an_int", customer_id: "cust_1"},
+                 @validated_caps
+               )
 
       assert Enum.any?(err.detail.violations, &String.contains?(&1, "amount"))
     end
@@ -200,7 +204,11 @@ defmodule Skein.Runtime.ToolTest do
 
     test "extra fields are allowed (not rejected)" do
       assert {:ok, _} =
-               Tool.call("ValidatedTool", %{amount: 100, customer_id: "c", extra: true}, @validated_caps)
+               Tool.call(
+                 "ValidatedTool",
+                 %{amount: 100, customer_id: "c", extra: true},
+                 @validated_caps
+               )
     end
 
     test "missing optional fields are allowed" do
@@ -244,6 +252,7 @@ defmodule Skein.Runtime.ToolTest do
 
     test "float field rejects string" do
       Tool.register("FloatTool2", %{input: %{score: :float}}, fn i -> {:ok, i} end)
+
       assert {:error, %Tool.Error{kind: :validation_error}} =
                Tool.call("FloatTool2", %{score: "high"}, @all_caps)
     end
@@ -256,26 +265,31 @@ defmodule Skein.Runtime.ToolTest do
 
     test "bool field rejects non-boolean" do
       Tool.register("BoolTool2", %{input: %{active: :bool}}, fn i -> {:ok, i} end)
+
       assert {:error, %Tool.Error{kind: :validation_error}} =
                Tool.call("BoolTool2", %{active: 1}, @all_caps)
     end
 
     test "int field rejects float" do
       Tool.register("IntTool", %{input: %{count: :int}}, fn i -> {:ok, i} end)
+
       assert {:error, %Tool.Error{kind: :validation_error}} =
                Tool.call("IntTool", %{count: 3.5}, @all_caps)
     end
 
     test "string field rejects atom" do
       Tool.register("StrTool", %{input: %{name: :string}}, fn i -> {:ok, i} end)
+
       assert {:error, %Tool.Error{kind: :validation_error}} =
                Tool.call("StrTool", %{name: :hello}, @all_caps)
     end
 
     test "multiple type violations reported together" do
       Tool.register("MultiErr", %{input: %{a: :int, b: :string}}, fn i -> {:ok, i} end)
+
       assert {:error, %Tool.Error{kind: :validation_error, detail: detail}} =
                Tool.call("MultiErr", %{a: "bad", b: 42}, @all_caps)
+
       assert length(detail.violations) == 2
     end
   end
@@ -289,28 +303,58 @@ defmodule Skein.Runtime.ToolTest do
     @all_caps [%{kind: "tool.use", params: []}]
 
     test "validates JSON Schema string type" do
-      schema = %{"input_schema" => %{"type" => "object", "properties" => %{"name" => %{"type" => "string"}}, "required" => ["name"]}}
+      schema = %{
+        "input_schema" => %{
+          "type" => "object",
+          "properties" => %{"name" => %{"type" => "string"}},
+          "required" => ["name"]
+        }
+      }
+
       Tool.register("JsonStr", schema, fn i -> {:ok, i} end)
       assert {:ok, _} = Tool.call("JsonStr", %{"name" => "Alice"}, @all_caps)
     end
 
     test "rejects missing required field in JSON Schema" do
-      schema = %{"input_schema" => %{"type" => "object", "properties" => %{"name" => %{"type" => "string"}}, "required" => ["name"]}}
+      schema = %{
+        "input_schema" => %{
+          "type" => "object",
+          "properties" => %{"name" => %{"type" => "string"}},
+          "required" => ["name"]
+        }
+      }
+
       Tool.register("JsonReq", schema, fn i -> {:ok, i} end)
+
       assert {:error, %Tool.Error{kind: :validation_error, detail: d}} =
                Tool.call("JsonReq", %{}, @all_caps)
+
       assert Enum.any?(d.violations, &String.contains?(&1, "name"))
     end
 
     test "validates JSON Schema integer type" do
-      schema = %{"input_schema" => %{"type" => "object", "properties" => %{"count" => %{"type" => "integer"}}, "required" => []}}
+      schema = %{
+        "input_schema" => %{
+          "type" => "object",
+          "properties" => %{"count" => %{"type" => "integer"}},
+          "required" => []
+        }
+      }
+
       Tool.register("JsonInt", schema, fn i -> {:ok, i} end)
       assert {:ok, _} = Tool.call("JsonInt", %{"count" => 5}, @all_caps)
       assert {:error, _} = Tool.call("JsonInt", %{"count" => "five"}, @all_caps)
     end
 
     test "validates JSON Schema number type" do
-      schema = %{"input_schema" => %{"type" => "object", "properties" => %{"score" => %{"type" => "number"}}, "required" => []}}
+      schema = %{
+        "input_schema" => %{
+          "type" => "object",
+          "properties" => %{"score" => %{"type" => "number"}},
+          "required" => []
+        }
+      }
+
       Tool.register("JsonNum", schema, fn i -> {:ok, i} end)
       assert {:ok, _} = Tool.call("JsonNum", %{"score" => 3.14}, @all_caps)
       assert {:ok, _} = Tool.call("JsonNum", %{"score" => 42}, @all_caps)
@@ -318,14 +362,28 @@ defmodule Skein.Runtime.ToolTest do
     end
 
     test "validates JSON Schema boolean type" do
-      schema = %{"input_schema" => %{"type" => "object", "properties" => %{"flag" => %{"type" => "boolean"}}, "required" => []}}
+      schema = %{
+        "input_schema" => %{
+          "type" => "object",
+          "properties" => %{"flag" => %{"type" => "boolean"}},
+          "required" => []
+        }
+      }
+
       Tool.register("JsonBool", schema, fn i -> {:ok, i} end)
       assert {:ok, _} = Tool.call("JsonBool", %{"flag" => true}, @all_caps)
       assert {:error, _} = Tool.call("JsonBool", %{"flag" => "yes"}, @all_caps)
     end
 
     test "atom-keyed input matches string-keyed JSON Schema via flexible access" do
-      schema = %{input_schema: %{"type" => "object", "properties" => %{"name" => %{"type" => "string"}}, "required" => ["name"]}}
+      schema = %{
+        input_schema: %{
+          "type" => "object",
+          "properties" => %{"name" => %{"type" => "string"}},
+          "required" => ["name"]
+        }
+      }
+
       Tool.register("JsonFlex", schema, fn i -> {:ok, i} end)
       assert {:ok, _} = Tool.call("JsonFlex", %{name: "Alice"}, @all_caps)
     end

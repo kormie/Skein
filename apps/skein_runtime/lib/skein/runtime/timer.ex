@@ -152,14 +152,9 @@ defmodule Skein.Runtime.Timer do
       ArgumentError -> :ok
     end
 
-    try do
-      if Process.whereis(__MODULE__) do
-        GenServer.stop(__MODULE__, :normal)
-      end
-    catch
-      :exit, _ -> :ok
-    end
-
+    # Note: do NOT stop the GenServer here. The timer table holds all state,
+    # and the process is supervised — repeated stops would exhaust the
+    # supervisor's restart intensity and take the whole application down.
     :ok
   end
 
@@ -235,9 +230,18 @@ defmodule Skein.Runtime.Timer do
     end
   end
 
+  # Fallback for environments where the application supervisor isn't
+  # running (e.g. tests with --no-start). Tolerates concurrent start races.
   defp ensure_started do
-    unless Process.whereis(__MODULE__) do
-      start_link()
+    case Process.whereis(__MODULE__) do
+      nil ->
+        case start_link() do
+          {:ok, _pid} -> :ok
+          {:error, {:already_started, _pid}} -> :ok
+        end
+
+      _pid ->
+        :ok
     end
   end
 end

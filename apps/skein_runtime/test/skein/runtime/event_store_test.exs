@@ -51,6 +51,36 @@ defmodule Skein.Runtime.EventStoreTest do
   end
 
   # ------------------------------------------------------------------
+  # eviction
+  # ------------------------------------------------------------------
+
+  describe "size-bounded eviction" do
+    test "evicts oldest events once the configured maximum is exceeded" do
+      Application.put_env(:skein_runtime, :event_store_max_events, 5)
+      on_exit(fn -> Application.delete_env(:skein_runtime, :event_store_max_events) end)
+
+      for n <- 1..8 do
+        EventStore.append(%{kind: :user_event, order: n})
+      end
+
+      assert EventStore.count() == 5
+      orders = EventStore.all() |> Enum.map(& &1.order) |> Enum.sort()
+      assert orders == [4, 5, 6, 7, 8]
+    end
+
+    test "does not evict below the maximum" do
+      Application.put_env(:skein_runtime, :event_store_max_events, 100)
+      on_exit(fn -> Application.delete_env(:skein_runtime, :event_store_max_events) end)
+
+      for n <- 1..10 do
+        EventStore.append(%{kind: :user_event, order: n})
+      end
+
+      assert EventStore.count() == 10
+    end
+  end
+
+  # ------------------------------------------------------------------
   # recent/1
   # ------------------------------------------------------------------
 

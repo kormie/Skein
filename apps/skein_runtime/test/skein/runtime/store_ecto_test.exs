@@ -206,6 +206,25 @@ defmodule Skein.Runtime.StoreEctoTest do
       assert {:error, msg} = result
       assert msg =~ "not declared"
     end
+
+    test "rejects filter keys that are not schema fields" do
+      {:ok, _} =
+        StoreEcto.put("ecto_users", %{id: "u1", email: "a@test.com", name: "Alice"}, @caps)
+
+      assert {:error, msg} =
+               StoreEcto.query("ecto_users", %{"not_a_column" => "x"}, @caps)
+
+      assert msg =~ "Unknown filter field"
+      assert msg =~ "not_a_column"
+    end
+
+    test "accepts string filter keys for declared fields" do
+      {:ok, _} =
+        StoreEcto.put("ecto_users", %{id: "u1", email: "a@test.com", name: "Alice"}, @caps)
+
+      results = StoreEcto.query("ecto_users", %{"name" => "Alice"}, @caps)
+      assert length(results) == 1
+    end
   end
 
   # ------------------------------------------------------------------

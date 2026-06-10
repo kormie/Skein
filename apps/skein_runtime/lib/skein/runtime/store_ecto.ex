@@ -134,13 +134,14 @@ defmodule Skein.Runtime.StoreEcto do
       when is_binary(table_name) and is_map(filters) and is_list(capabilities) do
     Trace.with_span(%{kind: :store, method: :query, table: table_name}, fn ->
       with :ok <- check_store_capability(table_name, capabilities),
-           {:ok, schema_mod} <- require_schema(table_name) do
+           {:ok, schema_mod} <- require_schema(table_name),
+           {:ok, validated_filters} <- validate_filter_keys(schema_mod, filters) do
         import Ecto.Query
 
         query = from(r in schema_mod)
 
         query =
-          Enum.reduce(atomize_keys(filters), query, fn {key, value}, acc ->
+          Enum.reduce(validated_filters, query, fn {key, value}, acc ->
             from(r in acc, where: field(r, ^key) == ^value)
           end)
 
@@ -192,6 +193,33 @@ defmodule Skein.Runtime.StoreEcto do
     struct
     |> Map.from_struct()
     |> Map.drop([:__meta__])
+  end
+
+  # Only fields declared on the schema may reach the dynamic
+  # field(r, ^key) query fragment; everything else is rejected with a
+  # structured error rather than raising or querying an arbitrary column.
+  defp validate_filter_keys(schema_mod, filters) do
+    schema_fields = schema_mod.__schema__(:fields)
+    by_name = Map.new(schema_fields, fn f -> {Atom.to_string(f), f} end)
+
+    Enum.reduce_while(filters, {:ok, []}, fn {key, value}, {:ok, acc} ->
+      normalized =
+        cond do
+          is_atom(key) and key in schema_fields -> key
+          is_binary(key) -> Map.get(by_name, key)
+          true -> nil
+        end
+
+      case normalized do
+        nil ->
+          allowed = Enum.map_join(schema_fields, ", ", &Atom.to_string/1)
+
+          {:halt, {:error, "Unknown filter field '#{key}' for query. Allowed fields: #{allowed}"}}
+
+        field ->
+          {:cont, {:ok, [{field, value} | acc]}}
+      end
+    end)
   end
 
   defp atomize_keys(map) when is_map(map) do

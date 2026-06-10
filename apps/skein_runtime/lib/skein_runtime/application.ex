@@ -5,7 +5,17 @@ defmodule SkeinRuntime.Application do
 
   @impl true
   def start(_type, _args) do
-    children = []
+    # Effect-backing processes are owned by the application supervisor so
+    # they get proper restart semantics. Their ensure_started/0 fallbacks
+    # remain only for environments where the app isn't started (--no-start).
+    children = [
+      Skein.Runtime.Process,
+      Skein.Runtime.Queue,
+      Skein.Runtime.Topic,
+      Skein.Runtime.Schedule,
+      Skein.Runtime.Timer
+    ]
+
     opts = [strategy: :one_for_one, name: SkeinRuntime.Supervisor]
     Supervisor.start_link(children, opts)
   end

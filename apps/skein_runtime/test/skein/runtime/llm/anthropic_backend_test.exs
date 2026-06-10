@@ -36,7 +36,10 @@ defmodule Skein.Runtime.Llm.AnthropicBackendTest do
 
   describe "build_request_body/4" do
     test "builds correct structure" do
-      body = AnthropicBackend.build_request_body("claude-sonnet-4-20250514", "Be helpful", "hello", stream: false)
+      body =
+        AnthropicBackend.build_request_body("claude-sonnet-4-20250514", "Be helpful", "hello",
+          stream: false
+        )
 
       assert body["model"] == "claude-sonnet-4-20250514"
       assert body["system"] == "Be helpful"
@@ -46,7 +49,9 @@ defmodule Skein.Runtime.Llm.AnthropicBackendTest do
     end
 
     test "adds stream flag when streaming" do
-      body = AnthropicBackend.build_request_body("claude-sonnet-4-20250514", "sys", "hi", stream: true)
+      body =
+        AnthropicBackend.build_request_body("claude-sonnet-4-20250514", "sys", "hi", stream: true)
+
       assert body["stream"] == true
     end
 
@@ -56,7 +61,11 @@ defmodule Skein.Runtime.Llm.AnthropicBackendTest do
     end
 
     test "inspects non-string input" do
-      body = AnthropicBackend.build_request_body("claude-sonnet-4-20250514", "sys", %{key: "val"}, stream: false)
+      body =
+        AnthropicBackend.build_request_body("claude-sonnet-4-20250514", "sys", %{key: "val"},
+          stream: false
+        )
+
       assert body["messages"] == [%{"role" => "user", "content" => ~s(%{key: "val"})}]
     end
   end
@@ -84,7 +93,9 @@ defmodule Skein.Runtime.Llm.AnthropicBackendTest do
 
   describe "map_http_error/2" do
     test "429 maps to rate_limit" do
-      error = AnthropicBackend.map_http_error(429, %{"error" => %{"message" => "retry in 30 seconds"}})
+      error =
+        AnthropicBackend.map_http_error(429, %{"error" => %{"message" => "retry in 30 seconds"}})
+
       assert %Error{kind: :rate_limit, detail: %{retry_after_ms: 30_000}} = error
     end
 
@@ -95,7 +106,9 @@ defmodule Skein.Runtime.Llm.AnthropicBackendTest do
 
     test "500 maps to provider_error" do
       error = AnthropicBackend.map_http_error(500, %{"error" => %{"message" => "internal error"}})
-      assert %Error{kind: :provider_error, detail: %{code: "500", message: "internal error"}} = error
+
+      assert %Error{kind: :provider_error, detail: %{code: "500", message: "internal error"}} =
+               error
     end
 
     test "503 maps to provider_error" do
@@ -110,7 +123,11 @@ defmodule Skein.Runtime.Llm.AnthropicBackendTest do
 
     test "400 maps to bad_request" do
       error = AnthropicBackend.map_http_error(400, %{"error" => %{"message" => "invalid model"}})
-      assert %Error{kind: :provider_error, detail: %{code: "bad_request", message: "invalid model"}} = error
+
+      assert %Error{
+               kind: :provider_error,
+               detail: %{code: "bad_request", message: "invalid model"}
+             } = error
     end
   end
 
@@ -169,14 +186,18 @@ defmodule Skein.Runtime.Llm.AnthropicBackendTest do
 
   describe "parse_sse_buffer/1" do
     test "parses complete SSE events" do
-      buffer = ~s(data: {"type":"content_block_delta","delta":{"text":"Hi"}}\n\ndata: {"type":"content_block_delta","delta":{"text":"!"}}\n\n)
+      buffer =
+        ~s(data: {"type":"content_block_delta","delta":{"text":"Hi"}}\n\ndata: {"type":"content_block_delta","delta":{"text":"!"}}\n\n)
+
       {events, remaining} = AnthropicBackend.parse_sse_buffer(buffer)
       assert length(events) == 2
       assert remaining == ""
     end
 
     test "returns incomplete data as remaining" do
-      buffer = ~s(data: {"type":"content_block_delta","delta":{"text":"Hi"}}\n\ndata: {"type":"partial)
+      buffer =
+        ~s(data: {"type":"content_block_delta","delta":{"text":"Hi"}}\n\ndata: {"type":"partial)
+
       {events, remaining} = AnthropicBackend.parse_sse_buffer(buffer)
       assert length(events) == 1
       assert remaining =~ "partial"

@@ -40,9 +40,20 @@ defmodule Skein.Runtime.ProcessTest do
     test "multiple processes can be spawned" do
       test_pid = self()
 
-      {:ok, pid1} = SpawnProcess.spawn(fn -> send(test_pid, {:from, 1}) end, [%{kind: "process.spawn", params: []}])
-      {:ok, pid2} = SpawnProcess.spawn(fn -> send(test_pid, {:from, 2}) end, [%{kind: "process.spawn", params: []}])
-      {:ok, pid3} = SpawnProcess.spawn(fn -> send(test_pid, {:from, 3}) end, [%{kind: "process.spawn", params: []}])
+      {:ok, pid1} =
+        SpawnProcess.spawn(fn -> send(test_pid, {:from, 1}) end, [
+          %{kind: "process.spawn", params: []}
+        ])
+
+      {:ok, pid2} =
+        SpawnProcess.spawn(fn -> send(test_pid, {:from, 2}) end, [
+          %{kind: "process.spawn", params: []}
+        ])
+
+      {:ok, pid3} =
+        SpawnProcess.spawn(fn -> send(test_pid, {:from, 3}) end, [
+          %{kind: "process.spawn", params: []}
+        ])
 
       assert pid1 != pid2
       assert pid2 != pid3

@@ -54,7 +54,10 @@ defmodule Skein.Examples.SkeinAssistantTest do
       Skein.Runtime.Llm.set_backend(Skein.Runtime.Llm.TestBackend)
 
       {:module, mod} = compile()
-      result = mod.__handler_0__(%{params: %{session_id: "sess-1"}, body: "How do I write a module?"})
+
+      result =
+        mod.__handler_0__(%{params: %{session_id: "sess-1"}, body: "How do I write a module?"})
+
       assert {:respond_json, 200, answer} = result
       assert answer != nil
     end

@@ -1,4 +1,11 @@
 defmodule Skein.Runtime.EventLogTest do
+  @moduledoc """
+  Back-compat coverage for the deprecated `Skein.Runtime.EventLog` facade.
+
+  EventLog delegates everything to `Skein.Runtime.EventStore`; this suite is
+  retained intentionally to guarantee the deprecated API keeps working until
+  it is removed. New tests belong in `event_store_test.exs`.
+  """
   use ExUnit.Case, async: false
 
   alias Skein.Runtime.EventLog
@@ -9,7 +16,8 @@ defmodule Skein.Runtime.EventLogTest do
 
   describe "log/3" do
     test "logs an event and returns :ok" do
-      assert :ok = EventLog.log("user.login", %{user_id: "u1"}, [%{kind: "event.log", params: []}])
+      assert :ok =
+               EventLog.log("user.login", %{user_id: "u1"}, [%{kind: "event.log", params: []}])
     end
 
     test "logged event is retrievable" do

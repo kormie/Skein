@@ -292,7 +292,8 @@ defmodule Skein.Parser do
          message:
            "Unexpected token #{inspect(token_type)}, expected a declaration (fn, type, enum, capability, handler, tool, test, scenario, golden, supervisor)",
          location: %{file: file, line: line, col: col},
-         fix_hint: "Add a valid declaration keyword"
+         fix_hint: "Add a valid declaration keyword",
+         fix_code: "fn name() -> Type { ... }"
        }
      ]}
   end
@@ -306,7 +307,8 @@ defmodule Skein.Parser do
          message:
            "Unexpected token #{inspect(token_type)}, expected a declaration (fn, type, enum, capability, handler, tool, test, scenario, golden, supervisor)",
          location: %{file: file, line: line, col: col},
-         fix_hint: "Add a valid declaration keyword"
+         fix_hint: "Add a valid declaration keyword",
+         fix_code: "fn name() -> Type { ... }"
        }
      ]}
   end
@@ -427,7 +429,8 @@ defmodule Skein.Parser do
                message:
                  "Unknown handler source '#{source}', expected 'http', 'queue', 'schedule', or 'topic'",
                location: %{file: file, line: line, col: col},
-               fix_hint: "Use 'http', 'queue', 'schedule', or 'topic'"
+               fix_hint: "Use 'http', 'queue', 'schedule', or 'topic'",
+               fix_code: "handler http GET \"/path\" (req) -> { ... }"
              }
            ]}
       end
@@ -593,7 +596,8 @@ defmodule Skein.Parser do
                severity: :error,
                message: "Tool '#{name}' is missing required 'input' block",
                location: %{file: file, line: line, col: col},
-               fix_hint: "Add an input block: input { field: Type }"
+               fix_hint: "Add an input block: input { field: Type }",
+               fix_code: "input { field: Type }"
              }
            ]}
 
@@ -605,7 +609,8 @@ defmodule Skein.Parser do
                severity: :error,
                message: "Tool '#{name}' is missing required 'output' block",
                location: %{file: file, line: line, col: col},
-               fix_hint: "Add an output block: output { field: Type }"
+               fix_hint: "Add an output block: output { field: Type }",
+               fix_code: "output { field: Type }"
              }
            ]}
 
@@ -617,7 +622,8 @@ defmodule Skein.Parser do
                severity: :error,
                message: "Tool '#{name}' is missing required 'implement' block",
                location: %{file: file, line: line, col: col},
-               fix_hint: "Add an implement block: implement { ... }"
+               fix_hint: "Add an implement block: implement { ... }",
+               fix_code: "implement { ... }"
              }
            ]}
 
@@ -1278,7 +1284,13 @@ defmodule Skein.Parser do
     {:ok, Enum.reverse(children), strategy, max_restarts, tokens}
   end
 
-  defp parse_supervisor_body([{:ident, _, "child"} | _] = tokens, file, children, strategy, max_restarts) do
+  defp parse_supervisor_body(
+         [{:ident, _, "child"} | _] = tokens,
+         file,
+         children,
+         strategy,
+         max_restarts
+       ) do
     case parse_child_decl(tokens, file) do
       {:ok, child, rest} ->
         parse_supervisor_body(rest, file, [child | children], strategy, max_restarts)
@@ -1436,7 +1448,8 @@ defmodule Skein.Parser do
          severity: :error,
          message: "Unexpected end of file, expected '}'",
          location: %{file: file, line: line, col: col},
-         fix_hint: "Add a closing '}'"
+         fix_hint: "Add a closing '}'",
+         fix_code: "}"
        }
      ]}
   end
@@ -2360,7 +2373,8 @@ defmodule Skein.Parser do
          severity: :error,
          message: "Expected '#{expected}', got #{describe_token(tokens)}",
          location: %{file: file, line: line, col: col},
-         fix_hint: "Add '#{expected}' here"
+         fix_hint: "Add '#{expected}' here",
+         fix_code: token_text(expected)
        }
      ]}
   end
@@ -2379,7 +2393,8 @@ defmodule Skein.Parser do
          severity: :error,
          message: "Expected an identifier, got #{describe_token(tokens)}",
          location: %{file: file, line: line, col: col},
-         fix_hint: "Add an identifier here"
+         fix_hint: "Add an identifier here",
+         fix_code: "name"
        }
      ]}
   end
@@ -2398,7 +2413,8 @@ defmodule Skein.Parser do
          severity: :error,
          message: "Expected a type/module name (uppercase), got #{describe_token(tokens)}",
          location: %{file: file, line: line, col: col},
-         fix_hint: "Add a capitalized name here"
+         fix_hint: "Add a capitalized name here",
+         fix_code: "TypeName"
        }
      ]}
   end
@@ -2411,6 +2427,64 @@ defmodule Skein.Parser do
   defp describe_token([{type, _} | _]), do: "'#{type}'"
   defp describe_token([{type, _, _} | _]), do: "'#{type}'"
   defp describe_token(_), do: "unknown"
+
+  # Source text for punctuation tokens used with expect/3, so fix_code
+  # carries insertable code rather than a token atom name.
+  defp token_text(:lbrace), do: "{"
+  defp token_text(:rbrace), do: "}"
+  defp token_text(:lparen), do: "("
+  defp token_text(:rparen), do: ")"
+  defp token_text(:lbracket), do: "["
+  defp token_text(:rbracket), do: "]"
+  defp token_text(:arrow), do: "->"
+  defp token_text(:colon), do: ":"
+  defp token_text(:comma), do: ","
+  defp token_text(:dot), do: "."
+  defp token_text(:eq), do: "="
+  defp token_text(other), do: to_string(other)
+
+  # Derives an insertable code snippet from an expected-token description
+  # for unexpected_token_error/3.
+  defp default_fix_code(expected) do
+    case Regex.run(~r/^'([^']*)'$/, expected) do
+      [_, literal] -> literal
+      nil -> example_fix_code(expected)
+    end
+  end
+
+  defp example_fix_code("an expression"), do: "value"
+  defp example_fix_code("a pattern"), do: "_"
+  defp example_fix_code("a type name"), do: "TypeName"
+  defp example_fix_code("a variant name"), do: "VariantName"
+  defp example_fix_code("a route string"), do: "\"/path\""
+  defp example_fix_code("a description string"), do: "\"description\""
+  defp example_fix_code("a test description string"), do: "\"description\""
+  defp example_fix_code("a scenario description string"), do: "\"description\""
+  defp example_fix_code("a golden test description string"), do: "\"description\""
+  defp example_fix_code("an error type name"), do: "ErrorName"
+
+  defp example_fix_code("an HTTP method (GET, POST, PUT, PATCH, DELETE)"), do: "GET"
+
+  defp example_fix_code("a capability kind (e.g., http.out)"), do: "http.out"
+
+  defp example_fix_code("a tool name (e.g., CreateRefund or Stripe.CreateRefund)"),
+    do: "CreateRefund"
+
+  defp example_fix_code("a phase reference (Phase.VariantName)"), do: "Phase.VariantName"
+
+  defp example_fix_code("'start' or 'phase' after 'on'"),
+    do: "on start(param: Type) -> { ... }"
+
+  defp example_fix_code("an agent body element (capability, state, enum Phase, on, fn)"),
+    do: "on start(param: Type) -> { ... }"
+
+  defp example_fix_code("a tool section (description, input, output, errors, implement)"),
+    do: "input { field: Type }"
+
+  defp example_fix_code("a supervisor body element (child, strategy:, max_restarts:)"),
+    do: "strategy: one_for_one"
+
+  defp example_fix_code(expected), do: expected
 
   defp meta_from_tokens([{_, {line, col}} | _], file), do: %{line: line, col: col, file: file}
   defp meta_from_tokens([{_, {line, col}, _} | _], file), do: %{line: line, col: col, file: file}
@@ -2426,7 +2500,8 @@ defmodule Skein.Parser do
          severity: :error,
          message: "Expected #{expected}, got #{describe_token(tokens)}",
          location: %{file: file, line: line, col: col},
-         fix_hint: "Expected #{expected}"
+         fix_hint: "Expected #{expected}",
+         fix_code: default_fix_code(expected)
        }
      ]}
   end

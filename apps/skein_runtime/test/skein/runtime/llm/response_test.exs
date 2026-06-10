@@ -51,7 +51,8 @@ defmodule Skein.Runtime.Llm.ResponseTest do
     test "truncates long strings with ellipsis" do
       long = String.duplicate("a", 300)
       result = Response.truncate(long, 200)
-      assert String.length(result) == 203  # 200 + "..."
+      # 200 + "..."
+      assert String.length(result) == 203
       assert String.ends_with?(result, "...")
     end
 

@@ -12,10 +12,11 @@ The compiler and toolchain are implemented in Elixir. The runtime is a set of OT
 skein/
 ├── CLAUDE.md                    # This file
 ├── mix.exs                      # Root umbrella project
+├── .github/workflows/           # CI (format check, compile, tests) + binary builds + docs deploy
 ├── docs/
 │   ├── SKEIN_SPEC.md            # Complete language specification
 │   ├── ARCHITECTURE.md          # Compiler and runtime architecture
-│   ├── IMPLEMENTATION_PLAN.md   # Phased build plan with acceptance criteria
+│   ├── ROADMAP.md               # Canonical prioritized work list
 │   └── site/                    # Astro + Starlight documentation site
 ├── apps/
 │   ├── skein_compiler/          # Lexer, parser, analyzer, code generator
@@ -39,21 +40,32 @@ skein/
 │   │   │   │       ├── handler.ex       # Handler dispatch
 │   │   │   │       ├── tool.ex          # Tool registry and execution
 │   │   │   │       ├── capability.ex    # Runtime capability enforcement
-│   │   │   │       ├── memory.ex        # Scoped KV memory
-│   │   │   │       ├── trace.ex         # Trace capture and storage
+│   │   │   │       ├── memory.ex        # Scoped KV memory (single :skein_memory ETS table)
+│   │   │   │       ├── trace.ex         # Trace facade over EventStore
+│   │   │   │       ├── event_store.ex   # Unified append-only event log (size-bounded)
+│   │   │   │       ├── event_store/     # SQLite persistence backend
+│   │   │   │       ├── event_log.ex     # Deprecated facade -> EventStore
 │   │   │   │       ├── llm.ex           # LLM client, JSON decoding, streaming
-│   │   │   │       ├── store.ex         # Storage abstraction
+│   │   │   │       ├── llm/             # Anthropic backend, response parsing
+│   │   │   │       ├── store.ex         # Storage abstraction (single :skein_store ETS table)
 │   │   │   │       ├── store_ecto.ex    # Ecto-backed storage implementation
 │   │   │   │       ├── ecto_schema.ex   # Dynamic Ecto schema creation
 │   │   │   │       ├── migration_gen.ex # Database migration generation
 │   │   │   │       ├── repo.ex          # Ecto repository (SQLite3)
-│   │   │   │       ├── http.ex          # HTTP support
-│   │   │   │       ├── router.ex        # HTTP routing
-│   │   │   │       ├── server.ex        # Server infrastructure
+│   │   │   │       ├── http.ex          # Outbound HTTP (:httpc wrapper)
+│   │   │   │       ├── router.ex        # HTTP routing (Plug)
+│   │   │   │       ├── server.ex        # Server infrastructure (Bandit)
 │   │   │   │       ├── request.ex       # HTTP request handling
-│   │   │   │       ├── queue.ex         # Queue implementation
-│   │   │   │       ├── schedule.ex      # Scheduling/timing
-│   │   │   │       └── replay.ex        # Event replay
+│   │   │   │       ├── queue.ex         # Queue dispatch (supervised GenServer)
+│   │   │   │       ├── topic.ex         # Pub/sub fan-out (supervised GenServer)
+│   │   │   │       ├── schedule.ex      # Scheduling (supervised GenServer)
+│   │   │   │       ├── timer.ex         # Timers (supervised GenServer)
+│   │   │   │       ├── process.ex       # process.spawn (DynamicSupervisor)
+│   │   │   │       ├── idempotent.ex    # idempotent(key) TTL tracking
+│   │   │   │       ├── replay.ex        # Event replay
+│   │   │   │       └── stdlib/          # Stdlib runtime modules (String, List, ...)
+│   │   │   ├── skein_runtime/
+│   │   │   │   └── application.ex   # Supervises Queue/Topic/Schedule/Timer/Process
 │   │   │   └── skein_runtime.ex
 │   │   └── test/
 │   ├── skein_cli/               # CLI tooling (skein new, build, test, deploy)
@@ -66,13 +78,21 @@ skein/
 │   └── skein_lsp/               # Language Server Protocol implementation
 │       ├── lib/
 │       └── test/
-├── examples/                    # Canonical Skein programs
+├── examples/                    # Canonical Skein programs (all covered by examples_test.exs)
 │   ├── hello.skein
 │   ├── hello_http.skein
+│   ├── hello_llm.skein
 │   ├── refund_agent.skein
 │   ├── incident_triage.skein
 │   ├── queue_worker.skein
-│   └── supervisor_pool.skein
+│   ├── supervisor_pool.skein
+│   ├── pubsub_notifications.skein
+│   ├── background_tasks.skein
+│   ├── audit_log.skein
+│   ├── semantic_search.skein
+│   ├── skein_assistant.skein
+│   ├── stdlib_demo.skein
+│   └── market_research/         # Multi-file example (agent + service)
 └── .docs-config.json            # Documentation site configuration
 ```
 

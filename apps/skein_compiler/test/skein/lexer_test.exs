@@ -18,7 +18,8 @@ defmodule Skein.LexerTest do
     end
 
     test "contextual keywords tokenize as identifiers" do
-      contextual = ~w(input output errors policy description state strategy child replay given expect assert)
+      contextual =
+        ~w(input output errors policy description state strategy child replay given expect assert)
 
       for kw <- contextual do
         assert {:ok, [{:ident, {1, 1}, ^kw}, {:eof, _}]} = Lexer.tokenize(kw)
@@ -271,6 +272,13 @@ defmodule Skein.LexerTest do
 
     test "handles comment at start of line" do
       assert {:ok, [{:eof, _}]} = Lexer.tokenize("-- just a comment")
+    end
+
+    test "eof column is correct after a trailing comment" do
+      source = "let x = 1 -- note"
+      assert {:ok, tokens} = Lexer.tokenize(source)
+      assert {:eof, {1, col}} = List.last(tokens)
+      assert col == String.length(source) + 1
     end
 
     test "handles comment followed by code on next line" do

@@ -98,7 +98,7 @@ defmodule Skein.Runtime.EventStore.SqliteBackendTest do
       SqliteBackend.append(%{kind: :effect, order: 2})
 
       events = SqliteBackend.load_all()
-      orders = Enum.map(events, & &1[:order] || &1["order"])
+      orders = Enum.map(events, &(&1[:order] || &1["order"]))
       assert orders == [1, 2]
     end
   end

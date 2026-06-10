@@ -9,7 +9,10 @@ defmodule Skein.Runtime.Memory do
 
   Memory uses two storage layers:
 
-  1. **ETS cache** — per-namespace ETS tables for fast read/write access
+  1. **ETS cache** — a single ETS table (`:skein_memory`) keyed by
+     `{namespace, key}` for fast read/write access. Using one static table
+     means namespace strings are never converted to atoms (atoms are never
+     garbage-collected, so dynamic atom creation is a leak)
   2. **EventStore** — each mutation (put/delete) appends a `:state_change` event
      to the unified event log
 
@@ -30,6 +33,8 @@ defmodule Skein.Runtime.Memory do
   alias Skein.Runtime.Trace
   alias Skein.Runtime.EventStore
 
+  @table :skein_memory
+
   @doc """
   Stores a value under the given key in the specified namespace.
 
@@ -42,9 +47,8 @@ defmodule Skein.Runtime.Memory do
       case check_memory_capability(namespace, capabilities) do
         :ok ->
           scoped = scope_key(key)
-          ets_table = table_ref(namespace)
-          ensure_table(ets_table)
-          :ets.insert(ets_table, {scoped, value})
+          ensure_table()
+          :ets.insert(@table, {{namespace, scoped}, value})
 
           EventStore.append(%{
             kind: :state_change,
@@ -74,11 +78,10 @@ defmodule Skein.Runtime.Memory do
       case check_memory_capability(namespace, capabilities) do
         :ok ->
           scoped = scope_key(key)
-          ets_table = table_ref(namespace)
-          ensure_table(ets_table)
+          ensure_table()
 
-          case :ets.lookup(ets_table, scoped) do
-            [{^scoped, value}] -> {:ok, value}
+          case :ets.lookup(@table, {namespace, scoped}) do
+            [{{^namespace, ^scoped}, value}] -> {:ok, value}
             [] -> {:error, "not_found"}
           end
 
@@ -114,9 +117,8 @@ defmodule Skein.Runtime.Memory do
       case check_memory_capability(namespace, capabilities) do
         :ok ->
           scoped = scope_key(key)
-          ets_table = table_ref(namespace)
-          ensure_table(ets_table)
-          :ets.delete(ets_table, scoped)
+          ensure_table()
+          :ets.delete(@table, {namespace, scoped})
 
           EventStore.append(%{
             kind: :state_change,
@@ -144,18 +146,23 @@ defmodule Skein.Runtime.Memory do
     Trace.with_span(%{kind: :memory, method: :list, namespace: namespace}, fn ->
       case check_memory_capability(namespace, capabilities) do
         :ok ->
-          ets_table = table_ref(namespace)
-          ensure_table(ets_table)
+          ensure_table()
 
           instance_prefix = agent_prefix()
 
-          :ets.tab2list(ets_table)
-          |> Enum.map(fn {key, _value} -> key end)
+          :ets.match(@table, {{namespace, :"$1"}, :_})
+          |> Enum.map(fn [key] -> key end)
           |> Enum.filter(fn key ->
             # Filter to current agent instance's keys if in agent context
-            in_scope = if instance_prefix, do: String.starts_with?(key, instance_prefix), else: true
+            in_scope =
+              if instance_prefix, do: String.starts_with?(key, instance_prefix), else: true
+
             # Apply user prefix filter on the unscoped key
-            unscoped = if instance_prefix && in_scope, do: String.replace_prefix(key, instance_prefix, ""), else: key
+            unscoped =
+              if instance_prefix && in_scope,
+                do: String.replace_prefix(key, instance_prefix, ""),
+                else: key
+
             in_scope && (prefix == "" || prefix == "*" || String.starts_with?(unscoped, prefix))
           end)
           |> Enum.map(&unscope_key/1)
@@ -171,9 +178,8 @@ defmodule Skein.Runtime.Memory do
   """
   @spec clear(String.t()) :: :ok
   def clear(namespace) when is_binary(namespace) do
-    ets_table = table_ref(namespace)
-    ensure_table(ets_table)
-    :ets.delete_all_objects(ets_table)
+    ensure_table()
+    :ets.match_delete(@table, {{namespace, :_}, :_})
     :ok
   end
 
@@ -205,13 +211,14 @@ defmodule Skein.Runtime.Memory do
   # Internal
   # ------------------------------------------------------------------
 
-  defp table_ref(namespace) do
-    String.to_atom("skein_memory_#{namespace}")
-  end
-
-  defp ensure_table(ets_table) do
-    if :ets.whereis(ets_table) == :undefined do
-      :ets.new(ets_table, [:named_table, :set, :public, read_concurrency: true])
+  defp ensure_table do
+    if :ets.whereis(@table) == :undefined do
+      try do
+        :ets.new(@table, [:named_table, :set, :public, read_concurrency: true])
+      rescue
+        # Another process won the creation race; the table now exists.
+        ArgumentError -> :ok
+      end
     end
 
     :ok
@@ -234,6 +241,7 @@ defmodule Skein.Runtime.Memory do
     case {Process.get(:skein_agent_name), Process.get(:skein_agent_instance_id)} do
       {name, id} when is_binary(name) and is_binary(id) ->
         prefix = "#{name}:#{id}:"
+
         if String.starts_with?(scoped_key, prefix) do
           String.replace_prefix(scoped_key, prefix, "")
         else

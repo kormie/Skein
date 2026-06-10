@@ -558,8 +558,18 @@ defmodule Skein.CodeGen.SchemaGenTest do
       enum_decl = %AST.EnumDecl{
         name: "Result",
         variants: [
-          %AST.Variant{name: "Ok", fields: [field("value", type_ref("String"))], transitions: [], meta: %{}},
-          %AST.Variant{name: "Error", fields: [field("message", type_ref("String"))], transitions: [], meta: %{}},
+          %AST.Variant{
+            name: "Ok",
+            fields: [field("value", type_ref("String"))],
+            transitions: [],
+            meta: %{}
+          },
+          %AST.Variant{
+            name: "Error",
+            fields: [field("message", type_ref("String"))],
+            transitions: [],
+            meta: %{}
+          },
           %AST.Variant{name: "Pending", fields: [], transitions: [], meta: %{}}
         ],
         transitions: [],

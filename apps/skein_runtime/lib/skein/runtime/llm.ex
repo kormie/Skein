@@ -226,8 +226,7 @@ defmodule Skein.Runtime.Llm do
             |> Enum.map(fn cap -> Enum.join(cap.params, "/") end)
             |> Enum.join(", ")
 
-          {:error,
-           "Model '#{model}' not declared in capabilities. Declared models: #{declared}"}
+          {:error, "Model '#{model}' not declared in capabilities. Declared models: #{declared}"}
         end
     end
   end

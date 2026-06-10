@@ -15,7 +15,11 @@ defmodule Skein.Runtime.ProcessPropertyTest do
 
       pids =
         for _ <- 1..count do
-          {:ok, pid} = SpawnProcess.spawn(fn -> Process.sleep(2000) end, [%{kind: "process.spawn", params: []}])
+          {:ok, pid} =
+            SpawnProcess.spawn(fn -> Process.sleep(2000) end, [
+              %{kind: "process.spawn", params: []}
+            ])
+
           pid
         end
 
@@ -30,7 +34,11 @@ defmodule Skein.Runtime.ProcessPropertyTest do
 
       pids =
         for _ <- 1..count do
-          {:ok, pid} = SpawnProcess.spawn(fn -> Process.sleep(5000) end, [%{kind: "process.spawn", params: []}])
+          {:ok, pid} =
+            SpawnProcess.spawn(fn -> Process.sleep(5000) end, [
+              %{kind: "process.spawn", params: []}
+            ])
+
           pid
         end
 

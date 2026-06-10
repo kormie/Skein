@@ -60,6 +60,18 @@ defmodule Skein.Lsp.Server do
 
   # -- Initialization --
 
+  @doc """
+  Starts the language server process.
+
+  Options are forwarded to `GenLSP.start_link/3` (e.g. `:buffer`, `:assigns`,
+  `:task_supervisor`, or `:communication` for the transport). This is also
+  the start function used by the `child_spec/1` that `use GenLSP` generates.
+  """
+  @spec start_link(keyword()) :: {:ok, pid()} | {:error, term()}
+  def start_link(opts \\ []) do
+    GenLSP.start_link(__MODULE__, [], opts)
+  end
+
   @impl true
   def init(lsp, _args) do
     {:ok,
@@ -109,7 +121,7 @@ defmodule Skein.Lsp.Server do
         lsp
       ) do
     symbols =
-      case Map.get(lsp.assigns.asts, uri) do
+      case Map.get(assigns(lsp).asts, uri) do
         nil -> []
         ast -> Symbols.document_symbols(ast)
       end
@@ -124,12 +136,12 @@ defmodule Skein.Lsp.Server do
         lsp
       ) do
     hover =
-      case Map.get(lsp.assigns.asts, uri) do
+      case Map.get(assigns(lsp).asts, uri) do
         nil ->
           nil
 
         ast ->
-          source = Map.get(lsp.assigns.documents, uri, "")
+          source = Map.get(assigns(lsp).documents, uri, "")
           HoverProvider.hover(ast, source, position)
       end
 
@@ -143,12 +155,12 @@ defmodule Skein.Lsp.Server do
         lsp
       ) do
     location =
-      case Map.get(lsp.assigns.asts, uri) do
+      case Map.get(assigns(lsp).asts, uri) do
         nil ->
           nil
 
         ast ->
-          source = Map.get(lsp.assigns.documents, uri, "")
+          source = Map.get(assigns(lsp).documents, uri, "")
 
           case HoverProvider.definition(ast, source, position) do
             nil -> nil
@@ -165,8 +177,8 @@ defmodule Skein.Lsp.Server do
         },
         lsp
       ) do
-    ast = Map.get(lsp.assigns.asts, uri)
-    source = Map.get(lsp.assigns.documents, uri, "")
+    ast = Map.get(assigns(lsp).asts, uri)
+    source = Map.get(assigns(lsp).documents, uri, "")
     items = Completions.complete(ast, source, position)
 
     {:reply, %CompletionList{is_incomplete: false, items: items}, lsp}
@@ -179,7 +191,7 @@ defmodule Skein.Lsp.Server do
         lsp
       ) do
     tokens =
-      case Map.get(lsp.assigns.documents, uri) do
+      case Map.get(assigns(lsp).documents, uri) do
         nil ->
           %GenLSP.Structures.SemanticTokens{data: []}
 
@@ -239,7 +251,7 @@ defmodule Skein.Lsp.Server do
         },
         lsp
       ) do
-    text = text || Map.get(lsp.assigns.documents, uri, "")
+    text = text || Map.get(assigns(lsp).documents, uri, "")
     lsp = put_document(lsp, uri, text)
     lsp = compile_and_publish(lsp, uri, text)
     {:noreply, lsp}
@@ -291,7 +303,7 @@ defmodule Skein.Lsp.Server do
   end
 
   defp update_assign(lsp, key, fun) do
-    assign(lsp, [{key, fun.(lsp.assigns[key])}])
+    assign(lsp, [{key, fun.(assigns(lsp)[key])}])
   end
 
   defp uri_to_path("file://" <> path), do: URI.decode(path)

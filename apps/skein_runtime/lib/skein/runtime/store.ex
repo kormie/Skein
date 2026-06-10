@@ -3,8 +3,10 @@ defmodule Skein.Runtime.Store do
   Runtime store for Skein `store.<table>.<method>` effect calls.
 
   Provides typed record storage with get, put, delete, and query operations.
-  Backed by ETS for local development. Each table is a separate ETS table
-  named `skein_store_<table_name>`.
+  Backed by ETS for local development. All logical tables share a single ETS
+  table (`:skein_store`) keyed by `{table_name, id}`, so table names never
+  need to be converted to atoms (table names can come from arbitrary program
+  input, and atoms are never garbage-collected).
 
   Every operation is:
   1. Checked against the module's declared capabilities
@@ -17,6 +19,8 @@ defmodule Skein.Runtime.Store do
 
   alias Skein.Runtime.Trace
 
+  @table :skein_store
+
   @doc """
   Retrieves a record by its primary key (id).
 
@@ -27,11 +31,10 @@ defmodule Skein.Runtime.Store do
     Trace.with_span(%{kind: :store, method: :get, table: table_name}, fn ->
       case check_store_capability(table_name, capabilities) do
         :ok ->
-          ets_table = table_ref(table_name)
-          ensure_table(ets_table)
+          ensure_table()
 
-          case :ets.lookup(ets_table, id) do
-            [{^id, record}] -> {:ok, record}
+          case :ets.lookup(@table, {table_name, id}) do
+            [{{^table_name, ^id}, record}] -> {:ok, record}
             [] -> {:error, "not_found"}
           end
 
@@ -53,16 +56,14 @@ defmodule Skein.Runtime.Store do
     Trace.with_span(%{kind: :store, method: :put, table: table_name}, fn ->
       case check_store_capability(table_name, capabilities) do
         :ok ->
-          ets_table = table_ref(table_name)
-          ensure_table(ets_table)
-          id = extract_id(record)
+          ensure_table()
 
-          case id do
+          case extract_id(record) do
             nil ->
               {:error, "Record must have an :id or \"id\" field"}
 
             id ->
-              :ets.insert(ets_table, {id, record})
+              :ets.insert(@table, {{table_name, id}, record})
               {:ok, record}
           end
 
@@ -82,9 +83,8 @@ defmodule Skein.Runtime.Store do
     Trace.with_span(%{kind: :store, method: :delete, table: table_name}, fn ->
       case check_store_capability(table_name, capabilities) do
         :ok ->
-          ets_table = table_ref(table_name)
-          ensure_table(ets_table)
-          :ets.delete(ets_table, id)
+          ensure_table()
+          :ets.delete(@table, {table_name, id})
           {:ok, id}
 
         {:error, _} = error ->
@@ -107,11 +107,10 @@ defmodule Skein.Runtime.Store do
     Trace.with_span(%{kind: :store, method: :query, table: table_name}, fn ->
       case check_store_capability(table_name, capabilities) do
         :ok ->
-          ets_table = table_ref(table_name)
-          ensure_table(ets_table)
+          ensure_table()
 
-          :ets.tab2list(ets_table)
-          |> Enum.map(fn {_id, record} -> record end)
+          :ets.match_object(@table, {{table_name, :_}, :_})
+          |> Enum.map(fn {{_table, _id}, record} -> record end)
           |> Enum.filter(fn record -> matches_filters?(record, filters) end)
 
         {:error, _} = error ->
@@ -125,9 +124,8 @@ defmodule Skein.Runtime.Store do
   """
   @spec clear(String.t()) :: :ok
   def clear(table_name) when is_binary(table_name) do
-    ets_table = table_ref(table_name)
-    ensure_table(ets_table)
-    :ets.delete_all_objects(ets_table)
+    ensure_table()
+    :ets.match_delete(@table, {{table_name, :_}, :_})
     :ok
   end
 
@@ -135,13 +133,14 @@ defmodule Skein.Runtime.Store do
   # Internal
   # ------------------------------------------------------------------
 
-  defp table_ref(table_name) do
-    String.to_atom("skein_store_#{table_name}")
-  end
-
-  defp ensure_table(ets_table) do
-    if :ets.whereis(ets_table) == :undefined do
-      :ets.new(ets_table, [:named_table, :set, :public, read_concurrency: true])
+  defp ensure_table do
+    if :ets.whereis(@table) == :undefined do
+      try do
+        :ets.new(@table, [:named_table, :set, :public, read_concurrency: true])
+      rescue
+        # Another process won the creation race; the table now exists.
+        ArgumentError -> :ok
+      end
     end
 
     :ok

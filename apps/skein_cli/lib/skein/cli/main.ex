@@ -126,6 +126,10 @@ defmodule Skein.CLI.Main do
         end
 
         System.halt(0)
+
+      {:error, reason} ->
+        IO.puts(:stderr, "Error: #{format_error(reason)}")
+        System.halt(1)
     end
   end
 

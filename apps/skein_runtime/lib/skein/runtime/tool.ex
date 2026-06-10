@@ -28,7 +28,12 @@ defmodule Skein.Runtime.Tool do
   @spec init() :: :ok
   def init do
     if :ets.whereis(@registry_table) == :undefined do
-      :ets.new(@registry_table, [:named_table, :public, :set])
+      try do
+        :ets.new(@registry_table, [:named_table, :public, :set])
+      rescue
+        # Another process won the creation race; the table now exists.
+        ArgumentError -> :ok
+      end
     end
 
     :ok
@@ -236,7 +241,10 @@ defmodule Skein.Runtime.Tool do
   end
 
   defp get_input_spec(%{input: spec}) when is_map(spec) and map_size(spec) > 0, do: spec
-  defp get_input_spec(%{"input_schema" => %{"properties" => _} = schema}), do: {:json_schema, schema}
+
+  defp get_input_spec(%{"input_schema" => %{"properties" => _} = schema}),
+    do: {:json_schema, schema}
+
   defp get_input_spec(%{input_schema: %{"properties" => _} = schema}), do: {:json_schema, schema}
   defp get_input_spec(_), do: nil
 
@@ -283,10 +291,22 @@ defmodule Skein.Runtime.Tool do
 
   defp map_get_flex(map, key) when is_map(map) do
     cond do
-      Map.has_key?(map, key) -> {:found, Map.get(map, key)}
-      is_binary(key) -> atom_key = safe_to_atom(key); if atom_key && Map.has_key?(map, atom_key), do: {:found, Map.get(map, atom_key)}, else: :missing
-      is_atom(key) -> str_key = Atom.to_string(key); if Map.has_key?(map, str_key), do: {:found, Map.get(map, str_key)}, else: :missing
-      true -> :missing
+      Map.has_key?(map, key) ->
+        {:found, Map.get(map, key)}
+
+      is_binary(key) ->
+        atom_key = safe_to_atom(key)
+
+        if atom_key && Map.has_key?(map, atom_key),
+          do: {:found, Map.get(map, atom_key)},
+          else: :missing
+
+      is_atom(key) ->
+        str_key = Atom.to_string(key)
+        if Map.has_key?(map, str_key), do: {:found, Map.get(map, str_key)}, else: :missing
+
+      true ->
+        :missing
     end
   end
 
@@ -298,22 +318,30 @@ defmodule Skein.Runtime.Tool do
 
   defp check_type(field, value, :int) when not is_integer(value),
     do: ["field '#{field}' expected Int, got #{inspect(value)}"]
+
   defp check_type(field, value, :string) when not is_binary(value),
     do: ["field '#{field}' expected String, got #{inspect(value)}"]
+
   defp check_type(field, value, :float) when not is_float(value) and not is_integer(value),
     do: ["field '#{field}' expected Float, got #{inspect(value)}"]
+
   defp check_type(field, value, :bool) when not is_boolean(value),
     do: ["field '#{field}' expected Bool, got #{inspect(value)}"]
+
   defp check_type(_field, _value, _type), do: []
 
   defp check_json_schema_type(field, value, %{"type" => "string"}) when not is_binary(value),
     do: ["field '#{field}' expected String, got #{inspect(value)}"]
+
   defp check_json_schema_type(field, value, %{"type" => "integer"}) when not is_integer(value),
     do: ["field '#{field}' expected Int, got #{inspect(value)}"]
+
   defp check_json_schema_type(field, value, %{"type" => "number"}) when not is_number(value),
     do: ["field '#{field}' expected Number, got #{inspect(value)}"]
+
   defp check_json_schema_type(field, value, %{"type" => "boolean"}) when not is_boolean(value),
     do: ["field '#{field}' expected Bool, got #{inspect(value)}"]
+
   defp check_json_schema_type(_field, _value, _schema), do: []
 end
 
