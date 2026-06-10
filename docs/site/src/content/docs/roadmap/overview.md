@@ -37,36 +37,49 @@ Agents can't declare `type` blocks, so `llm.json[SomeType]` — the schema-const
 
 v0.1.5 made call-form constructors work (`Ok(x)`, `Err(e)`, `Event.Charge(n)`, `ErrName.from(cause)`), but zero-field variants (`Status.Active`) still can't be constructed in expression position, and unknown-variant or wrong-arity constructor calls crash codegen instead of producing structured compile-time errors.
 
+#### 5. Capability Checks Cover Test Blocks (#104)
+
+The analyzer's capability passes skip `test`/`scenario`/`golden` bodies: the fresh `skein new` scaffold warns W0002 on its own `tool.use` capability, and missing capabilities inside test blocks escape E0012 until runtime.
+
 ### Tier 2: Runtime Completeness
 
-#### 5. Schedule Auto-Firing (#71)
+#### 6. Schedule Auto-Firing (#71)
 
 Schedule handlers register their cron expression but only fire via manual `trigger/1`. A running service should fire them on schedule.
 
-#### 6. Agent Events to EventStore (#72)
+#### 7. Agent Events to EventStore (#72)
 
 Events emitted via `emit` inside agents live in `gen_statem` data but aren't appended to the EventStore, so they're lost on crash and invisible to `EventStore.query/1`.
 
-#### 7. Replay Backend Injection (#73)
+#### 8. Replay Backend Injection (#73)
 
 The replay engine can load traces and rebuild memory, but the LLM/HTTP/tool runtimes don't consult replay state — recorded-mode replay can't yet intercept live effects.
 
-#### 8. Stream/Pool-Scoped Runtime Capability Checks (#69, #57)
+#### 9. Stream/Pool-Scoped Runtime Capability Checks (#69, #57)
 
 `process.spawn`, `timer`, and `event.log` check capability *presence* at runtime but not parameters. Full enforcement needs a surface decision first: the declared capability names a pool/stream label, while the runtime call carries a different value (the task/event name).
 
-#### 9. `process.spawn` Task Bodies (#74)
+#### 10. `process.spawn` Task Bodies (#74)
 
 `process.spawn("name")` spawns a supervised, traced no-op task. Attaching real work to the spawned process needs a call-surface decision (likely a function reference argument).
 
-### Tier 3: Polish
+#### 11. Local LLM Backends for Dev (#107)
 
-- **Enum value-level exhaustiveness warning** (#76) — variant coverage is checked, but literal field patterns without a wildcard can still `case_clause` at runtime; the analyzer should warn.
+Testing agents burns real Anthropic spend. An OpenAI-compatible backend plus `[env.<name>.llm]` profiles in `skein.toml` (with `model_map`) would let `SKEIN_ENV=dev skein test` serve LLM calls from a local server (oMLX, Ollama, LM Studio, vLLM) with zero source edits — capabilities stay the code's contract.
+
+### Tier 3: Polish & Developer Experience
+
+- **Test failures show expected vs actual + location** (#105) — a failing `assert` currently prints only "Assertion failed"; it should print both operands and the assert's `file:line`.
+- **MCP `skein_compile_check` fidelity** (#109) — the MCP tool drops analyzer warnings and skips `test/` in project mode, reporting clean on projects `skein test` flags.
+- **`skein new` git init + `.gitignore`** (#106) — cargo-style version-control scaffolding so build artifacts never land in the first commit.
+- **zsh tab-completion for `skein`** (#101) — `skein completions zsh`, with a test pinning completions to the real command surface.
 - **Spec section 8 sweep** (#77) — after named args and agent nesting land, every spec example should compile (and be covered by `spec_examples_test.exs`) or carry an explicit "Planned" annotation.
+- **Enum value-level exhaustiveness warning** (#76) — variant coverage is checked, but literal field patterns without a wildcard can still `case_clause` at runtime; the analyzer should warn.
+- **LSP code actions from `fix_hint`/`fix_code`** (#108) — every compiler error already carries fix data; surface it as editor quickfixes (and machine-applicable edits for agents).
 
 ### Tier 4: Release & Infrastructure
 
-- **Release automation & public-repo polish** (#100) — auto-tag green merges to `main` (no manual `v*` tag step), README badges, and versioned docs snapshots on releases.
+- **Release automation & public-repo polish** (#100) — auto-tag green merges to `main` (no manual `v*` tag step), README badges, and versioned docs snapshots on releases. Implementation in flight (#102).
 
 ### Post-MVP Backlog
 

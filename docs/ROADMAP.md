@@ -22,7 +22,7 @@ The compilation pipeline works end-to-end: lexer, parser, analyzer, codegen, and
 
 Most of the foundational gap-closing work from earlier roadmap revisions is **done**: real type inference for field access and pattern bindings, schema derivation for nested types and enum variants, the production Anthropic LLM backend, runtime capability enforcement for tool/LLM/topic (name- and model-aware), agent instance-scoped memory, error `context` + `fix_code` on all compiler errors, float-aware division, multi-`emit` accumulation, tool input validation, contextual (non-reserved) keywords, the persistent SQLite EventStore backend, string-literal match patterns, `store.<table>.get!/put!`, and the `queue.consume`/`schedule.trigger` capability naming.
 
-The remaining gaps are listed below.
+The remaining gaps are listed below. Field-testing v0.1.5 (2026-06-10) surfaced a wave of first-five-minutes DX issues (#101, #104–#109); they are folded into the tiers below.
 
 ---
 
@@ -107,9 +107,27 @@ The remaining gaps are listed below.
 
 ---
 
+### 5. Capability Checking Covers Test Blocks `[M]`
+
+**Issue:** [#104](https://github.com/kormie/Skein/issues/104)
+
+**Problem:** Both analyzer capability passes walk only `Fn`/`Handler` declarations and skip `test`/`scenario`/`golden` bodies. The fresh `skein new` scaffold warns W0002 on its own `tool.use` capability (and following the hint produces a *runtime* failure), while effect calls inside test blocks with missing capabilities escape E0012 entirely.
+
+**Scope:**
+- Include test-construct bodies in the traversals feeding `collect_used_capabilities/2` and `check_capabilities/2` (one traversal fix covers both directions)
+- Regression tests for the W0002 false positive and the E0012 escape
+
+**Acceptance criteria:**
+- A fresh `skein new` scaffold runs `skein test` with zero warnings
+- An effect call inside a test block with no matching capability is a compile-time E0012
+
+**Depends on:** Nothing.
+
+---
+
 ## Tier 2: Runtime Completeness
 
-### 5. Schedule Handler Auto-Firing `[M]`
+### 6. Schedule Handler Auto-Firing `[M]`
 
 **Issue:** [#71](https://github.com/kormie/Skein/issues/71)
 
@@ -130,7 +148,7 @@ The remaining gaps are listed below.
 
 ---
 
-### 6. Agent `emit` Events to EventStore `[M]`
+### 7. Agent `emit` Events to EventStore `[M]`
 
 **Issue:** [#72](https://github.com/kormie/Skein/issues/72)
 
@@ -149,7 +167,7 @@ The remaining gaps are listed below.
 
 ---
 
-### 7. Replay Backend Injection `[L]`
+### 8. Replay Backend Injection `[L]`
 
 **Issue:** [#73](https://github.com/kormie/Skein/issues/73)
 
@@ -169,7 +187,7 @@ The remaining gaps are listed below.
 
 ---
 
-### 8. Stream/Pool-Scoped Runtime Capability Checks `[M]` *(needs surface design first)*
+### 9. Stream/Pool-Scoped Runtime Capability Checks `[M]` *(needs surface design first)*
 
 **Issues:** [#69](https://github.com/kormie/Skein/issues/69) (surface decision), [#57](https://github.com/kormie/Skein/issues/57) (enforcement)
 
@@ -188,7 +206,7 @@ The remaining gaps are listed below.
 
 ---
 
-### 9. `process.spawn` Task Bodies `[M]`
+### 10. `process.spawn` Task Bodies `[M]`
 
 **Issue:** [#74](https://github.com/kormie/Skein/issues/74)
 
@@ -206,9 +224,107 @@ The remaining gaps are listed below.
 
 ---
 
-## Tier 3: Polish
+### 11. Local LLM Backends for Dev (OpenAI-Compatible + `skein.toml` Profiles) `[XL]`
 
-### 10. Enum Value-Level Exhaustiveness Warning `[S]`
+**Issue:** [#107](https://github.com/kormie/Skein/issues/107)
+
+**Problem:** Testing agents means real Anthropic inference spend, and there's no way to point a project at a local model server (oMLX, Ollama, LM Studio, vLLM). Source must never change between environments — `capability model("anthropic", "claude-opus-4-8")` stays the code's contract regardless of which backend serves it.
+
+**Scope:**
+- `Skein.Runtime.Llm.OpenAiCompatibleBackend` implementing the existing `Llm.Backend` behaviour against `POST {base_url}/chat/completions`
+- `[env.<name>.llm]` profiles in `skein.toml` with `model_map` remapping capability model names to locally hosted ones
+- `skein run`/`skein test` resolve the active profile via `SKEIN_ENV` / `--env`; llm trace spans record which backend/base_url served each call
+
+**Acceptance criteria:**
+- `SKEIN_ENV=dev skein test` serves `llm.chat`/`llm.json` from the local server with zero source edits; plain `skein run` uses Anthropic
+- Local server down → structured `Llm.Error` naming the base_url
+- Stub-server tests give CI an inference-free path for agent tests
+
+**Depends on:** Nothing.
+
+---
+
+## Tier 3: Polish & Developer Experience
+
+### 12. Test Failures Show Expected vs Actual + Location `[M]`
+
+**Issue:** [#105](https://github.com/kormie/Skein/issues/105)
+
+**Problem:** A failing `assert` prints only "Assertion failed" — no operands, no `file:line`. Codegen lowers `__assert__` to a single boolean and raises a constant `RuntimeError`, discarding the operands and the meta location the parser already carries. The failure message is also what a coding agent debugs from.
+
+**Scope:**
+- New structured `Skein.Runtime.AssertionError` (`op`, `left`, `right`, `expr`, `file`, `line`)
+- Codegen special-cases `__assert__` over comparison `BinaryOp`s: bind operands, raise with both inspected values + location; bare truthy asserts keep location
+- CLI FAIL lines print `file:line` and left/right
+
+**Acceptance criteria:**
+- `assert a == b` failure shows inspected left and right values and the assert's `file:line`
+- Scenario `expect` and golden tests inherit the output via the shared `__test_N__` lowering
+
+**Depends on:** Nothing.
+
+---
+
+### 13. MCP `skein_compile_check` Fidelity `[M]`
+
+**Issue:** [#109](https://github.com/kormie/Skein/issues/109)
+
+**Problem:** The MCP tool reports clean on projects `skein test` visibly flags: `compile_file/1` discards analyzer warnings before the tool sees them, and project mode globs only `src/**/*.skein` — `test/` (where the scaffold's integration test lives) is never compiled.
+
+**Scope:**
+- A warnings-preserving compile API shared with the LSP diagnostics path (not a third reimplementation)
+- Result schema gains `warnings` (each entry keeps `code`/`severity`/`message`/`location`/`fix_hint`/`fix_code`); `ok` stays errors-only
+- Project mode globs `src/**` and `test/**`, matching `skein test` discovery
+
+**Acceptance criteria:**
+- On a fresh scaffold (pre-item-5 fix), project-mode `compile_check` reports `files_checked: 2` and the W0002 with its location
+
+**Depends on:** Nothing (pairs naturally with item 5).
+
+---
+
+### 14. `skein new` Git Init + Baseline `.gitignore` `[S]`
+
+**Issue:** [#106](https://github.com/kormie/Skein/issues/106)
+
+**Problem:** The scaffold ships without version control, and the first `git add .` after `skein build --output` drags `.beam`/`_build` artifacts (and eventually `erl_crash.dump`) into the repo.
+
+**Scope:** cargo-style `git init` by default (skipped inside an existing work tree, when `git` is missing, or with `--no-git`); always write a baseline `.gitignore` (build artifacts, crash dumps, local SQLite state); no auto-commit.
+
+**Depends on:** Nothing.
+
+---
+
+### 15. zsh Tab-Completion for `skein` `[S]`
+
+**Issue:** [#101](https://github.com/kormie/Skein/issues/101)
+
+**Problem:** Eleven subcommands plus per-command flags, none of it completes — every demo involves typing from memory.
+
+**Scope:** `skein completions zsh` subcommand printing a `_skein` function (subcommands + flags + `.skein`/directory positionals); a CLI test pins the completion source to the real command surface so it can't drift; bash/fish are follow-ups.
+
+**Depends on:** Nothing.
+
+---
+
+### 16. Spec Section 8 Sweep `[M]`
+
+**Issue:** [#77](https://github.com/kormie/Skein/issues/77)
+
+**Problem:** Spec examples are largely aligned and covered by `spec_examples_test.exs`, but a few forms remain aspirational (named args — item 1, nested agents — item 2, `agent.run_sync()` in testing docs, tuple destructuring, unit type `()`).
+
+**Scope:**
+- After items 1–2 land, re-sweep sections 8.2–8.5: every example either compiles (and is added to `spec_examples_test.exs`) or carries an explicit "Planned" annotation
+
+**Acceptance criteria:**
+- Zero unannotated non-compiling examples in the spec
+- `spec_examples_test.exs` covers every compiling section-8 example
+
+**Depends on:** Items 1 and 2.
+
+---
+
+### 17. Enum Value-Level Exhaustiveness Warning `[S]`
 
 **Issue:** [#76](https://github.com/kormie/Skein/issues/76)
 
@@ -226,28 +342,29 @@ The remaining gaps are listed below.
 
 ---
 
-### 11. Spec Section 8 Sweep `[M]`
+### 18. LSP Code Actions from `fix_hint`/`fix_code` `[L]`
 
-**Issue:** [#77](https://github.com/kormie/Skein/issues/77)
+**Issue:** [#108](https://github.com/kormie/Skein/issues/108)
 
-**Problem:** Spec examples are largely aligned and covered by `spec_examples_test.exs`, but a few forms remain aspirational (named args — item 1, nested agents — item 2, `agent.run_sync()` in testing docs, tuple destructuring, unit type `()`).
+**Problem:** Every `Skein.Error` carries `fix_hint`/`fix_code` by design — the agent-writability feature — but the LSP advertises no `codeActionProvider` and drops the fix data from diagnostics, so editors show no lightbulb.
 
 **Scope:**
-- After items 1–2 land, re-sweep sections 8.2–8.5: every example either compiles (and is added to `spec_examples_test.exs`) or carries an explicit "Planned" annotation
+- Ship `code`/`fix_hint`/`fix_code` in `Diagnostic.data`; advertise + handle `textDocument/codeAction` returning quickfixes
+- Phase 1: per-code edit mapping for the mechanical wins (missing-token inserts, missing-capability line, unused-declaration deletes)
+- Phase 2: extend `Skein.Error` with span + `edit_kind` so any exact fix applies generically (`skein mcp` inherits machine-applicable edits)
 
 **Acceptance criteria:**
-- Zero unannotated non-compiling examples in the spec
-- `spec_examples_test.exs` covers every compiling section-8 example
+- Lightbulb on a missing `:` applies it; missing-capability error inserts the `capability` line; W0002 removes the declaration; errors without an applicable fix produce no action
 
-**Depends on:** Items 1 and 2.
+**Depends on:** Nothing.
 
 ---
 
 ## Tier 4: Release & Infrastructure
 
-### 12. Release Automation & Public-Repo Polish `[L]`
+### 19. Release Automation & Public-Repo Polish `[L]`
 
-**Issue:** [#100](https://github.com/kormie/Skein/issues/100)
+**Issue:** [#100](https://github.com/kormie/Skein/issues/100) — implementation in flight in [PR #102](https://github.com/kormie/Skein/pull/102)
 
 **Problem:** Releases are hand-cut — a version-bump PR merges, then someone must remember to push the annotated `v*` tag that triggers the binary build matrix. The README has no badges, and the published docs site only ever reflects latest `main` (nothing version-pinned for the binary you're running or for agents consuming `llms-full.txt`).
 
