@@ -176,6 +176,96 @@ defmodule Skein.CodeGen.CoreErlangTest do
       # Should compute a + (b * c), not (a + b) * c
       assert mod.calc(1, 2, 3) == 7
     end
+
+    test "negative integer literal in a let binding" do
+      mod =
+        compile!("""
+        module ArithNegLet {
+          fn neg_three() -> Int {
+            let x = -3
+            x
+          }
+        }
+        """)
+
+      assert mod.neg_three() == -3
+    end
+
+    test "negative float literal as a call argument" do
+      mod =
+        compile!("""
+        module ArithNegArg {
+          fn identity(x: Float) -> Float {
+            x
+          }
+
+          fn call_with_negative() -> Float {
+            identity(-1.5)
+          }
+        }
+        """)
+
+      assert mod.call_with_negative() == -1.5
+    end
+
+    test "negation of a variable" do
+      mod =
+        compile!("""
+        module ArithNegVar {
+          fn negate(x: Int) -> Int {
+            -x
+          }
+        }
+        """)
+
+      assert mod.negate(5) == -5
+      assert mod.negate(-5) == 5
+      assert mod.negate(0) == 0
+    end
+
+    test "negative number as a map literal value" do
+      mod =
+        compile!("""
+        module ArithNegMap {
+          fn offsets() -> Map[String, Int] {
+            { number: -3 }
+          }
+        }
+        """)
+
+      assert mod.offsets() == %{number: -3}
+    end
+
+    test "prefix minus binds tighter than binary addition" do
+      mod =
+        compile!("""
+        module ArithNegPrecedence {
+          fn minus_two_plus_three() -> Int {
+            -2 + 3
+          }
+
+          fn negated_sum() -> Int {
+            -(2 + 3)
+          }
+        }
+        """)
+
+      assert mod.minus_two_plus_three() == 1
+      assert mod.negated_sum() == -5
+    end
+
+    test "negation in arithmetic with variables" do
+      mod =
+        compile!("""
+        module ArithNegMixed {
+          fn calc(a: Int, b: Int) -> Int {
+            -a * b + -1
+          }
+        }
+        """)
+
+      assert mod.calc(3, 4) == -13
+    end
   end
 
   describe "let bindings" do

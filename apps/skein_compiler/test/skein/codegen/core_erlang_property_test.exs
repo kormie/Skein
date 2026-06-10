@@ -79,6 +79,65 @@ defmodule Skein.CodeGen.CoreErlangPropertyTest do
     end
   end
 
+  property "negative integer literals round-trip through compile and run" do
+    check all(n <- StreamData.integer(1..1_000_000)) do
+      mod_name = unique_module_name()
+
+      source = """
+      module #{mod_name} {
+        fn value() -> Int {
+          -#{n}
+        }
+      }
+      """
+
+      {:module, mod} = Compiler.compile_string(source)
+      assert mod.value() == -n
+    end
+  end
+
+  property "negative float literals round-trip through compile and run" do
+    check all(
+            int_part <- StreamData.integer(0..1_000_000),
+            frac_part <- StreamData.integer(0..999_999)
+          ) do
+      mod_name = unique_module_name()
+
+      # Build the literal textually so it always matches the lexer's
+      # digits-dot-digits float grammar (no scientific notation).
+      literal = "#{int_part}.#{frac_part}"
+      expected = -String.to_float(literal)
+
+      source = """
+      module #{mod_name} {
+        fn value() -> Float {
+          -#{literal}
+        }
+      }
+      """
+
+      {:module, mod} = Compiler.compile_string(source)
+      assert mod.value() == expected
+    end
+  end
+
+  property "negating any integer matches Erlang negation" do
+    check all(n <- StreamData.integer()) do
+      mod_name = unique_module_name()
+
+      source = """
+      module #{mod_name} {
+        fn negate(x: Int) -> Int {
+          -x
+        }
+      }
+      """
+
+      {:module, mod} = Compiler.compile_string(source)
+      assert mod.negate(n) == -n
+    end
+  end
+
   property "comparison > produces correct boolean" do
     check all(
             a <- StreamData.integer(-1000..1000),

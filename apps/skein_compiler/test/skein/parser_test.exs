@@ -434,6 +434,115 @@ defmodule Skein.ParserTest do
                ]
              } = fn_decl.body
     end
+
+    test "parses prefix minus on an integer literal" do
+      source = "module M { fn f() -> Int { let x = -3 x } }"
+
+      assert {:ok, %AST.Module{declarations: [fn_decl]}} = parse(source)
+
+      assert %AST.Block{
+               expressions: [
+                 %AST.Let{value: %AST.UnaryOp{op: :negate, operand: %AST.IntLit{value: 3}}},
+                 %AST.Identifier{name: "x"}
+               ]
+             } = fn_decl.body
+    end
+
+    test "parses prefix minus on a float literal in call arguments" do
+      source = "module M { fn f() -> Float { Float.round(-1.5, 0) } }"
+
+      assert {:ok, %AST.Module{declarations: [fn_decl]}} = parse(source)
+
+      assert %AST.Block{
+               expressions: [
+                 %AST.Call{
+                   args: [
+                     %AST.UnaryOp{op: :negate, operand: %AST.FloatLit{value: 1.5}},
+                     %AST.IntLit{value: 0}
+                   ]
+                 }
+               ]
+             } = fn_decl.body
+    end
+
+    test "parses prefix minus on an identifier" do
+      source = "module M { fn f(x: Int) -> Int { -x } }"
+
+      assert {:ok, %AST.Module{declarations: [fn_decl]}} = parse(source)
+
+      assert %AST.Block{
+               expressions: [
+                 %AST.UnaryOp{op: :negate, operand: %AST.Identifier{name: "x"}}
+               ]
+             } = fn_decl.body
+    end
+
+    test "parses a negative number as a map literal value" do
+      source = "module M { fn f() -> Map[String, Int] { { number: -3 } } }"
+
+      assert {:ok, %AST.Module{declarations: [fn_decl]}} = parse(source)
+
+      assert %AST.Block{
+               expressions: [
+                 %AST.MapLit{
+                   entries: [
+                     {"number", %AST.UnaryOp{op: :negate, operand: %AST.IntLit{value: 3}}}
+                   ]
+                 }
+               ]
+             } = fn_decl.body
+    end
+
+    test "prefix minus binds tighter than binary addition" do
+      source = "module M { fn f() -> Int { -2 + 3 } }"
+
+      assert {:ok, %AST.Module{declarations: [fn_decl]}} = parse(source)
+
+      assert %AST.Block{
+               expressions: [
+                 %AST.BinaryOp{
+                   op: :+,
+                   left: %AST.UnaryOp{op: :negate, operand: %AST.IntLit{value: 2}},
+                   right: %AST.IntLit{value: 3}
+                 }
+               ]
+             } = fn_decl.body
+    end
+
+    test "prefix minus on a parenthesized expression negates the whole expression" do
+      source = "module M { fn f() -> Int { -(2 + 3) } }"
+
+      assert {:ok, %AST.Module{declarations: [fn_decl]}} = parse(source)
+
+      assert %AST.Block{
+               expressions: [
+                 %AST.UnaryOp{
+                   op: :negate,
+                   operand: %AST.BinaryOp{
+                     op: :+,
+                     left: %AST.IntLit{value: 2},
+                     right: %AST.IntLit{value: 3}
+                   }
+                 }
+               ]
+             } = fn_decl.body
+    end
+
+    test "binary minus still parses as subtraction" do
+      source = "module M { fn f(a: Int) -> Int { a - 3 } }"
+
+      assert {:ok, %AST.Module{declarations: [fn_decl]}} = parse(source)
+
+      assert %AST.Block{
+               expressions: [
+                 %AST.BinaryOp{
+                   op: :-,
+                   left: %AST.Identifier{name: "a"},
+                   right: %AST.IntLit{value: 3}
+                 }
+               ]
+             } = fn_decl.body
+    end
   end
 
   describe "parse/1 - type declarations" do

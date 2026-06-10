@@ -27,6 +27,7 @@
 - Compiler errors get their file path from Parser.parse(tokens, path) meta; lexer errors are stamped after the fact in Skein.Compiler
 
 ## Key Technical Details
+- Prefix unary minus is `%AST.UnaryOp{op: :negate}` — parser `parse_unary_expr` minus clause, analyzer types it Int→Int/Float→Float (E0020 otherwise), codegen calls `erlang:'-'/1`. No negative-literal token; binds tighter than binary arithmetic.
 - `input` is a keyword token in Skein — use `ctx` or typed params in agents
 - `stop` must be called as `stop()` with parens in agent handlers
 - Handler AST: `%Handler{source, method, route, param, body, meta}` — `method` is nil for queue/schedule

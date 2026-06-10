@@ -133,6 +133,10 @@ fn add(a: Int, b: Int) -> Int {
 | `-` | Subtraction |
 | `*` | Multiplication |
 | `/` | Division |
+| `-` (prefix) | Negation (`-3`, `-x`) |
+
+There is no negative-literal token: negative numbers are written with prefix
+`-`, which requires an `Int` or `Float` operand and preserves its type.
 
 ### Comparison
 | Operator | Meaning |
@@ -168,7 +172,7 @@ fn add(a: Int, b: Int) -> Int {
 | 5 | `<`, `>`, `<=`, `>=` | None |
 | 6 | `+`, `-` | Left |
 | 7 | `*`, `/` | Left |
-| 8 | `!` (prefix) | Prefix |
+| 8 | `!`, `-` (prefix) | Prefix |
 | 9 | `!`, `?` (postfix) | Postfix |
 | 10 | `.` (field access) | Left |
 | 11 | Function call `f(x)` | -- |
