@@ -386,7 +386,7 @@ Skein.Runtime.EventStore.clear()
 |------|--------|-------------|
 | `:http`, `:memory`, `:llm`, `:store`, `:tool`, `:process`, `:timer` | Effect calls | Effect spans with timing, outcome, method |
 | `:annotation` | `trace.annotate(key, value)` | Key-value markers |
-| `:user_event` | `event.log(name, data)` | User-defined structured events |
+| `:user_event` | `event.log(name, data)`, agent `emit` | User-defined structured events; agent emits carry `agent`/`instance_id`/`phase` tags |
 | `:state_change` | `memory.put` / `memory.delete` | Memory mutation audit trail with key/value data |
 
 Every event carries: `id` (unique hex), `timestamp` (monotonic microseconds), `kind`, and kind-specific fields.

@@ -191,6 +191,12 @@
 - Server.init registers `:schedule` entries from `__handlers__/0` — note: queue/topic subscribe have NO production call site (Server only wires HTTP + schedule); gap filed as issue
 - trigger/1 stays dedup-free (manual test path)
 
+## Agent emit -> EventStore (issue #72 — 2026-06-10)
+- Handler results carry ONLY that invocation's events (codegen emits delta lists; `data.events ++ new_events` in agent.ex is correct, no double-count)
+- `flush_events_to_store(result, data, phase)` runs BEFORE acting on the result in handle_init_result (:start) and handle_phase_result (current phase passed in from :execute_phase) — crash-safe
+- Stored shape: kind: :user_event, event: name, data: fields-minus-:event, agent:, instance_id:, phase:, wall_time:
+- skein_runtime tests can compile real Skein agents (Skein.Compiler available as test dep); await agent exit via Process.monitor before asserting
+
 ## Known Bug Found 2026-06-10 (filed as issue)
 - **Int string interpolation emits raw codepoint**: `"${n}"` with n=42 yields "*" (binary segment treats Int as a byte) — needs to_string coercion in codegen interpolation
 

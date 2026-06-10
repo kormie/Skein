@@ -28,26 +28,7 @@ The remaining gaps are listed below. Field-testing v0.1.5 (2026-06-10) surfaced 
 
 ## Tier 1: Language Surface
 
-### 1. Agent `emit` Events to EventStore `[M]`
-
-**Issue:** [#72](https://github.com/kormie/Skein/issues/72)
-
-**Problem:** Events emitted inside agents accumulate in `gen_statem` data but are never appended to the EventStore. If the agent crashes, emitted events are lost, and `EventStore.query/1` can't see agent events.
-
-**Scope:**
-- After each phase handler completes in `Skein.Runtime.Agent`, flush accumulated events to `EventStore.append/1`, tagged with agent name, instance ID, and phase
-- `Agent.get_events/1` keeps reading from `gen_statem` data (hot path); the EventStore is the durable record
-
-**Acceptance criteria:**
-- After an agent emits and transitions, `EventStore.query(kind: :user_event)` includes those events
-- Events emitted before a crash survive in the EventStore
-- Property: N events across M transitions ⇒ exactly N events in the EventStore
-
-**Depends on:** Nothing.
-
----
-
-### 2. Replay Backend Injection `[L]`
+### 1. Replay Backend Injection `[L]`
 
 **Issue:** [#73](https://github.com/kormie/Skein/issues/73)
 
@@ -67,7 +48,7 @@ The remaining gaps are listed below. Field-testing v0.1.5 (2026-06-10) surfaced 
 
 ---
 
-### 3. Stream/Pool-Scoped Runtime Capability Checks `[M]` *(needs surface design first)*
+### 2. Stream/Pool-Scoped Runtime Capability Checks `[M]` *(needs surface design first)*
 
 **Issues:** [#69](https://github.com/kormie/Skein/issues/69) (surface decision), [#57](https://github.com/kormie/Skein/issues/57) (enforcement)
 
@@ -86,7 +67,7 @@ The remaining gaps are listed below. Field-testing v0.1.5 (2026-06-10) surfaced 
 
 ---
 
-### 4. `process.spawn` Task Bodies `[M]`
+### 3. `process.spawn` Task Bodies `[M]`
 
 **Issue:** [#74](https://github.com/kormie/Skein/issues/74)
 
@@ -104,7 +85,7 @@ The remaining gaps are listed below. Field-testing v0.1.5 (2026-06-10) surfaced 
 
 ---
 
-### 5. Local LLM Backends for Dev (OpenAI-Compatible + `skein.toml` Profiles) `[XL]`
+### 4. Local LLM Backends for Dev (OpenAI-Compatible + `skein.toml` Profiles) `[XL]`
 
 **Issue:** [#107](https://github.com/kormie/Skein/issues/107)
 
@@ -126,7 +107,7 @@ The remaining gaps are listed below. Field-testing v0.1.5 (2026-06-10) surfaced 
 
 ## Tier 3: Polish & Developer Experience
 
-### 6. Test Failures Show Expected vs Actual + Location `[M]`
+### 5. Test Failures Show Expected vs Actual + Location `[M]`
 
 **Issue:** [#105](https://github.com/kormie/Skein/issues/105)
 
@@ -145,7 +126,7 @@ The remaining gaps are listed below. Field-testing v0.1.5 (2026-06-10) surfaced 
 
 ---
 
-### 7. MCP `skein_compile_check` Fidelity `[M]`
+### 6. MCP `skein_compile_check` Fidelity `[M]`
 
 **Issue:** [#109](https://github.com/kormie/Skein/issues/109)
 
@@ -163,7 +144,7 @@ The remaining gaps are listed below. Field-testing v0.1.5 (2026-06-10) surfaced 
 
 ---
 
-### 8. `skein new` Git Init + Baseline `.gitignore` `[S]`
+### 7. `skein new` Git Init + Baseline `.gitignore` `[S]`
 
 **Issue:** [#106](https://github.com/kormie/Skein/issues/106)
 
@@ -175,7 +156,7 @@ The remaining gaps are listed below. Field-testing v0.1.5 (2026-06-10) surfaced 
 
 ---
 
-### 9. zsh Tab-Completion for `skein` `[S]`
+### 8. zsh Tab-Completion for `skein` `[S]`
 
 **Issue:** [#101](https://github.com/kormie/Skein/issues/101)
 
@@ -187,7 +168,7 @@ The remaining gaps are listed below. Field-testing v0.1.5 (2026-06-10) surfaced 
 
 ---
 
-### 10. Spec Section 8 Sweep `[M]`
+### 9. Spec Section 8 Sweep `[M]`
 
 **Issue:** [#77](https://github.com/kormie/Skein/issues/77)
 
@@ -204,7 +185,7 @@ The remaining gaps are listed below. Field-testing v0.1.5 (2026-06-10) surfaced 
 
 ---
 
-### 11. Enum Value-Level Exhaustiveness Warning `[S]`
+### 10. Enum Value-Level Exhaustiveness Warning `[S]`
 
 **Issue:** [#76](https://github.com/kormie/Skein/issues/76)
 
@@ -222,7 +203,7 @@ The remaining gaps are listed below. Field-testing v0.1.5 (2026-06-10) surfaced 
 
 ---
 
-### 12. LSP Code Actions from `fix_hint`/`fix_code` `[L]`
+### 11. LSP Code Actions from `fix_hint`/`fix_code` `[L]`
 
 **Issue:** [#108](https://github.com/kormie/Skein/issues/108)
 
@@ -285,6 +266,7 @@ All of the following are done and tested:
 - LSP: completions, hover, diagnostics, semantic tokens, document symbols, go-to-definition (+ request/response integration tests)
 - CLI: new, build (`--output`), test, run, trace; structured errors for malformed flags
 - Distribution: Burrito binaries (Linux x86_64/ARM64, macOS x86_64/ARM64), GitHub Release automation on `v*` tags
+- Agent `emit` -> EventStore (#72): handler-emitted events flush to the EventStore as :user_event (tagged agent/instance_id/phase) BEFORE the result is acted on, so they survive crashes; get_events/1 still reads gen_statem data; property pins N emits across M transitions = N stored events
 - Schedule handler auto-firing (#71): periodic tick (1s, configurable) evaluates full 5-field cron matching (`*`, `n`, `a-b`, `*/n`, lists; DOM/DOW OR rule) with per-minute dedup; `Server` registers `:schedule` handlers from `__handlers__/0`; invalid crons rejected at registration; deterministic `tick_at/1` + firing-count property for tests
 - Capability checks cover test blocks (#104): test/scenario/golden bodies feed both capability passes — effects inside tests require capabilities (E0012) and count as usage (no W0002 on the `skein new` scaffold; pinned by a scaffold-analyzes-warning-free CLI test)
 - Enum variant construction completeness (#96): zero-field variants construct in expression position (`Status.Active`, bare `Active`, `Status.Active()` — all lower to `:active`, matching patterns); unknown variants and wrong constructor arity/types are structured E0010/E0020 with closest-name fix_code (no core_lint crashes remain)

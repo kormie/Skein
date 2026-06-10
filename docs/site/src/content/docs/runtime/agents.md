@@ -198,7 +198,7 @@ The code generator maps Skein constructs to these tuples:
 - `transition(Phase)` → `{:transition, :phase, state_updates, new_events}`
 - `suspend(reason)` → `{:suspend, reason_string, state_updates, new_events}`
 - `stop()` → `{:stop, state_updates, new_events}`
-- `emit(event)` → appends to the events list
+- `emit(event)` → appends to the events list **and** flushes to the EventStore as a `:user_event` (tagged with agent name, instance id, and phase) after the handler completes — events emitted before a crash survive, and `EventStore.query(kind: :user_event)` sees them
 - `state.field = value` → adds to state updates map
 
 ### Suspending and Resuming
