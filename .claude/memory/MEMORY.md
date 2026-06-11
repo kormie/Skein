@@ -4,7 +4,7 @@
 - **ALPHA RELEASE MILESTONE COMPLETE (2026-06-11)** — all 13 issues closed (#56 #63 #70 #71 #72 #77 #96 #100 #101 #104 #105 #106 #109) across PRs #113-#128; repo-public decision + v0.1.7 release are the owner's calls
 - Current version: 0.1.6 (released 2026-06-10 via the auto-tag flow; v0.1.7 not yet cut — alpha work is on main unreleased)
 - Test counts on main after #128: 1,651 tests + 198 properties (compiler 1010+88, runtime 479+110, lsp 44, cli 114)
-- Remaining work: Beta milestone (#57 #69 #73 #74 #76 #107 #108) + discovered issues #114 (Int interpolation codegen), #118 (flaky memory ETS race), #121 (queue/topic handlers never subscribed); docs/ROADMAP.md has 5 items
+- Remaining work: Beta milestone — #74 #76 #107 #108 still open (#73 replay, #69 surface decision, #57 scoped-label enforcement all closed 2026-06-11) + discovered issues #114 (Int interpolation codegen), #118 (flaky memory ETS race), #121 (queue/topic handlers never subscribed)
 - Merge cadence this session: each PR squash-merged on green CI, branch reset onto main between PRs (single working branch claude/alpha-release-gh-issues-c7wkws)
 - Elixir 1.19.5, OTP 28, managed by mise
 
@@ -21,6 +21,15 @@
 - New E0017: duplicate scoped-capability declaration per module/agent (`check_duplicate_scoped_capabilities` in analyzer, uses `own_capabilities` so module+nested-agent labels don't false-positive; agent's label overrides module's inside the agent); parameterless declaration = unscoped (presence-only)
 - Spec §6.11 "Background Work" now documents process.spawn/timer surface (was entirely absent from §6); E0013 remains documented-but-never-emitted
 - Enforcement (#57) still open: codegen label threading for process/timer/event.log + runtime exact-label checks + property tests
+
+## Scoped-Label Runtime Enforcement (issue #57 — 2026-06-11)
+- PR #134 (E0017 spec decision, closes #69) security-audited (clean: labels are lexer literals; Jason/GenLSP/stderr sinks only; own_capabilities coverage complete) and merged on green CI
+- `Capability.check_scoped(kind, label, caps)` is the shared permit/deny: no cap of kind → deny; any parameterless cap → permit anything (unscoped); else exact label ∈ params (nil label denied). Property pins it against randomized cap sets
+- Runtime signatures are label-FIRST mirroring Memory: `Process.spawn(pool, task, caps)`, `Timer.after/interval(group, ms, task, caps)`, `Timer.cancel(group, ref, caps)`, `EventStore.log(stream, name, data, caps)` — old arities REMOVED (only codegen called them); EventLog facade keeps log/3 → log(nil, ...)
+- Codegen: `@scoped_effect_capability_kinds` clause BEFORE the generic effect clause; `declared_scope_label/2` = first cap of kind, first param via capability_param_to_string, parameterless → nil. Agent-first capability ordering gives the §3.2 override for free (pinned by a nested-agent codegen test)
+- Timer string tasks: compiled `timer.after(5000, "task")` previously could NOT run (is_function guard → FunctionClauseError); now `{:task, name}` named no-ops fire as trace spans — background_tasks.skein spawn/timer handlers are invokable and integration-tested
+- Labels recorded: process span `pool:`, timer span `group:`, user_event `stream:` (nil when unscoped)
+- spawn/3 has two clause shapes (pool/task vs fun/args) — keep them ADJACENT or ungrouped-clauses warning fails CI
 
 ## Repo Hygiene / Issue Tracking (2026-06-10 audit session)
 - All 20 open issues map to ROADMAP items (roadmap links each issue inline; 19 items across 4 tiers); #78 tracks the post-MVP backlog

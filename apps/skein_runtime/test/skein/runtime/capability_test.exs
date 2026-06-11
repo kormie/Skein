@@ -74,4 +74,61 @@ defmodule Skein.Runtime.CapabilityTest do
       assert :ok = Capability.check_http("https://api.example.com/v2/users?page=1", capabilities)
     end
   end
+
+  # ------------------------------------------------------------------
+  # Scoped capability labels (process.spawn / timer / event.log)
+  # ------------------------------------------------------------------
+
+  describe "check_scoped/3" do
+    test "blocks when no capability of the kind is declared" do
+      assert {:error, reason} = Capability.check_scoped("event.log", "audit", [])
+      assert reason =~ "event.log"
+      assert reason =~ "not declared"
+    end
+
+    test "ignores capabilities of other kinds" do
+      capabilities = [%{kind: "timer", params: ["audit"]}]
+      assert {:error, _} = Capability.check_scoped("event.log", "audit", capabilities)
+    end
+
+    test "permits a label matching the declared label" do
+      capabilities = [%{kind: "process.spawn", params: ["workers"]}]
+      assert :ok = Capability.check_scoped("process.spawn", "workers", capabilities)
+    end
+
+    test "blocks a label outside the declared label" do
+      capabilities = [%{kind: "process.spawn", params: ["workers"]}]
+
+      assert {:error, reason} = Capability.check_scoped("process.spawn", "reports", capabilities)
+      assert reason =~ "reports"
+      assert reason =~ "workers"
+    end
+
+    test "permits any label when the declaration is parameterless (unscoped)" do
+      capabilities = [%{kind: "timer", params: []}]
+      assert :ok = Capability.check_scoped("timer", "maintenance", capabilities)
+      assert :ok = Capability.check_scoped("timer", nil, capabilities)
+    end
+
+    test "blocks a label-less call when the declaration is scoped" do
+      capabilities = [%{kind: "timer", params: ["maintenance"]}]
+
+      assert {:error, reason} = Capability.check_scoped("timer", nil, capabilities)
+      assert reason =~ "maintenance"
+    end
+
+    test "permits when the label matches any declared param" do
+      capabilities = [%{kind: "event.log", params: ["audit", "metrics"]}]
+      assert :ok = Capability.check_scoped("event.log", "metrics", capabilities)
+    end
+
+    test "permits when the label matches a second capability of the kind" do
+      capabilities = [
+        %{kind: "event.log", params: ["audit"]},
+        %{kind: "event.log", params: ["metrics"]}
+      ]
+
+      assert :ok = Capability.check_scoped("event.log", "metrics", capabilities)
+    end
+  end
 end

@@ -557,6 +557,47 @@ defmodule Skein.ExamplesTest do
       result = mod.__handler_4__(%{})
       assert {:respond_json, 200, "ok"} = result
     end
+
+    test "spawn handler threads the declared pool into the runtime call" do
+      Skein.Runtime.Trace.init()
+      Skein.Runtime.Trace.clear()
+
+      {:module, mod} =
+        Compiler.compile_file(Path.join(project_root(), "examples/background_tasks.skein"))
+
+      # Handler 0 is POST /tasks -> process.spawn("image-resize")
+      assert {:respond_json, 202, "task-spawned"} = mod.__handler_0__(%{})
+
+      span =
+        Skein.Runtime.Trace.recent_spans(10)
+        |> Enum.find(&(&1[:kind] == :process and &1[:task] == "image-resize"))
+
+      assert span
+      assert span[:pool] == "workers"
+
+      Skein.Runtime.Trace.clear()
+    end
+
+    test "timer handler threads the declared group into the runtime call" do
+      Skein.Runtime.Trace.init()
+      Skein.Runtime.Trace.clear()
+
+      {:module, mod} =
+        Compiler.compile_file(Path.join(project_root(), "examples/background_tasks.skein"))
+
+      # Handler 1 is POST /delayed -> timer.after(5000, "send-notification")
+      assert {:respond_json, 202, "scheduled"} = mod.__handler_1__(%{})
+
+      span =
+        Skein.Runtime.Trace.recent_spans(10)
+        |> Enum.find(&(&1[:kind] == :timer and &1[:method] == :after))
+
+      assert span
+      assert span[:group] == "maintenance"
+
+      Skein.Runtime.Timer.reset_all()
+      Skein.Runtime.Trace.clear()
+    end
   end
 
   # ------------------------------------------------------------------
@@ -676,6 +717,20 @@ defmodule Skein.ExamplesTest do
       events = Skein.Runtime.EventLog.all()
       login_events = Enum.filter(events, &(&1.event == "user.login"))
       assert length(login_events) >= 1
+
+      Skein.Runtime.EventLog.reset_all()
+    end
+
+    test "logged events carry the declared stream label (compiler-threaded)" do
+      Skein.Runtime.EventLog.reset_all()
+
+      {:module, mod} =
+        Compiler.compile_file(Path.join(project_root(), "examples/audit_log.skein"))
+
+      mod.__handler_0__(%{user: "alice"})
+
+      [event | _] = Skein.Runtime.EventLog.all()
+      assert event.stream == "audit"
 
       Skein.Runtime.EventLog.reset_all()
     end

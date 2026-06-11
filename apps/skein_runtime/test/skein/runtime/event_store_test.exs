@@ -54,6 +54,53 @@ defmodule Skein.Runtime.EventStoreTest do
   # eviction
   # ------------------------------------------------------------------
 
+  # ------------------------------------------------------------------
+  # log/4 — compiled event.log(name, data) with a scoped stream label
+  # ------------------------------------------------------------------
+
+  describe "log/4" do
+    test "permits a stream matching the declared label and records it on the event" do
+      assert :ok =
+               EventStore.log("audit", "user.login", %{user: "alice"}, [
+                 %{kind: "event.log", params: ["audit"]}
+               ])
+
+      [event] = EventStore.recent(1)
+      assert event.kind == :user_event
+      assert event.event == "user.login"
+      assert event.stream == "audit"
+      assert event.data == %{user: "alice"}
+    end
+
+    test "blocks a stream outside the declared label" do
+      assert {:error, message} =
+               EventStore.log("metrics", "user.login", %{}, [
+                 %{kind: "event.log", params: ["audit"]}
+               ])
+
+      assert message =~ "metrics"
+      assert message =~ "audit"
+      assert EventStore.count(kind: :user_event) == 0
+    end
+
+    test "blocks a nil stream when the declaration is scoped" do
+      assert {:error, _} =
+               EventStore.log(nil, "user.login", %{}, [%{kind: "event.log", params: ["audit"]}])
+    end
+
+    test "unscoped declaration permits any stream" do
+      assert :ok =
+               EventStore.log("anything", "user.login", %{}, [%{kind: "event.log", params: []}])
+
+      assert :ok = EventStore.log(nil, "user.login", %{}, [%{kind: "event.log", params: []}])
+    end
+
+    test "blocks when no event.log capability is declared" do
+      assert {:error, message} = EventStore.log("audit", "user.login", %{}, [])
+      assert message =~ "event.log"
+    end
+  end
+
   describe "size-bounded eviction" do
     test "evicts oldest events once the configured maximum is exceeded" do
       Application.put_env(:skein_runtime, :event_store_max_events, 5)

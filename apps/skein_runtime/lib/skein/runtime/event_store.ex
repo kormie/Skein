@@ -41,9 +41,11 @@ defmodule Skein.Runtime.EventStore do
   - `Memory` provides scoped KV state with capability checking and ETS caching
 
   User-defined events (`event.log` in Skein source) are handled directly by
-  this module via `log/3` — there is no separate EventLog module. One way to
+  this module via `log/4` — there is no separate EventLog module. One way to
   do a thing: all queries go through `EventStore.query/1`.
   """
+
+  alias Skein.Runtime.Capability
 
   @table :skein_events
   @default_max_events 100_000
@@ -68,35 +70,28 @@ defmodule Skein.Runtime.EventStore do
   Logs a structured user event. This is the runtime entry point for the
   `event.log(name, data)` effect call in Skein source.
 
-  The capabilities argument is checked for the presence of an `event.log`
-  capability; calls without one are blocked. The capability's stream
-  parameter (e.g. `event.log("audit")`) is validated at compile time by the
-  analyzer — the runtime call carries the event name, not the stream, so
-  per-stream runtime enforcement is a planned extension.
+  The stream is the scoped capability label (spec §3.2) threaded in by the
+  compiler from the module's `capability event.log(stream)` declaration
+  (`nil` when the declaration is parameterless). Calls outside the declared
+  stream are blocked; the stream is recorded on the stored event.
 
   Returns `:ok`.
   """
-  @spec log(String.t(), term(), list()) :: :ok | {:error, String.t()}
-  def log(event_name, data, capabilities) when is_binary(event_name) do
-    case check_capability(capabilities) do
+  @spec log(String.t() | nil, String.t(), term(), list()) :: :ok | {:error, String.t()}
+  def log(stream, event_name, data, capabilities)
+      when (is_binary(stream) or is_nil(stream)) and is_binary(event_name) do
+    case Capability.check_scoped("event.log", stream, capabilities) do
       :ok ->
         append(%{
           kind: :user_event,
           event: event_name,
+          stream: stream,
           data: data,
           wall_time: System.system_time(:microsecond)
         })
 
       {:error, _reason} = error ->
         error
-    end
-  end
-
-  defp check_capability(capabilities) do
-    if Enum.any?(capabilities, fn cap -> cap.kind == "event.log" end) do
-      :ok
-    else
-      {:error, "Capability 'event.log' not declared. Event logging blocked."}
     end
   end
 

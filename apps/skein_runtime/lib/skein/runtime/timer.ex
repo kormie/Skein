@@ -9,6 +9,7 @@ defmodule Skein.Runtime.Timer do
 
   use GenServer
 
+  alias Skein.Runtime.Capability
   alias Skein.Runtime.Trace
 
   @table :skein_runtime_timers
@@ -25,30 +26,42 @@ defmodule Skein.Runtime.Timer do
   @doc """
   Schedules a one-shot timer that fires the callback after `delay_ms` milliseconds.
 
+  The group is the scoped capability label (spec §3.2) threaded in by the
+  compiler from the module's `capability timer(group)` declaration (`nil`
+  when the declaration is parameterless). Calls outside the declared group
+  are blocked. The callback may be a zero-arity function or a string task
+  name from compiled `timer.after(delay, "task")` calls — string tasks fire
+  as named no-ops recorded in the trace; attaching real task bodies is a
+  planned extension.
+
   Returns `{:ok, timer_ref}` where timer_ref is a unique string identifier.
-  The capabilities argument is passed by compiled Skein code for consistency.
 
   Note: Named `unquote(:after)` because `after` is a reserved word in Elixir,
   but the BEAM function atom must be `:after` to match codegen output.
   """
   # Use unquote(:after) to define a function named :after (reserved word in Elixir)
-  def unquote(:after)(delay_ms, callback, capabilities)
+  def unquote(:after)(group, delay_ms, callback, capabilities)
 
-  def unquote(:after)(delay_ms, callback, capabilities)
-      when is_integer(delay_ms) and delay_ms >= 0 and is_function(callback, 0) do
-    case check_capability(capabilities) do
+  def unquote(:after)(group, delay_ms, callback, capabilities)
+      when (is_binary(group) or is_nil(group)) and is_integer(delay_ms) and delay_ms >= 0 and
+             (is_function(callback, 0) or is_binary(callback)) do
+    case Capability.check_scoped("timer", group, capabilities) do
       :ok ->
         ensure_started()
 
-        Trace.with_span(%{kind: :timer, method: :after, delay_ms: delay_ms}, fn ->
-          timer_ref = generate_ref()
+        Trace.with_span(
+          %{kind: :timer, method: :after, delay_ms: delay_ms, group: group},
+          fn ->
+            timer_ref = generate_ref()
+            fire = normalize_callback(callback)
 
-          erlang_ref =
-            :erlang.send_after(delay_ms, __MODULE__, {:fire, timer_ref, :once, callback})
+            erlang_ref =
+              :erlang.send_after(delay_ms, __MODULE__, {:fire, timer_ref, :once, fire})
 
-          :ets.insert(@table, {timer_ref, erlang_ref, :once, callback, delay_ms})
-          {:ok, timer_ref}
-        end)
+            :ets.insert(@table, {timer_ref, erlang_ref, :once, fire, delay_ms})
+            {:ok, timer_ref}
+          end
+        )
 
       {:error, _reason} = error ->
         error
@@ -56,31 +69,40 @@ defmodule Skein.Runtime.Timer do
   end
 
   @doc """
-  Schedules a recurring timer that fires the callback every `interval_ms` milliseconds.
+  Schedules a recurring timer that fires the callback every `interval_ms`
+  milliseconds.
+
+  The group is the scoped capability label (spec §3.2); see `after/4`.
+  The callback may be a zero-arity function or a string task name.
 
   Returns `{:ok, timer_ref}` where timer_ref is a unique string identifier.
-  The capabilities argument is passed by compiled Skein code for consistency.
   """
-  @spec interval(integer(), function(), list()) :: {:ok, String.t()} | {:error, String.t()}
-  def interval(interval_ms, callback, capabilities)
-      when is_integer(interval_ms) and interval_ms > 0 and is_function(callback, 0) do
-    case check_capability(capabilities) do
+  @spec interval(String.t() | nil, integer(), function() | String.t(), list()) ::
+          {:ok, String.t()} | {:error, String.t()}
+  def interval(group, interval_ms, callback, capabilities)
+      when (is_binary(group) or is_nil(group)) and is_integer(interval_ms) and interval_ms > 0 and
+             (is_function(callback, 0) or is_binary(callback)) do
+    case Capability.check_scoped("timer", group, capabilities) do
       :ok ->
         ensure_started()
 
-        Trace.with_span(%{kind: :timer, method: :interval, interval_ms: interval_ms}, fn ->
-          timer_ref = generate_ref()
+        Trace.with_span(
+          %{kind: :timer, method: :interval, interval_ms: interval_ms, group: group},
+          fn ->
+            timer_ref = generate_ref()
+            fire = normalize_callback(callback)
 
-          erlang_ref =
-            :erlang.send_after(
-              interval_ms,
-              __MODULE__,
-              {:fire, timer_ref, :recurring, callback}
-            )
+            erlang_ref =
+              :erlang.send_after(
+                interval_ms,
+                __MODULE__,
+                {:fire, timer_ref, :recurring, fire}
+              )
 
-          :ets.insert(@table, {timer_ref, erlang_ref, :recurring, callback, interval_ms})
-          {:ok, timer_ref}
-        end)
+            :ets.insert(@table, {timer_ref, erlang_ref, :recurring, fire, interval_ms})
+            {:ok, timer_ref}
+          end
+        )
 
       {:error, _reason} = error ->
         error
@@ -90,12 +112,14 @@ defmodule Skein.Runtime.Timer do
   @doc """
   Cancels a previously scheduled timer.
 
+  The group is the scoped capability label (spec §3.2); see `after/4`.
+
   Returns `:ok` regardless of whether the timer was found.
-  The capabilities argument is passed by compiled Skein code for consistency.
   """
-  @spec cancel(String.t(), list()) :: :ok | {:error, String.t()}
-  def cancel(timer_ref, capabilities) when is_binary(timer_ref) do
-    case check_capability(capabilities) do
+  @spec cancel(String.t() | nil, String.t(), list()) :: :ok | {:error, String.t()}
+  def cancel(group, timer_ref, capabilities)
+      when (is_binary(group) or is_nil(group)) and is_binary(timer_ref) do
+    case Capability.check_scoped("timer", group, capabilities) do
       :ok ->
         cancel_impl(timer_ref)
 
@@ -197,15 +221,17 @@ defmodule Skein.Runtime.Timer do
   # Internal
   # ------------------------------------------------------------------
 
-  defp check_capability(capabilities) do
-    if Enum.any?(capabilities, fn cap -> cap.kind == "timer" end) do
-      :ok
-    else
-      {:error, "Capability 'timer' not declared. Timer operations blocked."}
-    end
+  # Compiled `timer.after(delay, "task")` calls carry a string task name;
+  # the task fires as a named no-op recorded in the trace (task bodies are
+  # a planned extension). Function callbacks execute as-is.
+  defp normalize_callback(task) when is_binary(task), do: {:task, task}
+  defp normalize_callback(callback) when is_function(callback, 0), do: callback
+
+  defp safe_execute({:task, task_name}) do
+    Trace.with_span(%{kind: :timer, event: :fire, task: task_name}, fn -> :ok end)
   end
 
-  defp safe_execute(callback) do
+  defp safe_execute(callback) when is_function(callback, 0) do
     Trace.with_span(%{kind: :timer, event: :fire}, fn ->
       try do
         callback.()

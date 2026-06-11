@@ -24,6 +24,53 @@ defmodule Skein.Runtime.Capability do
   end
 
   @doc """
+  Checks a call against a scoped capability label (spec §3.2).
+
+  For `process.spawn`, `timer`, and `event.log` the capability parameter
+  names a scope label (pool/group/stream) that the compiler threads into
+  every generated runtime call. Rules:
+
+    * no capability of `kind` declared — blocked
+    * any declaration of `kind` with empty params — unscoped, any label
+      (including `nil`) is permitted
+    * otherwise the call's label must exactly match one of the declared
+      params; `nil` (a label-less call) is blocked
+
+  Returns `:ok` or `{:error, reason}`.
+  """
+  @spec check_scoped(String.t(), String.t() | nil, [map()]) :: :ok | {:error, String.t()}
+  def check_scoped(kind, label, capabilities)
+      when is_binary(kind) and (is_binary(label) or is_nil(label)) and is_list(capabilities) do
+    scoped_caps = Enum.filter(capabilities, fn cap -> cap.kind == kind end)
+
+    cond do
+      scoped_caps == [] ->
+        {:error, "Capability '#{kind}' not declared. Call blocked."}
+
+      Enum.any?(scoped_caps, fn cap -> cap.params == [] end) ->
+        :ok
+
+      true ->
+        declared_labels = Enum.flat_map(scoped_caps, fn cap -> cap.params end)
+
+        cond do
+          is_nil(label) ->
+            {:error,
+             "Call carries no scope label but '#{kind}' is declared with " <>
+               "label(s): #{Enum.join(declared_labels, ", ")}. Call blocked."}
+
+          label in declared_labels ->
+            :ok
+
+          true ->
+            {:error,
+             "'#{label}' not declared in #{kind} capabilities. " <>
+               "Declared: #{Enum.join(declared_labels, ", ")}"}
+        end
+    end
+  end
+
+  @doc """
   Checks whether an HTTP request to the given URL is allowed by the
   declared capabilities.
 

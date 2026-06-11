@@ -31,7 +31,7 @@ defmodule Skein.Runtime.UnifiedEventsTest do
       Trace.record_span(%{kind: :http, method: :get, url: "/test"})
 
       # Log a user event
-      EventStore.log("user.action", %{action: "click"}, [%{kind: "event.log", params: []}])
+      EventStore.log(nil, "user.action", %{action: "click"}, [%{kind: "event.log", params: []}])
 
       # Perform a memory operation (produces both :memory effect span + :state_change)
       Memory.put(@namespace, "key1", "value1", @caps)
@@ -53,7 +53,7 @@ defmodule Skein.Runtime.UnifiedEventsTest do
 
     test "events are queryable by kind across the unified stream" do
       Trace.record_span(%{kind: :http, method: :get, url: "/a"})
-      EventStore.log("login", %{}, [%{kind: "event.log", params: []}])
+      EventStore.log(nil, "login", %{}, [%{kind: "event.log", params: []}])
       Memory.put(@namespace, "k", "v", @caps)
       Trace.annotate("tag", "value")
 
@@ -65,7 +65,7 @@ defmodule Skein.Runtime.UnifiedEventsTest do
 
     test "snapshot captures full event stream in chronological order" do
       Trace.record_span(%{kind: :http, method: :get, url: "/first"})
-      EventStore.log("middle", %{}, [%{kind: "event.log", params: []}])
+      EventStore.log(nil, "middle", %{}, [%{kind: "event.log", params: []}])
       Memory.put(@namespace, "last", "v", @caps)
 
       snapshot = EventStore.snapshot()

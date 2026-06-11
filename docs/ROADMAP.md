@@ -28,25 +28,6 @@ The remaining gaps are listed below. Field-testing v0.1.5 (2026-06-10) surfaced 
 
 ## Tier 1: Language Surface
 
-### 2. Stream/Pool-Scoped Runtime Capability Checks `[M]`
-
-**Issue:** [#57](https://github.com/kormie/Skein/issues/57) (enforcement; surface decided in [#69](https://github.com/kormie/Skein/issues/69))
-
-**Problem:** `process.spawn`, `timer`, and `event.log` check capability *presence* at runtime but not parameters.
-
-**Decision (#69, spec §3.2 "Scoped capability labels"):** the capability parameter is a scope label the compiler threads into every generated runtime call — call sites are unchanged (the `memory.kv` model). At most one declaration of each scoped kind per module/agent (E0017); a nested agent's declaration overrides the module's inside the agent; a parameterless declaration leaves the effect unscoped.
-
-**Scope:**
-- Codegen: thread the declared label into generated `process.spawn`/`timer.*`/`event.log` runtime calls (mirror the existing `memory.kv` namespace threading)
-- Runtime: spawn/timer/log calls outside the declared label are blocked, mirroring the store/memory/topic/LLM/tool checks; the label lands on each trace span
-
-**Acceptance criteria:**
-- `event.log` against an undeclared stream is blocked at runtime with a structured error
-- `process.spawn` against an undeclared pool is blocked at runtime
-- Property: randomized capability sets permit or deny based on exact label match
-
----
-
 ### 3. `process.spawn` Task Bodies `[M]`
 
 **Issue:** [#74](https://github.com/kormie/Skein/issues/74)
@@ -179,7 +160,8 @@ All of the following are done and tested:
 - Enum variant construction completeness (#96): zero-field variants construct in expression position (`Status.Active`, bare `Active`, `Status.Active()` — all lower to `:active`, matching patterns); unknown variants and wrong constructor arity/types are structured E0010/E0020 with closest-name fix_code (no core_lint crashes remain)
 - Types usable from agents (#70): module types are visible to nested agents and the derived JSON Schema flows into `llm.json[T]` requests from agent handlers (verified via recording backend); agents never declare their own `type` blocks — nesting is the route (spec §3.7)
 - Replay backend injection (#73): an active `Replay.with_replay/2` context intercepts LLM (via `Llm.ReplayBackend`), HTTP, and tool-call effects, serving recorded responses with zero real calls; recorded events are validated against the live call (model/method/url/tool name) so out-of-sequence runs produce clear errors; LLM/HTTP/tool spans now record full response payloads (`response`, `response_body`/`status`) so live traces are replayable; replay state stays process-scoped
-- Capability-parameter surface decision (#69): scoped capability labels (spec §3.2) — for `memory.kv`/`event.log`/`process.spawn`/`timer` the capability parameter names a scope label the compiler threads into runtime calls (call sites unchanged); one declaration per kind per module/agent, duplicates are E0017; spec §6.11 documents the `process.spawn`/`timer` surface; runtime enforcement is item 2 (#57)
+- Capability-parameter surface decision (#69): scoped capability labels (spec §3.2) — for `memory.kv`/`event.log`/`process.spawn`/`timer` the capability parameter names a scope label the compiler threads into runtime calls (call sites unchanged); one declaration per kind per module/agent, duplicates are E0017; spec §6.11 documents the `process.spawn`/`timer` surface
+- Stream/pool-scoped runtime capability enforcement (#57): codegen threads the declared label into `process.spawn`/`timer.*`/`event.log` runtime calls (the `memory.kv` model); the shared `Capability.check_scoped/3` blocks calls outside the declared label (parameterless declarations stay presence-only); labels land on trace spans (`pool:`/`group:`) and stored events (`stream:`); `timer.after`/`timer.interval` now accept string task names as named no-ops; property pins permit/deny on exact label match over randomized capability sets
 - Agent nesting inside modules (#63): `module Foo { agent Bar }` compiles to `Skein.User.Foo` + `Skein.Agent.Foo.Bar`; module types and capabilities apply to the nested agent; spec §8.4 and `market_research/single_file.skein` ship the nested shape
 - Named arguments in calls (#56): `f(name: value)` for local fns and documented effect signatures; positional-then-named mixing, analyzer rewrites to positional order (E0026 for unknown/duplicate/misordered names), spec grammar + section 8 updated
 - Release automation (#100, PR #102): green version-bump merges to `main` auto-tag and release (no manual tag step), README badges, per-release docs snapshots incl. `llms*.txt`; superseded PR runs cancel, main/release builds never do

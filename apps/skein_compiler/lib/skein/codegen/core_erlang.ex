@@ -32,6 +32,16 @@ defmodule Skein.CodeGen.CoreErlang do
     "event" => :"Elixir.Skein.Runtime.EventStore"
   }
 
+  # Scoped capability labels (spec §3.2): for these namespaces the declared
+  # capability parameter names a scope label (pool/group/stream) that is
+  # threaded into every generated runtime call as the first argument,
+  # mirroring the memory.kv namespace threading.
+  @scoped_effect_capability_kinds %{
+    "process" => "process.spawn",
+    "timer" => "timer",
+    "event" => "event.log"
+  }
+
   # Standard library module mapping: Skein module name -> Elixir runtime module
   @stdlib_modules %{
     "String" => :"Elixir.Skein.Runtime.Stdlib.String",
@@ -1020,6 +1030,19 @@ defmodule Skein.CodeGen.CoreErlang do
   defp capability_param_to_string(%AST.Identifier{name: name}), do: name
   defp capability_param_to_string(_), do: ""
 
+  # Extracts the scope label from the first declared capability of a scoped
+  # kind (spec §3.2). Parameterless declarations leave the label nil
+  # (unscoped — runtime checks presence only). The analyzer's E0017 check
+  # guarantees at most one declaration per kind per module/agent scope.
+  defp declared_scope_label(capabilities, kind) do
+    capabilities
+    |> Enum.find(fn %AST.Capability{kind: k} -> k == kind end)
+    |> case do
+      %AST.Capability{params: [param | _]} -> capability_param_to_string(param)
+      _ -> nil
+    end
+  end
+
   # Generate __tools__/0 function that returns tool metadata with JSON Schema.
   # Takes {tool, index} pairs; tools with an implement block carry the name
   # of their compiled __tool_impl_N__/1 entry point under :impl (nil otherwise).
@@ -1952,6 +1975,40 @@ defmodule Skein.CodeGen.CoreErlang do
       :cerl.c_atom(:"Elixir.Skein.Runtime.Tool"),
       :cerl.c_atom(method_atom),
       args_exprs ++ [caps_expr]
+    )
+  end
+
+  # Scoped effect call: process.spawn(...), timer.after(...), event.log(...).
+  # The declared capability label (pool/group/stream) is threaded into the
+  # runtime call as the first argument (spec §3.2). The first capability of
+  # the kind wins; nested agents list their own capabilities before the
+  # module's, so an agent-level label overrides the module's.
+  defp generate_expr(
+         %AST.Call{
+           target: %AST.FieldAccess{
+             subject: %AST.Identifier{name: namespace},
+             field: method
+           },
+           args: args
+         },
+         scope
+       )
+       when is_map_key(@scoped_effect_capability_kinds, namespace) do
+    runtime_module = Map.fetch!(@effect_runtime_modules, namespace)
+    method_atom = String.to_atom(method)
+    args_exprs = Enum.map(args, &generate_expr(&1, scope))
+
+    capabilities = Map.get(scope, :__capabilities__, [])
+    caps_expr = generate_capabilities_literal(capabilities)
+
+    label =
+      declared_scope_label(capabilities, Map.fetch!(@scoped_effect_capability_kinds, namespace))
+
+    # Call: RuntimeModule.method(label, args..., capabilities)
+    :cerl.c_call(
+      :cerl.c_atom(runtime_module),
+      :cerl.c_atom(method_atom),
+      [:cerl.abstract(label) | args_exprs] ++ [caps_expr]
     )
   end
 

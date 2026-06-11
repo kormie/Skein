@@ -10,7 +10,8 @@ defmodule Skein.Runtime.EventLog do
   alias Skein.Runtime.EventStore
 
   @doc false
-  defdelegate log(event_name, data, capabilities), to: EventStore
+  def log(event_name, data, capabilities),
+    do: EventStore.log(nil, event_name, data, capabilities)
 
   @doc false
   def all, do: EventStore.query(kind: :user_event)

@@ -8,9 +8,9 @@ defmodule Skein.Runtime.TimerPropertyTest do
     on_exit(fn -> Timer.reset_all() end)
   end
 
-  # Helper to call Timer.after/3 (reserved word in Elixir)
-  defp timer_after(delay_ms, callback, caps) do
-    apply(Timer, :after, [delay_ms, callback, caps])
+  # Helper to call Timer.after/4 (reserved word in Elixir)
+  defp timer_after(group \\ nil, delay_ms, callback, caps) do
+    apply(Timer, :after, [group, delay_ms, callback, caps])
   end
 
   property "after always returns {:ok, string_ref}" do
@@ -29,7 +29,7 @@ defmodule Skein.Runtime.TimerPropertyTest do
       Timer.reset_all()
       Process.sleep(50)
 
-      {:ok, ref} = Timer.interval(interval, fn -> :ok end, [%{kind: "timer", params: []}])
+      {:ok, ref} = Timer.interval(nil, interval, fn -> :ok end, [%{kind: "timer", params: []}])
       assert is_binary(ref)
       assert byte_size(ref) > 0
     end
@@ -52,7 +52,7 @@ defmodule Skein.Runtime.TimerPropertyTest do
 
   property "cancel always returns :ok regardless of ref" do
     check all(ref <- string(:alphanumeric, min_length: 1, max_length: 32)) do
-      assert :ok = Timer.cancel(ref, [%{kind: "timer", params: []}])
+      assert :ok = Timer.cancel(nil, ref, [%{kind: "timer", params: []}])
     end
   end
 end
