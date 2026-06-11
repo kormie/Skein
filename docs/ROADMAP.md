@@ -1,11 +1,11 @@
 # Skein Roadmap
 
-**As of:** 2026-06-10
+**As of:** 2026-06-11
 **Based on:** `docs/AUDIT_FIRST_PRINCIPLES.md`, the 2026-06-09 codebase audit (`docs/AUDIT_2026-06-09.md`), and a source-verified status pass on 2026-06-10.
 
 This is the forward-looking work list for Skein. Items are ordered by impact — the top items close the biggest gaps between the language's stated goals and its current reality.
 
-Every item is self-contained and links its tracking issue — keep the two in sync when scope changes. Pick the top incomplete one and work it. Milestones: Tier 1–4 items below are the **Alpha Release** gate (repo goes public) except where their issue says otherwise; see `.github/milestones.json`.
+Every item is self-contained and links its tracking issue — keep the two in sync when scope changes. Pick the top incomplete one and work it. Milestones live in `.github/milestones.json` (synced by `.github/workflows/milestones.yml`); the active gate is **v1.0.0 Release**.
 
 **Every item requires:**
 - TDD — tests first, implementation second
@@ -26,7 +26,32 @@ The remaining gaps are listed below. Field-testing v0.1.5 (2026-06-10) surfaced 
 
 ---
 
-**All roadmap items are complete.** The Beta Release milestone (#57 #69 #73 #74 #76 #107 #108) closed 2026-06-11; all remaining work — including the open discovered bugs (#114, #118, #121) — is scoped and prioritized in the Post-MVP backlog milestones below.
+**All roadmap items are complete.** The Beta Release milestone (#57 #69 #73 #74 #76 #107 #108) closed 2026-06-11. The next gate is **v1.0.0** — its milestone collects the open bugs, the last language-honesty gaps, and the stability chores below; everything else is post-1.0 backlog.
+
+---
+
+## Path to v1.0.0
+
+The release train (each step rides the auto-tag flow — a green version-bump merge tags and publishes):
+
+1. **v0.2.0** — package the merged-but-unreleased Beta work already on `main` (includes the #114 Int-interpolation fix)
+2. **v0.3.0** — the v1.0.0 milestone's bugs + features: #121, #118, #154, #147 (guards), #146 (embeddings backend)
+3. **v1.0.0-rc** — stability freeze: spec Planned-annotation decisions (#155), deprecated-surface removal (#156), versioning/stability policy (#157), full docs/spec sweep
+4. **v1.0.0** — rc promoted after it soaks
+
+### Milestone: v1.0.0 Release
+
+Ship nothing broken, promise nothing unimplemented:
+
+- ~~[#114](https://github.com/kormie/Skein/issues/114) — **bug, p1:** Int string interpolation emits the raw codepoint~~ — fixed (PR #153), ships in v0.2.0
+- [#121](https://github.com/kormie/Skein/issues/121) — **bug, p1:** queue/topic handlers from compiled modules are never subscribed in a running service
+- [#154](https://github.com/kormie/Skein/issues/154) — **bug, p1:** `llm.json` results decode with string keys but compiled field access reads atom keys (spec §8.4's `d.action` crashes at runtime)
+- [#118](https://github.com/kormie/Skein/issues/118) — **bug, p2:** flaky CI — memory property test races shared `:skein_memory` ETS state
+- [#147](https://github.com/kormie/Skein/issues/147) — Guard expressions in match arms (AST field exists but is always `nil`) — L
+- [#146](https://github.com/kormie/Skein/issues/146) — Embeddings-capable LLM backend (Anthropic has no embeddings API; `llm.embed` currently needs a custom/test backend) — M
+- [#155](https://github.com/kormie/Skein/issues/155) — **chore:** Spec freeze — resolve every "Planned" annotation (tuple destructuring, timer task bodies): implement or remove from the 1.0 spec — S + decisions
+- [#156](https://github.com/kormie/Skein/issues/156) — **chore:** Remove deprecated surface (EventLog facade + sweep) — breaking removals must land before 1.0 — S–M
+- [#157](https://github.com/kormie/Skein/issues/157) — **chore:** Versioning and stability policy (`docs/STABILITY.md`: spec, error codes, metadata contracts, EventStore schema, skein.toml) — M
 
 ---
 
@@ -34,17 +59,12 @@ The remaining gaps are listed below. Field-testing v0.1.5 (2026-06-10) surfaced 
 
 **Issue:** [#78](https://github.com/kormie/Skein/issues/78) (tracking)
 
-All items are now scoped into issues and organized into three milestones (`.github/milestones.json`):
+Everything below is post-1.0 (`.github/milestones.json`):
 
 ### Milestone: Post-MVP 1 — Hardening & Language
 
-Bugs first, then well-scoped gaps with no design unknowns:
+Well-scoped gaps with no design unknowns (the bugs and guard/embeddings work originally here moved to the v1.0.0 milestone):
 
-- [#114](https://github.com/kormie/Skein/issues/114) — **bug, p1:** Int string interpolation emits the raw codepoint instead of decimal digits
-- [#121](https://github.com/kormie/Skein/issues/121) — **bug, p1:** queue/topic handlers from compiled modules are never subscribed in a running service
-- [#118](https://github.com/kormie/Skein/issues/118) — **bug, p2:** flaky CI — memory property test races shared `:skein_memory` ETS state
-- [#147](https://github.com/kormie/Skein/issues/147) — Guard expressions in match arms (AST field exists but is always `nil`) — L
-- [#146](https://github.com/kormie/Skein/issues/146) — Embeddings-capable LLM backend (Anthropic has no embeddings API; `llm.embed` currently needs a custom/test backend) — M
 - [#145](https://github.com/kormie/Skein/issues/145) — `llm.rerank` for RAG pipelines — M, depends on #146
 - [#150](https://github.com/kormie/Skein/issues/150) — Code-action phase 2: `Skein.Error` span + `edit_kind` so any exact fix applies generically (phase 1 per-code mapping shipped with #108) — L
 

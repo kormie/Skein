@@ -8,8 +8,12 @@
     "description": "Post-alpha hardening, informed by alpha feedback: replay backend injection (#73), the capability-parameter surface decision (#69) and parameter-scoped enforcement for process/timer/event.log (#57), process.spawn task bodies (#74), enum value-level exhaustiveness warnings (#76), local LLM backends for dev via OpenAI-compatible servers + skein.toml profiles (#107), and LSP code actions from fix_hint/fix_code (#108). Triaged alpha bug reports land here unless they block alpha itself."
   },
   {
+    "title": "v1.0.0 Release",
+    "description": "The 1.0 gate: ship nothing broken, promise nothing unimplemented. Bugs — queue/topic handlers never subscribed in running services (#121), flaky memory property test in CI (#118), llm.json results crash on field access via string/atom key mismatch (#154); Int interpolation (#114) is already fixed and ships in v0.2.0. Language honesty — guard expressions in match arms (#147), an embeddings-capable LLM backend so llm.embed works for real (#146). Stability — spec freeze on every Planned annotation (#155), deprecated-surface removal incl. the EventLog facade (#156), and a written versioning/stability policy (#157). Post-MVP 2's additive features (FFI, approvals, trace viewer) land in 1.x, not here."
+  },
+  {
     "title": "Post-MVP 1: Hardening & Language",
-    "description": "First post-beta wave: fix what's broken and close the well-scoped language/runtime gaps. Bugs — Int interpolation emits raw codepoints (#114), queue/topic handlers never subscribed in running services (#121), flaky memory property test in CI (#118). Features — guard expressions in match arms (#147), an embeddings-capable LLM backend so llm.embed works for real (#146), llm.rerank for RAG (#145), and code-action phase 2 spans + edit_kind (#150)."
+    "description": "Post-1.0 hardening continues: llm.rerank for RAG (#145, unblocked by the embeddings backend #146) and code-action phase 2 spans + edit_kind on Skein.Error (#150). The bugs and the guard/embeddings work originally scoped here moved into the v1.0.0 Release milestone."
   },
   {
     "title": "Post-MVP 2: Interop & Agent Workflows",
