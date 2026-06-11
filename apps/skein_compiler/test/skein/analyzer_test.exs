@@ -3392,6 +3392,94 @@ defmodule Skein.AnalyzerTest do
   end
 
   # ------------------------------------------------------------------
+  # E0033/E0036: transition()/stop() outside agent
+  # ------------------------------------------------------------------
+
+  describe "transition/stop outside agent validation" do
+    test "reports E0033 for transition in module function" do
+      errors =
+        analyze_errors("""
+        module M {
+          fn f() -> String {
+            transition(Phase.Done)
+            "x"
+          }
+        }
+        """)
+
+      assert Enum.any?(errors, fn e ->
+               e.code == "E0033" and e.severity == :error and
+                 e.message =~ "transition()" and is_binary(e.fix_hint) and
+                 is_binary(e.fix_code)
+             end)
+    end
+
+    test "reports E0033 for transition in module handler" do
+      errors =
+        analyze_errors("""
+        module M {
+          capability http.in
+
+          handler http GET "/test" (req) -> {
+            transition(Phase.Done)
+          }
+        }
+        """)
+
+      assert Enum.any?(errors, fn e -> e.code == "E0033" and e.severity == :error end)
+    end
+
+    test "reports E0033 for transition in a test block" do
+      errors =
+        analyze_errors("""
+        module M {
+          fn f() -> Int { 1 }
+
+          test "lifecycle calls are rejected" {
+            transition(Phase.Done)
+          }
+        }
+        """)
+
+      assert Enum.any?(errors, fn e -> e.code == "E0033" and e.severity == :error end)
+    end
+
+    test "reports E0036 for stop in module function" do
+      errors =
+        analyze_errors("""
+        module M {
+          fn f() -> String {
+            stop()
+            "x"
+          }
+        }
+        """)
+
+      assert Enum.any?(errors, fn e ->
+               e.code == "E0036" and e.severity == :error and
+                 e.message =~ "stop()" and is_binary(e.fix_hint) and
+                 is_binary(e.fix_code)
+             end)
+    end
+
+    test "reports E0036 for stop in a match arm of a module function" do
+      errors =
+        analyze_errors("""
+        module M {
+          fn f(n: Int) -> Int {
+            match n {
+              1 -> stop()
+              _ -> n
+            }
+          }
+        }
+        """)
+
+      assert Enum.any?(errors, fn e -> e.code == "E0036" and e.severity == :error end)
+    end
+  end
+
+  # ------------------------------------------------------------------
   # E0035: idempotent() outside handler
   # ------------------------------------------------------------------
 

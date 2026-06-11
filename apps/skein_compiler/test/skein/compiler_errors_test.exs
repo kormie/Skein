@@ -67,6 +67,40 @@ defmodule Skein.CompilerErrorsTest do
     end
   end
 
+  describe "check_file/1 reports agent-only calls in modules without raising" do
+    test "transition() in a module fn is a structured error, not a crash", %{tmp_dir: tmp} do
+      path = Path.join(tmp, "transition_outside.skein")
+
+      File.write!(path, """
+      module M {
+        fn f() -> String {
+          transition(Phase.Done)
+          "x"
+        }
+      }
+      """)
+
+      assert {:ok, %{errors: errors}} = Compiler.check_file(path)
+      assert Enum.any?(errors, &(&1.code == "E0033"))
+    end
+
+    test "stop() in a module fn is a structured error, not a crash", %{tmp_dir: tmp} do
+      path = Path.join(tmp, "stop_outside.skein")
+
+      File.write!(path, """
+      module M {
+        fn f() -> String {
+          stop()
+          "x"
+        }
+      }
+      """)
+
+      assert {:ok, %{errors: errors}} = Compiler.check_file(path)
+      assert Enum.any?(errors, &(&1.code == "E0036"))
+    end
+  end
+
   describe "targeted hints for habits from other languages" do
     test "semicolon errors explain that Skein has no semicolons", %{tmp_dir: tmp} do
       path = Path.join(tmp, "semi.skein")

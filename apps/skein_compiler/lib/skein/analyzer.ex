@@ -41,9 +41,10 @@ defmodule Skein.Analyzer do
   - E0030: Invalid phase transition
   - E0031: Unreachable phase (warning)
   - E0032: Phase handler missing
-  - E0033: `transition()` outside agent
+  - E0033: `transition()` outside agent (also: `transition()` in an agent with no Phase enum)
   - E0034: `suspend()` outside agent
   - E0035: `idempotent()` outside handler
+  - E0036: `stop()` outside agent
 
   ### Supervisor (E004x)
   - E0040: Invalid supervisor strategy
@@ -355,8 +356,10 @@ defmodule Skein.Analyzer do
     # Pass 6: Unreachable code after stop() warnings
     errors = errors ++ check_unreachable_after_stop(ast.declarations)
 
-    # Pass 7: suspend() outside agent check
-    errors = errors ++ check_suspend_outside_agent(ast.declarations, env)
+    # Pass 7: agent-only lifecycle calls (transition/suspend/stop) outside
+    # agent handlers — test/scenario/golden bodies included, so codegen
+    # never sees these nodes on the module path
+    errors = errors ++ check_agent_only_calls(ast.declarations ++ test_views, env)
 
     # Pass 8: idempotent() outside handler check
     errors = errors ++ check_idempotent_outside_handler(ast.declarations, env)
@@ -3648,49 +3651,68 @@ defmodule Skein.Analyzer do
   defp extract_meta(_), do: %{line: 0, col: 0}
 
   # ------------------------------------------------------------------
-  # E0034: suspend() outside agent
+  # Agent-only lifecycle calls outside agent handlers:
+  # E0033 transition(), E0034 suspend(), E0036 stop()
   # ------------------------------------------------------------------
 
-  defp check_suspend_outside_agent(declarations, env) do
-    fn_suspends =
-      declarations
-      |> Enum.filter(&match?(%AST.Fn{}, &1))
-      |> Enum.flat_map(fn %AST.Fn{body: body} ->
-        collect_suspends(body)
-      end)
-
-    handler_suspends =
-      declarations
-      |> Enum.filter(&match?(%AST.Handler{}, &1))
-      |> Enum.flat_map(fn %AST.Handler{body: body} ->
-        collect_suspends(body)
-      end)
-
-    (fn_suspends ++ handler_suspends)
-    |> Enum.map(fn meta ->
-      %Error{
-        code: "E0034",
-        severity: :error,
-        message:
-          "suspend() can only be used in agent handlers, not in module functions or handlers",
-        location: location_from_meta(meta, env.file),
-        fix_hint: "Move this to an agent handler (on start/on phase)",
-        fix_code: "on phase(Phase.Name) -> { suspend(\"reason\") }"
-      }
+  defp check_agent_only_calls(declarations, env) do
+    declarations
+    |> Enum.flat_map(fn
+      %AST.Fn{body: body} -> collect_agent_only_calls(body)
+      %AST.Handler{body: body} -> collect_agent_only_calls(body)
+      _ -> []
     end)
+    |> Enum.map(fn {kind, meta} -> agent_only_call_error(kind, meta, env) end)
   end
 
-  defp collect_suspends(%AST.Suspend{meta: meta}), do: [meta]
-
-  defp collect_suspends(%AST.Block{expressions: exprs}),
-    do: Enum.flat_map(exprs, &collect_suspends/1)
-
-  defp collect_suspends(%AST.Match{arms: arms}) do
-    Enum.flat_map(arms, fn %AST.MatchArm{body: body} -> collect_suspends(body) end)
+  defp agent_only_call_error(:transition, meta, env) do
+    %Error{
+      code: "E0033",
+      severity: :error,
+      message:
+        "transition() can only be used in agent handlers, not in module functions or handlers",
+      location: location_from_meta(meta, env.file),
+      fix_hint: "Move this to an agent handler (on start/on phase) — phases only exist in agents",
+      fix_code: "on phase(Phase.Name) -> { transition(Phase.Next) }"
+    }
   end
 
-  defp collect_suspends(%AST.Let{value: value}), do: collect_suspends(value)
-  defp collect_suspends(_), do: []
+  defp agent_only_call_error(:suspend, meta, env) do
+    %Error{
+      code: "E0034",
+      severity: :error,
+      message:
+        "suspend() can only be used in agent handlers, not in module functions or handlers",
+      location: location_from_meta(meta, env.file),
+      fix_hint: "Move this to an agent handler (on start/on phase)",
+      fix_code: "on phase(Phase.Name) -> { suspend(\"reason\") }"
+    }
+  end
+
+  defp agent_only_call_error(:stop, meta, env) do
+    %Error{
+      code: "E0036",
+      severity: :error,
+      message: "stop() can only be used in agent handlers, not in module functions or handlers",
+      location: location_from_meta(meta, env.file),
+      fix_hint: "Move this to an agent handler (on start/on phase)",
+      fix_code: "on phase(Phase.Name) -> { stop() }"
+    }
+  end
+
+  defp collect_agent_only_calls(%AST.Transition{meta: meta}), do: [{:transition, meta}]
+  defp collect_agent_only_calls(%AST.Suspend{meta: meta}), do: [{:suspend, meta}]
+  defp collect_agent_only_calls(%AST.Stop{meta: meta}), do: [{:stop, meta}]
+
+  defp collect_agent_only_calls(%AST.Block{expressions: exprs}),
+    do: Enum.flat_map(exprs, &collect_agent_only_calls/1)
+
+  defp collect_agent_only_calls(%AST.Match{arms: arms}) do
+    Enum.flat_map(arms, fn %AST.MatchArm{body: body} -> collect_agent_only_calls(body) end)
+  end
+
+  defp collect_agent_only_calls(%AST.Let{value: value}), do: collect_agent_only_calls(value)
+  defp collect_agent_only_calls(_), do: []
 
   # ------------------------------------------------------------------
   # E0035: idempotent() outside handler
