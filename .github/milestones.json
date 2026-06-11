@@ -12,8 +12,12 @@
     "description": "Shipped as v0.2.0. Post-alpha hardening, informed by alpha feedback: replay backend injection (#73), the capability-parameter surface decision (#69) and parameter-scoped enforcement for process/timer/event.log (#57), process.spawn task bodies (#74), enum value-level exhaustiveness warnings (#76), local LLM backends for dev via OpenAI-compatible servers + skein.toml profiles (#107), LSP code actions from fix_hint/fix_code (#108), and the Int string-interpolation fix (#114)."
   },
   {
+    "title": "v1.0.0-rc Release",
+    "description": "The gate for tagging v1.0.0-rc — the output of the 2026-06-11 release-readiness full pass (/release-readiness; every blocker confirmed by two independent adversarial verifiers). Three fronts: the frozen spec promises surface the compiler rejects (queue.publish, resume(), llm.stream on_chunk, stdlib signature drift, the keyword list, an incomplete error-code registry); two unstructured compiler crashes (transition() outside agents, underscored float literals is tracked for GA); and the docs site's canonical examples don't compile (language/runtime/reference/getting-started pages, plus a landing-page model id that retires 2026-06-15). The rc tags when this milestone is empty."
+  },
+  {
     "title": "v1.0.0 Release",
-    "description": "The 1.0 gate: ship nothing broken, promise nothing unimplemented. Bugs — queue/topic handlers never subscribed in running services (#121), flaky memory property test in CI (#118), llm.json results crash on field access via string/atom key mismatch (#154). Language honesty — guard expressions in match arms (#147), an embeddings-capable LLM backend so llm.embed works for real (#146), plus the Amazon Bedrock LLM backend (#173) and the VS Code .skein file icon (#162). Stability — spec freeze on every Planned annotation (#155), deprecated-surface removal incl. the EventLog facade (#156), and a written versioning/stability policy (#157). The v1.1/v1.2 additive features (FFI, approvals, trace viewer) land after 1.0, not here."
+    "description": "The GA gate: v1.0.0-rc soaks while the readiness sweep's warning-grade findings land — the W0001 interpolation false positive, the lexer crash on underscored floats, silent mix skein.* aliases, examples shipping analyzer warnings, and meta-docs a release behind. The pre-rc feature work that originally gated 1.0 (#121 #118 #154 #147 #146 #155 #156 #157 #173 #162) all shipped in v0.3.0. v1.0.0 tags when the rc has soaked and this milestone is empty."
   },
   {
     "title": "v1.1: Hardening & Language",
