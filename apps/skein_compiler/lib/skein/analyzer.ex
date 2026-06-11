@@ -53,6 +53,7 @@ defmodule Skein.Analyzer do
   - W0001: Unused binding
   - W0002: Unused capability
   - W0003: Unreachable code after `stop()`
+  - W0004: Enum match covers only specific values of a variant
   """
 
   alias Skein.AST
@@ -1612,8 +1613,10 @@ defmodule Skein.Analyzer do
     # Check all arm types are consistent
     consistency_errors = check_arm_type_consistency(arm_types, meta, env)
 
-    # Check exhaustiveness
-    exhaustiveness_warnings = check_exhaustiveness(subject_type, arms, meta, env)
+    # Check exhaustiveness (enum-typed params resolve as {:user_type, name};
+    # normalize declared enum names so those matches are checked too)
+    exhaustiveness_warnings =
+      check_exhaustiveness(normalize_match_subject_type(subject_type, env), arms, meta, env)
 
     result_type =
       arm_types
@@ -2210,9 +2213,14 @@ defmodule Skein.Analyzer do
 
         has_wildcard =
           Enum.any?(patterns, fn
-            %AST.Wildcard{} -> true
-            %AST.Identifier{name: name} -> not MapSet.member?(variant_names, name)
-            _ -> false
+            %AST.Wildcard{} ->
+              true
+
+            %AST.Identifier{name: name} ->
+              not MapSet.member?(variant_names, strip_enum_prefix(name, enum_name))
+
+            _ ->
+              false
           end)
 
         if has_wildcard do
@@ -2221,31 +2229,39 @@ defmodule Skein.Analyzer do
           covered =
             patterns
             |> Enum.flat_map(fn
-              %AST.Identifier{name: name} -> [name]
-              %AST.Call{target: %AST.Identifier{name: name}} -> [name]
-              _ -> []
+              %AST.Identifier{name: name} ->
+                [strip_enum_prefix(name, enum_name)]
+
+              %AST.Call{target: %AST.Identifier{name: name}} ->
+                [strip_enum_prefix(name, enum_name)]
+
+              _ ->
+                []
             end)
             |> MapSet.new()
 
           missing = MapSet.difference(variant_names, covered)
 
-          if MapSet.size(missing) == 0 do
-            []
-          else
-            missing_list = missing |> MapSet.to_list() |> Enum.join(", ")
+          missing_warnings =
+            if MapSet.size(missing) == 0 do
+              []
+            else
+              missing_list = missing |> MapSet.to_list() |> Enum.join(", ")
 
-            [
-              %Error{
-                code: "E0024",
-                severity: :warning,
-                message:
-                  "Non-exhaustive match on #{enum_name}: missing pattern(s) #{missing_list}",
-                location: location_from_meta(meta, env.file),
-                fix_hint: "Add arms for #{missing_list} or a wildcard '_' pattern",
-                fix_code: missing |> MapSet.to_list() |> Enum.map_join("\n", &"#{&1} -> value")
-              }
-            ]
-          end
+              [
+                %Error{
+                  code: "E0024",
+                  severity: :warning,
+                  message:
+                    "Non-exhaustive match on #{enum_name}: missing pattern(s) #{missing_list}",
+                  location: location_from_meta(meta, env.file),
+                  fix_hint: "Add arms for #{missing_list} or a wildcard '_' pattern",
+                  fix_code: missing |> MapSet.to_list() |> Enum.map_join("\n", &"#{&1} -> value")
+                }
+              ]
+            end
+
+          missing_warnings ++ value_level_warnings(enum_name, arms, env)
         end
     end
   end
@@ -2271,6 +2287,78 @@ defmodule Skein.Analyzer do
       []
     end
   end
+
+  # Enum-typed fn params resolve as {:user_type, name}; declared enum
+  # names are enum subjects for exhaustiveness purposes.
+  defp normalize_match_subject_type({:user_type, name}, env) do
+    if Map.has_key?(env.enums, name), do: {:enum, name}, else: {:user_type, name}
+  end
+
+  defp normalize_match_subject_type(subject_type, _env), do: subject_type
+
+  # Patterns may name variants with the enum prefix (Event.Charge) or bare
+  # (Charge); coverage is computed on the bare variant name.
+  defp strip_enum_prefix(name, enum_name) do
+    prefix = enum_name <> "."
+
+    if String.starts_with?(name, prefix) do
+      binary_part(name, byte_size(prefix), byte_size(name) - byte_size(prefix))
+    else
+      name
+    end
+  end
+
+  # Value-level exhaustiveness (W0004): a variant arm with literal field
+  # patterns only covers those specific values — without a wildcard arm or
+  # an all-bindings arm for the same variant, other values of that variant
+  # raise case_clause at runtime. Only called when no wildcard arm exists.
+  defp value_level_warnings(enum_name, arms, env) do
+    arms
+    |> Enum.filter(&match?(%AST.MatchArm{pattern: %AST.Call{target: %AST.Identifier{}}}, &1))
+    |> Enum.group_by(fn %AST.MatchArm{
+                          pattern: %AST.Call{target: %AST.Identifier{name: name}}
+                        } ->
+      strip_enum_prefix(name, enum_name)
+    end)
+    |> Enum.sort_by(fn {variant, _arms} -> variant end)
+    |> Enum.flat_map(fn {variant, variant_arms} ->
+      generally_covered =
+        Enum.any?(variant_arms, fn %AST.MatchArm{pattern: %AST.Call{args: args}} ->
+          Enum.all?(args, &binding_pattern?/1)
+        end)
+
+      literal_arm =
+        Enum.find(variant_arms, fn %AST.MatchArm{pattern: %AST.Call{args: args}} ->
+          Enum.any?(args, &(not binding_pattern?(&1)))
+        end)
+
+      if generally_covered or literal_arm == nil do
+        []
+      else
+        %AST.MatchArm{
+          pattern: %AST.Call{target: %AST.Identifier{name: pattern_name}, meta: pattern_meta}
+        } = literal_arm
+
+        [
+          %Error{
+            code: "W0004",
+            severity: :warning,
+            message:
+              "Match on #{enum_name} covers only specific values of #{variant}: " <>
+                "other #{variant}(...) values raise case_clause at runtime",
+            location: location_from_meta(pattern_meta, env.file),
+            fix_hint:
+              "Add a '#{pattern_name}(...)' arm with variable bindings or a wildcard '_' arm",
+            fix_code: "_ -> value"
+          }
+        ]
+      end
+    end)
+  end
+
+  defp binding_pattern?(%AST.Identifier{}), do: true
+  defp binding_pattern?(%AST.Wildcard{}), do: true
+  defp binding_pattern?(_), do: false
 
   # ------------------------------------------------------------------
   # Match arm type consistency

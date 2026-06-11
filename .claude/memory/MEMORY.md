@@ -37,6 +37,12 @@
 - Analyzer: `@effect_optional_params %{{"process","spawn"} => ["work"]}` — first optional effect param; `callee_param_names` returns a 4-tuple now; omitted trailing optionals drop out of the reordered args (only TRAILING params can be optional — middle omission would shift positions)
 - Integration tests await background effects by polling (await/2 helper in core_erlang_test); crash-from-source test uses `1 / 0` (codegen emits :erlang.div → ArithmeticError in the Task, caller unaffected)
 
+## Enum Value-Level Exhaustiveness W0004 (issue #76 — 2026-06-11)
+- Pre-existing GAP fixed en route: enum-typed fn params resolved {:user_type, name} so check_exhaustiveness SKIPPED them entirely — `normalize_match_subject_type/2` maps declared enum names to {:enum, name} at the match site. E0024 now fires for param-typed subjects too (spec examples were already clean)
+- Dotted variant patterns (`Event.Charge(n)`) previously poisoned coverage both ways: counted as wildcard in has_wildcard (unknown identifier) AND as uncovered in the covered set — `strip_enum_prefix/2` normalizes to bare variant names
+- W0004 (`value_level_warnings/3`): fires per variant when no wildcard arm exists, the variant has an arm with any non-binding field pattern (not Identifier/Wildcard), and no all-bindings arm covers it; warning sits on the literal arm's pattern meta; fix_code "_ -> value"
+- The Known Limitations entry about value-level exhaustiveness is now resolved
+
 ## Repo Hygiene / Issue Tracking (2026-06-10 audit session)
 - All 20 open issues map to ROADMAP items (roadmap links each issue inline; 19 items across 4 tiers); #78 tracks the post-MVP backlog
 - v0.1.5 field-testing wave (#101, #104–#109) triaged same day: #104 W0002/E0012 test-block gap, #105 assertion output, #106 git init, #107 local LLM backends, #108 LSP code actions, #109 MCP compile_check fidelity
@@ -155,7 +161,7 @@
 - The compiler should validate all Phase enum clauses have `on phase` handlers (already done: E0032)
 
 ## Known Limitations / Future Work
-- **Enum exhaustiveness is variant-level only**: The analyzer checks that all *variant names* are covered in a match, but does NOT check exhaustiveness of values *within* variant fields. E.g., `match e { Event.Charge(5) -> "five" }` satisfies the "Charge variant is covered" check, but at runtime a `case_clause` error occurs for `Event.Charge(10)`. This could cause unexpected crashes. A future improvement could warn when a variant arm uses literal patterns without a wildcard fallback. See `check_exhaustiveness/4` in `analyzer.ex` lines 903-951.
+- ~~Enum exhaustiveness is variant-level only~~ RESOLVED 2026-06-11 by #76: W0004 warns when a variant arm uses literal field patterns without a wildcard or all-bindings arm (see "Enum Value-Level Exhaustiveness W0004" section)
 
 ## Distribution Prerequisites (Completed)
 - **Enum variant matching**: codegen supports `%AST.Call{}` patterns in `generate_pattern/2`, producing tuple patterns `{:variant_atom, Arg1, ...}`. Uppercase identifiers in pattern position match as atoms.

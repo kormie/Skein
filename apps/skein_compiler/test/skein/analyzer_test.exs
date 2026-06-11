@@ -451,6 +451,159 @@ defmodule Skein.AnalyzerTest do
 
       assert Enum.any?(errors, fn e -> e.code == "E0020" end)
     end
+
+    test "enum-typed fn param subjects are variant-level checked (E0024)" do
+      errors =
+        analyze_errors("""
+        module M {
+          enum Event {
+            Charge(amount: Int)
+            Refund
+          }
+
+          fn f(e: Event) -> String {
+            match e {
+              Refund -> "refund"
+            }
+          }
+        }
+        """)
+
+      assert Enum.any?(errors, fn e ->
+               e.code == "E0024" and e.severity == :warning and e.message =~ "Charge"
+             end)
+    end
+
+    test "dotted variant patterns count as variant coverage (no false E0024)" do
+      assert {:ok, _} =
+               analyze("""
+               module M {
+                 enum Event {
+                   Charge(amount: Int)
+                   Refund
+                 }
+
+                 fn f(e: Event) -> String {
+                   match e {
+                     Event.Charge(n) -> "charged ${n}"
+                     Event.Refund -> "refund"
+                   }
+                 }
+               }
+               """)
+    end
+  end
+
+  # ------------------------------------------------------------------
+  # W0004: enum value-level exhaustiveness
+  # ------------------------------------------------------------------
+
+  describe "W0004: enum value-level exhaustiveness" do
+    test "literal variant field pattern without a wildcard arm warns" do
+      errors =
+        analyze_errors("""
+        module M {
+          enum Event {
+            Charge(amount: Int)
+            Refund
+          }
+
+          fn f(e: Event) -> String {
+            match e {
+              Event.Charge(5) -> "five"
+              Refund -> "refund"
+            }
+          }
+        }
+        """)
+
+      warning = Enum.find(errors, &(&1.code == "W0004"))
+      assert warning
+      assert warning.severity == :warning
+      assert warning.message =~ "Charge"
+      assert warning.fix_hint != nil
+      assert warning.fix_code != nil
+    end
+
+    test "a wildcard arm silences the warning" do
+      assert {:ok, _} =
+               analyze("""
+               module M {
+                 enum Event {
+                   Charge(amount: Int)
+                   Refund
+                 }
+
+                 fn f(e: Event) -> String {
+                   match e {
+                     Event.Charge(5) -> "five"
+                     Refund -> "refund"
+                     _ -> "other"
+                   }
+                 }
+               }
+               """)
+    end
+
+    test "a binding arm for the same variant silences the warning" do
+      assert {:ok, _} =
+               analyze("""
+               module M {
+                 enum Event {
+                   Charge(amount: Int)
+                   Refund
+                 }
+
+                 fn f(e: Event) -> String {
+                   match e {
+                     Event.Charge(5) -> "five"
+                     Event.Charge(n) -> "other ${n}"
+                     Refund -> "refund"
+                   }
+                 }
+               }
+               """)
+    end
+
+    test "binding-only variant patterns do not warn" do
+      assert {:ok, _} =
+               analyze("""
+               module M {
+                 enum Event {
+                   Charge(amount: Int)
+                   Refund
+                 }
+
+                 fn f(e: Event) -> String {
+                   match e {
+                     Event.Charge(n) -> "charged ${n}"
+                     Refund -> "refund"
+                   }
+                 }
+               }
+               """)
+    end
+
+    test "string literal field patterns also warn" do
+      errors =
+        analyze_errors("""
+        module M {
+          enum Cmd {
+            Run(name: String)
+            Halt
+          }
+
+          fn f(c: Cmd) -> String {
+            match c {
+              Cmd.Run("build") -> "building"
+              Halt -> "halting"
+            }
+          }
+        }
+        """)
+
+      assert Enum.any?(errors, &(&1.code == "W0004"))
+    end
   end
 
   # ------------------------------------------------------------------
