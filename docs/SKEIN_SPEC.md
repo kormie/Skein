@@ -714,35 +714,45 @@ All errors are JSON-serializable with this structure:
 
 ### Error Codes
 
-| Code | Category | Example |
-|------|----------|---------|
-| E0001 | Syntax | Unexpected token |
-| E0002 | Syntax | Unterminated string |
-| E0003 | Syntax | Invalid number literal |
-| E0010 | Name | Undefined identifier |
-| E0011 | Name | Duplicate definition |
-| E0012 | Capability | Missing capability declaration |
-| E0013 | Capability | Capability parameter mismatch |
-| E0014 | Tool | Tool name not declared in `capability tool.use` params |
-| E0015 | Tool | Duplicate short tool name in `capability tool.use` params |
-| E0016 | Name | Cross-module function call (functions are module-private; expose a tool instead) |
-| E0017 | Capability | Duplicate scoped capability declaration (`memory.kv`, `event.log`, `process.spawn`, `timer` allow one per module or agent) |
-| E0020 | Type | Type mismatch |
-| E0021 | Type | Non-exhaustive match |
-| E0022 | Type | Invalid `!` on non-Result |
-| E0023 | Type | Invalid `?` on non-Result (or enclosing fn doesn't return Result) |
-| E0024 | Type | Unknown type name |
-| E0025 | Type | Constraint annotation on wrong type |
-| E0026 | Type | Invalid named argument (unknown/duplicate name, positional after named, callee without named-argument support) |
-| E0027 | Type | Invalid guard expression (guards allow literals, bindings, field access, comparisons, boolean operators, and `+`/`-`/`*` arithmetic) |
-| E0030 | Agent | Invalid phase transition |
-| E0031 | Agent | Unreachable phase |
-| E0032 | Agent | Phase handler missing |
-| E0033 | Agent | `transition()` outside agent |
-| W0001 | Warning | Unused binding |
-| W0002 | Warning | Unused capability |
-| W0003 | Warning | Unreachable code after `stop()` |
-| W0004 | Warning | Enum match covers only specific values of a variant (add a binding arm or wildcard) |
+| Code | Category | Severity | Meaning |
+|------|----------|----------|---------|
+| E0001 | Syntax | error | Unexpected token |
+| E0002 | Syntax | error | Unterminated string |
+| E0003 | Syntax | — | Reserved: invalid number literal (not yet emitted) |
+| E0010 | Name | error | Undefined identifier |
+| E0011 | Name | error | Duplicate definition |
+| E0012 | Capability | error | Missing capability declaration |
+| E0013 | Capability | — | Reserved: capability parameter mismatch (not yet emitted) |
+| E0014 | Tool | error | Tool name not declared in `capability tool.use` params |
+| E0015 | Tool | error | Duplicate short tool name in `capability tool.use` params |
+| E0016 | Name | error | Cross-module function call (functions are module-private; expose a tool instead) |
+| E0017 | Capability | error | Duplicate scoped capability declaration (`memory.kv`, `event.log`, `process.spawn`, `timer` allow one per module or agent) |
+| E0020 | Type | error | Type mismatch (including wrong argument counts for fn, stdlib, and effect calls) |
+| E0021 | Type | warning | Non-exhaustive match |
+| E0022 | Type | error | Invalid `!` on non-Result |
+| E0023 | Type | error | Invalid `?` on non-Result (or enclosing fn doesn't return Result) |
+| E0024 | Type | error / warning | Unknown type name (error); non-exhaustive match on an enum, missing variant patterns (warning, §3.11) |
+| E0025 | Type | error | Constraint annotation on wrong type |
+| E0026 | Type | error | Invalid named argument (unknown/duplicate name, positional after named, callee without named-argument support) |
+| E0027 | Type | error | Invalid guard expression (guards allow literals, bindings, field access, comparisons, boolean operators, and `+`/`-`/`*` arithmetic) |
+| E0030 | Agent | error | Invalid phase transition |
+| E0031 | Agent | warning | Unreachable phase |
+| E0032 | Agent | error | Phase handler missing |
+| E0033 | Agent | error | `transition()` outside an agent, or in an agent that declares no `Phase` enum |
+| E0034 | Agent | error | `suspend()` outside agent handlers |
+| E0035 | Agent | error | `idempotent()` outside handler bodies |
+| E0036 | Agent | error | `stop()` outside agent handlers |
+| E0040 | Supervisor | error | Invalid supervisor strategy |
+| E0041 | Supervisor | error | Invalid `max_restarts` value |
+| E0042 | Supervisor | warning | Supervisor has no children |
+| W0001 | Warning | warning | Unused binding |
+| W0002 | Warning | warning | Unused capability |
+| W0003 | Warning | warning | Unreachable code after `stop()` |
+| W0004 | Warning | warning | Enum match covers only specific values of a variant (add a binding arm or wildcard) |
+
+E0003 and E0013 are reserved: the codes are allocated and documented here, but
+no compiler path constructs them yet. They keep their meaning when first
+emitted (error codes are append-only — see `docs/STABILITY.md`).
 
 ---
 
