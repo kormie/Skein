@@ -131,18 +131,28 @@ defmodule Skein.Runtime.Process do
         ensure_started()
 
         Trace.with_span(%{kind: :process, method: :spawn, task: task_name, pool: pool}, fn ->
-          case DynamicSupervisor.start_child(__MODULE__, %{
-                 id: make_ref(),
-                 start: {Task, :start_link, [fun]},
-                 restart: :temporary
-               }) do
-            {:ok, pid} -> {:ok, pid}
-            {:error, reason} -> {:error, inspect(reason)}
-          end
+          start_supervised_task(fun)
         end)
 
       {:error, _reason} = error ->
         error
+    end
+  end
+
+  @doc false
+  # Runs `fun` in a temporary supervised Task — the crash-isolation primitive
+  # behind `process.spawn` work bodies, also used by Timer task bodies.
+  @spec start_supervised_task((-> any())) :: {:ok, pid()} | {:error, String.t()}
+  def start_supervised_task(fun) when is_function(fun, 0) do
+    ensure_started()
+
+    case DynamicSupervisor.start_child(__MODULE__, %{
+           id: make_ref(),
+           start: {Task, :start_link, [fun]},
+           restart: :temporary
+         }) do
+      {:ok, pid} -> {:ok, pid}
+      {:error, reason} -> {:error, inspect(reason)}
     end
   end
 

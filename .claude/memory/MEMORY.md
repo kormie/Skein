@@ -3,7 +3,9 @@
 ## Project State (v1.0.0 push — 2026-06-11 post-Beta session)
 - Roadmap restructured on main: active gate is **v1.0.0 Release** milestone (release train v0.2.0 -> v0.3.0 -> rc -> 1.0); post-1.0 backlog keeps #145 #150 + Post-MVP 2/Future
 - Post-Beta session merged: #114 Int interpolation (PR #153), #121 queue/topic subscription (PR #158), #118 ETS ownership (PR #161), #147 match guards (PR #164)
-- Remaining v1.0.0 items: #154 (llm.json string keys vs atom-key field access, p1), #146 (embeddings backend), #155 (spec freeze: Planned annotations), #156 (remove deprecated EventLog facade), #157 (versioning/stability policy)
+- **v1.0.0 milestone CLEARED in this session**: #154 (PR #165 schema-directed llm.json atomization), #146 (PR #166 embed span meta + stub e2e + Voyage docs), #156 (PR #168 EventLog facade deleted, LSP annotation completions aligned to spec 4.2), #157 (PR #169 docs/STABILITY.md), #155 (spec freeze — owner decisions recorded on the issue: timer bodies IMPLEMENTED, tuple destructuring + planned-testing block REMOVED from 1.0 spec)
+- Next: v1.0.0-rc per the roadmap release train (full docs/spec sweep), then rc soak; post-1.0 backlog starts at #145 (llm.rerank) and #150 (code actions phase 2)
+- Timer task bodies: Timer.after/5 + interval/5 (group, ms, task, work, caps) store {:named_work, task, fun}; fire runs fun via Skein.Runtime.Process.start_supervised_task/1 (extracted from spawn/4 — the crash-isolation primitive); analyzer @effect_param_names gained timer.after/interval/cancel (named args now supported), @effect_optional_params gained timer work; codegen unchanged (scoped clause passes args through)
 - Working cadence: single branch claude/post-beta-backlog-workflow-stfuu0, one PR per issue, squash-merge on green CI, stash + reset --hard onto fresh main between PRs (remote branch auto-deletes on merge — plain push recreates)
 
 ## Match Guards (#147 — 2026-06-11)

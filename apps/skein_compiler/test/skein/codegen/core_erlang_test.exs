@@ -3462,6 +3462,76 @@ defmodule Skein.CodeGen.CoreErlangTest do
       assert {:do_work, 0} in fns
     end
 
+    test "timer.after with a task body executes the referenced fn when the timer fires" do
+      Skein.Runtime.EventStore.clear()
+      Skein.Runtime.Timer.reset_all()
+
+      mod =
+        compile!("""
+        module TimerTaskBody {
+          capability timer("jobs")
+          capability event.log("audit")
+
+          fn record_fire() -> String {
+            event.log("timer.fired", "body ran")
+          }
+
+          fn schedule() -> String {
+            timer.after(10, "recorder", &record_fire)
+          }
+        }
+        """)
+
+      mod.schedule()
+
+      event =
+        await(fn ->
+          Enum.find(
+            Skein.Runtime.EventStore.query(kind: :user_event),
+            &(&1.event == "timer.fired")
+          )
+        end)
+
+      assert event, "timer task body never executed (no timer.fired event)"
+      assert event.stream == "audit"
+
+      Skein.Runtime.EventStore.clear()
+      Skein.Runtime.Timer.reset_all()
+    end
+
+    test "timer.interval with a task body fires repeatedly from compiled source" do
+      Skein.Runtime.EventStore.clear()
+      Skein.Runtime.Timer.reset_all()
+
+      mod =
+        compile!("""
+        module TimerIntervalBody {
+          capability timer("jobs")
+          capability event.log("audit")
+
+          fn record_tick() -> String {
+            event.log("interval.tick", "tick")
+          }
+
+          fn schedule() -> String {
+            timer.interval(10, "poller", &record_tick)
+          }
+        }
+        """)
+
+      mod.schedule()
+
+      await(fn ->
+        Enum.count(
+          Skein.Runtime.EventStore.query(kind: :user_event),
+          &(&1.event == "interval.tick")
+        ) >= 2
+      end)
+
+      Skein.Runtime.Timer.reset_all()
+      Skein.Runtime.EventStore.clear()
+    end
+
     test "process.spawn with a task body executes the referenced fn in the background" do
       Skein.Runtime.EventStore.clear()
 

@@ -288,7 +288,6 @@ block         = "{" expr* "}"
 args          = (arg ("," arg)*)?               -- positional args first, then named
 arg           = named_arg | expr
 pattern       = ident | literal | UpperIdent ["(" pattern* ")"]
-             | "(" pattern ("," pattern)+ ")"   -- tuple destructure (Planned — not implemented yet)
              | "_"                               -- wildcard
 ```
 
@@ -666,8 +665,10 @@ process.spawn(task: String) -> ()         -- run a named supervised background t
 process.spawn(task: String, work) -> ()   -- run `work` (a &fn reference) in the background
 
 -- Requires: capability timer(group)
-timer.after(delay_ms: Int, task: String) -> String     -- one-shot; returns a timer ref
-timer.interval(every_ms: Int, task: String) -> String  -- repeating; returns a timer ref
+timer.after(delay_ms: Int, task: String) -> String           -- one-shot; returns a timer ref
+timer.after(delay_ms: Int, task: String, work) -> String     -- one-shot with a task body
+timer.interval(every_ms: Int, task: String) -> String        -- repeating; returns a timer ref
+timer.interval(every_ms: Int, task: String, work) -> String  -- repeating with a task body
 timer.cancel(ref: String) -> ()
 ```
 
@@ -679,7 +680,9 @@ take down the caller.
 The optional `work` argument is a `&fn` reference to a zero-parameter
 function in the same module; the function runs inside the supervised
 task. Without `work`, the task is a named no-op recorded in the trace.
-Timer tasks are named no-ops; attaching bodies to timers is Planned.
+The same applies to timers: with `work`, the function runs in a
+supervised task each time the timer fires; without it, each fire records
+a named no-op span.
 
 ---
 
@@ -992,10 +995,8 @@ module RefundService {
     }
 
     expect {
-      -- Planned: agent.suspended, agent.events, and stub-based
-      -- scenario testing are not yet implemented.
-      -- For now, scenarios verify the given/expect structure parses.
-      assert 1 == 1
+      -- `given` bindings are in scope in the expect block.
+      assert ticket_id == "abc-123"
     }
   }
 }
@@ -1004,12 +1005,6 @@ module RefundService {
 Cross-module (integration) tests use the same seam as production code: declare
 `capability tool.use(Other.Tool)` on the test's module and exercise the tool
 with `tool.call` — there is no cross-module function access to test against.
-
-> **Planned features for testing (not yet implemented):**
-> - `Agent.run_sync()` — synchronous agent execution for tests
-> - Stub declarations — mock LLM and tool responses
-> - `agent.events` / `agent.final_phase` — event and phase introspection
-> - Anonymous functions (`fn args -> ...`) as stub handlers
 
 ---
 

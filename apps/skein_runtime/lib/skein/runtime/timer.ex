@@ -31,8 +31,7 @@ defmodule Skein.Runtime.Timer do
   when the declaration is parameterless). Calls outside the declared group
   are blocked. The callback may be a zero-arity function or a string task
   name from compiled `timer.after(delay, "task")` calls — string tasks fire
-  as named no-ops recorded in the trace; attaching real task bodies is a
-  planned extension.
+  as named no-ops recorded in the trace (see `after/5` for task bodies).
 
   Returns `{:ok, timer_ref}` where timer_ref is a unique string identifier.
 
@@ -44,7 +43,8 @@ defmodule Skein.Runtime.Timer do
 
   def unquote(:after)(group, delay_ms, callback, capabilities)
       when (is_binary(group) or is_nil(group)) and is_integer(delay_ms) and delay_ms >= 0 and
-             (is_function(callback, 0) or is_binary(callback)) do
+             (is_function(callback, 0) or is_binary(callback) or
+                (is_tuple(callback) and elem(callback, 0) == :named_work)) do
     case Capability.check_scoped("timer", group, capabilities) do
       :ok ->
         ensure_started()
@@ -69,6 +69,17 @@ defmodule Skein.Runtime.Timer do
   end
 
   @doc """
+  Schedules a one-shot timer whose named task runs `work` (a zero-arity
+  function) inside a supervised task when it fires (spec §6.11) — compiled
+  `timer.after(delay, "task", &fn)` calls land here.
+  """
+  def unquote(:after)(group, delay_ms, task, work, capabilities)
+      when (is_binary(group) or is_nil(group)) and is_integer(delay_ms) and delay_ms >= 0 and
+             is_binary(task) and is_function(work, 0) do
+    apply(__MODULE__, :after, [group, delay_ms, {:named_work, task, work}, capabilities])
+  end
+
+  @doc """
   Schedules a recurring timer that fires the callback every `interval_ms`
   milliseconds.
 
@@ -81,7 +92,8 @@ defmodule Skein.Runtime.Timer do
           {:ok, String.t()} | {:error, String.t()}
   def interval(group, interval_ms, callback, capabilities)
       when (is_binary(group) or is_nil(group)) and is_integer(interval_ms) and interval_ms > 0 and
-             (is_function(callback, 0) or is_binary(callback)) do
+             (is_function(callback, 0) or is_binary(callback) or
+                (is_tuple(callback) and elem(callback, 0) == :named_work)) do
     case Capability.check_scoped("timer", group, capabilities) do
       :ok ->
         ensure_started()
@@ -107,6 +119,19 @@ defmodule Skein.Runtime.Timer do
       {:error, _reason} = error ->
         error
     end
+  end
+
+  @doc """
+  Schedules a recurring timer whose named task runs `work` (a zero-arity
+  function) inside a supervised task on every fire (spec §6.11) — compiled
+  `timer.interval(every, "task", &fn)` calls land here.
+  """
+  @spec interval(String.t() | nil, integer(), String.t(), (-> any()), list()) ::
+          {:ok, String.t()} | {:error, String.t()}
+  def interval(group, interval_ms, task, work, capabilities)
+      when (is_binary(group) or is_nil(group)) and is_integer(interval_ms) and interval_ms > 0 and
+             is_binary(task) and is_function(work, 0) do
+    interval(group, interval_ms, {:named_work, task, work}, capabilities)
   end
 
   @doc """
@@ -222,13 +247,23 @@ defmodule Skein.Runtime.Timer do
   # ------------------------------------------------------------------
 
   # Compiled `timer.after(delay, "task")` calls carry a string task name;
-  # the task fires as a named no-op recorded in the trace (task bodies are
-  # a planned extension). Function callbacks execute as-is.
+  # the task fires as a named no-op recorded in the trace. With a `work`
+  # fn (`timer.after(delay, "task", &fn)`) the body runs in a supervised
+  # task on fire. Bare function callbacks execute as-is.
   defp normalize_callback(task) when is_binary(task), do: {:task, task}
+  defp normalize_callback({:named_work, _task, _work} = callback), do: callback
   defp normalize_callback(callback) when is_function(callback, 0), do: callback
 
   defp safe_execute({:task, task_name}) do
     Trace.with_span(%{kind: :timer, event: :fire, task: task_name}, fn -> :ok end)
+  end
+
+  # Work bodies run in a temporary supervised task (the process.spawn
+  # primitive), so a crashing body never takes down the timer manager.
+  defp safe_execute({:named_work, task_name, work}) do
+    Trace.with_span(%{kind: :timer, event: :fire, task: task_name}, fn ->
+      Skein.Runtime.Process.start_supervised_task(work)
+    end)
   end
 
   defp safe_execute(callback) when is_function(callback, 0) do

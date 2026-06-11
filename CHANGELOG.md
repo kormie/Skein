@@ -4,10 +4,12 @@
 
 ### Language & Compiler
 
+- **Spec freeze for 1.0** (#155): every "Planned" annotation resolved — timer task bodies implemented (below); tuple destructuring removed from the grammar (typed records remain the way to bundle values; revisit in a 1.x revision); the planned-testing block (`Agent.run_sync()`, stub declarations, `agent.events`/`agent.final_phase`, anonymous fns) removed, returning in a 1.x revision with its own design pass; the §8.5 scenario example now asserts on its `given` binding instead of carrying a placeholder
 - Guard expressions in match arms: `pattern if expr -> body` with contextual `if`; guard-safe expression subset enforced as the new `E0027`, non-Bool guards are `E0020`, and guarded arms no longer count toward exhaustiveness (#147)
 
 ### Runtime
 
+- Timer task bodies (#155, spec §6.11): `timer.after(delay, "task", &fn)` / `timer.interval(every, "task", &fn)` run the referenced zero-parameter fn inside a supervised task on each fire (crash-isolated, like `process.spawn` bodies); named no-ops remain the no-`work` behavior; `timer.*` now supports named arguments (`delay_ms`/`every_ms`, `task`, optional trailing `work`)
 - **Removed** the deprecated `Skein.Runtime.EventLog` facade (superseded by `Skein.Runtime.EventStore` since the unified event store shipped); compiled code already called EventStore directly — external callers should use `EventStore.log/4`, `EventStore.query/1`, and `EventStore.clear/0` (#156)
 - `llm.json[T]` results are usable from compiled code: schema-declared keys atomize at the decode boundary (nested objects, arrays, enum-variant `oneOf` branches; `Map[K, V]` keys stay strings), fixing the runtime crash on field access like spec §8.4's `d.action` (#154)
 - `llm.embed` is production-ready through the OpenAI-compatible backend's `/embeddings` endpoint (Voyage AI in production, local embedding models in dev, selected per environment in `skein.toml`); embed trace spans now record `backend`/`base_url` (#146)
