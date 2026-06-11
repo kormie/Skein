@@ -175,7 +175,8 @@ The analyzer runs multiple passes:
 - Check function call argument types against declared parameter types
 - Check function return expressions against declared return types
 - Validate `match` arm patterns against the subject type
-- Check `match` exhaustiveness (all enum variants covered)
+- Check `match` guards: guard-safe expression subset (E0027) and `Bool` type, with pattern bindings in scope
+- Check `match` exhaustiveness (all enum variants covered; guarded arms don't count as coverage)
 - Validate `!` and `?` operators are used on `Result` types
 - Validate constraint annotations against field types (`@min` only on numeric, etc.)
 
@@ -210,6 +211,7 @@ The code generator translates Skein constructs to Core Erlang + Skein runtime ca
 | `fn` | Core Erlang function |
 | `let` | Core Erlang `let` binding |
 | `match` | Core Erlang `case` |
+| `match` arm guard (`if`) | Core Erlang clause guard |
 | `pipe` | Nested function calls |
 | `!` (unwrap) | `case` with error branch calling `:erlang.error/1` |
 | `?` (propagate) | `case` with error branch returning `{:error, e}` |

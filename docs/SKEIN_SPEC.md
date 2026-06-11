@@ -273,7 +273,7 @@ expr        = let_expr | match_expr | pipe_expr | emit_expr
 
 let_expr      = "let" pattern "=" expr
 match_expr    = "match" expr "{" match_arm+ "}"
-match_arm     = pattern "->" expr
+match_arm     = pattern [ "if" expr ] "->" expr
 pipe_expr     = expr "|>" call_expr
 emit_expr     = "emit" UpperIdent "{" (lower_ident ":" expr)* "}"
 transition_expr = "transition" "(" expr ")"
@@ -306,6 +306,30 @@ module/agent and for effect calls with documented signatures (section 6);
 unknown or duplicate names, a positional argument after a named one, and named
 arguments on a callee without a known signature are all compile errors
 (`E0026`). Patterns never use named arguments.
+
+Match arms may carry a guard: `pattern if expr -> body`. The arm is selected
+only when the pattern matches **and** the guard evaluates to `true`; a failing
+guard falls through to the later arms. Guard expressions see the pattern's
+bindings, must have type `Bool`, and are restricted to a guard-safe subset —
+literals, bindings, field access, comparisons (`==`, `!=`, `<`, `<=`, `>`,
+`>=`), boolean operators (`&&`, `||`, `!` prefix), and `+`/`-`/`*` arithmetic.
+Calls, effects, division, string interpolation, and blocks in a guard are
+compile errors (`E0027`); compute such values in a `let` before the match.
+`if` is contextual — it is only meaningful between an arm pattern and its
+`->`, and remains usable as an ordinary identifier elsewhere.
+
+```skein
+match order.total {
+  t if t > 1000 -> "review"
+  t if t > 0    -> "approve"
+  _             -> "reject"
+}
+```
+
+Because a guarded arm only matches conditionally, it does not count toward
+exhaustiveness: a `match` whose variant or `Bool` coverage relies on a guarded
+arm still warns (`E0021`/`E0024`/`W0004`), and at runtime a `match` where every
+arm's guard fails raises `case_clause`.
 
 ---
 
@@ -697,6 +721,7 @@ All errors are JSON-serializable with this structure:
 | E0024 | Type | Unknown type name |
 | E0025 | Type | Constraint annotation on wrong type |
 | E0026 | Type | Invalid named argument (unknown/duplicate name, positional after named, callee without named-argument support) |
+| E0027 | Type | Invalid guard expression (guards allow literals, bindings, field access, comparisons, boolean operators, and `+`/`-`/`*` arithmetic) |
 | E0030 | Agent | Invalid phase transition |
 | E0031 | Agent | Unreachable phase |
 | E0032 | Agent | Phase handler missing |

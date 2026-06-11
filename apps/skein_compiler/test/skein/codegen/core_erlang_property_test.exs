@@ -219,6 +219,38 @@ defmodule Skein.CodeGen.CoreErlangPropertyTest do
     end
   end
 
+  property "guarded match agrees with reference semantics for any Int pair" do
+    mod_name = unique_module_name()
+
+    source = """
+    module #{mod_name} {
+      fn compare(a: Int, b: Int) -> String {
+        match a {
+          x if x > b -> "gt"
+          x if x == b -> "eq"
+          _ -> "lt"
+        }
+      }
+    }
+    """
+
+    {:module, mod} = Compiler.compile_string(source)
+
+    check all(
+            a <- StreamData.integer(-1000..1000),
+            b <- StreamData.integer(-1000..1000)
+          ) do
+      expected =
+        cond do
+          a > b -> "gt"
+          a == b -> "eq"
+          true -> "lt"
+        end
+
+      assert mod.compare(a, b) == expected
+    end
+  end
+
   property "let binding preserves computed value" do
     check all(n <- StreamData.integer(0..1000)) do
       mod_name = unique_module_name()

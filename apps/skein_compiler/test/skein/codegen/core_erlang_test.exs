@@ -444,6 +444,144 @@ defmodule Skein.CodeGen.CoreErlangTest do
     end
   end
 
+  describe "match guards" do
+    test "guards select the first arm whose pattern matches and guard passes" do
+      mod =
+        compile!("""
+        module GuardSign {
+          fn sign(n: Int) -> String {
+            match n {
+              x if x > 0 -> "positive"
+              x if x == 0 -> "zero"
+              _ -> "negative"
+            }
+          }
+        }
+        """)
+
+      assert mod.sign(5) == "positive"
+      assert mod.sign(0) == "zero"
+      assert mod.sign(-3) == "negative"
+    end
+
+    test "guard fall-through reaches later arms with the same pattern" do
+      mod =
+        compile!("""
+        module GuardFallthrough {
+          enum Size {
+            Small
+            Big(n: Int)
+          }
+
+          fn describe(s: Size) -> String {
+            match s {
+              Big(n) if n > 1000 -> "huge"
+              Big(n) -> "big"
+              Small -> "small"
+            }
+          }
+        }
+        """)
+
+      assert mod.describe({:big, 5000}) == "huge"
+      assert mod.describe({:big, 10}) == "big"
+      assert mod.describe(:small) == "small"
+    end
+
+    test "boolean operators and field access work in guards" do
+      mod =
+        compile!("""
+        module GuardOps {
+          type Item {
+            count: Int
+            priority: Int
+          }
+
+          fn classify(item: Item) -> String {
+            match item {
+              i if i.count > 10 && i.priority >= 5 -> "urgent-bulk"
+              i if i.count > 10 || i.priority >= 5 -> "notable"
+              _ -> "normal"
+            }
+          }
+        }
+        """)
+
+      assert mod.classify(%{count: 20, priority: 9}) == "urgent-bulk"
+      assert mod.classify(%{count: 20, priority: 1}) == "notable"
+      assert mod.classify(%{count: 1, priority: 9}) == "notable"
+      assert mod.classify(%{count: 1, priority: 1}) == "normal"
+    end
+
+    test "arithmetic in guards" do
+      mod =
+        compile!("""
+        module GuardArith {
+          fn near(a: Int, b: Int) -> Bool {
+            match a {
+              x if x - b <= 1 && b - x <= 1 -> true
+              _ -> false
+            }
+          }
+        }
+        """)
+
+      assert mod.near(5, 5) == true
+      assert mod.near(5, 6) == true
+      assert mod.near(5, 8) == false
+    end
+
+    test "a match where every guard fails raises case_clause" do
+      mod =
+        compile!("""
+        module GuardNoMatch {
+          fn f(n: Int) -> String {
+            match n {
+              x if x > 0 -> "positive"
+            }
+          }
+        }
+        """)
+
+      assert_raise CaseClauseError, fn -> mod.f(-1) end
+    end
+
+    test "guards work in match expressions inside agent handlers" do
+      {:module, mod} =
+        Skein.Compiler.compile_string("""
+        agent GuardAgent {
+          enum Phase {
+            High -> [Done]
+            Low -> [Done]
+            Done -> []
+          }
+
+          on start(n: Int) -> {
+            match n {
+              x if x >= 10 -> transition(Phase.High)
+              _ -> transition(Phase.Low)
+            }
+          }
+
+          on phase(Phase.High) -> {
+            transition(Phase.Done)
+          }
+
+          on phase(Phase.Low) -> {
+            transition(Phase.Done)
+          }
+
+          on phase(Phase.Done) -> {
+            stop()
+          }
+        }
+        """)
+
+      assert {:transition, :high, _state, _events} = mod.__start_handler__(%{n: 15}, [])
+      assert {:transition, :low, _state, _events} = mod.__start_handler__(%{n: 3}, [])
+    end
+  end
+
   describe "match expressions" do
     test "match on integer values" do
       mod =

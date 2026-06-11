@@ -29,7 +29,7 @@ defmodule Skein.Lexer do
   )a
 
   # Contextual keywords (input, output, errors, policy, description, state,
-  # strategy, child, replay, given, expect, assert) are NOT in @keywords.
+  # strategy, child, replay, given, expect, assert, if) are NOT in @keywords.
   # They are emitted as :ident tokens and recognised contextually by the parser.
   # See expect_ident_value/3 and direct {:ident, _, "word"} matches in parser.
 

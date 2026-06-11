@@ -654,10 +654,17 @@ defmodule Skein.CodeGen.CoreErlang do
     generate_expr(expr, scope)
   end
 
-  defp generate_agent_match_arm(%AST.MatchArm{pattern: pattern, body: body}, scope) do
+  defp generate_agent_match_arm(%AST.MatchArm{pattern: pattern, guard: nil, body: body}, scope) do
     {pat, new_scope} = generate_pattern(pattern, scope)
     body_expr = generate_agent_expr(body, new_scope)
     :cerl.c_clause([pat], body_expr)
+  end
+
+  defp generate_agent_match_arm(%AST.MatchArm{pattern: pattern, guard: guard, body: body}, scope) do
+    {pat, new_scope} = generate_pattern(pattern, scope)
+    guard_expr = generate_expr(guard, new_scope)
+    body_expr = generate_agent_expr(body, new_scope)
+    :cerl.c_clause([pat], guard_expr, body_expr)
   end
 
   defp generate_agent_sequence(exprs, scope) do
@@ -2366,10 +2373,20 @@ defmodule Skein.CodeGen.CoreErlang do
   # Match arm generation
   # ------------------------------------------------------------------
 
-  defp generate_match_arm(%AST.MatchArm{pattern: pattern, body: body}, scope) do
+  defp generate_match_arm(%AST.MatchArm{pattern: pattern, guard: nil, body: body}, scope) do
     {pat, new_scope} = generate_pattern(pattern, scope)
     body_expr = generate_expr(body, new_scope)
     :cerl.c_clause([pat], body_expr)
+  end
+
+  # Guarded arm: the analyzer restricts guards to expressions whose codegen
+  # is guard-safe (literals, vars, map_get, single erlang calls), so the
+  # ordinary expression generator produces a valid Core Erlang clause guard.
+  defp generate_match_arm(%AST.MatchArm{pattern: pattern, guard: guard, body: body}, scope) do
+    {pat, new_scope} = generate_pattern(pattern, scope)
+    guard_expr = generate_expr(guard, new_scope)
+    body_expr = generate_expr(body, new_scope)
+    :cerl.c_clause([pat], guard_expr, body_expr)
   end
 
   # A case whose clauses can all fail (e.g. only literal patterns) needs an
@@ -2378,8 +2395,8 @@ defmodule Skein.CodeGen.CoreErlang do
   # a non-exhaustive match (a case_clause error).
   defp ensure_catch_all(clauses, arms) do
     exhaustive? =
-      Enum.any?(arms, fn %AST.MatchArm{pattern: pattern} ->
-        catch_all_pattern?(pattern)
+      Enum.any?(arms, fn %AST.MatchArm{pattern: pattern, guard: guard} ->
+        is_nil(guard) and catch_all_pattern?(pattern)
       end)
 
     if exhaustive? do
