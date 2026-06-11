@@ -29,10 +29,11 @@ automatically; a maintainer then sets priority and milestone and removes the tri
 
 ## Milestones
 
-- **Alpha Release** — the gate for the repo going public. Scope is the open Tier 1/2 roadmap
-  items plus release automation.
-- **Beta Release** — post-alpha hardening; triaged alpha feedback lands here unless it blocks
-  alpha itself.
+- **v1.0.0 Release** — the active gate: ship nothing broken, promise nothing unimplemented.
+- **v1.1: Hardening & Language** / **v1.2: Interop & Agent Workflows** / **Future: Platform** —
+  the post-1.0 backlog, in priority order.
+- **v0.1 Alpha Release** and **v0.2 Beta Release** — closed; they gated taking the repo public
+  and the post-alpha hardening wave.
 
 Milestones are defined in [`.github/milestones.json`](.github/milestones.json) and synced by a
 workflow — edit that file rather than creating milestones by hand.
