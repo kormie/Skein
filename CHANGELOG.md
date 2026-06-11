@@ -1,5 +1,35 @@
 # Changelog
 
+## v0.2.0 (2026-06-11)
+
+The **Beta Release milestone is complete** — replay-driven testing, scope-enforced capabilities, local-model development, and editor quickfixes — plus the public-repo essentials (license, security policy, one-line installer) and a string-interpolation correctness fix.
+
+### Language & Compiler
+
+- **String interpolation coerces values to their text form** (#114) — `"value: ${n}"` with an Int now renders decimal digits instead of inserting the raw codepoint byte into the binary (`42` → `"42"`, not `"*"`). Non-String interpolated values coerce through a runtime to-string helper.
+- **Scoped capability labels** (#69, #57) — for `memory.kv`, `event.log`, `process.spawn`, and `timer`, the capability parameter names a scope label (namespace/stream/pool/group) that the compiler threads into runtime calls; call sites are unchanged. Declaring the same scoped capability twice in a module or agent is the new structured **E0017**, and an agent's label overrides its module's inside the agent (spec §3.2). At runtime, calls outside the declared label are denied — parameterless declarations stay presence-only — and labels are recorded on trace spans (`pool:`, `group:`) and stored events (`stream:`). Spec §6.11 now documents the `process.spawn`/`timer` surface.
+- **Enum value-level exhaustiveness warning** (#76) — new **W0004** fires when a variant arm matches on literal field values and no wildcard or bindings-only arm covers that variant. Enum-typed function parameters now reach exhaustiveness checking at all (previously skipped entirely), and dotted variant patterns (`Event.Charge(n)`) count as coverage.
+
+### Runtime
+
+- **Replay backend injection** (#73) — `Replay.with_replay/2` now actually intercepts LLM, HTTP, and tool-call effects, serving recorded responses with **zero live calls**. Recorded events are validated against the live call (model, method, URL, tool name) so out-of-sequence replays produce clear errors instead of wrong answers, and an exhausted trace is an error — never a fallback live call. LLM/HTTP/tool spans now record full response payloads, so live traces are replayable; record → JSON export → replay round-trips are proven end-to-end.
+- **`process.spawn` task bodies** (#74) — `process.spawn("name", &some_fn)` runs the referenced zero-parameter local fn inside the supervised task; crashes stay isolated by the supervisor. `work` is the first optional effect parameter (trailing optionals can be omitted). Timer task bodies remain Planned.
+- **Local LLM backends for dev** (#107) — the new OpenAI-compatible backend speaks `POST {base_url}/chat/completions` (Ollama, LM Studio, llama.cpp, vLLM, …). `[llm]` and `[env.<name>.llm]` profiles in `skein.toml` select the backend per environment and remap capability model names via `model_map` — source and capability declarations never change between environments. `skein run`/`skein test` resolve `--env`/`SKEIN_ENV`; LLM spans record `backend` and `base_url`; a down server is a structured `LlmError` naming the base URL. Docs: the new runtime/local-models page.
+
+### Editor & Tooling
+
+- **LSP code actions from structured errors** (#108) — diagnostics now carry `code`/`fix_hint`/`fix_code`, and quickfixes apply them in the editor: insert a missing token (E0001), add a missing capability line (E0012), delete an unused capability (W0002), rename an unused binding to `_name` (W0001).
+
+### Distribution & Repo
+
+- **One-line installer** — `curl -fsSL https://kormie.github.io/Skein/install.sh | sh`: platform detection, sha256 verification against the release `checksums.txt`, installs to `~/.local/bin`; `SKEIN_VERSION` pins a release and `SKEIN_BIN_DIR` overrides the destination.
+- **MIT license, code of conduct, and security policy** are in place for public consumption.
+- The post-MVP backlog is fully scoped into issues and milestones (#78), and the CI session-start hook tolerates a flaky hex.pm proxy.
+
+### Testing
+
+- Suite grew from 1,651 tests + 198 properties to **1,774 tests + 202 properties** at the beta milestone's close, including properties for replay sequencing, scoped-label permit/deny, and W0004 coverage; the interpolation fix added further coercion tests on top.
+
 ## v0.1.7 (2026-06-11)
 
 The **Alpha Release milestone is complete** — this release packages everything that gated taking the repo public: the last spec-vs-implementation gaps in the language, runtime completeness for schedules and agent events, and a first-five-minutes DX pass across the CLI, test runner, and MCP server.
