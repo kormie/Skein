@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## v0.3.0 (2026-06-11)
+
+The **v1.0.0 Release milestone is complete** — this release packages every item that gated 1.0: the spec freeze, match guards, a production embeddings path, runtime reliability fixes, and the written stability policy — plus an Amazon Bedrock LLM backend. The release train continues to a 1.0 release candidate from here.
 
 ### Language & Compiler
 
@@ -12,9 +14,14 @@
 - Timer task bodies (#155, spec §6.11): `timer.after(delay, "task", &fn)` / `timer.interval(every, "task", &fn)` run the referenced zero-parameter fn inside a supervised task on each fire (crash-isolated, like `process.spawn` bodies); named no-ops remain the no-`work` behavior; `timer.*` now supports named arguments (`delay_ms`/`every_ms`, `task`, optional trailing `work`)
 - **Removed** the deprecated `Skein.Runtime.EventLog` facade (superseded by `Skein.Runtime.EventStore` since the unified event store shipped); compiled code already called EventStore directly — external callers should use `EventStore.log/4`, `EventStore.query/1`, and `EventStore.clear/0` (#156)
 - `llm.json[T]` results are usable from compiled code: schema-declared keys atomize at the decode boundary (nested objects, arrays, enum-variant `oneOf` branches; `Map[K, V]` keys stay strings), fixing the runtime crash on field access like spec §8.4's `d.action` (#154)
+- **Amazon Bedrock LLM backend** (#173): `Skein.Runtime.Llm.BedrockBackend` serves `llm.chat`/`llm.json`/`llm.stream` through the Bedrock Converse API (one wire shape across Bedrock-hosted model families) and `llm.embed` through InvokeModel for Titan/Cohere embedding models. Requests are SigV4-signed; credentials resolve from backend config, then the standard AWS env vars. Capability declarations keep the canonical model name and `model_map` remaps to the Bedrock model ID or inference profile. `skein.toml` accepts `backend = "bedrock"` with `region` and optional `base_url` for VPC endpoints
 - `llm.embed` is production-ready through the OpenAI-compatible backend's `/embeddings` endpoint (Voyage AI in production, local embedding models in dev, selected per environment in `skein.toml`); embed trace spans now record `backend`/`base_url` (#146)
 - Queue and topic handlers from compiled modules are subscribed at server startup, so `queue.publish`/`topic.publish` reach declared handlers in a running service (#121)
 - All named runtime ETS tables are owned by the supervised `Skein.Runtime.EtsTables` process instead of whichever process touched them first, eliminating mid-run table loss (#118)
+
+### CLI
+
+- `skein new <dir> --backend anthropic|openai_compatible|test|bedrock` (default: `anthropic`) selects the `[llm]` profile written to the scaffolded `skein.toml`, so projects targeting a local OpenAI-compatible server, the deterministic test backend, or Bedrock start runnable without hand-editing config; help text and zsh completions cover the flag
 
 ### Documentation
 
@@ -23,6 +30,7 @@
 ### Editor & Tooling
 
 - LSP annotation completions offer exactly the implemented spec §4.2 set (`@one_of` added; unimplemented `@pattern`/`@optional`/`@deprecated` removed) (#156)
+- VS Code extension 0.1.4: the Skein logo is the file icon for `.skein` files under icon themes that support language icons (#162)
 
 ## v0.2.0 (2026-06-11)
 
