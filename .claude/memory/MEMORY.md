@@ -1,11 +1,11 @@
 # Skein Project Memory
 
 ## Project State
-- **ALPHA RELEASE MILESTONE COMPLETE (2026-06-11)** — all 13 issues closed (#56 #63 #70 #71 #72 #77 #96 #100 #101 #104 #105 #106 #109) across PRs #113-#128; repo-public decision + v0.1.7 release are the owner's calls
-- Current version: 0.1.6 (released 2026-06-10 via the auto-tag flow; v0.1.7 not yet cut — alpha work is on main unreleased)
-- Test counts on main after #128: 1,651 tests + 198 properties (compiler 1010+88, runtime 479+110, lsp 44, cli 114)
-- Remaining work: Beta milestone — #74 #76 #107 #108 still open (#73 replay, #69 surface decision, #57 scoped-label enforcement all closed 2026-06-11) + discovered issues #114 (Int interpolation codegen), #118 (flaky memory ETS race), #121 (queue/topic handlers never subscribed)
-- Merge cadence this session: each PR squash-merged on green CI, branch reset onto main between PRs (single working branch claude/alpha-release-gh-issues-c7wkws)
+- **BETA RELEASE MILESTONE COMPLETE (2026-06-11)** — all 7 issues closed (#57 #69 #73 #74 #76 #107 #108) across PRs #133-#139; ALPHA completed same week (13 issues, PRs #113-#128); repo-public decision + next release are the owner's calls
+- Current version: 0.1.6 in mix.exs (v0.1.7 released from main earlier; alpha+beta work is on main unreleased — next version bump triggers the auto-tag flow)
+- Test counts on main after #139: 1,774 tests + 202 properties (compiler 1038+88, runtime 555+114, lsp 53, cli 128)
+- Remaining work: NO roadmap items open — post-MVP backlog (#78) + discovered issues #114 (Int interpolation codegen), #118 (flaky memory ETS race), #121 (queue/topic handlers never subscribed)
+- Merge cadence: each PR squash-merged on green CI, branch reset onto main between PRs (beta working branches claude/beta-release-gh-issues-d1oryn, claude/beta-release-security-audit-nkx00l)
 - Elixir 1.19.5, OTP 28, managed by mise
 
 ## Replay Backend Injection (issue #73 — 2026-06-11, first Beta item)
