@@ -704,6 +704,7 @@ All errors are JSON-serializable with this structure:
 | W0001 | Warning | Unused binding |
 | W0002 | Warning | Unused capability |
 | W0003 | Warning | Unreachable code after `stop()` |
+| W0004 | Warning | Enum match covers only specific values of a variant (add a binding arm or wildcard) |
 
 ---
 

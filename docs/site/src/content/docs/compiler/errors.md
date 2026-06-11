@@ -148,3 +148,4 @@ The `fix_code` field is especially useful for LLM agents -- it provides the exac
 | W0001 | warning | Unused binding |
 | W0002 | warning | Unused capability |
 | W0003 | warning | Unreachable code after `stop()` or `suspend()` |
+| W0004 | warning | Enum match covers only specific values of a variant (add a binding arm or wildcard) |
