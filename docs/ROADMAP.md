@@ -26,25 +26,7 @@ The remaining gaps are listed below. Field-testing v0.1.5 (2026-06-10) surfaced 
 
 ---
 
-## Tier 1: Language Surface
-
-### 4. Local LLM Backends for Dev (OpenAI-Compatible + `skein.toml` Profiles) `[XL]`
-
-**Issue:** [#107](https://github.com/kormie/Skein/issues/107)
-
-**Problem:** Testing agents means real Anthropic inference spend, and there's no way to point a project at a local model server (oMLX, Ollama, LM Studio, vLLM). Source must never change between environments — `capability model("anthropic", "claude-opus-4-8")` stays the code's contract regardless of which backend serves it.
-
-**Scope:**
-- `Skein.Runtime.Llm.OpenAiCompatibleBackend` implementing the existing `Llm.Backend` behaviour against `POST {base_url}/chat/completions`
-- `[env.<name>.llm]` profiles in `skein.toml` with `model_map` remapping capability model names to locally hosted ones
-- `skein run`/`skein test` resolve the active profile via `SKEIN_ENV` / `--env`; llm trace spans record which backend/base_url served each call
-
-**Acceptance criteria:**
-- `SKEIN_ENV=dev skein test` serves `llm.chat`/`llm.json` from the local server with zero source edits; plain `skein run` uses Anthropic
-- Local server down → structured `Llm.Error` naming the base_url
-- Stub-server tests give CI an inference-free path for agent tests
-
-**Depends on:** Nothing.
+**All roadmap items are complete.** The Beta Release milestone (#57 #69 #73 #74 #76 #107 #108) closed 2026-06-11; remaining work lives in the Post-MVP backlog and the open discovered issues (#114, #118, #121).
 
 ---
 
@@ -108,6 +90,7 @@ All of the following are done and tested:
 - Capability-parameter surface decision (#69): scoped capability labels (spec §3.2) — for `memory.kv`/`event.log`/`process.spawn`/`timer` the capability parameter names a scope label the compiler threads into runtime calls (call sites unchanged); one declaration per kind per module/agent, duplicates are E0017; spec §6.11 documents the `process.spawn`/`timer` surface
 - Stream/pool-scoped runtime capability enforcement (#57): codegen threads the declared label into `process.spawn`/`timer.*`/`event.log` runtime calls (the `memory.kv` model); the shared `Capability.check_scoped/3` blocks calls outside the declared label (parameterless declarations stay presence-only); labels land on trace spans (`pool:`/`group:`) and stored events (`stream:`); `timer.after`/`timer.interval` now accept string task names as named no-ops; property pins permit/deny on exact label match over randomized capability sets
 - `process.spawn` task bodies (#74): `process.spawn("name", &some_fn)` runs the referenced zero-parameter local fn inside the supervised task (spec §6.11); `work` is the first optional effect parameter (named-arg resolver supports trailing optionals); crashes stay isolated by the supervisor, proven from compiled Skein source; timer task bodies remain Planned
+- Local LLM backends for dev (#107): `Skein.Runtime.Llm.OpenAiCompatibleBackend` speaks `POST {base_url}/chat/completions` (oMLX/Ollama/LM Studio/llama.cpp/vLLM); `[llm]` + `[env.<name>.llm]` profiles in skein.toml with `model_map` remapping capability model names (source and capabilities never change between environments); `skein run`/`skein test` resolve `--env`/`SKEIN_ENV`; llm spans record `backend`/`base_url`; server-down is a structured LlmError naming the base_url; stub-server tests give CI an inference-free path; docs page runtime/local-models
 - LSP code actions from `fix_hint`/`fix_code` (#108, phase 1): diagnostics ship `code`/`fix_hint`/`fix_code` in `Diagnostic.data`; `codeActionProvider` advertised and `textDocument/codeAction` answers from the diagnostic alone — missing-token inserts (E0001), missing-capability line insertion (E0012, after the last capability or the module opening), unused-capability line deletion (W0002), unused-binding underscore rename (W0001); unmapped codes produce no action; phase 2 (error spans + edit_kind) moved to the backlog
 - Enum value-level exhaustiveness warning (#76): new W0004 when a variant arm uses literal field patterns and no wildcard or all-bindings arm covers the variant; enum-typed fn params now reach exhaustiveness checking at all (previously `{:user_type, ...}` skipped it), and dotted variant patterns (`Event.Charge(n)`) count as coverage instead of false-missing
 - Agent nesting inside modules (#63): `module Foo { agent Bar }` compiles to `Skein.User.Foo` + `Skein.Agent.Foo.Bar`; module types and capabilities apply to the nested agent; spec §8.4 and `market_research/single_file.skein` ship the nested shape

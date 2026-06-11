@@ -297,6 +297,16 @@ defmodule Skein.CLI do
     [build]
     src = "src"
     test = "test"
+
+    [llm]
+    backend = "anthropic"
+
+    # Serve llm.* calls from a local model server in dev
+    # (SKEIN_ENV=dev skein test, or skein test --env dev):
+    # [env.dev.llm]
+    # backend = "openai_compatible"
+    # base_url = "http://localhost:10240/v1"
+    # model_map = { "claude-opus-4-8" = "your/local-model" }
     """
   end
 
@@ -548,9 +558,9 @@ defmodule Skein.CLI do
   """
   @spec test_all([String.t()]) :: {:ok, map()} | {:error, String.t()}
   def test_all(args) do
-    with {:ok, project_dir, _opts} <- parse_project_args(args, %{}) do
-      project_dir = Path.expand(project_dir)
-
+    with {:ok, project_dir, opts} <- parse_project_args(args, env_flag_spec()),
+         project_dir = Path.expand(project_dir),
+         :ok <- apply_env_profile(project_dir, opts) do
       skein_files =
         (discover_skein_files(project_dir, "src") ++
            discover_skein_files(project_dir, "test"))
@@ -638,6 +648,12 @@ defmodule Skein.CLI do
     project_dir = Path.expand(project_dir)
     port = Keyword.get(opts, :port, 4000)
 
+    with :ok <- apply_env_profile(project_dir, opts) do
+      do_run_config_compile(project_dir, port)
+    end
+  end
+
+  defp do_run_config_compile(project_dir, port) do
     skein_files = discover_skein_files(project_dir, "src")
 
     if skein_files == [] do
@@ -670,7 +686,7 @@ defmodule Skein.CLI do
   end
 
   defp run_flag_spec do
-    %{
+    Map.merge(env_flag_spec(), %{
       "--port" => fn port_str ->
         case Integer.parse(port_str) do
           {port, ""} when port in 1..65535 ->
@@ -681,7 +697,24 @@ defmodule Skein.CLI do
              "Invalid value for --port: '#{port_str}' (expected an integer from 1 to 65535)"}
         end
       end
-    }
+    })
+  end
+
+  defp env_flag_spec do
+    %{"--env" => fn env_name -> {:ok, {:env, env_name}} end}
+  end
+
+  # Resolves the active environment (--env flag, then SKEIN_ENV) and
+  # activates the project's skein.toml LLM profile for it. Absent
+  # config is fine; a broken profile is a structured error.
+  defp apply_env_profile(project_dir, opts) do
+    env = Keyword.get(opts, :env) || System.get_env("SKEIN_ENV")
+
+    case Skein.CLI.Config.apply_llm_profile(project_dir, env) do
+      {:ok, _description} -> :ok
+      :noop -> :ok
+      {:error, _message} = error -> error
+    end
   end
 
   # ------------------------------------------------------------------
