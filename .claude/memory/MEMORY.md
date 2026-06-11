@@ -1,5 +1,25 @@
 # Skein Project Memory
 
+## Project State (v1.0.0 push — 2026-06-11 post-Beta session)
+- Roadmap restructured on main: active gate is **v1.0.0 Release** milestone (release train v0.2.0 -> v0.3.0 -> rc -> 1.0); post-1.0 backlog keeps #145 #150 + Post-MVP 2/Future
+- Post-Beta session merged: #114 Int interpolation (PR #153), #121 queue/topic subscription (PR #158), #118 ETS ownership (PR #161), #147 match guards (PR #164)
+- Remaining v1.0.0 items: #154 (llm.json string keys vs atom-key field access, p1), #146 (embeddings backend), #155 (spec freeze: Planned annotations), #156 (remove deprecated EventLog facade), #157 (versioning/stability policy)
+- Working cadence: single branch claude/post-beta-backlog-workflow-stfuu0, one PR per issue, squash-merge on green CI, stash + reset --hard onto fresh main between PRs (remote branch auto-deletes on merge — plain push recreates)
+
+## Match Guards (#147 — 2026-06-11)
+- `pattern if expr -> body`; `if` is CONTEXTUAL (ident token, parser-only) — parse_optional_guard between parse_pattern and expect(:arrow); guard expr parsed with parse_pipe_expr
+- E0027 = invalid guard expression; @guard_safe_binary_ops [:+ :- :* comparisons :&& :||], unary [:not :negate]; division EXCLUDED (its codegen emits float/int dispatch case — not a valid Core Erlang guard); interpolated strings excluded (iolist_to_binary call)
+- Non-Bool guard = E0020; guard checked via check_guard in infer_match_arm with pattern bindings bound
+- Exhaustiveness: ALL coverage paths reject guarded arms (bool/enum/generic check_exhaustiveness heads, value_level_warnings W0004, codegen ensure_catch_all `is_nil(guard) and catch_all_pattern?`)
+- Codegen: c_clause([pat], guard_expr, body) in BOTH generate_match_arm and generate_agent_match_arm; analyzer subset guarantees generate_expr output is guard-safe
+- W0001: collect_referenced_identifiers Match clause now walks guards too
+- Non-exhaustive runtime failure surfaces as Elixir CaseClauseError (not ErlangError) in tests
+
+## ETS Table Ownership (#118 root cause — 2026-06-11)
+- ETS tables die with their owner; lazy ensure_table created tables in WHATEVER process touched first (HTTP request procs, queue dispatch, agents, test procs) — mid-run table loss was the memory flake (put-then-get not_found, unreproducible locally)
+- `Skein.Runtime.EtsTables` GenServer owns ALL named runtime tables (memory/store/event_store/timer/tool/idempotent/store_ecto registry); FIRST child of SkeinRuntime.Supervisor; --no-start fallback uses GenServer.start (UNLINKED — linked owner would die with transient starter); ensure_table retries :exit races
+- Original suspects ruled out: every Memory.clear caller is namespace-scoped; all memory test files already async: false
+
 ## Project State
 - **BETA RELEASE MILESTONE COMPLETE (2026-06-11)** — all 7 issues closed (#57 #69 #73 #74 #76 #107 #108) across PRs #133-#139; ALPHA completed same week (13 issues, PRs #113-#128); repo-public decision + next release are the owner's calls
 - Current version: 0.1.6 in mix.exs (v0.1.7 released from main earlier; alpha+beta work is on main unreleased — next version bump triggers the auto-tag flow)
