@@ -26,7 +26,7 @@ The remaining gaps are listed below. Field-testing v0.1.5 (2026-06-10) surfaced 
 
 ---
 
-**All roadmap items are complete.** The Beta Release milestone (#57 #69 #73 #74 #76 #107 #108) closed 2026-06-11; remaining work lives in the Post-MVP backlog and the open discovered issues (#114, #118, #121).
+**All roadmap items are complete.** The Beta Release milestone (#57 #69 #73 #74 #76 #107 #108) closed 2026-06-11; all remaining work — including the open discovered bugs (#114, #118, #121) — is scoped and prioritized in the Post-MVP backlog milestones below.
 
 ---
 
@@ -34,18 +34,35 @@ The remaining gaps are listed below. Field-testing v0.1.5 (2026-06-10) surfaced 
 
 **Issue:** [#78](https://github.com/kormie/Skein/issues/78) (tracking)
 
-Planned but not yet scoped or prioritized:
+All items are now scoped into issues and organized into three milestones (`.github/milestones.json`):
 
-- Erlang/Elixir FFI (`extern` keyword) — interop with existing BEAM libraries
-- Hot code upgrades — OTP release upgrades without downtime
-- Web IDE / trace viewer — browser-based exploration of trace data
-- Human-in-the-loop approval workflows — `suspend` before sensitive tool calls
-- `llm.rerank` for RAG pipelines — complement the existing `llm.embed`
-- An embeddings-capable LLM backend (Anthropic has no embeddings API; `llm.embed` currently needs a custom/test backend)
-- Guard expressions in match arms — AST field exists but is always `nil`
-- Code-action phase 2: extend `Skein.Error` with span + `edit_kind` so any exact fix applies generically (the LSP phase-1 per-code mapping shipped with #108; `skein mcp` would inherit machine-applicable edits)
-- Managed deployment platform — hosted Skein runtime
-- Marketplace for tools/connectors — shareable tool definitions
+### Milestone: Post-MVP 1 — Hardening & Language
+
+Bugs first, then well-scoped gaps with no design unknowns:
+
+- [#114](https://github.com/kormie/Skein/issues/114) — **bug, p1:** Int string interpolation emits the raw codepoint instead of decimal digits
+- [#121](https://github.com/kormie/Skein/issues/121) — **bug, p1:** queue/topic handlers from compiled modules are never subscribed in a running service
+- [#118](https://github.com/kormie/Skein/issues/118) — **bug, p2:** flaky CI — memory property test races shared `:skein_memory` ETS state
+- [#147](https://github.com/kormie/Skein/issues/147) — Guard expressions in match arms (AST field exists but is always `nil`) — L
+- [#146](https://github.com/kormie/Skein/issues/146) — Embeddings-capable LLM backend (Anthropic has no embeddings API; `llm.embed` currently needs a custom/test backend) — M
+- [#145](https://github.com/kormie/Skein/issues/145) — `llm.rerank` for RAG pipelines — M, depends on #146
+- [#150](https://github.com/kormie/Skein/issues/150) — Code-action phase 2: `Skein.Error` span + `edit_kind` so any exact fix applies generically (phase 1 per-code mapping shipped with #108) — L
+
+### Milestone: Post-MVP 2 — Interop & Agent Workflows
+
+Bigger design efforts, after the hardening wave:
+
+- [#141](https://github.com/kormie/Skein/issues/141) — Erlang/Elixir FFI (`extern` keyword) — interop with existing BEAM libraries — XL
+- [#144](https://github.com/kormie/Skein/issues/144) — Human-in-the-loop approval workflows — `suspend` before sensitive tool calls — XL
+- [#143](https://github.com/kormie/Skein/issues/143) — Web trace viewer — browser-based exploration of trace data — L–XL
+
+### Milestone: Future — Platform
+
+Deliberately deferred (per CLAUDE.md "What Not To Do"); re-scope from scratch when pulled into active work:
+
+- [#142](https://github.com/kormie/Skein/issues/142) — Hot code upgrades — OTP release upgrades without downtime
+- [#148](https://github.com/kormie/Skein/issues/148) — Managed deployment platform — hosted Skein runtime
+- [#149](https://github.com/kormie/Skein/issues/149) — Marketplace for tools/connectors — shareable tool definitions
 
 ---
 
