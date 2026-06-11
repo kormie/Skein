@@ -89,7 +89,14 @@ defmodule Skein.Lsp.Diagnostics do
       severity: severity(error.severity),
       code: error.code,
       source: "skein",
-      message: message
+      message: message,
+      # Fix data rides along so textDocument/codeAction can answer from
+      # the diagnostic alone (string keys survive the JSON round-trip)
+      data: %{
+        "code" => error.code,
+        "fix_hint" => error.fix_hint,
+        "fix_code" => error.fix_code
+      }
     }
   end
 

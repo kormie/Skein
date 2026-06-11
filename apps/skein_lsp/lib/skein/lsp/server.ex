@@ -15,6 +15,8 @@ defmodule Skein.Lsp.Server do
   alias GenLSP.Enumerations.TextDocumentSyncKind
 
   alias GenLSP.Structures.{
+    CodeActionContext,
+    CodeActionParams,
     CompletionList,
     CompletionOptions,
     DidOpenTextDocumentParams,
@@ -36,6 +38,7 @@ defmodule Skein.Lsp.Server do
   alias GenLSP.Requests.{
     Initialize,
     Shutdown,
+    TextDocumentCodeAction,
     TextDocumentCompletion,
     TextDocumentDefinition,
     TextDocumentDocumentSymbol,
@@ -52,6 +55,7 @@ defmodule Skein.Lsp.Server do
     TextDocumentDidSave
   }
 
+  alias Skein.Lsp.CodeActions
   alias Skein.Lsp.Diagnostics
   alias Skein.Lsp.Symbols
   alias Skein.Lsp.Completions
@@ -101,6 +105,7 @@ defmodule Skein.Lsp.Server do
          hover_provider: true,
          definition_provider: true,
          document_symbol_provider: true,
+         code_action_provider: true,
          semantic_tokens_provider: %SemanticTokensOptions{
            legend: semantic_tokens_legend(),
            full: true
@@ -182,6 +187,21 @@ defmodule Skein.Lsp.Server do
     items = Completions.complete(ast, source, position)
 
     {:reply, %CompletionList{is_incomplete: false, items: items}, lsp}
+  end
+
+  def handle_request(
+        %TextDocumentCodeAction{
+          params: %CodeActionParams{
+            text_document: %{uri: uri},
+            context: %CodeActionContext{diagnostics: diagnostics}
+          }
+        },
+        lsp
+      ) do
+    source = Map.get(assigns(lsp).documents, uri, "")
+    actions = CodeActions.actions(uri, source, diagnostics || [])
+
+    {:reply, actions, lsp}
   end
 
   def handle_request(

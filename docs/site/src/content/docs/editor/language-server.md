@@ -16,6 +16,7 @@ The server advertises these LSP capabilities:
 | `textDocument/hover` | Type information on hover |
 | `textDocument/definition` | Go-to-definition for functions and types |
 | `textDocument/completion` | Context-aware code completion |
+| `textDocument/codeAction` | Quickfixes from each error's `fix_hint`/`fix_code` (missing tokens, missing capability lines, unused declarations) |
 | `textDocument/semanticTokens/full` | Semantic highlighting |
 | `textDocument/didOpen` | Document tracking |
 | `textDocument/didChange` | Full document sync |

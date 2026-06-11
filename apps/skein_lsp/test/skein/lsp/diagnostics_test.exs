@@ -139,5 +139,27 @@ defmodule Skein.Lsp.DiagnosticsTest do
       assert diag.range.start.line == 0
       assert diag.range.start.character == 0
     end
+
+    test "ships code, fix_hint, and fix_code in diagnostic data" do
+      errors = [
+        %Skein.Error{
+          code: "E0001",
+          severity: :error,
+          message: "Missing ':' after 'description'",
+          location: %{file: "test.skein", line: 3, col: 5},
+          context: nil,
+          fix_hint: "Add ':' after 'description'",
+          fix_code: ":"
+        }
+      ]
+
+      [diag] = Diagnostics.errors_to_diagnostics(errors)
+
+      assert diag.data == %{
+               "code" => "E0001",
+               "fix_hint" => "Add ':' after 'description'",
+               "fix_code" => ":"
+             }
+    end
   end
 end

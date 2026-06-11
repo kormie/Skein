@@ -43,6 +43,13 @@
 - W0004 (`value_level_warnings/3`): fires per variant when no wildcard arm exists, the variant has an arm with any non-binding field pattern (not Identifier/Wildcard), and no all-bindings arm covers it; warning sits on the literal arm's pattern meta; fix_code "_ -> value"
 - The Known Limitations entry about value-level exhaustiveness is now resolved
 
+## LSP Code Actions (issue #108 — 2026-06-11, phase 1)
+- `Skein.Lsp.CodeActions` (new file): per-code quickfix mapping answering from `Diagnostic.data` (string-keyed `code`/`fix_hint`/`fix_code`, set in diagnostics.ex) + document source — no recompile
+- Mapped: E0001 missing-token (insert fix_code after the keyword extracted from "Missing 'X' after 'Y'"; diagnostic position IS the keyword start), E0012 (insert fix_code line after last `capability` line else after module/agent opening, indent copied), W0002 (delete whole line), W0001 (replace binding name found via word-boundary regex on the diagnostic's line with `_name`); everything else → no action
+- server.ex: `code_action_provider: true` + TextDocumentCodeAction handler; diagnostics arrive back from the client as structs with string-keyed data — `field/2` helper reads structs OR wire maps
+- GenLSP codeAction integration tests follow the server_test request/notify pattern; `mix test apps/skein_lsp` from umbrella root silently runs NOTHING (cd into the app or use umbrella-wide mix test)
+- Phase 2 (Skein.Error span + edit_kind for generic application) moved to the post-MVP backlog
+
 ## Repo Hygiene / Issue Tracking (2026-06-10 audit session)
 - All 20 open issues map to ROADMAP items (roadmap links each issue inline; 19 items across 4 tiers); #78 tracks the post-MVP backlog
 - v0.1.5 field-testing wave (#101, #104–#109) triaged same day: #104 W0002/E0012 test-block gap, #105 assertion output, #106 git init, #107 local LLM backends, #108 LSP code actions, #109 MCP compile_check fidelity

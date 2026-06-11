@@ -72,10 +72,79 @@ defmodule Skein.Lsp.ServerTest do
           "hoverProvider" => true,
           "definitionProvider" => true,
           "documentSymbolProvider" => true,
+          "codeActionProvider" => true,
           "completionProvider" => %{"triggerCharacters" => _}
         },
         "serverInfo" => %{"name" => "Skein Language Server"}
       })
+    end
+  end
+
+  describe "code actions" do
+    @missing_colon_source """
+    module M {
+      tool Acme.Do {
+        description "x"
+      }
+    }
+    """
+
+    test "returns a quickfix applying the missing token", %{client: client} do
+      uri = "file:///tmp/fixit.skein"
+      did_open(client, uri, @missing_colon_source)
+
+      assert_notification("textDocument/publishDiagnostics", %{
+        "uri" => ^uri,
+        "diagnostics" => [diagnostic | _]
+      })
+
+      assert diagnostic["data"]["fix_code"] == ":"
+
+      request(client, %{
+        method: "textDocument/codeAction",
+        id: 40,
+        jsonrpc: "2.0",
+        params: %{
+          textDocument: %{uri: uri},
+          range: diagnostic["range"],
+          context: %{diagnostics: [diagnostic]}
+        }
+      })
+
+      assert_result(40, [action | _])
+      assert action["kind"] == "quickfix"
+      assert [edit | _] = action["edit"]["changes"][uri]
+      assert edit["newText"] == ":"
+    end
+
+    test "returns no actions for diagnostics without an applicable fix", %{client: client} do
+      uri = "file:///tmp/nofix.skein"
+
+      did_open(client, uri, """
+      module M {
+        fn f() -> Int {
+          "nope"
+        }
+      }
+      """)
+
+      assert_notification("textDocument/publishDiagnostics", %{
+        "uri" => ^uri,
+        "diagnostics" => [diagnostic | _]
+      })
+
+      request(client, %{
+        method: "textDocument/codeAction",
+        id: 41,
+        jsonrpc: "2.0",
+        params: %{
+          textDocument: %{uri: uri},
+          range: diagnostic["range"],
+          context: %{diagnostics: [diagnostic]}
+        }
+      })
+
+      assert_result(41, [])
     end
   end
 
