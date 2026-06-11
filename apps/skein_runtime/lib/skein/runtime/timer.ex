@@ -247,13 +247,10 @@ defmodule Skein.Runtime.Timer do
   end
 
   defp init_table do
-    if :ets.whereis(@table) == :undefined do
-      try do
-        :ets.new(@table, [:named_table, :set, :public, read_concurrency: true])
-      rescue
-        ArgumentError -> :ok
-      end
-    end
+    Skein.Runtime.EtsTables.ensure_table(
+      @table,
+      [:named_table, :set, :public, read_concurrency: true]
+    )
   end
 
   # Fallback for environments where the application supervisor isn't

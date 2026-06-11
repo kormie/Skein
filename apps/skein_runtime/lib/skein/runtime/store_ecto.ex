@@ -171,15 +171,10 @@ defmodule Skein.Runtime.StoreEcto do
   # ------------------------------------------------------------------
 
   defp ensure_registry do
-    if :ets.whereis(@registry_table) == :undefined do
-      try do
-        :ets.new(@registry_table, [:named_table, :set, :public, read_concurrency: true])
-      rescue
-        ArgumentError -> :ok
-      end
-    end
-
-    :ok
+    Skein.Runtime.EtsTables.ensure_table(
+      @registry_table,
+      [:named_table, :set, :public, read_concurrency: true]
+    )
   end
 
   defp require_schema(table_name) do

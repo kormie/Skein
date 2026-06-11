@@ -9,6 +9,9 @@ defmodule SkeinRuntime.Application do
     # they get proper restart semantics. Their ensure_started/0 fallbacks
     # remain only for environments where the app isn't started (--no-start).
     children = [
+      # First: owns all named ETS tables, so sibling init/1 callbacks (and
+      # everything after app start) can request tables that outlive callers.
+      Skein.Runtime.EtsTables,
       Skein.Runtime.Process,
       Skein.Runtime.Queue,
       Skein.Runtime.Topic,

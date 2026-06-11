@@ -117,11 +117,7 @@ defmodule Skein.Runtime.Idempotent do
   # ------------------------------------------------------------------
 
   defp ensure_table do
-    try do
-      :ets.new(@table, [:set, :public, :named_table])
-    rescue
-      ArgumentError -> :ok
-    end
+    Skein.Runtime.EtsTables.ensure_table(@table, [:set, :public, :named_table])
   end
 
   # The TTL is re-read from application config at each check and sweep. It

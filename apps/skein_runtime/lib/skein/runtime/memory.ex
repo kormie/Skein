@@ -212,16 +212,10 @@ defmodule Skein.Runtime.Memory do
   # ------------------------------------------------------------------
 
   defp ensure_table do
-    if :ets.whereis(@table) == :undefined do
-      try do
-        :ets.new(@table, [:named_table, :set, :public, read_concurrency: true])
-      rescue
-        # Another process won the creation race; the table now exists.
-        ArgumentError -> :ok
-      end
-    end
-
-    :ok
+    Skein.Runtime.EtsTables.ensure_table(
+      @table,
+      [:named_table, :set, :public, read_concurrency: true]
+    )
   end
 
   # Scope a key with the agent instance prefix if running inside an agent process.
