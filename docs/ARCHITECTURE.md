@@ -384,6 +384,8 @@ Two modules provide domain-specific APIs on top of this store:
 
 Provider-agnostic LLM client with schema-constrained decoding.
 
+Backends are pluggable: a module implementing `Skein.Runtime.Llm.Backend`, or a `{module, config}` tuple for parameterized backends. `AnthropicBackend` is the production backend; `OpenAiCompatibleBackend` serves dev traffic from any local server speaking `POST {base_url}/chat/completions` (oMLX, Ollama, LM Studio, llama.cpp, vLLM), with a `model_map` remapping capability model names to locally hosted ones so source never changes between environments. The active backend comes from the project's `skein.toml` `[llm]` / `[env.<name>.llm]` profile, resolved by `skein run`/`skein test` via `--env` or `SKEIN_ENV` (`Skein.CLI.Config`). Every llm trace span records the `backend` (and `base_url` for local servers) that served the call.
+
 ```elixir
 defmodule Skein.Runtime.LLM do
   @callback chat(opts :: keyword()) :: {:ok, String.t()} | {:error, LlmError.t()}

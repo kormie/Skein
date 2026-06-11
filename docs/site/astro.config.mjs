@@ -70,6 +70,7 @@ export default defineConfig({
             { label: 'Overview', slug: 'runtime/overview' },
             { label: 'Agents', slug: 'runtime/agents' },
             { label: 'Storage', slug: 'runtime/storage' },
+            { label: 'Local Models for Dev', slug: 'runtime/local-models' },
           ],
         },
         {

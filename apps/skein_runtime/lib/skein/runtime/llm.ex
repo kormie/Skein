@@ -35,11 +35,13 @@ defmodule Skein.Runtime.Llm do
           {:ok, String.t()} | {:error, Error.t()}
   def chat(model, system, input, capabilities)
       when is_binary(model) and is_binary(system) and is_list(capabilities) do
-    with_enriched_span(%{kind: :llm, method: :chat, model: model}, system, input, fn ->
+    backend = resolve_backend()
+    span = Map.merge(%{kind: :llm, method: :chat, model: model}, backend_span_meta(backend))
+
+    with_enriched_span(span, system, input, fn ->
       case check_model_capability(model, capabilities) do
         :ok ->
-          backend = resolve_backend()
-          backend.chat(model, system, input)
+          call_chat(backend, model, system, input)
 
         {:error, reason} ->
           {:error, Error.capability_error(reason)}
@@ -59,12 +61,13 @@ defmodule Skein.Runtime.Llm do
           {:ok, map()} | {:error, Error.t()}
   def json(model, system, input, schema, capabilities)
       when is_binary(model) and is_binary(system) and is_map(schema) and is_list(capabilities) do
-    with_enriched_span(%{kind: :llm, method: :json, model: model}, system, input, fn ->
+    backend = resolve_backend()
+    span = Map.merge(%{kind: :llm, method: :json, model: model}, backend_span_meta(backend))
+
+    with_enriched_span(span, system, input, fn ->
       case check_model_capability(model, capabilities) do
         :ok ->
-          backend = resolve_backend()
-
-          case backend.json(model, system, input, schema) do
+          case call_json(backend, model, system, input, schema) do
             {:ok, %Response{text: raw_text} = resp} ->
               case parse_json_response(raw_text) do
                 {:ok, parsed} -> {:ok, parsed, resp}
@@ -103,11 +106,12 @@ defmodule Skein.Runtime.Llm do
   def stream(model, system, input, on_chunk, capabilities)
       when is_binary(model) and is_binary(system) and is_function(on_chunk, 1) and
              is_list(capabilities) do
-    with_enriched_span(%{kind: :llm, method: :stream, model: model}, system, input, fn ->
+    backend = resolve_backend()
+    span = Map.merge(%{kind: :llm, method: :stream, model: model}, backend_span_meta(backend))
+
+    with_enriched_span(span, system, input, fn ->
       case check_model_capability(model, capabilities) do
         :ok ->
-          backend = resolve_backend()
-
           case call_stream(backend, model, system, input, on_chunk) do
             {:ok, chunks} when is_list(chunks) ->
               Enum.each(chunks, on_chunk)
@@ -187,6 +191,42 @@ defmodule Skein.Runtime.Llm do
     if Replay.active?(), do: Skein.Runtime.Llm.ReplayBackend, else: get_backend()
   end
 
+  # Span metadata identifying which backend (and base_url, for local
+  # servers) serves the call — a trace should never leave you guessing
+  # whether tokens were spent.
+  defp backend_span_meta({module, config}) do
+    meta = %{backend: backend_name(module)}
+
+    case config do
+      %{base_url: base_url} when is_binary(base_url) -> Map.put(meta, :base_url, base_url)
+      _ -> meta
+    end
+  end
+
+  defp backend_span_meta(module) when is_atom(module) do
+    %{backend: backend_name(module)}
+  end
+
+  defp backend_name(module), do: module |> Module.split() |> List.last()
+
+  # Call chat on the backend, handling both module and {module, config} tuple backends
+  defp call_chat({module, config}, model, system, input) do
+    module.chat(model, system, input, config)
+  end
+
+  defp call_chat(module, model, system, input) when is_atom(module) do
+    module.chat(model, system, input)
+  end
+
+  # Call json on the backend, handling both module and {module, config} tuple backends
+  defp call_json({module, config}, model, system, input, schema) do
+    module.json(model, system, input, schema, config)
+  end
+
+  defp call_json(module, model, system, input, schema) when is_atom(module) do
+    module.json(model, system, input, schema)
+  end
+
   # Call stream on the backend, handling both module and {module, config} tuple backends
   defp call_stream({module, config}, model, system, input, _on_chunk) do
     module.stream(model, system, input, config)
@@ -197,8 +237,8 @@ defmodule Skein.Runtime.Llm do
   end
 
   # Call embed on the backend, handling both module and {module, config} tuple backends
-  defp call_embed({module, _config}, model, input) do
-    module.embed(model, input)
+  defp call_embed({module, config}, model, input) do
+    module.embed(model, input, config)
   end
 
   defp call_embed(module, model, input) when is_atom(module) do

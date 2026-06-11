@@ -50,6 +50,16 @@
 - GenLSP codeAction integration tests follow the server_test request/notify pattern; `mix test apps/skein_lsp` from umbrella root silently runs NOTHING (cd into the app or use umbrella-wide mix test)
 - Phase 2 (Skein.Error span + edit_kind for generic application) moved to the post-MVP backlog
 
+## Local LLM Backends (issue #107 — 2026-06-11, LAST Beta issue)
+- `Llm.OpenAiCompatibleBackend` (config-tuple backend): chat/json/stream/embed with config last arg; model_map remaps capability model → local model (unmapped pass through); json = schema-in-prompt + fence strip (response_format rejected by several local servers); stream = single-chunk fallback; transport errors name the base_url
+- **Llm chat/json did NOT dispatch {module, config} tuples before** (only stream/embed did) — call_chat/call_json added; call_embed tuple path now passes config through (was dropping it)
+- Llm spans now carry `backend:` (module short name) + `base_url:` — resolve_backend() moved BEFORE with_enriched_span in chat/json/stream
+- `Skein.CLI.Config`: hand-rolled TOML-subset parser (tables/dotted tables, quoted strings, ints, bools, inline string tables, comments; errors name the line); `llm_profile(parsed, env)` = env override else [llm] default; `apply_llm_profile` maps backend "anthropic"/"openai_compatible"/"test" → set_backend (openai_compatible requires base_url; api_key_env resolved via System.get_env)
+- `--env` flag on run+test (env_flag_spec merged into both flag specs), SKEIN_ENV fallback; applied via apply_env_profile in test_all and do_run_config; scaffold skein.toml now has `[llm] backend="anthropic"` + commented dev block
+- Stub OpenAI server tests: Bandit + module Plug with owner pid in plug opts (`plug: {StubServer, [owner: self(), respond: fun]}`), random port 10_000..60_000, requests echoed to test process
+- Docs: runtime/local-models.md + sidebar entry
+- CLI module is `Skein.CLI` (NOT SkeinCLI)
+
 ## Repo Hygiene / Issue Tracking (2026-06-10 audit session)
 - All 20 open issues map to ROADMAP items (roadmap links each issue inline; 19 items across 4 tiers); #78 tracks the post-MVP backlog
 - v0.1.5 field-testing wave (#101, #104–#109) triaged same day: #104 W0002/E0012 test-block gap, #105 assertion output, #106 git init, #107 local LLM backends, #108 LSP code actions, #109 MCP compile_check fidelity
