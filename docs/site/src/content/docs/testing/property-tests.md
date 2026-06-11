@@ -15,8 +15,8 @@ Unit tests verify specific examples. Property tests verify **invariants across l
 
 | Library | Purpose | Status |
 |---------|---------|--------|
-| `StreamData` / `ExUnitProperties` | Generator-based property testing | Active, 88 properties |
-| `PropCheck` (PropEr) | Stateful/state-machine testing | Active, 4 stateful properties |
+| `StreamData` / `ExUnitProperties` | Generator-based property testing | Active (see CI for current property counts) |
+| `PropCheck` (PropEr) | Stateful/state-machine testing | Active |
 
 `StreamData` is used for stateless property tests (data-in/data-out). `PropCheck` is used for stateful testing where a model tracks expected system state across command sequences.
 
@@ -24,29 +24,38 @@ Unit tests verify specific examples. Property tests verify **invariants across l
 
 ```
 apps/skein_compiler/test/skein/
-  lexer_property_test.exs          # 11 properties (StreamData)
-  parser_property_test.exs         # 20 properties (StreamData)
+  lexer_property_test.exs            # StreamData
+  parser_property_test.exs           # StreamData
+  analyzer_property_test.exs         # StreamData
   codegen/
-    core_erlang_property_test.exs  # 9 properties (StreamData)
-  analyzer_property_test.exs       # 9 properties (StreamData)
+    core_erlang_property_test.exs    # StreamData
+    schema_gen_property_test.exs     # StreamData
 apps/skein_runtime/test/skein/runtime/
-  capability_property_test.exs     # 5 properties (StreamData)
-  request_property_test.exs        # 6 properties (StreamData)
-  store_property_test.exs          # 5 properties (StreamData)
-  store_ecto_property_test.exs     # 5 properties (StreamData)
-  tool_property_test.exs           # 5 properties (StreamData)
-  llm_stream_property_test.exs     # 4 properties (StreamData)
-  memory_property_test.exs         # 9 properties (StreamData)
-  queue_property_test.exs          # 6 properties (StreamData)
-  schedule_property_test.exs       # 7 properties (StreamData)
-  trace_property_test.exs          # 7 properties (StreamData)
-  memory_statem_test.exs           # 1 property  (PropCheck stateful)
-  queue_statem_test.exs            # 1 property  (PropCheck stateful)
-  schedule_statem_test.exs         # 1 property  (PropCheck stateful)
-  agent_statem_test.exs            # 1 property  (PropCheck stateful)
+  capability_property_test.exs       # StreamData
+  event_store_property_test.exs      # StreamData
+  handler_property_test.exs          # StreamData
+  idempotent_property_test.exs       # StreamData
+  llm_embed_property_test.exs        # StreamData
+  llm_stream_property_test.exs       # StreamData
+  memory_property_test.exs           # StreamData
+  process_property_test.exs          # StreamData
+  queue_property_test.exs            # StreamData
+  request_property_test.exs          # StreamData
+  schedule_property_test.exs         # StreamData
+  store_property_test.exs            # StreamData
+  store_ecto_property_test.exs       # StreamData
+  timer_property_test.exs            # StreamData
+  tool_property_test.exs             # StreamData
+  topic_property_test.exs            # StreamData
+  trace_property_test.exs            # StreamData
+  agent_statem_test.exs              # PropCheck stateful
+  memory_statem_test.exs             # PropCheck stateful
+  queue_statem_test.exs              # PropCheck stateful
+  schedule_statem_test.exs           # PropCheck stateful
+  topic_statem_test.exs              # PropCheck stateful
 ```
 
-## Lexer Properties (11 tests)
+## Lexer Properties
 
 The lexer property tests use generators for valid identifiers, integers, and strings, then verify tokenization invariants.
 
@@ -82,7 +91,7 @@ Note the keyword avoidance -- if a random identifier happens to match a keyword,
 - Newlines increment line numbers correctly
 - String interpolation preserves the identifier name
 
-## Parser Properties (20 tests)
+## Parser Properties
 
 The parser properties generate **valid Skein source programs** and verify structural invariants. This includes functions, tool declarations, scenario tests, and golden tests.
 
@@ -130,7 +139,7 @@ end
 - Golden trace file matches generated path
 - Golden preserves source location metadata
 
-## CodeGen Properties (9 tests)
+## CodeGen Properties
 
 The codegen properties test the **full pipeline** -- generate random inputs, compile Skein source to BEAM, call the compiled functions, and verify results match Elixir semantics.
 
@@ -181,7 +190,7 @@ This generates random integer pairs, compiles a Skein `add` function for each, a
 - Match on `> 0` correctly classifies positive vs non-positive
 - Plain string literals return exact strings
 
-## PropCheck Stateful Tests (4 tests)
+## PropCheck Stateful Tests
 
 PropCheck stateful tests use the `:proper_statem` behaviour to model a system as an abstract state machine. PropEr generates random **command sequences**, runs them against the real system, and checks that postconditions hold after each command. On failure, it shrinks to the minimal reproducing sequence.
 
@@ -224,6 +233,10 @@ Models queue subscriptions as `%{queue_name => subscriber_count}`. Verifies subs
 ### Schedule State Machine
 
 Models schedule registrations as `%{cron_expr => handler_count}`. Verifies register/trigger/list/reset maintain consistency.
+
+### Topic State Machine
+
+Models pub/sub topics as `%{topic_name => subscriber_count}`. Verifies subscribe/publish/list/reset maintain consistency.
 
 ### Agent Lifecycle State Machine
 

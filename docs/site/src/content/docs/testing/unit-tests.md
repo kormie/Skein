@@ -12,29 +12,26 @@ description: How the Skein compiler is tested with ExUnit.
 ```
 apps/skein_compiler/test/
   skein/
-    lexer_test.exs                    # 69 unit tests
-    parser_test.exs                   # 104 unit tests (incl. scenario/golden)
+    lexer_test.exs                    # lexer unit tests
+    parser_test.exs                   # parser unit tests (incl. scenario/golden)
+    analyzer_test.exs                 # analyzer unit tests
     codegen/
-      core_erlang_test.exs            # 36 integration tests
-      schema_gen_test.exs             # 22 unit tests
+      core_erlang_test.exs            # codegen integration tests
+      schema_gen_test.exs             # JSON Schema generation tests
     integration/
-      memory_llm_test.exs             # 8 integration tests
-      tool_test.exs                   # 14 integration tests
-      test_construct_test.exs         # 15 integration tests (incl. scenario/golden)
-      req_json_test.exs               # 4 integration tests
-    analyzer_test.exs                 # 76 unit tests
+      memory_llm_test.exs             # memory + llm pipeline tests
+      tool_test.exs                   # tool declaration tests
+      test_construct_test.exs         # test/scenario/golden constructs
+      req_json_test.exs               # request JSON handling
 apps/skein_runtime/test/
-  skein/runtime/
-    replay_test.exs                   # 13 tests (Phase 8a)
-    ... (186 runtime tests total)
+  skein/runtime/                      # runtime behaviour tests (agents, store, queue, replay, ...)
 apps/skein_cli/test/
-  cli/test_runner_test.exs            # 10 tests (incl. scenario/golden)
-  ... (43 CLI tests total)
+  cli/                                # CLI tests (incl. the skein test runner)
 ```
 
-**Total: 664 tests, 70 properties, 0 failures**
+The suite is covered by unit and property tests across all apps; counts grow with every change, so this page doesn't track them — run `mix test` or check CI for the current totals.
 
-## Lexer Tests (69 tests)
+## Lexer Tests
 
 The lexer test suite covers:
 
@@ -55,12 +52,12 @@ test "tokenizes a simple binding" do
     {:ident, {1, 5}, "x"},
     {:eq, {1, 7}},
     {:int, {1, 9}, 42},
-    {:eof, {1, 14}}
+    {:eof, {1, 11}}
   ]
 end
 ```
 
-## Parser Tests (47 tests)
+## Parser Tests
 
 The parser test suite covers every AST construct:
 
@@ -98,7 +95,7 @@ test "parses binary operator with correct precedence" do
 end
 ```
 
-## CodeGen Integration Tests (18 tests)
+## CodeGen Integration Tests
 
 These are **full pipeline tests** -- they compile Skein source to BEAM bytecode, load the module, and call its functions:
 

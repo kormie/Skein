@@ -116,7 +116,20 @@ Context-aware completions triggered automatically or with `Ctrl+Space`:
 | After `@` | Annotation names (`@description`, `@min`, `@max`, etc.) |
 | Type position | Built-in and user-defined types |
 
-Supported effect namespaces: `llm`, `memory`, `store`, `http`, `topic`, `queue`, `trace`, `config`, `secret`, `stream`, `respond`.
+Supported effect namespaces: `llm`, `memory`, `store`, `http`, `topic`, `queue`, `trace`, `event`, `process`, `timer`, `respond`.
+
+### Quickfix Code Actions
+
+Diagnostics with a mechanical fix offer a one-click quickfix (the lightbulb, or `Ctrl+.`), built from the `fix_hint`/`fix_code` that every Skein error carries:
+
+| Code | Diagnostic | Quickfix |
+|------|-----------|----------|
+| `E0001` | Missing token | Inserts the missing token after the keyword named in the message |
+| `E0012` | Missing capability | Inserts the `capability ...` declaration line into the module or agent |
+| `W0002` | Unused capability | Deletes the unused declaration line |
+| `W0001` | Unused binding | Renames the binding to its underscore-prefixed form |
+
+Diagnostics without a mapped fix simply offer no action.
 
 ### Semantic Tokens
 
@@ -179,15 +192,18 @@ The extension has two components:
 | `Skein.Lsp.Symbols` | AST → document symbol extraction |
 | `Skein.Lsp.HoverProvider` | Symbol resolution, hover info, go-to-definition |
 | `Skein.Lsp.Completions` | Context-aware completion engine |
+| `Skein.Lsp.CodeActions` | Quickfix code actions from each error's `fix_hint`/`fix_code` |
 | `Skein.Lsp.SemanticTokens` | Lexer-based semantic token encoding |
 
 ### Starting the Language Server
 
-The language server is started via `mix skein.lsp` and communicates over stdin/stdout:
+By default the extension starts the language server via the standalone `skein` binary (`skein lsp`); `mix skein.lsp` is only used inside a checkout of the Skein compiler repo (see the `skein.lsp.serverCommand` setting). Either way it communicates over stdin/stdout:
 
 ```bash
 # Start manually (for debugging)
-cd /path/to/skein-project
+skein lsp
+
+# Inside a Skein compiler checkout
 mix skein.lsp
 ```
 
