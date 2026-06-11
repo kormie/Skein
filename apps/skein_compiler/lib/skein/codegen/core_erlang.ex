@@ -26,6 +26,7 @@ defmodule Skein.CodeGen.CoreErlang do
   @effect_runtime_modules %{
     "http" => :"Elixir.Skein.Runtime.Http",
     "topic" => :"Elixir.Skein.Runtime.Topic",
+    "queue" => :"Elixir.Skein.Runtime.Queue",
     "trace" => :"Elixir.Skein.Runtime.Trace",
     "process" => :"Elixir.Skein.Runtime.Process",
     "timer" => :"Elixir.Skein.Runtime.Timer",

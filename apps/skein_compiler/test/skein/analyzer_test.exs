@@ -3392,6 +3392,53 @@ defmodule Skein.AnalyzerTest do
   end
 
   # ------------------------------------------------------------------
+  # queue.publish effect (documented counterpart of topic.publish)
+  # ------------------------------------------------------------------
+
+  describe "queue.publish effect" do
+    test "requires the queue.publish capability" do
+      errors =
+        analyze_errors("""
+        module M {
+          fn enqueue() -> String {
+            queue.publish("jobs", "data")
+          }
+        }
+        """)
+
+      assert Enum.any?(errors, fn e ->
+               e.code == "E0012" and e.severity == :error and e.message =~ "queue.publish"
+             end)
+    end
+
+    test "analyzes clean (and counts as usage) with the capability declared" do
+      assert {:ok, _} =
+               analyze("""
+               module M {
+                 capability queue.publish("jobs")
+
+                 fn enqueue() -> String {
+                   queue.publish("jobs", "data")
+                 }
+               }
+               """)
+    end
+
+    test "named arguments resolve for queue.publish" do
+      assert {:ok, _} =
+               analyze("""
+               module M {
+                 capability queue.publish("jobs")
+
+                 fn enqueue() -> String {
+                   queue.publish(name: "jobs", data: "data")
+                 }
+               }
+               """)
+    end
+  end
+
+  # ------------------------------------------------------------------
   # Effect call arity (documented effect signatures)
   # ------------------------------------------------------------------
 
