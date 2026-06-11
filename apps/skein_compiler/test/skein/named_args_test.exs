@@ -249,6 +249,46 @@ defmodule Skein.NamedArgsTest do
       call = call_in_fn(ast, "g")
       assert [%AST.IntLit{value: 1}, %AST.IntLit{value: 2}] = call.args
     end
+
+    test "process.spawn by name may omit the optional work parameter" do
+      {:ok, ast} =
+        analyze("""
+        module M {
+          capability process.spawn("workers")
+          fn g() -> String { process.spawn(name: "job") }
+        }
+        """)
+
+      call = call_in_fn(ast, "g")
+      assert [%AST.StringLit{}] = call.args
+    end
+
+    test "process.spawn accepts the optional work parameter by name" do
+      {:ok, ast} =
+        analyze("""
+        module M {
+          capability process.spawn("workers")
+          fn do_work() -> String { "done" }
+          fn g() -> String { process.spawn(name: "job", work: &do_work) }
+        }
+        """)
+
+      call = call_in_fn(ast, "g")
+      assert [%AST.StringLit{}, %AST.FnRef{name: "do_work"}] = call.args
+    end
+
+    test "process.spawn with only work named is missing the required name" do
+      errors =
+        analyze_errors("""
+        module M {
+          capability process.spawn("workers")
+          fn do_work() -> String { "done" }
+          fn g() -> String { process.spawn(work: &do_work) }
+        }
+        """)
+
+      assert Enum.any?(errors, &(&1.code == "E0026" and &1.message =~ "name"))
+    end
   end
 
   # ------------------------------------------------------------------

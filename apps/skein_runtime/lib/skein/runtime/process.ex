@@ -112,6 +112,41 @@ defmodule Skein.Runtime.Process do
   end
 
   @doc """
+  Spawns a supervised task that executes a task body — the runtime entry
+  point for compiled `process.spawn("name", &some_fn)` calls.
+
+  The pool is the scoped capability label (spec §3.2); see `spawn/3`. The
+  zero-arity function runs in the supervised task; crashes are isolated by
+  the supervisor and never take down the caller.
+
+  Returns `{:ok, pid}` on success or `{:error, reason}` on failure.
+  """
+  @spec spawn(String.t() | nil, String.t(), function(), list()) ::
+          {:ok, pid()} | {:error, term()}
+  def spawn(pool, task_name, fun, capabilities)
+      when (is_binary(pool) or is_nil(pool)) and is_binary(task_name) and is_function(fun, 0) and
+             is_list(capabilities) do
+    case Capability.check_scoped("process.spawn", pool, capabilities) do
+      :ok ->
+        ensure_started()
+
+        Trace.with_span(%{kind: :process, method: :spawn, task: task_name, pool: pool}, fn ->
+          case DynamicSupervisor.start_child(__MODULE__, %{
+                 id: make_ref(),
+                 start: {Task, :start_link, [fun]},
+                 restart: :temporary
+               }) do
+            {:ok, pid} -> {:ok, pid}
+            {:error, reason} -> {:error, inspect(reason)}
+          end
+        end)
+
+      {:error, _reason} = error ->
+        error
+    end
+  end
+
+  @doc """
   Returns a list of pids for all running supervised children.
   """
   @spec list_children() :: [pid()]

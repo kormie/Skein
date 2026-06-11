@@ -638,7 +638,8 @@ Memory mutations (`memory.put`, `memory.delete`) automatically emit `:state_chan
 
 ```
 -- Requires: capability process.spawn(pool)
-process.spawn(task: String) -> ()        -- run a named supervised background task
+process.spawn(task: String) -> ()         -- run a named supervised background task (no-op body)
+process.spawn(task: String, work) -> ()   -- run `work` (a &fn reference) in the background
 
 -- Requires: capability timer(group)
 timer.after(delay_ms: Int, task: String) -> String     -- one-shot; returns a timer ref
@@ -649,8 +650,12 @@ timer.cancel(ref: String) -> ()
 The pool/group capability parameter is a scoped capability label (§3.2):
 the compiler threads it into each call and it appears on the trace span.
 Crashes in spawned tasks are isolated by the runtime supervisor and never
-take down the caller. Attaching a function body to a spawned task is
-Planned; today the task is a named no-op recorded in the trace.
+take down the caller.
+
+The optional `work` argument is a `&fn` reference to a zero-parameter
+function in the same module; the function runs inside the supervised
+task. Without `work`, the task is a named no-op recorded in the trace.
+Timer tasks are named no-ops; attaching bodies to timers is Planned.
 
 ---
 

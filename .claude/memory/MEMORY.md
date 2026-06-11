@@ -31,6 +31,12 @@
 - Labels recorded: process span `pool:`, timer span `group:`, user_event `stream:` (nil when unscoped)
 - spawn/3 has two clause shapes (pool/task vs fun/args) — keep them ADJACENT or ungrouped-clauses warning fails CI
 
+## process.spawn Task Bodies (issue #74 — 2026-06-11)
+- Surface: `process.spawn("name", &some_fn)` — second arg is a FnRef to a zero-param local fn; spec §6.11 documents it; timer bodies still Planned
+- Runtime: `Process.spawn/4 (pool, task, fun, caps)` clause; codegen needed ZERO changes (the #57 scoped clause passes args through, so 2-arg calls land on spawn/4 with the lambda from FnRef codegen)
+- Analyzer: `@effect_optional_params %{{"process","spawn"} => ["work"]}` — first optional effect param; `callee_param_names` returns a 4-tuple now; omitted trailing optionals drop out of the reordered args (only TRAILING params can be optional — middle omission would shift positions)
+- Integration tests await background effects by polling (await/2 helper in core_erlang_test); crash-from-source test uses `1 / 0` (codegen emits :erlang.div → ArithmeticError in the Task, caller unaffected)
+
 ## Repo Hygiene / Issue Tracking (2026-06-10 audit session)
 - All 20 open issues map to ROADMAP items (roadmap links each issue inline; 19 items across 4 tiers); #78 tracks the post-MVP backlog
 - v0.1.5 field-testing wave (#101, #104–#109) triaged same day: #104 W0002/E0012 test-block gap, #105 assertion output, #106 git init, #107 local LLM backends, #108 LSP code actions, #109 MCP compile_check fidelity
