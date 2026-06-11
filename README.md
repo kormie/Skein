@@ -4,6 +4,7 @@
 [![CI](https://github.com/kormie/Skein/actions/workflows/ci.yml/badge.svg)](https://github.com/kormie/Skein/actions/workflows/ci.yml)
 [![Docs](https://github.com/kormie/Skein/actions/workflows/deploy-docs.yml/badge.svg)](https://github.com/kormie/Skein/actions/workflows/deploy-docs.yml)
 [![Downloads](https://img.shields.io/github/downloads/kormie/Skein/total)](https://github.com/kormie/Skein/releases)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 **A programming language where AI agents are first-class citizens.**
 
@@ -407,3 +408,7 @@ mix format        # Format code
 ```
 
 TDD is mandatory — write tests before or alongside implementation. See [CLAUDE.md](CLAUDE.md) for the full set of conventions.
+
+## License
+
+Skein is released under the [MIT License](LICENSE).
