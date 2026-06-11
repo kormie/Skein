@@ -54,7 +54,7 @@ defmodule Skein.Runtime.Server do
     port = Keyword.get(opts, :port, 4000)
 
     router = Router.build(module)
-    register_schedule_handlers(module)
+    register_background_handlers(module)
 
     case Bandit.start_link(plug: router, port: port, ip: {127, 0, 0, 1}) do
       {:ok, bandit_pid} ->
@@ -79,17 +79,27 @@ defmodule Skein.Runtime.Server do
     :ok
   end
 
-  # Schedule handlers fire on the runtime's cron tick rather than via
-  # HTTP routing — register each one so a running service auto-fires them.
-  defp register_schedule_handlers(module) do
+  # Schedule, queue, and topic handlers fire from runtime dispatch rather
+  # than HTTP routing — register each one so a running service receives them.
+  defp register_background_handlers(module) do
     if function_exported?(module, :__handlers__, 0) do
-      module.__handlers__()
-      |> Enum.filter(&(&1.source == :schedule))
-      |> Enum.each(fn handler ->
-        Skein.Runtime.Schedule.register(handler.route, module, handler.handler)
-      end)
+      Enum.each(module.__handlers__(), &register_background_handler(&1, module))
     end
 
     :ok
   end
+
+  defp register_background_handler(%{source: :schedule} = handler, module) do
+    Skein.Runtime.Schedule.register(handler.route, module, handler.handler)
+  end
+
+  defp register_background_handler(%{source: :queue} = handler, module) do
+    Skein.Runtime.Queue.subscribe(handler.route, module, handler.handler)
+  end
+
+  defp register_background_handler(%{source: :topic} = handler, module) do
+    Skein.Runtime.Topic.subscribe(handler.route, module, handler.handler)
+  end
+
+  defp register_background_handler(_handler, _module), do: :ok
 end
