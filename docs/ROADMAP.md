@@ -75,6 +75,7 @@ Bigger design efforts, after the hardening wave:
 - [#141](https://github.com/kormie/Skein/issues/141) — Erlang/Elixir FFI (`extern` keyword) — interop with existing BEAM libraries — XL
 - [#144](https://github.com/kormie/Skein/issues/144) — Human-in-the-loop approval workflows — `suspend` before sensitive tool calls — XL
 - [#143](https://github.com/kormie/Skein/issues/143) — Web trace viewer — browser-based exploration of trace data — L–XL
+- [#171](https://github.com/kormie/Skein/issues/171) — CLI TUI — adopt a terminal UI framework for interactive trace/test/run (options researched in the issue; TermUI leading, Burrito compatibility is the gating spike) — XL
 
 ### Milestone: Future — Platform
 

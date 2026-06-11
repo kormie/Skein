@@ -17,7 +17,7 @@
   },
   {
     "title": "Post-MVP 2: Interop & Agent Workflows",
-    "description": "Bigger design efforts after the hardening wave: Erlang/Elixir FFI via extern (#141), human-in-the-loop approval workflows with suspend before sensitive tool calls (#144), and the browser-based trace viewer (#143)."
+    "description": "Bigger design efforts after the hardening wave: Erlang/Elixir FFI via extern (#141), human-in-the-loop approval workflows with suspend before sensitive tool calls (#144), the browser-based trace viewer (#143), and a terminal UI framework for an interactive CLI (#171)."
   },
   {
     "title": "Future: Platform",
