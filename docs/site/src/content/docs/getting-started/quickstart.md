@@ -20,7 +20,7 @@ Grab the latest binary for your platform from the
 chmod +x skein-*
 mv skein-* /usr/local/bin/skein
 
-skein version  # → skein 0.1.6
+skein version  # → skein 0.1.7
 ```
 
 No Erlang, Elixir, or other dependencies required — it's a self-contained binary.
@@ -143,7 +143,7 @@ skein help
 ```
 
 ```
-Skein 0.1.6 — AI-native language for the BEAM
+Skein 0.1.7 — AI-native language for the BEAM
 
 Commands:
   compile <file.skein>       Compile a single .skein file
