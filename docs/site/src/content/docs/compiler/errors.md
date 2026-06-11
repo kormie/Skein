@@ -13,7 +13,7 @@ This is a core feature of the language -- when an AI agent generates Skein code 
 
 ```elixir
 %Skein.Error{
-  code: "E001",                    # Stable error code
+  code: "E0001",                   # Stable error code
   severity: :error,                # :error or :warning
   message: "Unexpected token '}'", # Human-readable description
   location: %{                     # Where in the source
@@ -31,7 +31,7 @@ This is a core feature of the language -- when an AI agent generates Skein code 
 
 | Field | Type | Purpose |
 |-------|------|---------|
-| `code` | String | Stable identifier for the error category (e.g., `"E001"`) |
+| `code` | String | Stable identifier for the error category (e.g., `"E0001"`) |
 | `severity` | Atom | `:error` (compilation fails) or `:warning` (compilation proceeds) |
 | `message` | String | Human-readable description of the problem |
 | `location` | Map | Source file, line number, column number |
@@ -45,7 +45,7 @@ Errors serialize to JSON for tool integration:
 
 ```json
 {
-  "code": "E001",
+  "code": "E0001",
   "severity": "error",
   "message": "Unexpected token '}'",
   "location": {
@@ -63,10 +63,10 @@ Errors are returned as lists throughout the pipeline:
 
 ```elixir
 # Lexer error
-{:error, [%Skein.Error{code: "E001", message: "Unexpected character: #"}]}
+{:error, [%Skein.Error{code: "E0001", message: "Unexpected character: #"}]}
 
 # Parser error
-{:error, [%Skein.Error{code: "E002", message: "Expected 'module' keyword"}]}
+{:error, [%Skein.Error{code: "E0001", message: "Expected 'module' keyword"}]}
 
 # Code generator error
 {:error, [%Skein.Error{message: "Core Erlang compilation failed: ..."}]}
@@ -123,12 +123,14 @@ The `fix_code` field is especially useful for LLM agents -- it provides the exac
 
 | Code | Severity | Description |
 |------|----------|-------------|
-| E0020 | error | Type mismatch (arity, operators, return types) |
+| E0020 | error | Type mismatch (including wrong argument counts for fn, stdlib, and effect calls) |
 | E0021 | warning | Non-exhaustive match |
-| E0022 | error | Invalid `!` on non-Result type |
-| E0023 | error | Invalid `?` on non-Result type |
-| E0024 | error | Unknown type name |
-| E0025 | error | Wrong constraint annotation |
+| E0022 | error | Invalid `!` on non-Result |
+| E0023 | error | Invalid `?` on non-Result (or enclosing fn doesn't return Result) |
+| E0024 | error / warning | Unknown type name (error); non-exhaustive match on an enum, missing variant patterns (warning) |
+| E0025 | error | Constraint annotation on wrong type |
+| E0026 | error | Invalid named argument (unknown/duplicate name, positional after named, callee without named-argument support) |
+| E0027 | error | Invalid guard expression (guards allow literals, bindings, field access, comparisons, boolean operators, and `+`/`-`/`*` arithmetic) |
 
 ### Agent Errors
 
@@ -137,9 +139,18 @@ The `fix_code` field is especially useful for LLM agents -- it provides the exac
 | E0030 | error | Invalid phase transition |
 | E0031 | warning | Unreachable phase |
 | E0032 | error | Phase handler missing |
-| E0033 | error | `transition()` called outside agent handler |
-| E0034 | error | `suspend()` called outside agent handler |
-| E0035 | error | `idempotent()` called outside handler body |
+| E0033 | error | `transition()` outside an agent, or in an agent that declares no `Phase` enum |
+| E0034 | error | `suspend()` outside agent handlers |
+| E0035 | error | `idempotent()` outside handler bodies |
+| E0036 | error | `stop()` outside agent handlers |
+
+### Supervisor Errors
+
+| Code | Severity | Description |
+|------|----------|-------------|
+| E0040 | error | Invalid supervisor strategy |
+| E0041 | error | Invalid `max_restarts` value |
+| E0042 | warning | Supervisor has no children |
 
 ### Warnings
 
@@ -147,5 +158,9 @@ The `fix_code` field is especially useful for LLM agents -- it provides the exac
 |------|----------|-------------|
 | W0001 | warning | Unused binding |
 | W0002 | warning | Unused capability |
-| W0003 | warning | Unreachable code after `stop()` or `suspend()` |
+| W0003 | warning | Unreachable code after `stop()` |
 | W0004 | warning | Enum match covers only specific values of a variant (add a binding arm or wildcard) |
+
+### Reserved Codes
+
+E0003 (invalid number literal) and E0013 (capability parameter mismatch) are reserved: the codes are allocated and documented, but no compiler path constructs them yet. They keep their meaning when first emitted — error codes are append-only.
