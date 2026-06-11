@@ -18,7 +18,7 @@
   {
     "title": "v1.1: Hardening & Language",
     "previous_titles": ["Post-MVP 1: Hardening & Language"],
-    "description": "Post-1.0 hardening continues: llm.rerank for RAG (#145, unblocked by the embeddings backend #146) and code-action phase 2 spans + edit_kind on Skein.Error (#150). The bugs and the guard/embeddings work originally scoped here moved into the v1.0.0 Release milestone."
+    "description": "Post-1.0 hardening continues: llm.rerank for RAG (#145, unblocked by the embeddings backend #146), code-action phase 2 spans + edit_kind on Skein.Error (#150), and the Bedrock backend follow-ups from #173 — AWS credential-chain resolution (#179), real converse-stream token streaming (#178), and ARN-form model IDs (#180). The bugs and the guard/embeddings work originally scoped here moved into the v1.0.0 Release milestone."
   },
   {
     "title": "v1.2: Interop & Agent Workflows",
