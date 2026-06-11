@@ -2285,7 +2285,7 @@ defmodule Skein.CodeGen.CoreErlang do
           :cerl.abstract(text)
 
         {:interpolation, interp_token} ->
-          generate_interpolation(interp_token, scope)
+          interpolation_to_binary(generate_interpolation(interp_token, scope))
       end)
 
     iolist = :cerl.make_list(parts)
@@ -2474,6 +2474,58 @@ defmodule Skein.CodeGen.CoreErlang do
   # ------------------------------------------------------------------
   # Interpolation
   # ------------------------------------------------------------------
+
+  # Interpolated expressions reach codegen without a static type (scope maps
+  # names to Core Erlang vars only), so the to-string coercion dispatches on
+  # the runtime type: binaries pass through; Int/Float/Bool render their
+  # canonical text forms (Float via :short, matching Stdlib Float.to_string/1).
+  defp interpolation_to_binary(value_expr) do
+    var = :cerl.c_var(gen_var())
+
+    type_check = fn predicate ->
+      :cerl.c_call(:cerl.c_atom(:erlang), :cerl.c_atom(predicate), [var])
+    end
+
+    as_int =
+      :cerl.c_call(:cerl.c_atom(:erlang), :cerl.c_atom(:integer_to_binary), [var])
+
+    as_float =
+      :cerl.c_call(
+        :cerl.c_atom(:erlang),
+        :cerl.c_atom(:float_to_binary),
+        [var, :cerl.abstract([:short])]
+      )
+
+    as_atom =
+      :cerl.c_call(
+        :cerl.c_atom(:erlang),
+        :cerl.c_atom(:atom_to_binary),
+        [var, :cerl.c_atom(:utf8)]
+      )
+
+    unsupported =
+      :cerl.c_call(
+        :cerl.c_atom(:erlang),
+        :cerl.c_atom(:error),
+        [:cerl.c_tuple([:cerl.c_atom(:unsupported_interpolation), var])]
+      )
+
+    coerced =
+      [
+        {:is_binary, var},
+        {:is_integer, as_int},
+        {:is_float, as_float},
+        {:is_atom, as_atom}
+      ]
+      |> List.foldr(unsupported, fn {predicate, result}, fallback ->
+        :cerl.c_case(type_check.(predicate), [
+          :cerl.c_clause([:cerl.c_atom(true)], result),
+          :cerl.c_clause([:cerl.c_atom(false)], fallback)
+        ])
+      end)
+
+    :cerl.c_let([var], value_expr, coerced)
+  end
 
   defp generate_interpolation({:ident, _, name}, scope) do
     case Map.get(scope, name) do
