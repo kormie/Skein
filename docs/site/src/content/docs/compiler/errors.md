@@ -102,6 +102,7 @@ All error codes are aligned with the language specification. Agents can rely on 
 | E0013 | reserved | Capability parameter mismatch |
 | E0014 | error | Tool name not declared |
 | E0015 | error | Duplicate tool short name |
+| E0017 | error | Duplicate scoped capability declaration (`memory.kv`, `event.log`, `process.spawn`, `timer` allow one per module or agent) |
 
 Example:
 

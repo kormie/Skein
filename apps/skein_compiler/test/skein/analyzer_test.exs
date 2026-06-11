@@ -2549,6 +2549,170 @@ defmodule Skein.AnalyzerTest do
   end
 
   # ------------------------------------------------------------------
+  # E0017: duplicate scoped capability declarations
+  # ------------------------------------------------------------------
+
+  describe "E0017: duplicate scoped capability declarations" do
+    test "two event.log capabilities with different labels produce E0017" do
+      errors =
+        analyze_errors("""
+        module M {
+          capability event.log("audit")
+          capability event.log("metrics")
+        }
+        """)
+
+      assert Enum.any?(errors, &(&1.code == "E0017"))
+      error = Enum.find(errors, &(&1.code == "E0017"))
+      assert error.message =~ "event.log"
+      assert error.message =~ "audit"
+      assert error.message =~ "metrics"
+      assert error.severity == :error
+      assert error.fix_hint != nil
+      assert error.fix_code != nil
+    end
+
+    test "two process.spawn capabilities produce E0017" do
+      errors =
+        analyze_errors("""
+        module M {
+          capability process.spawn("workers")
+          capability process.spawn("reports")
+        }
+        """)
+
+      assert Enum.any?(errors, &(&1.code == "E0017"))
+    end
+
+    test "two timer capabilities produce E0017" do
+      errors =
+        analyze_errors("""
+        module M {
+          capability timer("maintenance")
+          capability timer("billing")
+        }
+        """)
+
+      assert Enum.any?(errors, &(&1.code == "E0017"))
+    end
+
+    test "two memory.kv capabilities produce E0017" do
+      errors =
+        analyze_errors("""
+        module M {
+          capability memory.kv("sessions")
+          capability memory.kv("cache")
+        }
+        """)
+
+      assert Enum.any?(errors, &(&1.code == "E0017"))
+    end
+
+    test "identical duplicate declarations also produce E0017" do
+      errors =
+        analyze_errors("""
+        module M {
+          capability timer("maintenance")
+          capability timer("maintenance")
+        }
+        """)
+
+      assert Enum.any?(errors, &(&1.code == "E0017"))
+    end
+
+    test "one declaration of each scoped kind is fine" do
+      errors =
+        analyze_errors("""
+        module M {
+          capability memory.kv("sessions")
+          capability event.log("audit")
+          capability process.spawn("workers")
+          capability timer("maintenance")
+        }
+        """)
+
+      refute Enum.any?(errors, &(&1.code == "E0017"))
+    end
+
+    test "repeated capabilities of other kinds do not produce E0017" do
+      errors =
+        analyze_errors("""
+        module M {
+          capability http.out("api.a.com")
+          capability http.out("api.b.com")
+          capability store.table("users")
+          capability store.table("orders")
+        }
+        """)
+
+      refute Enum.any?(errors, &(&1.code == "E0017"))
+    end
+
+    test "module and nested agent each declaring a label is not a duplicate" do
+      errors =
+        analyze_errors("""
+        module M {
+          capability event.log("audit")
+
+          agent A {
+            capability event.log("agent_events")
+
+            enum Phase {
+              Init -> [Done]
+              Done -> []
+            }
+
+            on start() -> {
+              transition(Phase.Init)
+            }
+
+            on phase(Phase.Init) -> {
+              transition(Phase.Done)
+            }
+
+            on phase(Phase.Done) -> {
+              stop()
+            }
+          }
+        }
+        """)
+
+      refute Enum.any?(errors, &(&1.code == "E0017"))
+    end
+
+    test "duplicates inside a nested agent produce E0017" do
+      errors =
+        analyze_errors("""
+        module M {
+          agent A {
+            capability timer("alpha")
+            capability timer("beta")
+
+            enum Phase {
+              Init -> [Done]
+              Done -> []
+            }
+
+            on start() -> {
+              transition(Phase.Init)
+            }
+
+            on phase(Phase.Init) -> {
+              transition(Phase.Done)
+            }
+
+            on phase(Phase.Done) -> {
+              stop()
+            }
+          }
+        }
+        """)
+
+      assert Enum.any?(errors, &(&1.code == "E0017"))
+    end
+  end
+
+  # ------------------------------------------------------------------
   # Supervisor validation
   # ------------------------------------------------------------------
 

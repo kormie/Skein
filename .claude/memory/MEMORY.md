@@ -16,6 +16,12 @@
 - Exhausted trace = error, never a fallback live call; e2e test proves record→JSON-roundtrip→replay identical with FailingBackend installed
 - Test export helper mirrors SQLite backend: drop `_key` (tuple, not JSON-encodable) before Jason round-trip
 
+## Capability-Parameter Surface Decision (issue #69 — 2026-06-11)
+- DECIDED (owner): Option B — "scoped capability labels" (spec §3.2): for memory.kv/event.log/process.spawn/timer the capability param names a scope label (namespace/stream/pool/group) the COMPILER threads into runtime calls; call sites unchanged (memory.kv was the existing precedent — codegen already extracts the first memory.kv namespace, core_erlang.ex ~1738)
+- New E0017: duplicate scoped-capability declaration per module/agent (`check_duplicate_scoped_capabilities` in analyzer, uses `own_capabilities` so module+nested-agent labels don't false-positive; agent's label overrides module's inside the agent); parameterless declaration = unscoped (presence-only)
+- Spec §6.11 "Background Work" now documents process.spawn/timer surface (was entirely absent from §6); E0013 remains documented-but-never-emitted
+- Enforcement (#57) still open: codegen label threading for process/timer/event.log + runtime exact-label checks + property tests
+
 ## Repo Hygiene / Issue Tracking (2026-06-10 audit session)
 - All 20 open issues map to ROADMAP items (roadmap links each issue inline; 19 items across 4 tiers); #78 tracks the post-MVP backlog
 - v0.1.5 field-testing wave (#101, #104–#109) triaged same day: #104 W0002/E0012 test-block gap, #105 assertion output, #106 git init, #107 local LLM backends, #108 LSP code actions, #109 MCP compile_check fidelity

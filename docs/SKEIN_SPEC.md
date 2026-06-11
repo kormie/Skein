@@ -162,6 +162,19 @@ named_arg   = lower_ident ":" expr
 identifier  = dotted_name
 ```
 
+**Scoped capability labels.** For `memory.kv`, `event.log`, `process.spawn`,
+and `timer`, the capability parameter names a *scope label* — a memory
+namespace, event stream, process pool, or timer group. Call sites never
+repeat the label: the compiler threads the declared label into every
+generated runtime call, where it is enforced and recorded on the trace
+span (the same model as `memory.kv`, which has always worked this way).
+Because the label comes from the declaration, at most one capability of
+each of these kinds may be declared per module or agent — a second
+declaration is a compile error (E0017). A nested agent's declaration
+overrides the enclosing module's for calls inside the agent. Declaring
+the capability with no parameter leaves the effect unscoped
+(presence-only enforcement).
+
 ### 3.3 Functions
 
 ```
@@ -614,9 +627,30 @@ trace.annotate(key: String, value: String) -> ()  -- add metadata to current spa
 event.log(name: String, data: T) -> ()            -- record structured user event
 ```
 
-`trace.annotate` requires no capability. `event.log` requires `capability event.log(...)`.
+`trace.annotate` requires no capability. `event.log` requires
+`capability event.log(...)` — the capability parameter names the stream
+the events are recorded to (a scoped capability label, §3.2); the call
+carries only the event name and data.
 
 Memory mutations (`memory.put`, `memory.delete`) automatically emit `:state_change` events, making memory state reconstructable from the event stream.
+
+### 6.11 Background Work
+
+```
+-- Requires: capability process.spawn(pool)
+process.spawn(task: String) -> ()        -- run a named supervised background task
+
+-- Requires: capability timer(group)
+timer.after(delay_ms: Int, task: String) -> String     -- one-shot; returns a timer ref
+timer.interval(every_ms: Int, task: String) -> String  -- repeating; returns a timer ref
+timer.cancel(ref: String) -> ()
+```
+
+The pool/group capability parameter is a scoped capability label (§3.2):
+the compiler threads it into each call and it appears on the trace span.
+Crashes in spawned tasks are isolated by the runtime supervisor and never
+take down the caller. Attaching a function body to a spawned task is
+Planned; today the task is a named no-op recorded in the trace.
 
 ---
 
@@ -650,6 +684,7 @@ All errors are JSON-serializable with this structure:
 | E0014 | Tool | Tool name not declared in `capability tool.use` params |
 | E0015 | Tool | Duplicate short tool name in `capability tool.use` params |
 | E0016 | Name | Cross-module function call (functions are module-private; expose a tool instead) |
+| E0017 | Capability | Duplicate scoped capability declaration (`memory.kv`, `event.log`, `process.spawn`, `timer` allow one per module or agent) |
 | E0020 | Type | Type mismatch |
 | E0021 | Type | Non-exhaustive match |
 | E0022 | Type | Invalid `!` on non-Result |
