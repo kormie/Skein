@@ -140,10 +140,13 @@ defmodule Skein.Runtime.Llm do
           {:ok, [float()]} | {:error, Error.t()}
   def embed(model, input, capabilities)
       when is_binary(model) and is_binary(input) and is_list(capabilities) do
-    Trace.with_recorded_span(%{kind: :llm, method: :embed, model: model}, fn ->
+    backend = resolve_backend()
+    span = Map.merge(%{kind: :llm, method: :embed, model: model}, backend_span_meta(backend))
+
+    Trace.with_recorded_span(span, fn ->
       case check_model_capability(model, capabilities) do
         :ok ->
-          case call_embed(resolve_backend(), model, input) do
+          case call_embed(backend, model, input) do
             {:ok, vector} = ok -> {ok, %{response: vector}}
             {:error, _} = error -> {error, %{}}
           end
