@@ -158,6 +158,78 @@ defmodule Skein.CLI.NewTest do
       assert message =~ "Usage"
     end
 
+    test "defaults the scaffolded llm backend to anthropic", %{tmp_dir: tmp} do
+      project_dir = Path.join(tmp, "default_backend_app")
+      {:ok, _} = CLI.new([project_dir])
+
+      toml = File.read!(Path.join(project_dir, "skein.toml"))
+      assert {:ok, parsed} = Skein.CLI.Config.parse(toml)
+      assert %{"backend" => "anthropic"} = Skein.CLI.Config.llm_profile(parsed, nil)
+    end
+
+    test "--backend openai_compatible scaffolds a local-server llm profile", %{tmp_dir: tmp} do
+      project_dir = Path.join(tmp, "local_backend_app")
+      {:ok, _} = CLI.new([project_dir, "--backend", "openai_compatible"])
+
+      toml = File.read!(Path.join(project_dir, "skein.toml"))
+      assert {:ok, parsed} = Skein.CLI.Config.parse(toml)
+      profile = Skein.CLI.Config.llm_profile(parsed, nil)
+
+      assert profile["backend"] == "openai_compatible"
+      # base_url is mandatory for this profile at runtime — the scaffold
+      # must produce a config that activates without editing
+      assert profile["base_url"] == "http://localhost:10240/v1"
+    end
+
+    test "--backend=test scaffolds the deterministic test backend", %{tmp_dir: tmp} do
+      project_dir = Path.join(tmp, "test_backend_app")
+      {:ok, _} = CLI.new([project_dir, "--backend=test"])
+
+      toml = File.read!(Path.join(project_dir, "skein.toml"))
+      assert {:ok, parsed} = Skein.CLI.Config.parse(toml)
+      assert %{"backend" => "test"} = Skein.CLI.Config.llm_profile(parsed, nil)
+    end
+
+    test "every scaffolded backend profile activates through apply_llm_profile", %{tmp_dir: tmp} do
+      previous = Skein.Runtime.Llm.get_backend()
+      on_exit(fn -> Skein.Runtime.Llm.set_backend(previous) end)
+
+      for backend <- ["anthropic", "openai_compatible", "test"] do
+        project_dir = Path.join(tmp, "activate_#{backend}")
+        {:ok, _} = CLI.new([project_dir, "--backend", backend])
+
+        assert {:ok, description} = Skein.CLI.Config.apply_llm_profile(project_dir, nil)
+        assert description =~ backend
+      end
+    end
+
+    test "flag order does not matter for --backend", %{tmp_dir: tmp} do
+      project_dir = Path.join(tmp, "flag_first_app")
+      {:ok, _} = CLI.new(["--backend", "test", project_dir])
+
+      toml = File.read!(Path.join(project_dir, "skein.toml"))
+      assert toml =~ ~s(backend = "test")
+    end
+
+    test "rejects unknown backends without creating the project", %{tmp_dir: tmp} do
+      project_dir = Path.join(tmp, "bad_backend_app")
+
+      assert {:error, message} = CLI.new([project_dir, "--backend", "bedrock"])
+      assert message =~ "Unknown llm backend 'bedrock'"
+      assert message =~ "anthropic"
+      assert message =~ "openai_compatible"
+      assert message =~ "test"
+      refute File.exists?(project_dir)
+    end
+
+    test "--backend without a value is a usage error", %{tmp_dir: tmp} do
+      project_dir = Path.join(tmp, "missing_value_app")
+
+      assert {:error, message} = CLI.new([project_dir, "--backend"])
+      assert message =~ "--backend"
+      refute File.exists?(project_dir)
+    end
+
     test "returns error when directory already exists", %{tmp_dir: tmp} do
       project_dir = Path.join(tmp, "existing")
       File.mkdir_p!(project_dir)
