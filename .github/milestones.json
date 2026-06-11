@@ -1,22 +1,28 @@
 [
   {
-    "title": "Alpha Release",
-    "description": "Gate for making the repo public and sharing with coworkers. Language surface is honest — named arguments (#56), agents nest in modules (#63), types usable from agents (#70), enum variant construction completeness (#96), capability checks cover test blocks (#104) — schedule handlers fire on their own (#71), agent events survive crashes (#72), every spec example compiles or is marked Planned (#77), the first-five-minutes DX holds up (assertion failures say why #105, skein new git-inits #106, zsh completion #101, MCP compile_check tells the truth #109), and releases/badges/versioned docs are automated for public consumption (#100)."
+    "title": "v0.1 Alpha Release",
+    "previous_titles": ["Alpha Release"],
+    "state": "closed",
+    "description": "Shipped across the v0.1.x releases. Gate for making the repo public and sharing with coworkers. Language surface is honest — named arguments (#56), agents nest in modules (#63), types usable from agents (#70), enum variant construction completeness (#96), capability checks cover test blocks (#104) — schedule handlers fire on their own (#71), agent events survive crashes (#72), every spec example compiles or is marked Planned (#77), the first-five-minutes DX holds up (assertion failures say why #105, skein new git-inits #106, zsh completion #101, MCP compile_check tells the truth #109), and releases/badges/versioned docs are automated for public consumption (#100)."
   },
   {
-    "title": "Beta Release",
-    "description": "Post-alpha hardening, informed by alpha feedback: replay backend injection (#73), the capability-parameter surface decision (#69) and parameter-scoped enforcement for process/timer/event.log (#57), process.spawn task bodies (#74), enum value-level exhaustiveness warnings (#76), local LLM backends for dev via OpenAI-compatible servers + skein.toml profiles (#107), and LSP code actions from fix_hint/fix_code (#108). Triaged alpha bug reports land here unless they block alpha itself."
+    "title": "v0.2 Beta Release",
+    "previous_titles": ["Beta Release"],
+    "state": "closed",
+    "description": "Shipped as v0.2.0. Post-alpha hardening, informed by alpha feedback: replay backend injection (#73), the capability-parameter surface decision (#69) and parameter-scoped enforcement for process/timer/event.log (#57), process.spawn task bodies (#74), enum value-level exhaustiveness warnings (#76), local LLM backends for dev via OpenAI-compatible servers + skein.toml profiles (#107), LSP code actions from fix_hint/fix_code (#108), and the Int string-interpolation fix (#114)."
   },
   {
     "title": "v1.0.0 Release",
-    "description": "The 1.0 gate: ship nothing broken, promise nothing unimplemented. Bugs — queue/topic handlers never subscribed in running services (#121), flaky memory property test in CI (#118), llm.json results crash on field access via string/atom key mismatch (#154); Int interpolation (#114) is already fixed and ships in v0.2.0. Language honesty — guard expressions in match arms (#147), an embeddings-capable LLM backend so llm.embed works for real (#146). Stability — spec freeze on every Planned annotation (#155), deprecated-surface removal incl. the EventLog facade (#156), and a written versioning/stability policy (#157). Post-MVP 2's additive features (FFI, approvals, trace viewer) land in 1.x, not here."
+    "description": "The 1.0 gate: ship nothing broken, promise nothing unimplemented. Bugs — queue/topic handlers never subscribed in running services (#121), flaky memory property test in CI (#118), llm.json results crash on field access via string/atom key mismatch (#154). Language honesty — guard expressions in match arms (#147), an embeddings-capable LLM backend so llm.embed works for real (#146), plus the Amazon Bedrock LLM backend (#173) and the VS Code .skein file icon (#162). Stability — spec freeze on every Planned annotation (#155), deprecated-surface removal incl. the EventLog facade (#156), and a written versioning/stability policy (#157). The v1.1/v1.2 additive features (FFI, approvals, trace viewer) land after 1.0, not here."
   },
   {
-    "title": "Post-MVP 1: Hardening & Language",
+    "title": "v1.1: Hardening & Language",
+    "previous_titles": ["Post-MVP 1: Hardening & Language"],
     "description": "Post-1.0 hardening continues: llm.rerank for RAG (#145, unblocked by the embeddings backend #146) and code-action phase 2 spans + edit_kind on Skein.Error (#150). The bugs and the guard/embeddings work originally scoped here moved into the v1.0.0 Release milestone."
   },
   {
-    "title": "Post-MVP 2: Interop & Agent Workflows",
+    "title": "v1.2: Interop & Agent Workflows",
+    "previous_titles": ["Post-MVP 2: Interop & Agent Workflows"],
     "description": "Bigger design efforts after the hardening wave: Erlang/Elixir FFI via extern (#141), human-in-the-loop approval workflows with suspend before sensitive tool calls (#144), the browser-based trace viewer (#143), and a terminal UI framework for an interactive CLI (#171)."
   },
   {

@@ -1,7 +1,8 @@
 # Skein Project Memory
 
 ## Project State (v1.0.0 push — 2026-06-11 post-Beta session)
-- Roadmap restructured on main: active gate is **v1.0.0 Release** milestone (release train v0.2.0 -> v0.3.0 -> rc -> 1.0); post-1.0 backlog keeps #145 #150 + Post-MVP 2/Future
+- Roadmap restructured on main: active gate is **v1.0.0 Release** milestone (release train v0.2.0 -> v0.3.0 -> rc -> 1.0); post-1.0 backlog keeps #145 #150 + v1.2/Future
+- Milestone cleanup (2026-06-11, pre-v0.3.0): renamed Alpha->**v0.1 Alpha Release**, Beta->**v0.2 Beta Release** (both `state: closed`), Post-MVP 1->**v1.1: Hardening & Language**, Post-MVP 2->**v1.2: Interop & Agent Workflows**; milestones.yml now syncs title (renames via `previous_titles`) and `state`; #114 moved Post-MVP 1 -> Beta (its fix shipped in v0.2.0)
 - Post-Beta session merged: #114 Int interpolation (PR #153), #121 queue/topic subscription (PR #158), #118 ETS ownership (PR #161), #147 match guards (PR #164)
 - **v1.0.0 milestone CLEARED in this session**: #154 (PR #165 schema-directed llm.json atomization), #146 (PR #166 embed span meta + stub e2e + Voyage docs), #156 (PR #168 EventLog facade deleted, LSP annotation completions aligned to spec 4.2), #157 (PR #169 docs/STABILITY.md), #155 (spec freeze — owner decisions recorded on the issue: timer bodies IMPLEMENTED, tuple destructuring + planned-testing block REMOVED from 1.0 spec)
 - Next: v1.0.0-rc per the roadmap release train (full docs/spec sweep), then rc soak; post-1.0 backlog starts at #145 (llm.rerank) and #150 (code actions phase 2)
@@ -26,7 +27,7 @@
 - **v0.2.0 RELEASED 2026-06-11** (PR #160 → auto-tag → binaries published) — packages the complete Beta milestone (7 issues, PRs #133–#139), repo hygiene (MIT license/CoC/security policy #131, one-line installer #132), and the #114 interpolation fix (#153). ALPHA shipped as v0.1.7 same day.
 - Current version: 0.2.0 in mix.exs; latest release v0.2.0; VS Code extension 0.1.4 (ships the `.skein` file icon, PR #163)
 - **v1.0.0 Release milestone is the active gate** (milestone number 6; defined in `.github/milestones.json` via PR #159; ROADMAP has "Path to v1.0.0" with release train v0.2.0 → v0.3.0 → v1.0.0-rc → v1.0.0). Gate status: bugs #114 ✓(#153) #121 ✓(#158) #118 ✓(#161) — open: #154 (llm.json string/atom key mismatch), #147 (guard expressions), #146 (embeddings backend), #155 (spec freeze on Planned annotations), #156 (deprecated-surface removal incl. EventLog facade), #157 (stability policy docs/STABILITY.md)
-- Post-1.0 backlog: Post-MVP 1 (#145 #150), Post-MVP 2 (#141 #143 #144), Future (#142 #148 #149); #78 tracks
+- Post-1.0 backlog: v1.1 (#145 #150), v1.2 (#141 #143 #144 #171), Future (#142 #148 #149); #78 tracks
 - Test counts: verify from CI job logs (last memorized 1,774 + 202 after #139; #153/#158/#161/#163 landed since)
 - Merge cadence: each PR squash-merged on green CI, branch reset onto main between PRs
 - Elixir 1.19.5, OTP 28, managed by mise
@@ -94,7 +95,7 @@
 - All 20 open issues map to ROADMAP items (roadmap links each issue inline; 19 items across 4 tiers); #78 tracks the post-MVP backlog
 - v0.1.5 field-testing wave (#101, #104–#109) triaged same day: #104 W0002/E0012 test-block gap, #105 assertion output, #106 git init, #107 local LLM backends, #108 LSP code actions, #109 MCP compile_check fidelity
 - PR #102 MERGED 2026-06-10 20:37 → #100 closed (first Alpha item done): auto-tag on green version-bump merges (release.yml via workflow_call into build.yml), README badges, per-release docs snapshots; PR-run concurrency cancels superseded runs, never main/release builds
-- Milestones-as-code: `.github/milestones.json` + `workflows/milestones.yml` (gh api, runs on push when the JSON changes; never closes/deletes). **Alpha Release** = public-repo gate (#56 #63 #70 #71 #72 #77 #96 #100 #101 #104 #105 #106 #109); **Beta Release** = #57 #69 #73 #74 #76 #107 #108
+- Milestones-as-code: `.github/milestones.json` + `workflows/milestones.yml` (gh api, runs on push — any branch — when the JSON/workflow changes; syncs title/description/state, renames via `previous_titles`, never deletes). **v0.1 Alpha Release** = public-repo gate (#56 #63 #70 #71 #72 #77 #96 #100 #101 #104 #105 #106 #109); **v0.2 Beta Release** = #57 #69 #73 #74 #76 #107 #108 #114
 - Issue forms in `.github/ISSUE_TEMPLATE/` (bug/feature/chore + config contact links) auto-label `type/*` + `status/triage`; triage flow + label glossary in CONTRIBUTING.md; PR template in `.github/pull_request_template.md`
 - PR #53 (stale Feb repo-hygiene PR with generic templates) superseded by the 2026-06-10 hygiene PR and closed
 - GitHub MCP has NO milestone create/list tools — the milestones.yml workflow is the only creation path; `issue_write` CAN assign an existing milestone by number (Alpha=1, Beta=2)

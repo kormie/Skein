@@ -55,20 +55,20 @@ Ship nothing broken, promise nothing unimplemented:
 
 ---
 
-## Post-MVP Backlog
+## Post-1.0 Backlog
 
 **Issue:** [#78](https://github.com/kormie/Skein/issues/78) (tracking)
 
 Everything below is post-1.0 (`.github/milestones.json`):
 
-### Milestone: Post-MVP 1 — Hardening & Language
+### Milestone: v1.1 — Hardening & Language
 
 Well-scoped gaps with no design unknowns (the bugs and guard/embeddings work originally here moved to the v1.0.0 milestone):
 
 - [#145](https://github.com/kormie/Skein/issues/145) — `llm.rerank` for RAG pipelines — M, depends on #146
 - [#150](https://github.com/kormie/Skein/issues/150) — Code-action phase 2: `Skein.Error` span + `edit_kind` so any exact fix applies generically (phase 1 per-code mapping shipped with #108) — L
 
-### Milestone: Post-MVP 2 — Interop & Agent Workflows
+### Milestone: v1.2 — Interop & Agent Workflows
 
 Bigger design efforts, after the hardening wave:
 

@@ -1,8 +1,9 @@
 name: Sync milestones
 
 # Milestones-as-code: .github/milestones.json is the source of truth.
-# Creates any listed milestone that doesn't exist and refreshes the
-# description of ones that do. Never closes or deletes milestones.
+# Creates any listed milestone that doesn't exist, refreshes the title,
+# description, and state of ones that do, and renames milestones whose
+# entry lists the old name in previous_titles. Never deletes milestones.
 on:
   push:
     paths:
@@ -20,7 +21,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Ensure milestones exist
+      - name: Sync milestones
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -29,12 +30,21 @@ jobs:
           jq -c '.[]' .github/milestones.json | while read -r wanted; do
             title=$(jq -r '.title' <<<"$wanted")
             desc=$(jq -r '.description' <<<"$wanted")
+            state=$(jq -r '.state // "open"' <<<"$wanted")
             number=$(jq -r --arg t "$title" '[.[] | select(.title == $t)][0].number // empty' <<<"$existing")
+            if [ -z "$number" ]; then
+              while IFS= read -r prev; do
+                [ -n "$number" ] && continue
+                number=$(jq -r --arg t "$prev" '[.[] | select(.title == $t)][0].number // empty' <<<"$existing")
+              done < <(jq -r '.previous_titles // [] | .[]' <<<"$wanted")
+            fi
             if [ -n "$number" ]; then
-              gh api -X PATCH "repos/${GITHUB_REPOSITORY}/milestones/${number}" -f description="$desc" >/dev/null
-              echo "updated milestone #${number}: ${title}"
+              gh api -X PATCH "repos/${GITHUB_REPOSITORY}/milestones/${number}" \
+                -f title="$title" -f description="$desc" -f state="$state" >/dev/null
+              echo "updated milestone #${number}: ${title} (${state})"
             else
-              created=$(gh api -X POST "repos/${GITHUB_REPOSITORY}/milestones" -f title="$title" -f description="$desc")
-              echo "created milestone #$(jq -r '.number' <<<"$created"): ${title}"
+              created=$(gh api -X POST "repos/${GITHUB_REPOSITORY}/milestones" \
+                -f title="$title" -f description="$desc" -f state="$state")
+              echo "created milestone #$(jq -r '.number' <<<"$created"): ${title} (${state})"
             fi
           done
