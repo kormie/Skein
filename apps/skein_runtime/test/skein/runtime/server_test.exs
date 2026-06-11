@@ -82,6 +82,149 @@ defmodule Skein.Runtime.ServerTest do
     end
   end
 
+  describe "queue and topic handler registration" do
+    test "starting a server subscribes its queue handlers" do
+      mod =
+        compile_module!("""
+        module ServerQueueReg {
+          capability http.in
+          capability queue.consume
+
+          handler http GET "/health" (req) -> {
+            respond.json(200, "ok")
+          }
+
+          handler queue "server-reg-jobs" (msg) -> {
+            respond.json(200, "ok")
+          }
+        }
+        """)
+
+      Skein.Runtime.Queue.reset_all()
+      port = unique_port()
+      {:ok, pid} = Server.start_link(module: mod, port: port)
+
+      assert "server-reg-jobs" in Skein.Runtime.Queue.list_queues()
+
+      Server.stop(pid)
+      Skein.Runtime.Queue.reset_all()
+    end
+
+    test "starting a server subscribes its topic handlers" do
+      mod =
+        compile_module!("""
+        module ServerTopicReg {
+          capability http.in
+          capability topic.consume("server-reg-events")
+
+          handler http GET "/health" (req) -> {
+            respond.json(200, "ok")
+          }
+
+          handler topic "server-reg-events" (msg) -> {
+            respond.json(200, "ok")
+          }
+        }
+        """)
+
+      Skein.Runtime.Topic.reset_all()
+      port = unique_port()
+      {:ok, pid} = Server.start_link(module: mod, port: port)
+
+      assert "server-reg-events" in Skein.Runtime.Topic.list_topics()
+
+      Server.stop(pid)
+      Skein.Runtime.Topic.reset_all()
+    end
+
+    test "queue.publish dispatches to a compiled handler in a running service" do
+      mod =
+        compile_module!("""
+        module ServerQueueDispatch {
+          capability http.in
+          capability queue.consume
+          capability memory.kv("server_dispatch_ns")
+
+          handler http GET "/health" (req) -> {
+            respond.json(200, "ok")
+          }
+
+          handler queue "server-dispatch-jobs" (msg) -> {
+            memory.put("seen", msg.ref)
+            respond.json(200, "ok")
+          }
+        }
+        """)
+
+      Skein.Runtime.Queue.reset_all()
+      port = unique_port()
+      {:ok, pid} = Server.start_link(module: mod, port: port)
+
+      Skein.Runtime.Queue.publish("server-dispatch-jobs", %{ref: "msg-1"})
+
+      caps = [%{kind: "memory.kv", params: ["server_dispatch_ns"]}]
+
+      await(fn ->
+        Skein.Runtime.Memory.get("server_dispatch_ns", "seen", caps) == {:ok, "msg-1"}
+      end)
+
+      Server.stop(pid)
+      Skein.Runtime.Queue.reset_all()
+    end
+
+    test "topic.publish dispatches to a compiled handler in a running service" do
+      mod =
+        compile_module!("""
+        module ServerTopicDispatch {
+          capability http.in
+          capability topic.consume("server-dispatch-events")
+          capability memory.kv("server_topic_dispatch_ns")
+
+          handler http GET "/health" (req) -> {
+            respond.json(200, "ok")
+          }
+
+          handler topic "server-dispatch-events" (msg) -> {
+            memory.put("seen", msg.ref)
+            respond.json(200, "ok")
+          }
+        }
+        """)
+
+      Skein.Runtime.Topic.reset_all()
+      port = unique_port()
+      {:ok, pid} = Server.start_link(module: mod, port: port)
+
+      Skein.Runtime.Topic.publish("server-dispatch-events", %{ref: "msg-2"}, [
+        %{kind: "topic.publish", params: ["server-dispatch-events"]}
+      ])
+
+      caps = [%{kind: "memory.kv", params: ["server_topic_dispatch_ns"]}]
+
+      await(fn ->
+        Skein.Runtime.Memory.get("server_topic_dispatch_ns", "seen", caps) == {:ok, "msg-2"}
+      end)
+
+      Server.stop(pid)
+      Skein.Runtime.Topic.reset_all()
+    end
+  end
+
+  # Poll until `fun` returns true; background dispatch is asynchronous.
+  defp await(fun, attempts \\ 50) do
+    cond do
+      fun.() ->
+        :ok
+
+      attempts == 0 ->
+        flunk("condition not met after polling")
+
+      true ->
+        Process.sleep(20)
+        await(fun, attempts - 1)
+    end
+  end
+
   describe "end-to-end: compile handlers + serve HTTP" do
     test "GET handler returns JSON response" do
       mod =
