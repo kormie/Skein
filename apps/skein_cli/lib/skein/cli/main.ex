@@ -261,7 +261,7 @@ defmodule Skein.CLI.Main do
 
     Options:
       new --backend <name>       LLM backend in skein.toml: anthropic (default),
-                                 openai_compatible, test
+                                 bedrock, openai_compatible, test
       new --no-agents            Skip generating AGENTS.md / CLAUDE.md
       new --no-git               Skip git init (a .gitignore is always written)
       build --output <dir>       Write .beam files to directory

@@ -190,11 +190,27 @@ defmodule Skein.CLI.NewTest do
       assert %{"backend" => "test"} = Skein.CLI.Config.llm_profile(parsed, nil)
     end
 
+    test "--backend bedrock scaffolds an Amazon Bedrock llm profile", %{tmp_dir: tmp} do
+      project_dir = Path.join(tmp, "bedrock_backend_app")
+      {:ok, _} = CLI.new([project_dir, "--backend", "bedrock"])
+
+      toml = File.read!(Path.join(project_dir, "skein.toml"))
+      assert {:ok, parsed} = Skein.CLI.Config.parse(toml)
+      profile = Skein.CLI.Config.llm_profile(parsed, nil)
+
+      assert profile["backend"] == "bedrock"
+      # region is mandatory for this profile at runtime — the scaffold
+      # must produce a config that activates without editing
+      assert is_binary(profile["region"]) and profile["region"] != ""
+      # the inference-profile mapping is the part users edit — show it
+      assert toml =~ "model_map"
+    end
+
     test "every scaffolded backend profile activates through apply_llm_profile", %{tmp_dir: tmp} do
       previous = Skein.Runtime.Llm.get_backend()
       on_exit(fn -> Skein.Runtime.Llm.set_backend(previous) end)
 
-      for backend <- ["anthropic", "openai_compatible", "test"] do
+      for backend <- ["anthropic", "bedrock", "openai_compatible", "test"] do
         project_dir = Path.join(tmp, "activate_#{backend}")
         {:ok, _} = CLI.new([project_dir, "--backend", backend])
 
@@ -214,9 +230,10 @@ defmodule Skein.CLI.NewTest do
     test "rejects unknown backends without creating the project", %{tmp_dir: tmp} do
       project_dir = Path.join(tmp, "bad_backend_app")
 
-      assert {:error, message} = CLI.new([project_dir, "--backend", "bedrock"])
-      assert message =~ "Unknown llm backend 'bedrock'"
+      assert {:error, message} = CLI.new([project_dir, "--backend", "vertex"])
+      assert message =~ "Unknown llm backend 'vertex'"
       assert message =~ "anthropic"
+      assert message =~ "bedrock"
       assert message =~ "openai_compatible"
       assert message =~ "test"
       refute File.exists?(project_dir)

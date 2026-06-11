@@ -165,6 +165,73 @@ defmodule Skein.CLI.ConfigTest do
 
       assert {:error, message} = Config.apply_llm_profile(tmp, nil)
       assert message =~ "mystery"
+      assert message =~ "bedrock"
+    end
+
+    test "bedrock selects the tuple backend with region and model_map", %{tmp_dir: tmp} do
+      write_toml(tmp, """
+      [llm]
+      backend = "bedrock"
+      region = "us-west-2"
+      model_map = { "claude-sonnet-4-6" = "global.anthropic.claude-sonnet-4-6" }
+      """)
+
+      assert {:ok, desc} = Config.apply_llm_profile(tmp, nil)
+      assert desc =~ "bedrock"
+      assert desc =~ "us-west-2"
+
+      assert {Skein.Runtime.Llm.BedrockBackend, config} = Llm.get_backend()
+      assert config.region == "us-west-2"
+      assert config.model_map == %{"claude-sonnet-4-6" => "global.anthropic.claude-sonnet-4-6"}
+    end
+
+    test "bedrock region falls back to AWS_REGION in the environment", %{tmp_dir: tmp} do
+      previous = System.get_env("AWS_REGION")
+
+      on_exit(fn ->
+        if previous,
+          do: System.put_env("AWS_REGION", previous),
+          else: System.delete_env("AWS_REGION")
+      end)
+
+      System.put_env("AWS_REGION", "eu-central-1")
+      write_toml(tmp, "[llm]\nbackend = \"bedrock\"\n")
+
+      assert {:ok, desc} = Config.apply_llm_profile(tmp, nil)
+      assert desc =~ "eu-central-1"
+
+      assert {Skein.Runtime.Llm.BedrockBackend, config} = Llm.get_backend()
+      assert config.region == "eu-central-1"
+    end
+
+    test "bedrock without a region anywhere is a structured error", %{tmp_dir: tmp} do
+      previous = System.get_env("AWS_REGION")
+
+      on_exit(fn ->
+        if previous,
+          do: System.put_env("AWS_REGION", previous),
+          else: System.delete_env("AWS_REGION")
+      end)
+
+      System.delete_env("AWS_REGION")
+      write_toml(tmp, "[llm]\nbackend = \"bedrock\"\n")
+
+      assert {:error, message} = Config.apply_llm_profile(tmp, nil)
+      assert message =~ "region"
+    end
+
+    test "bedrock base_url override (VPC endpoint) is passed through", %{tmp_dir: tmp} do
+      write_toml(tmp, """
+      [llm]
+      backend = "bedrock"
+      region = "us-west-2"
+      base_url = "https://vpce-123.bedrock-runtime.us-west-2.vpce.amazonaws.com"
+      """)
+
+      assert {:ok, _desc} = Config.apply_llm_profile(tmp, nil)
+
+      assert {Skein.Runtime.Llm.BedrockBackend, config} = Llm.get_backend()
+      assert config.base_url == "https://vpce-123.bedrock-runtime.us-west-2.vpce.amazonaws.com"
     end
   end
 

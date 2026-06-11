@@ -56,7 +56,7 @@ defmodule Skein.CLI do
 
   # The llm backends skein.toml accepts — keep in sync with the
   # Skein.CLI.Config.activate/1 clauses.
-  @new_backends ~w(anthropic openai_compatible test)
+  @new_backends ~w(anthropic bedrock openai_compatible test)
 
   @doc """
   Scaffolds a new Skein project at the given directory path.
@@ -122,7 +122,7 @@ defmodule Skein.CLI do
   defp parse_new_backend(backend, _rest, _positional, _opts) do
     {:error,
      "Unknown llm backend '#{backend}' for --backend " <>
-       "(expected \"anthropic\", \"openai_compatible\", or \"test\")"}
+       "(expected \"anthropic\", \"bedrock\", \"openai_compatible\", or \"test\")"}
   end
 
   defp do_new(project_dir, %{agents: write_agents_md?, git: git_init?, backend: backend}) do
@@ -267,7 +267,7 @@ defmodule Skein.CLI do
           ;;
         new)
           _arguments \\
-            '--backend[LLM backend for skein.toml (default anthropic)]:backend:(anthropic openai_compatible test)' \\
+            '--backend[LLM backend for skein.toml (default anthropic)]:backend:(anthropic bedrock openai_compatible test)' \\
             '--no-agents[Skip generating AGENTS.md / CLAUDE.md]' \\
             '--no-git[Skip git init (a .gitignore is always written)]' \\
             '*:project directory:_directories'
@@ -349,6 +349,22 @@ defmodule Skein.CLI do
     # backend = "openai_compatible"
     # base_url = "http://localhost:10240/v1"
     # model_map = { "claude-opus-4-8" = "your/local-model" }
+    """
+  end
+
+  defp llm_profile_toml("bedrock") do
+    """
+    # Amazon Bedrock (Converse API). Requests are SigV4-signed with
+    # credentials from the standard AWS environment variables
+    # (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_SESSION_TOKEN) —
+    # for profile/SSO setups, export them first:
+    #   aws configure export-credentials --format env --profile <name>
+    [llm]
+    backend = "bedrock"
+    region = "us-east-1"
+    # Capabilities keep the canonical model name; map it to the Bedrock
+    # model ID or inference profile that serves it:
+    # model_map = { "claude-sonnet-4-6" = "global.anthropic.claude-sonnet-4-6" }
     """
   end
 
