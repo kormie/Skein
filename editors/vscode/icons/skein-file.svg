@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-24 0 560 560" fill="none">
+  <defs>
+    <linearGradient id="skein-gradient" x1="0.15" y1="0" x2="0.85" y2="1">
+      <stop offset="0%" stop-color="#7c3aed"/>
+      <stop offset="35%" stop-color="#4338ca"/>
+      <stop offset="65%" stop-color="#0891b2"/>
+      <stop offset="100%" stop-color="#2dd4bf"/>
+    </linearGradient>
+  </defs>
+  <path
+    d="M256 48
+       C 230 48, 88 220, 88 340
+       C 88 430, 162 500, 256 500
+       C 320 500, 370 472, 398 428
+       C 418 396, 424 360, 418 330
+       C 410 296, 386 278, 358 278
+       C 330 278, 318 302, 330 332
+       C 340 356, 370 370, 406 366"
+    stroke="url(#skein-gradient)"
+    stroke-width="56"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    fill="none"
+  />
+</svg>
