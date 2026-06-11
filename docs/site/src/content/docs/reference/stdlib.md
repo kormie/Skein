@@ -173,14 +173,14 @@ Values are `Some(value)` or `None`. Functions like `List.find` and `Map.get` ret
 
 ```skein
 let x = Some(42)
-Option.unwrap(x)      -- 42 (raises on None)
+Option.unwrap(x, 0)   -- 42 (returns 0 on None)
 Option.map(x, fn(n) { n + 1 })  -- Some(43)
 Option.is_some(x)     -- true
 ```
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `unwrap` | `(Option[T]) -> T` | Extract value, raises on `None` |
+| `unwrap` | `(Option[T], T) -> T` | Extract value, or the default on `None` |
 | `map` | `(Option[T], (T) -> U) -> Option[U]` | Transform inner value if present |
 | `flat_map` | `(Option[T], (T) -> Option[U]) -> Option[U]` | Chain optional operations |
 | `is_some` | `(Option[T]) -> Bool` | True if `Some` |
@@ -194,14 +194,14 @@ Values are `Ok(value)` or `Err(error)`. Effect calls and parsing functions retur
 
 ```skein
 let r = Ok(42)
-Result.unwrap(r)          -- 42 (raises on Err)
+Result.unwrap(r, 0)       -- 42 (returns 0 on Err)
 Result.map(r, fn(n) { n + 1 })  -- Ok(43)
 Result.is_ok(r)           -- true
 ```
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `unwrap` | `(Result[T,E]) -> T` | Extract value, raises on `Err` |
+| `unwrap` | `(Result[T,E], T) -> T` | Extract value, or the default on `Err` |
 | `map` | `(Result[T,E], (T) -> U) -> Result[U,E]` | Transform success value |
 | `map_err` | `(Result[T,E], (E) -> F) -> Result[T,F]` | Transform error value |
 | `flat_map` | `(Result[T,E], (T) -> Result[U,E]) -> Result[U,E]` | Chain fallible operations |

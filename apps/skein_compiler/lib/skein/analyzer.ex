@@ -221,14 +221,14 @@ defmodule Skein.Analyzer do
       "to_list" => %{params: [{:set, :unknown}], return_type: {:list, :unknown}}
     },
     "Option" => %{
-      "unwrap" => %{params: [{:option, :unknown}], return_type: :unknown},
+      "unwrap" => %{params: [{:option, :unknown}, :unknown], return_type: :unknown},
       "map" => %{params: [{:option, :unknown}, :unknown], return_type: {:option, :unknown}},
       "flat_map" => %{params: [{:option, :unknown}, :unknown], return_type: {:option, :unknown}},
       "is_some" => %{params: [{:option, :unknown}], return_type: :bool},
       "is_none" => %{params: [{:option, :unknown}], return_type: :bool}
     },
     "Result" => %{
-      "unwrap" => %{params: [{:result, :unknown, :unknown}], return_type: :unknown},
+      "unwrap" => %{params: [{:result, :unknown, :unknown}, :unknown], return_type: :unknown},
       "map" => %{
         params: [{:result, :unknown, :unknown}, :unknown],
         return_type: {:result, :unknown, :unknown}
@@ -257,7 +257,7 @@ defmodule Skein.Analyzer do
       "to_string" => %{params: [:instant], return_type: :string},
       "add" => %{params: [:instant, :duration], return_type: :instant},
       "subtract" => %{params: [:instant, :duration], return_type: :instant},
-      "diff" => %{params: [:instant, :instant], return_type: :int},
+      "diff" => %{params: [:instant, :instant], return_type: :duration},
       "is_before" => %{params: [:instant, :instant], return_type: :bool},
       "is_after" => %{params: [:instant, :instant], return_type: :bool}
     },
@@ -543,7 +543,7 @@ defmodule Skein.Analyzer do
     {"topic", "publish"} => ["name", "data"],
     {"queue", "publish"} => ["name", "data"],
     {"trace", "annotate"} => ["key", "value"],
-    {"process", "spawn"} => ["name", "work"],
+    {"process", "spawn"} => ["task", "work"],
     {"event", "log"} => ["name", "data"],
     {"timer", "after"} => ["delay_ms", "task", "work"],
     {"timer", "interval"} => ["every_ms", "task", "work"],

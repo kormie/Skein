@@ -37,12 +37,12 @@ defmodule Skein.StdlibTypesTest do
   end
 
   describe "Option.unwrap" do
-    test "unwraps Some value" do
+    test "unwraps Some value, ignoring the default" do
       mod =
         compile!("""
         module OptUnwrap {
           fn get(o: Option[Int]) -> Int {
-            Option.unwrap(o)
+            Option.unwrap(o, 0)
           }
         }
         """)
@@ -50,17 +50,32 @@ defmodule Skein.StdlibTypesTest do
       assert mod.get({:some, 42}) == 42
     end
 
-    test "unwrap on None raises" do
+    test "unwrap on None returns the default" do
       mod =
         compile!("""
-        module OptUnwrapFail {
+        module OptUnwrapDefault {
           fn get(o: Option[Int]) -> Int {
-            Option.unwrap(o)
+            Option.unwrap(o, 7)
           }
         }
         """)
 
-      assert_raise RuntimeError, fn -> mod.get(:none) end
+      assert mod.get(:none) == 7
+    end
+
+    test "1-arity unwrap is a structured arity error (spec §5.7 takes a default)" do
+      assert {:error, errors} =
+               Skein.Compiler.compile_string("""
+               module OptUnwrapOld {
+                 fn get(o: Option[Int]) -> Int {
+                   Option.unwrap(o)
+                 }
+               }
+               """)
+
+      assert Enum.any?(errors, fn e ->
+               e.code == "E0020" and e.message =~ "Option.unwrap"
+             end)
     end
   end
 
@@ -107,12 +122,12 @@ defmodule Skein.StdlibTypesTest do
   end
 
   describe "Result.unwrap" do
-    test "unwraps Ok value" do
+    test "unwraps Ok value, ignoring the default" do
       mod =
         compile!("""
         module ResUnwrap {
           fn get(r: Result[Int, String]) -> Int {
-            Result.unwrap(r)
+            Result.unwrap(r, 0)
           }
         }
         """)
@@ -120,17 +135,32 @@ defmodule Skein.StdlibTypesTest do
       assert mod.get({:ok, 42}) == 42
     end
 
-    test "unwrap on Err raises" do
+    test "unwrap on Err returns the default" do
       mod =
         compile!("""
-        module ResUnwrapFail {
+        module ResUnwrapDefault {
           fn get(r: Result[Int, String]) -> Int {
-            Result.unwrap(r)
+            Result.unwrap(r, 7)
           }
         }
         """)
 
-      assert_raise RuntimeError, fn -> mod.get({:error, "bad"}) end
+      assert mod.get({:error, "bad"}) == 7
+    end
+
+    test "1-arity unwrap is a structured arity error (spec §5.8 takes a default)" do
+      assert {:error, errors} =
+               Skein.Compiler.compile_string("""
+               module ResUnwrapOld {
+                 fn get(r: Result[Int, String]) -> Int {
+                   Result.unwrap(r)
+                 }
+               }
+               """)
+
+      assert Enum.any?(errors, fn e ->
+               e.code == "E0020" and e.message =~ "Result.unwrap"
+             end)
     end
   end
 
@@ -248,17 +278,35 @@ defmodule Skein.StdlibTypesTest do
   end
 
   describe "Instant.diff" do
-    test "returns difference in seconds" do
+    test "returns a Duration (spec §5.10) that composes with Duration fns" do
       mod =
         compile!("""
         module InstantDiff {
-          fn delta(a: Instant, b: Instant) -> Int {
+          fn delta(a: Instant, b: Instant) -> Duration {
             Instant.diff(a, b)
+          }
+
+          fn delta_seconds(a: Instant, b: Instant) -> Int {
+            Duration.to_seconds(Instant.diff(a, b))
           }
         }
         """)
 
       assert mod.delta("2026-01-01T01:00:00Z", "2026-01-01T00:00:00Z") == 3600
+      assert mod.delta_seconds("2026-01-01T01:00:00Z", "2026-01-01T00:00:00Z") == 3600
+    end
+
+    test "declaring the result as Int is a type error" do
+      assert {:error, errors} =
+               Skein.Compiler.compile_string("""
+               module InstantDiffInt {
+                 fn delta(a: Instant, b: Instant) -> Int {
+                   Instant.diff(a, b)
+                 }
+               }
+               """)
+
+      assert Enum.any?(errors, &(&1.code == "E0020"))
     end
   end
 
@@ -418,7 +466,7 @@ defmodule Skein.StdlibTypesTest do
             Result.ok(v)
           }
           fn unwrap(r: Result[Int, String]) -> Int {
-            Result.unwrap(r)
+            Result.unwrap(r, 0)
           }
         }
         """)

@@ -9,15 +9,15 @@ defmodule Skein.Runtime.Stdlib.Option do
   ## Examples (Skein)
 
       let x = Some(42)
-      Option.unwrap(x)                    -- 42
+      Option.unwrap(x, 0)                 -- 42
       Option.map(x, fn(n) { n + 1 })     -- Some(43)
       Option.is_some(x)                   -- true
   """
 
-  @doc "Extracts the value from `Some`. Raises if called on `None`."
-  @spec unwrap({:some, any()} | :none) :: any()
-  def unwrap({:some, value}), do: value
-  def unwrap(:none), do: raise("unwrap called on None")
+  @doc "Extracts the value from `Some`, or returns `default` for `None`."
+  @spec unwrap({:some, any()} | :none, any()) :: any()
+  def unwrap({:some, value}, _default), do: value
+  def unwrap(:none, default), do: default
 
   @doc "Applies `func` to the inner value if `Some`, passes `None` through."
   @spec map({:some, any()} | :none, (any() -> any())) :: {:some, any()} | :none
