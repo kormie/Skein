@@ -163,6 +163,27 @@ fn is_active(s: Status) -> Bool {
 
 Variant patterns compile to Core Erlang tuple patterns. For example, `Result.Ok(v)` becomes a pattern matching the tuple `{:ok, V}`.
 
+### Guards
+
+A match arm may carry a guard: the arm is selected only when the pattern
+matches *and* the guard evaluates to `true`. A failing guard falls through to
+the later arms.
+
+```skein
+match order.total {
+  t if t > 1000 -> "review"
+  t if t > 0    -> "approve"
+  _             -> "reject"
+}
+```
+
+Guards see the pattern's bindings and must be `Bool`. They are restricted to a
+guard-safe subset — literals, bindings, field access, comparisons, boolean
+operators, and `+`/`-`/`*` arithmetic. Calls, effects, division, and string
+interpolation in a guard are compile errors (`E0027`); compute those values in
+a `let` before the match. A guarded arm does not count toward exhaustiveness,
+and a `match` where every arm's guard fails raises `case_clause` at runtime.
+
 See [Types > Enum Variant Matching](/Skein/language/types/#enum-variant-matching) for details on exhaustiveness checking.
 
 ## Function Calls

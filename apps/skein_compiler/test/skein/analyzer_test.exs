@@ -4249,4 +4249,207 @@ defmodule Skein.AnalyzerTest do
       assert decoded["fix_code"] =~ "tool.call"
     end
   end
+
+  # ------------------------------------------------------------------
+  # Match guards (#147)
+  # ------------------------------------------------------------------
+
+  describe "match guards" do
+    test "a valid comparison guard analyzes clean" do
+      assert {:ok, _} =
+               analyze("""
+               module M {
+                 fn f(n: Int) -> String {
+                   match n {
+                     x if x > 0 && x <= 100 -> "in range"
+                     _ -> "out of range"
+                   }
+                 }
+               }
+               """)
+    end
+
+    test "guard referencing pattern bindings from a variant analyzes clean" do
+      assert {:ok, _} =
+               analyze("""
+               module M {
+                 enum Size {
+                   Small
+                   Big(n: Int)
+                 }
+
+                 fn f(s: Size) -> String {
+                   match s {
+                     Big(n) if n > 100 -> "huge"
+                     Big(n) -> "big"
+                     Small -> "small"
+                   }
+                 }
+               }
+               """)
+    end
+
+    test "effect call in a guard is E0027" do
+      errors =
+        analyze_errors("""
+        module M {
+          capability memory.kv("cache")
+
+          fn f(n: Int) -> String {
+            match n {
+              x if memory.get!("flag") -> "flagged"
+              _ -> "plain"
+            }
+          }
+        }
+        """)
+
+      assert Enum.any?(errors, &(&1.code == "E0027"))
+      e = Enum.find(errors, &(&1.code == "E0027"))
+      assert e.fix_hint != nil
+    end
+
+    test "function call in a guard is E0027" do
+      errors =
+        analyze_errors("""
+        module M {
+          fn helper(n: Int) -> Bool {
+            n > 0
+          }
+
+          fn f(n: Int) -> String {
+            match n {
+              x if helper(x) -> "yes"
+              _ -> "no"
+            }
+          }
+        }
+        """)
+
+      assert Enum.any?(errors, &(&1.code == "E0027"))
+    end
+
+    test "interpolated string in a guard is E0027" do
+      errors =
+        analyze_errors("""
+        module M {
+          fn f(n: Int) -> String {
+            match n {
+              x if "${x}" == "1" -> "one"
+              _ -> "other"
+            }
+          }
+        }
+        """)
+
+      assert Enum.any?(errors, &(&1.code == "E0027"))
+    end
+
+    test "division in a guard is E0027" do
+      errors =
+        analyze_errors("""
+        module M {
+          fn f(n: Int) -> String {
+            match n {
+              x if x / 2 > 1 -> "big"
+              _ -> "small"
+            }
+          }
+        }
+        """)
+
+      assert Enum.any?(errors, &(&1.code == "E0027"))
+    end
+
+    test "non-Bool guard is E0020" do
+      errors =
+        analyze_errors("""
+        module M {
+          fn f(n: Int) -> String {
+            match n {
+              x if x + 1 -> "weird"
+              _ -> "other"
+            }
+          }
+        }
+        """)
+
+      assert Enum.any?(errors, &(&1.code == "E0020"))
+    end
+
+    test "a guarded catch-all does not satisfy bool exhaustiveness" do
+      errors =
+        analyze_errors("""
+        module M {
+          fn f(b: Bool, n: Int) -> String {
+            match b {
+              true -> "yes"
+              x if n > 0 -> "depends"
+            }
+          }
+        }
+        """)
+
+      assert Enum.any?(errors, &(&1.code == "E0021"))
+    end
+
+    test "a guarded variant arm does not count as covering its variant" do
+      errors =
+        analyze_errors("""
+        module M {
+          enum Status {
+            Active
+            Failed(code: Int)
+          }
+
+          fn f(s: Status) -> String {
+            match s {
+              Active -> "active"
+              Failed(code) if code > 500 -> "server error"
+            }
+          }
+        }
+        """)
+
+      assert Enum.any?(errors, fn e -> e.code == "E0024" and e.message =~ "Failed" end)
+    end
+
+    test "an unguarded arm alongside a guarded one keeps coverage complete" do
+      errors =
+        analyze_errors("""
+        module M {
+          enum Status {
+            Active
+            Failed(code: Int)
+          }
+
+          fn f(s: Status) -> String {
+            match s {
+              Active -> "active"
+              Failed(code) if code > 500 -> "server error"
+              Failed(code) -> "failed"
+            }
+          }
+        }
+        """)
+
+      refute Enum.any?(errors, &(&1.code in ["E0021", "E0024"]))
+    end
+
+    test "a binding used only in a guard is not W0001 unused" do
+      errors =
+        analyze_errors("""
+        module M {
+          fn f(n: Int, threshold: Int) -> String {
+            match n {
+              x if x > threshold -> "above"
+              _ -> "below"
+            }
+          }
+        }
+        """)
+
+      refute Enum.any?(errors, &(&1.code == "W0001"))
+    end
+  end
 end

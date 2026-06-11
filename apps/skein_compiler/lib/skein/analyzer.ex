@@ -35,6 +35,7 @@ defmodule Skein.Analyzer do
   - E0024: Unknown type name
   - E0025: Constraint annotation on wrong type
   - E0026: Invalid named argument (unknown/duplicate name, positional after named, callee without named-argument support)
+  - E0027: Invalid guard expression (guards allow literals, bindings, field access, comparisons, boolean operators, and +/-/* arithmetic)
 
   ### Agent (E003x)
   - E0030: Invalid phase transition
@@ -2080,11 +2081,122 @@ defmodule Skein.Analyzer do
   # Match arm inference
   # ------------------------------------------------------------------
 
-  defp infer_match_arm(%AST.MatchArm{pattern: pattern, body: body}, subject_type, env) do
+  defp infer_match_arm(
+         %AST.MatchArm{pattern: pattern, guard: guard, body: body},
+         subject_type,
+         env
+       ) do
     # Bind pattern variables into scope with type info from the subject
     new_env = bind_pattern(pattern, subject_type, env)
-    infer_type(body, new_env)
+    guard_errors = check_guard(guard, new_env)
+    {body_type, body_errors} = infer_type(body, new_env)
+    {body_type, guard_errors ++ body_errors}
   end
+
+  # ------------------------------------------------------------------
+  # Match guards
+  # ------------------------------------------------------------------
+
+  # Binary operators whose codegen lowers to a single guard-safe erlang call.
+  # `/` is excluded: its codegen emits a runtime float/int dispatch `case`,
+  # which is not a valid Core Erlang guard.
+  @guard_safe_binary_ops [:+, :-, :*, :==, :!=, :<, :>, :<=, :>=, :&&, :||]
+  @guard_safe_unary_ops [:not, :negate]
+
+  defp check_guard(nil, _env), do: []
+
+  defp check_guard(guard, env) do
+    safety_errors = guard_safety_errors(guard, env)
+    {guard_type, type_errors} = infer_type(guard, env)
+
+    bool_errors =
+      if guard_type in [:bool, :unknown] do
+        []
+      else
+        [
+          %Error{
+            code: "E0020",
+            severity: :error,
+            message: "Match guard must be Bool, got #{format_type(guard_type)}",
+            location: location_from_meta(guard_meta(guard), env.file),
+            fix_hint: "Use a comparison or boolean expression in the guard",
+            fix_code: nil
+          }
+        ]
+      end
+
+    safety_errors ++ type_errors ++ bool_errors
+  end
+
+  # Guards must lower to Core Erlang clause guards, so only the guard-safe
+  # subset is allowed: literals, bindings, field access, comparisons,
+  # boolean operators, and +/-/* arithmetic. No calls, effects, or blocks.
+  defp guard_safety_errors(%AST.IntLit{}, _env), do: []
+  defp guard_safety_errors(%AST.FloatLit{}, _env), do: []
+  defp guard_safety_errors(%AST.BoolLit{}, _env), do: []
+  defp guard_safety_errors(%AST.Identifier{}, _env), do: []
+
+  defp guard_safety_errors(%AST.StringLit{segments: segments, meta: meta}, env) do
+    if Enum.all?(segments, &match?({:literal, _}, &1)) do
+      []
+    else
+      [invalid_guard_error("string interpolation", meta, env)]
+    end
+  end
+
+  defp guard_safety_errors(%AST.FieldAccess{subject: subject}, env) do
+    guard_safety_errors(subject, env)
+  end
+
+  defp guard_safety_errors(%AST.BinaryOp{op: op, left: left, right: right}, env)
+       when op in @guard_safe_binary_ops do
+    guard_safety_errors(left, env) ++ guard_safety_errors(right, env)
+  end
+
+  defp guard_safety_errors(%AST.BinaryOp{op: :/, meta: meta}, env) do
+    [invalid_guard_error("division", meta, env)]
+  end
+
+  defp guard_safety_errors(%AST.UnaryOp{op: op, operand: operand}, env)
+       when op in @guard_safe_unary_ops do
+    guard_safety_errors(operand, env)
+  end
+
+  defp guard_safety_errors(%AST.Call{meta: meta}, env) do
+    [invalid_guard_error("a function or effect call", meta, env)]
+  end
+
+  defp guard_safety_errors(expr, env) do
+    [invalid_guard_error(describe_guard_expr(expr), guard_meta(expr), env)]
+  end
+
+  defp invalid_guard_error(what, meta, env) do
+    %Error{
+      code: "E0027",
+      severity: :error,
+      message: "Invalid guard expression: #{what} is not allowed in a match guard",
+      location: location_from_meta(meta, env.file),
+      fix_hint:
+        "Guards allow literals, bindings, field access, comparisons, " <>
+          "boolean operators, and +/-/* arithmetic. Compute the value in a " <>
+          "'let' before the match and reference the binding in the guard",
+      fix_code: nil
+    }
+  end
+
+  defp describe_guard_expr(%AST.UnaryOp{op: :unwrap}), do: "'!' unwrapping"
+  defp describe_guard_expr(%AST.UnaryOp{op: :propagate}), do: "'?' propagation"
+  defp describe_guard_expr(%AST.Match{}), do: "a match expression"
+  defp describe_guard_expr(%AST.Block{}), do: "a block"
+
+  defp describe_guard_expr(%struct{}) do
+    "a #{struct |> Module.split() |> List.last()} expression"
+  end
+
+  defp describe_guard_expr(_), do: "this expression"
+
+  defp guard_meta(%{meta: meta}) when is_map(meta), do: meta
+  defp guard_meta(_), do: %{line: 0, col: 0}
 
   defp bind_pattern(%AST.Identifier{name: name}, subject_type, env) do
     %{env | variables: Map.put(env.variables, name, subject_type)}
@@ -2159,7 +2271,9 @@ defmodule Skein.Analyzer do
   # ------------------------------------------------------------------
 
   defp check_exhaustiveness(:bool, arms, meta, env) do
-    patterns = Enum.map(arms, & &1.pattern)
+    # A guarded arm only matches when its guard passes, so it never counts
+    # as covering its pattern.
+    patterns = arms |> Enum.reject(& &1.guard) |> Enum.map(& &1.pattern)
     has_wildcard = Enum.any?(patterns, &match?(%AST.Wildcard{}, &1))
     has_true = Enum.any?(patterns, &match?(%AST.BoolLit{value: true}, &1))
     has_false = Enum.any?(patterns, &match?(%AST.BoolLit{value: false}, &1))
@@ -2209,7 +2323,9 @@ defmodule Skein.Analyzer do
 
       %AST.EnumDecl{variants: variants} ->
         variant_names = MapSet.new(variants, & &1.name)
-        patterns = Enum.map(arms, & &1.pattern)
+        # Guarded arms are partial: they don't cover their variant.
+        unguarded_arms = Enum.reject(arms, & &1.guard)
+        patterns = Enum.map(unguarded_arms, & &1.pattern)
 
         has_wildcard =
           Enum.any?(patterns, fn
@@ -2261,7 +2377,7 @@ defmodule Skein.Analyzer do
               ]
             end
 
-          missing_warnings ++ value_level_warnings(enum_name, arms, env)
+          missing_warnings ++ value_level_warnings(enum_name, unguarded_arms, env)
         end
     end
   end
@@ -2269,7 +2385,7 @@ defmodule Skein.Analyzer do
   # For non-bool/non-enum subjects, we can't check exhaustiveness
   # unless there's a wildcard
   defp check_exhaustiveness(_subject_type, arms, _meta, _env) do
-    patterns = Enum.map(arms, & &1.pattern)
+    patterns = arms |> Enum.reject(& &1.guard) |> Enum.map(& &1.pattern)
 
     has_wildcard =
       Enum.any?(patterns, fn
@@ -3333,8 +3449,9 @@ defmodule Skein.Analyzer do
 
   defp collect_referenced_identifiers(%AST.Match{subject: subject, arms: arms}) do
     collect_referenced_identifiers(subject) ++
-      Enum.flat_map(arms, fn %AST.MatchArm{body: body} ->
-        collect_referenced_identifiers(body)
+      Enum.flat_map(arms, fn %AST.MatchArm{guard: guard, body: body} ->
+        guard_refs = if guard, do: collect_referenced_identifiers(guard), else: []
+        guard_refs ++ collect_referenced_identifiers(body)
       end)
   end
 

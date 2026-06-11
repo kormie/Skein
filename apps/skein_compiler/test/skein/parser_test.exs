@@ -137,6 +137,67 @@ defmodule Skein.ParserTest do
       assert %AST.MatchArm{pattern: %AST.BoolLit{value: false}} = arm2
     end
 
+    test "parses a match arm with a guard" do
+      source = """
+      module M {
+        fn f(n: Int) -> String {
+          match n {
+            x if x > 0 -> "positive"
+            _ -> "other"
+          }
+        }
+      }
+      """
+
+      assert {:ok, %AST.Module{declarations: [fn_decl]}} = parse(source)
+      assert %AST.Block{expressions: [match]} = fn_decl.body
+      assert [arm1, arm2] = match.arms
+
+      assert %AST.MatchArm{pattern: %AST.Identifier{name: "x"}, guard: %AST.BinaryOp{op: :>}} =
+               arm1
+
+      assert %AST.MatchArm{pattern: %AST.Wildcard{}, guard: nil} = arm2
+    end
+
+    test "parses a guard on an enum variant pattern" do
+      source = """
+      module M {
+        enum Size {
+          Small
+          Big(n: Int)
+        }
+
+        fn f(s: Size) -> String {
+          match s {
+            Big(n) if n > 100 && n < 1000 -> "medium"
+            Big(n) -> "big"
+            Small -> "small"
+          }
+        }
+      }
+      """
+
+      assert {:ok, %AST.Module{declarations: [_enum, fn_decl]}} = parse(source)
+      assert %AST.Block{expressions: [match]} = fn_decl.body
+      assert [arm1, arm2, arm3] = match.arms
+      assert %AST.MatchArm{guard: %AST.BinaryOp{op: :&&}} = arm1
+      assert %AST.MatchArm{guard: nil} = arm2
+      assert %AST.MatchArm{guard: nil} = arm3
+    end
+
+    test "'if' remains usable as an ordinary identifier" do
+      source = """
+      module M {
+        fn f(if: Int) -> Int {
+          if + 1
+        }
+      }
+      """
+
+      assert {:ok, %AST.Module{declarations: [fn_decl]}} = parse(source)
+      assert [%AST.Field{name: "if"}] = fn_decl.params
+    end
+
     test "match arms can have block bodies" do
       source = """
       module M {

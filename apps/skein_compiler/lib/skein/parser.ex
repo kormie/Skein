@@ -1655,11 +1655,12 @@ defmodule Skein.Parser do
 
   defp parse_match_arm(tokens, file) do
     with {:ok, pattern, rest} <- parse_pattern(tokens, file),
+         {:ok, guard, rest} <- parse_optional_guard(rest, file),
          {:ok, _arrow, rest} <- expect(:arrow, rest, file),
          {:ok, body, rest} <- parse_expression(rest, file) do
       arm = %AST.MatchArm{
         pattern: pattern,
-        guard: nil,
+        guard: guard,
         body: body,
         meta: meta_from_tokens(tokens, file)
       }
@@ -1667,6 +1668,14 @@ defmodule Skein.Parser do
       {:ok, arm, rest}
     end
   end
+
+  # Optional guard between the arm pattern and its arrow: `pattern if expr ->`.
+  # `if` is contextual — it only introduces a guard in this position.
+  defp parse_optional_guard([{:ident, _, "if"} | rest], file) do
+    parse_pipe_expr(rest, file)
+  end
+
+  defp parse_optional_guard(tokens, _file), do: {:ok, nil, tokens}
 
   # ------------------------------------------------------------------
   # Patterns (for match arms)
