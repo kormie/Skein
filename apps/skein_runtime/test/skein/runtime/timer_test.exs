@@ -12,6 +12,74 @@ defmodule Skein.Runtime.TimerTest do
     apply(Timer, :after, [group, delay_ms, callback, caps])
   end
 
+  describe "task bodies (after/5, interval/5)" do
+    @wildcard [%{kind: "timer", params: []}]
+
+    test "a one-shot timer with a work fn runs the body on fire" do
+      test_pid = self()
+
+      assert {:ok, _ref} =
+               apply(Timer, :after, [
+                 nil,
+                 10,
+                 "notify",
+                 fn -> send(test_pid, :work_ran) end,
+                 @wildcard
+               ])
+
+      assert_receive :work_ran, 1000
+    end
+
+    test "a recurring timer with a work fn runs the body on every fire" do
+      test_pid = self()
+
+      assert {:ok, ref} =
+               Timer.interval(
+                 nil,
+                 10,
+                 "poll",
+                 fn -> send(test_pid, :tick) end,
+                 @wildcard
+               )
+
+      assert_receive :tick, 1000
+      assert_receive :tick, 1000
+
+      Timer.cancel(nil, ref, @wildcard)
+    end
+
+    test "a crashing work body does not take down the timer manager" do
+      test_pid = self()
+
+      assert {:ok, _ref} =
+               apply(Timer, :after, [nil, 10, "boom", fn -> raise "task crash" end, @wildcard])
+
+      # A later timer still fires — the manager survived the crash.
+      assert {:ok, _ref2} =
+               apply(Timer, :after, [
+                 nil,
+                 30,
+                 "after-crash",
+                 fn -> send(test_pid, :still_alive) end,
+                 @wildcard
+               ])
+
+      assert_receive :still_alive, 1000
+      assert Process.whereis(Timer) != nil
+    end
+
+    test "scoped labels apply to work-body timers" do
+      assert {:error, _} =
+               apply(Timer, :after, [
+                 "wrong-group",
+                 10,
+                 "task",
+                 fn -> :ok end,
+                 [%{kind: "timer", params: ["maintenance"]}]
+               ])
+    end
+  end
+
   describe "after/4" do
     test "fires callback after delay" do
       test_pid = self()

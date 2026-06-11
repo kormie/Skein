@@ -14,9 +14,15 @@ module BackgroundTasks {
     respond.json(202, "task-spawned")
   }
 
-  -- HTTP endpoint to schedule a delayed action
+  -- A task body for the delayed action: runs inside a supervised task
+  -- when the timer fires.
+  fn send_notification() -> String {
+    "notification sent"
+  }
+
+  -- HTTP endpoint to schedule a delayed action with a task body
   handler http POST "/delayed" (req) -> {
-    timer.after(5000, "send-notification")
+    timer.after(5000, "send-notification", &send_notification)
     respond.json(202, "scheduled")
   }
 

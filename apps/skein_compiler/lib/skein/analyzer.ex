@@ -538,7 +538,10 @@ defmodule Skein.Analyzer do
     {"topic", "publish"} => ["name", "data"],
     {"trace", "annotate"} => ["key", "value"],
     {"process", "spawn"} => ["name", "work"],
-    {"event", "log"} => ["name", "data"]
+    {"event", "log"} => ["name", "data"],
+    {"timer", "after"} => ["delay_ms", "task", "work"],
+    {"timer", "interval"} => ["every_ms", "task", "work"],
+    {"timer", "cancel"} => ["ref"]
   }
 
   # Trailing effect parameters that may be omitted. `process.spawn(name)`
@@ -546,7 +549,9 @@ defmodule Skein.Analyzer do
   # body (spec §6.11). Only trailing parameters can be optional — omitting
   # a middle parameter would shift the positional order.
   @effect_optional_params %{
-    {"process", "spawn"} => ["work"]
+    {"process", "spawn"} => ["work"],
+    {"timer", "after"} => ["work"],
+    {"timer", "interval"} => ["work"]
   }
 
   defp resolve_named_args(%AST.Call{} = call, env) do
