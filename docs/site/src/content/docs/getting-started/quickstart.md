@@ -5,23 +5,24 @@ description: Build and run your first Skein program in under 5 minutes.
 
 ## Install
 
-Grab the latest binary for your platform from the
-[Releases page](https://github.com/kormie/Skein/releases):
-
-| Platform | Asset |
-|---|---|
-| Linux x86_64 | `skein-linux-x86_64` |
-| Linux ARM64 | `skein-linux-aarch64` |
-| macOS x86_64 | `skein-macos-x86_64` |
-| macOS ARM64 (Apple Silicon) | `skein-macos-aarch64` |
+One command — detects your platform, verifies the SHA-256 against the
+release checksums, and installs to `~/.local/bin` (no root):
 
 ```bash
-# Make it executable and put it on your PATH
-chmod +x skein-*
-mv skein-* /usr/local/bin/skein
+curl -fsSL https://kormie.github.io/Skein/install.sh | sh
 
 skein version  # → skein 0.1.7
 ```
+
+Pin a version with `SKEIN_VERSION=0.1.7`, or change the destination with
+`SKEIN_BIN_DIR=/usr/local/bin`. The script is
+[`install.sh`](https://github.com/kormie/Skein/blob/main/install.sh) if you
+want to read it first.
+
+Prefer manual installation? Grab the binary for your platform from the
+[Releases page](https://github.com/kormie/Skein/releases)
+(`skein-{linux,macos}-{x86_64,aarch64}`), `chmod +x` it, and put it on your
+PATH.
 
 No Erlang, Elixir, or other dependencies required — it's a self-contained binary.
 

@@ -223,6 +223,12 @@
 - Spec 8.4 phase machine was genuinely broken (Analyze couldn't reach Failed; no Done handler) — fixed in spec + embedded copies
 - Tuple destructuring marked Planned in grammar; agent.run_sync already gone
 
+## Installer (2026-06-11, post-public)
+- `/install.sh` (POSIX sh): platform detect, GitHub releases/latest/download URLs, sha256 verify vs checksums.txt, installs to ~/.local/bin; env overrides SKEIN_VERSION + SKEIN_BIN_DIR
+- **SKEIN_INSTALL_DIR is RESERVED by Burrito** (the binary's wrapper reads it to relocate payload extraction) — installer must not use it; also `env -u` the SKEIN_* vars when invoking the binary post-install
+- Served at https://kormie.github.io/Skein/install.sh via a cp step in deploy-docs.yml (single source: repo root)
+- Verified end-to-end in-session against real v0.1.7/v0.1.6 releases (latest, pinned, bad-version exit 1)
+
 ## Known Bug Found 2026-06-10 (filed as issue)
 - **Int string interpolation emits raw codepoint**: `"${n}"` with n=42 yields "*" (binary segment treats Int as a byte) — needs to_string coercion in codegen interpolation
 
