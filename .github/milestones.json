@@ -6,5 +6,17 @@
   {
     "title": "Beta Release",
     "description": "Post-alpha hardening, informed by alpha feedback: replay backend injection (#73), the capability-parameter surface decision (#69) and parameter-scoped enforcement for process/timer/event.log (#57), process.spawn task bodies (#74), enum value-level exhaustiveness warnings (#76), local LLM backends for dev via OpenAI-compatible servers + skein.toml profiles (#107), and LSP code actions from fix_hint/fix_code (#108). Triaged alpha bug reports land here unless they block alpha itself."
+  },
+  {
+    "title": "Post-MVP 1: Hardening & Language",
+    "description": "First post-beta wave: fix what's broken and close the well-scoped language/runtime gaps. Bugs — Int interpolation emits raw codepoints (#114), queue/topic handlers never subscribed in running services (#121), flaky memory property test in CI (#118). Features — guard expressions in match arms (#147), an embeddings-capable LLM backend so llm.embed works for real (#146), llm.rerank for RAG (#145), and code-action phase 2 spans + edit_kind (#150)."
+  },
+  {
+    "title": "Post-MVP 2: Interop & Agent Workflows",
+    "description": "Bigger design efforts after the hardening wave: Erlang/Elixir FFI via extern (#141), human-in-the-loop approval workflows with suspend before sensitive tool calls (#144), and the browser-based trace viewer (#143)."
+  },
+  {
+    "title": "Future: Platform",
+    "description": "Deliberately deferred platform bets, parked until the core language and runtime stabilize: hot code upgrades (#142), the managed deployment platform (#148), and the tools/connectors marketplace (#149). Re-scope each from scratch when pulled into active work."
   }
 ]
