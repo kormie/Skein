@@ -153,6 +153,9 @@ if [ -n "${CLAUDE_ENV_FILE:-}" ]; then
     echo "export LANG=en_US.UTF-8"
     echo "export ELIXIR_ERL_OPTIONS=\"+fnu\""
     echo "export HEX_CACERTS_PATH=/etc/ssl/certs/ca-certificates.crt"
+    # The remote proxy is flaky for repo.hex.pm; serial requests succeed
+    echo "export HEX_HTTP_CONCURRENCY=1"
+    echo "export HEX_HTTP_TIMEOUT=30"
     # mise environment for the project directory
     mise env --shell bash 2>/dev/null || true
   } >> "$CLAUDE_ENV_FILE"
@@ -173,33 +176,56 @@ install_mix_tools() {
 install_mix_tools
 
 # ── Step 8: Fetch project dependencies ───────────────────────────────────────
+# The remote proxy intermittently returns 503 for repo.hex.pm, which makes
+# Hex's concurrent registry fetches fail with "Unknown package X in lockfile".
+# Serial requests + retries get through reliably; Hex caches partial progress.
+export HEX_HTTP_CONCURRENCY=1
+export HEX_HTTP_TIMEOUT=30
+
+DEPS_STATUS="ok"
+
 fetch_deps() {
   cd "$PROJECT_DIR"
+  [ -f "mix.exs" ] || return 0
 
-  if [ -f "mix.exs" ]; then
-    if [ ! -d "deps" ] || [ "mix.exs" -nt "deps" ] 2>/dev/null; then
-      info "Fetching mix dependencies..."
-      mise exec -- mix deps.get 2>&1 | tail -5 >&2 || true
+  if [ ! -d "deps" ] || [ "mix.exs" -nt "deps" ] 2>/dev/null; then
+    info "Fetching mix dependencies..."
+    local attempt fetched=false
+    for attempt in 1 2 3 4 5; do
+      if mise exec -- mix deps.get 2>&1 | tail -3 >&2; then
+        fetched=true
+        break
+      fi
+      info "mix deps.get attempt $attempt failed (flaky registry proxy); retrying..."
+      sleep 2
+    done
+    if [ "$fetched" != true ]; then
+      info "WARNING: mix deps.get failed after 5 attempts"
+      DEPS_STATUS="deps.get FAILED — run 'mix deps.get' manually before 'mix test'"
+      return 0
     fi
+  fi
 
-    # Compile deps to speed up first test/format run
-    if [ ! -d "_build" ]; then
-      info "Compiling project..."
-      mise exec -- mix compile 2>&1 | tail -5 >&2 || true
+  # Compile deps to speed up first test/format run
+  if [ ! -d "_build" ]; then
+    info "Compiling project..."
+    if ! mise exec -- mix compile 2>&1 | tail -5 >&2; then
+      info "WARNING: mix compile failed"
+      DEPS_STATUS="compile failed — first 'mix test' will recompile"
     fi
   fi
 }
 
 fetch_deps
 
-ok "Environment ready"
+ok "Environment ready (deps: ${DEPS_STATUS})"
 
 # ── Output context for Claude (JSON on stdout) ───────────────────────────────
 cat <<CONTEXT_JSON
 {
   "hookSpecificOutput": {
     "hookEventName": "SessionStart",
-    "additionalContext": "Development environment ready: Elixir ${REQUIRED_ELIXIR} on OTP ${REQUIRED_OTP} (managed by mise). Use 'mix test' to run tests and 'mix format' to lint. Project: ${PROJECT_DIR}"
+    "additionalContext": "Development environment: Elixir ${REQUIRED_ELIXIR} on OTP ${REQUIRED_OTP} (managed by mise). Deps status: ${DEPS_STATUS}. Use 'mix test' to run tests and 'mix format' to lint. Project: ${PROJECT_DIR}"
   }
 }
 CONTEXT_JSON
