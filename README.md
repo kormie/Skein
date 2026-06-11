@@ -241,11 +241,25 @@ Traces can be replayed for testing: fully recorded, live against real services, 
 
 ### Option A: Prebuilt binary (no dependencies)
 
-Download a standalone binary for your platform from the
+One command — downloads the binary for your platform, verifies its SHA-256
+against the release checksums, and installs to `~/.local/bin` (no root):
+
+```bash
+curl -fsSL https://kormie.github.io/Skein/install.sh | sh
+```
+
+Pin a version or change the install directory with environment variables:
+
+```bash
+curl -fsSL https://kormie.github.io/Skein/install.sh | SKEIN_VERSION=0.1.7 sh
+curl -fsSL https://kormie.github.io/Skein/install.sh | SKEIN_BIN_DIR=/usr/local/bin sh
+```
+
+Prefer to inspect before running? The script is
+[`install.sh`](install.sh) in the repo root. Or install manually: download
+the asset for your platform from the
 [Releases page](https://github.com/kormie/Skein/releases) — no Erlang or
-Elixir install required. (Binaries for untagged commits are also available
-as artifacts on the [build workflow](https://github.com/kormie/Skein/actions/workflows/build.yml);
-note that workflow artifacts expire after a while — prefer a release.)
+Elixir install required.
 
 | Platform | Asset |
 |---|---|
@@ -255,7 +269,7 @@ note that workflow artifacts expire after a while — prefer a release.)
 | macOS ARM64 (Apple Silicon) | `skein-macos-aarch64` |
 
 ```bash
-# Download, make executable, and put it on your PATH
+# Manual install: download, make executable, and put it on your PATH
 chmod +x skein-*
 mv skein-* /usr/local/bin/skein
 

@@ -27,6 +27,9 @@ jobs:
         working-directory: docs/site
       - run: bunx astro build
         working-directory: docs/site
+      # Serve the installer at https://kormie.github.io/Skein/install.sh
+      # (single source: /install.sh in the repo root)
+      - run: cp install.sh docs/site/dist/install.sh
       - uses: actions/upload-pages-artifact@v5
         with:
           path: docs/site/dist
