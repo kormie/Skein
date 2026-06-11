@@ -9,7 +9,7 @@
   },
   {
     "title": "v1.0.0 Release",
-    "description": "The 1.0 gate: ship nothing broken, promise nothing unimplemented. Bugs — Int interpolation emits raw codepoints (#114), queue/topic handlers never subscribed in running services (#121), flaky memory property test in CI (#118), llm.json results crash on field access via string/atom key mismatch (#154). Language honesty — guard expressions in match arms (#147), an embeddings-capable LLM backend so llm.embed works for real (#146). Stability — spec freeze on every Planned annotation (#155), deprecated-surface removal incl. the EventLog facade (#156), and a written versioning/stability policy (#157). Post-MVP 2's additive features (FFI, approvals, trace viewer) land in 1.x, not here."
+    "description": "The 1.0 gate: ship nothing broken, promise nothing unimplemented. Bugs — queue/topic handlers never subscribed in running services (#121), flaky memory property test in CI (#118), llm.json results crash on field access via string/atom key mismatch (#154); Int interpolation (#114) is already fixed and ships in v0.2.0. Language honesty — guard expressions in match arms (#147), an embeddings-capable LLM backend so llm.embed works for real (#146). Stability — spec freeze on every Planned annotation (#155), deprecated-surface removal incl. the EventLog facade (#156), and a written versioning/stability policy (#157). Post-MVP 2's additive features (FFI, approvals, trace viewer) land in 1.x, not here."
   },
   {
     "title": "Post-MVP 1: Hardening & Language",

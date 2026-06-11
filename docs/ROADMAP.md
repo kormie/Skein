@@ -34,8 +34,8 @@ The remaining gaps are listed below. Field-testing v0.1.5 (2026-06-10) surfaced 
 
 The release train (each step rides the auto-tag flow — a green version-bump merge tags and publishes):
 
-1. **v0.2.0** — package the merged-but-unreleased Beta work already on `main`
-2. **v0.3.0** — the v1.0.0 milestone's bugs + features: #114, #121, #118, #154, #147 (guards), #146 (embeddings backend)
+1. **v0.2.0** — package the merged-but-unreleased Beta work already on `main` (includes the #114 Int-interpolation fix)
+2. **v0.3.0** — the v1.0.0 milestone's bugs + features: #121, #118, #154, #147 (guards), #146 (embeddings backend)
 3. **v1.0.0-rc** — stability freeze: spec Planned-annotation decisions (#155), deprecated-surface removal (#156), versioning/stability policy (#157), full docs/spec sweep
 4. **v1.0.0** — rc promoted after it soaks
 
@@ -43,7 +43,7 @@ The release train (each step rides the auto-tag flow — a green version-bump me
 
 Ship nothing broken, promise nothing unimplemented:
 
-- [#114](https://github.com/kormie/Skein/issues/114) — **bug, p1:** Int string interpolation emits the raw codepoint instead of decimal digits
+- ~~[#114](https://github.com/kormie/Skein/issues/114) — **bug, p1:** Int string interpolation emits the raw codepoint~~ — fixed (PR #153), ships in v0.2.0
 - [#121](https://github.com/kormie/Skein/issues/121) — **bug, p1:** queue/topic handlers from compiled modules are never subscribed in a running service
 - [#154](https://github.com/kormie/Skein/issues/154) — **bug, p1:** `llm.json` results decode with string keys but compiled field access reads atom keys (spec §8.4's `d.action` crashes at runtime)
 - [#118](https://github.com/kormie/Skein/issues/118) — **bug, p2:** flaky CI — memory property test races shared `:skein_memory` ETS state
