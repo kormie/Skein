@@ -217,4 +217,109 @@ defmodule Skein.Runtime.ReplayTest do
       assert :no_replay = Replay.next_response(:llm)
     end
   end
+
+  # ------------------------------------------------------------------
+  # active?/0
+  # ------------------------------------------------------------------
+
+  describe "active?/0" do
+    test "is false outside a replay context" do
+      refute Replay.active?()
+    end
+
+    test "is true inside with_replay, including for an empty trace" do
+      Replay.with_replay([], fn ->
+        assert Replay.active?()
+      end)
+
+      refute Replay.active?()
+    end
+  end
+
+  # ------------------------------------------------------------------
+  # next_response/2 (validated consumption)
+  # ------------------------------------------------------------------
+
+  describe "next_response/2" do
+    test "returns the response when expected metadata matches" do
+      trace = [%{"kind" => "llm", "method" => "chat", "model" => "m1", "response" => "hi"}]
+
+      Replay.with_replay(trace, fn ->
+        assert {:ok, "hi"} = Replay.next_response(:llm, %{model: "m1", method: :chat})
+      end)
+    end
+
+    test "skips validation for keys the recorded event does not carry" do
+      trace = [%{"kind" => "llm", "response" => "hi"}]
+
+      Replay.with_replay(trace, fn ->
+        assert {:ok, "hi"} = Replay.next_response(:llm, %{model: "m1", method: :chat})
+      end)
+    end
+
+    test "returns a mismatch without consuming the event" do
+      trace = [%{"kind" => "llm", "method" => "chat", "model" => "m1", "response" => "hi"}]
+
+      Replay.with_replay(trace, fn ->
+        assert {:mismatch, message} = Replay.next_response(:llm, %{model: "m2"})
+        assert message =~ "Replay mismatch"
+        assert message =~ "m1"
+        assert message =~ "m2"
+
+        # The mismatched event is still there for a correctly-sequenced call.
+        assert {:ok, "hi"} = Replay.next_response(:llm, %{model: "m1"})
+      end)
+    end
+
+    test "compares methods case-insensitively" do
+      trace = [
+        %{
+          "kind" => "http",
+          "method" => "GET",
+          "url" => "https://x.test/a",
+          "status" => 200,
+          "response_body" => "ok"
+        }
+      ]
+
+      Replay.with_replay(trace, fn ->
+        assert {:ok, %{"status" => 200, "response_body" => "ok"}} =
+                 Replay.next_response(:http, %{method: :get, url: "https://x.test/a"})
+      end)
+    end
+
+    test "returns :exhausted when all events of the kind are consumed" do
+      Replay.with_replay([], fn ->
+        assert :exhausted = Replay.next_response(:llm, %{model: "m1"})
+      end)
+    end
+
+    test "returns :no_replay outside a replay context" do
+      assert :no_replay = Replay.next_response(:llm, %{model: "m1"})
+    end
+  end
+
+  # ------------------------------------------------------------------
+  # with_replay/2 event normalization
+  # ------------------------------------------------------------------
+
+  describe "with_replay/2 event normalization" do
+    test "accepts atom-keyed events straight from the in-memory event store" do
+      trace = [%{kind: :llm, method: :chat, model: "m1", response: "hello"}]
+
+      Replay.with_replay(trace, fn ->
+        assert {:ok, "hello"} = Replay.next_response(:llm, %{model: "m1", method: :chat})
+      end)
+    end
+
+    test "extracts tool responses from recorded tool call events" do
+      trace = [
+        %{"kind" => "tool", "method" => "call", "name" => "echo", "response" => %{"x" => 1}}
+      ]
+
+      Replay.with_replay(trace, fn ->
+        assert {:ok, %{"x" => 1}} = Replay.next_response(:tool, %{name: "echo"})
+      end)
+    end
+  end
 end

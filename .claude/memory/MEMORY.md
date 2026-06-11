@@ -8,6 +8,14 @@
 - Merge cadence this session: each PR squash-merged on green CI, branch reset onto main between PRs (single working branch claude/alpha-release-gh-issues-c7wkws)
 - Elixir 1.19.5, OTP 28, managed by mise
 
+## Replay Backend Injection (issue #73 — 2026-06-11, first Beta item)
+- `Replay.with_replay/2` now actually intercepts effects: `active?/0` + validating `next_response/2` ({:ok,_} | {:mismatch,msg} | :exhausted | :no_replay); mismatch does NOT consume the event; with_replay normalizes atom- or string-keyed events and drops tool list/schema spans from the consumable sequence (registry reads re-execute live)
+- `Llm.resolve_backend/0` swaps in `Llm.ReplayBackend` (new file llm/replay_backend.ex) when replay is active — validates model+method per call; errors are provider_error code "replay"
+- `Trace.with_recorded_span/2`: fun returns {result, extra_meta} — extra merged into the span; used by Http and Tool.call so spans carry replayable payloads (http: response_body+status; tool/llm: response, full untruncated)
+- Capability checks stay ahead of replay consumption in all three paths (denied calls don't eat recorded events)
+- Exhausted trace = error, never a fallback live call; e2e test proves record→JSON-roundtrip→replay identical with FailingBackend installed
+- Test export helper mirrors SQLite backend: drop `_key` (tuple, not JSON-encodable) before Jason round-trip
+
 ## Repo Hygiene / Issue Tracking (2026-06-10 audit session)
 - All 20 open issues map to ROADMAP items (roadmap links each issue inline; 19 items across 4 tiers); #78 tracks the post-MVP backlog
 - v0.1.5 field-testing wave (#101, #104–#109) triaged same day: #104 W0002/E0012 test-block gap, #105 assertion output, #106 git init, #107 local LLM backends, #108 LSP code actions, #109 MCP compile_check fidelity

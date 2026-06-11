@@ -533,6 +533,21 @@ defmodule Skein.Runtime.Replay do
   @spec load_trace(String.t()) :: list(map())
   def load_trace(path)
 
+  # Run fun with a process-scoped replay context — effect calls inside
+  # are served from the recorded trace instead of real backends
+  @spec with_replay(list(map()), (-> term())) :: term()
+  def with_replay(trace, fun)
+
+  # True when a replay context is active in the calling process
+  @spec active?() :: boolean()
+  def active?()
+
+  # Consume the next recorded response of a kind, validating recorded
+  # metadata (model/method/url/name) against the live call
+  @spec next_response(atom(), map()) ::
+          {:ok, term()} | {:mismatch, String.t()} | :exhausted | :no_replay
+  def next_response(kind, expected)
+
   # Replay events, returning {event, result} tuples
   @spec replay(list(map())) :: list({map(), term()})
   def replay(spans)
@@ -550,6 +565,14 @@ Used by compiled golden test functions:
 2. Test body runs assertions against the loaded event data
 3. `replay/1` re-dispatches events and collects results
 4. `rebuild_memory/2` reconstructs memory state at any point from `:state_change` events
+
+**Effect interception.** Inside `with_replay/2`, the effect runtimes consult the replay context before touching the outside world:
+
+- **LLM** — `Skein.Runtime.Llm` swaps the configured backend for `Skein.Runtime.Llm.ReplayBackend`, which consumes recorded `llm` events (chat/json/stream/embed)
+- **HTTP** — `Skein.Runtime.Http` serves recorded `status`/`response_body` instead of dialing the network
+- **Tool calls** — `Skein.Runtime.Tool.call/3` returns the recorded `response` without executing the registered implementation (`tool.list`/`tool.schema` are local registry reads and re-execute live)
+
+Consumption is sequential per kind and validated: the recorded event's `model`/`method`/`url`/`name` must match the live call, otherwise a structured "Replay mismatch" error is returned (the event is left unconsumed). An exhausted trace is an error too — replay never falls back to a real call. Capability checks run exactly as in live mode, before the replay context is consulted. To make live traces replayable, effect spans record full response payloads: `response` on `llm` and `tool` spans, `response_body` + `status` on `http` spans.
 
 ---
 
