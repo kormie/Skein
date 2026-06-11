@@ -52,3 +52,8 @@ roadmap item links its tracking issue. If you change an item's scope, update bot
 A release is a PR that bumps `version` in `mix.exs` + `apps/skein_cli/mix.exs` and dates the
 `CHANGELOG.md` section. After merge, pushing the annotated `v*` tag triggers the binary build
 matrix and publishes the GitHub Release (automating the tag step is tracked in #100).
+
+## License
+
+By contributing to Skein, you agree that your contributions will be licensed
+under the [MIT License](LICENSE).
