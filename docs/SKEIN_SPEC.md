@@ -638,8 +638,12 @@ emit <EventName> { field: value, ... }
 transition(phase: Phase) -> ()
 stop() -> ()
 suspend(reason: String) -> ()
-resume(input: Map) -> ()
 ```
+
+There is no in-agent `resume` call. `suspend` hands control back to the
+host, and a suspended agent is resumed *from outside* by the host-side
+runtime API — `Skein.Runtime.Agent.resume(pid, next_phase)` — which
+moves the agent into the given phase.
 
 ### 6.9 Idempotency
 
