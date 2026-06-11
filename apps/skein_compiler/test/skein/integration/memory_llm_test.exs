@@ -236,6 +236,98 @@ defmodule Skein.Integration.MemoryLlmTest do
       assert is_map(result)
     end
 
+    test "field access on an llm.json[T] result returns the field values (#154)" do
+      mod =
+        compile!("""
+        module AiFieldAccess {
+          capability model("anthropic", "claude-sonnet-4-5")
+
+          type RefundDecision {
+            action: String
+            amount: Int
+            reason: String
+          }
+
+          fn decide(ticket: String) -> String {
+            let d = llm.json[RefundDecision]("claude-sonnet-4-5", "Decide.", ticket)!
+            "${d.action}:${d.amount}"
+          }
+        }
+        """)
+
+      # TestBackend returns string-keyed %{"action" => "approve", "amount" => 100, ...}
+      # like the real backends; schema-directed atomization makes d.action work.
+      assert mod.decide("Ticket: item not received") == "approve:100"
+    end
+
+    test "spec 8.4 flow: agent matches on llm.json[T] result fields end-to-end (#154)" do
+      {:module, mod} =
+        Skein.Compiler.compile_string("""
+        module RefundFlow {
+          capability model("anthropic", "claude-sonnet-4-5")
+
+          type RefundDecision {
+            action: String
+            amount: Int
+            reason: String
+          }
+
+          agent Decider {
+            enum Phase {
+              Analyze -> [Refund, Done, Failed]
+              Refund -> []
+              Done -> []
+              Failed -> [Analyze]
+            }
+
+            on start(ticket: String) -> {
+              transition(Phase.Analyze)
+            }
+
+            on phase(Phase.Analyze) -> {
+              let decision = llm.json[RefundDecision](
+                model: "claude-sonnet-4-5",
+                system: "Decide if this ticket warrants a refund. Return JSON.",
+                input: "ticket"
+              )
+
+              match decision {
+                Ok(d) -> {
+                  match d.action {
+                    "approve" -> transition(Phase.Refund)
+                    "deny" -> transition(Phase.Done)
+                    _ -> transition(Phase.Failed)
+                  }
+                }
+                Err(_) -> transition(Phase.Failed)
+              }
+            }
+
+            on phase(Phase.Refund) -> {
+              stop()
+            }
+
+            on phase(Phase.Done) -> {
+              stop()
+            }
+
+            on phase(Phase.Failed) -> {
+              suspend("Requires human review")
+            }
+          }
+        }
+        """)
+
+      agent_mod = Module.concat(["Skein", "Agent", "RefundFlow", "Decider"])
+
+      assert {:transition, :refund, _state, _events} =
+               agent_mod.__phase_handler__(:analyze, %{}, [])
+
+      # The module atom for the nested agent is returned alongside the
+      # primary module; silence the unused-binding warning.
+      _ = mod
+    end
+
     test "llm.json without type parameter still works (backward compat)" do
       mod =
         compile!("""
