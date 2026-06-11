@@ -17,6 +17,7 @@ defmodule Skein.Runtime.Tool do
   The registry is an ETS table keyed by tool name.
   """
 
+  alias Skein.Runtime.Replay
   alias Skein.Runtime.Tool.Error
   alias Skein.Runtime.Trace
 
@@ -132,15 +133,42 @@ defmodule Skein.Runtime.Tool do
   @spec call(String.t(), any(), [map()]) :: {:ok, any()} | {:error, Error.t()}
   def call(name, input, capabilities)
       when is_binary(name) and is_list(capabilities) do
-    Trace.with_span(%{kind: :tool, method: :call, name: name}, fn ->
+    Trace.with_recorded_span(%{kind: :tool, method: :call, name: name}, fn ->
       case check_tool_capability(capabilities, name) do
         :ok ->
-          execute_tool(name, input)
+          dispatch_call(name, input)
 
         {:error, reason} ->
-          {:error, Error.capability_error(reason)}
+          {{:error, Error.capability_error(reason)}, %{}}
       end
     end)
+  end
+
+  # An active replay context serves recorded tool results instead of
+  # executing the registered implementation. The recorded event must name
+  # the same tool — divergence is a clear error. Live results are recorded
+  # on the span so the trace is replayable.
+  defp dispatch_call(name, input) do
+    case Replay.next_response(:tool, %{method: :call, name: name}) do
+      :no_replay ->
+        case execute_tool(name, input) do
+          {:ok, result} = ok -> {ok, %{response: result}}
+          {:error, _} = error -> {error, %{}}
+        end
+
+      {:ok, recorded} ->
+        {{:ok, recorded}, %{replayed: true}}
+
+      :exhausted ->
+        {{:error,
+          Error.execution_error(
+            name,
+            "Replay trace exhausted: no recorded tool call remains for '#{name}'"
+          )}, %{replayed: true}}
+
+      {:mismatch, message} ->
+        {{:error, Error.execution_error(name, message)}, %{replayed: true}}
+    end
   end
 
   @doc """

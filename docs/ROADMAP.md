@@ -28,26 +28,6 @@ The remaining gaps are listed below. Field-testing v0.1.5 (2026-06-10) surfaced 
 
 ## Tier 1: Language Surface
 
-### 1. Replay Backend Injection `[L]`
-
-**Issue:** [#73](https://github.com/kormie/Skein/issues/73)
-
-**Problem:** `Skein.Runtime.Replay` can load traces, rebuild memory, and holds replay state (`with_replay/2`, `next_response/1`), but the LLM/HTTP/tool runtimes never consult it — `Llm.chat` always calls the configured backend. Recorded-mode replay therefore can't actually intercept live effects.
-
-**Scope:**
-- LLM: when replay state is active for the current process, return the recorded response instead of calling the backend (a `ReplayBackend` implementing the `Backend` behaviour is the cleanest route)
-- HTTP and tool calls: same interception via their dispatch paths
-- Out-of-sequence events produce a clear error, not a silent mismatch
-
-**Acceptance criteria:**
-- Given a recorded trace, replaying an agent run produces identical results with zero real LLM/HTTP calls
-- Replay state is process-scoped — concurrent replays don't contaminate each other
-- `load_trace/1` and `rebuild_memory/2` continue to work unchanged
-
-**Depends on:** Nothing.
-
----
-
 ### 2. Stream/Pool-Scoped Runtime Capability Checks `[M]` *(needs surface design first)*
 
 **Issues:** [#69](https://github.com/kormie/Skein/issues/69) (surface decision), [#57](https://github.com/kormie/Skein/issues/57) (enforcement)
@@ -198,6 +178,7 @@ All of the following are done and tested:
 - Capability checks cover test blocks (#104): test/scenario/golden bodies feed both capability passes — effects inside tests require capabilities (E0012) and count as usage (no W0002 on the `skein new` scaffold; pinned by a scaffold-analyzes-warning-free CLI test)
 - Enum variant construction completeness (#96): zero-field variants construct in expression position (`Status.Active`, bare `Active`, `Status.Active()` — all lower to `:active`, matching patterns); unknown variants and wrong constructor arity/types are structured E0010/E0020 with closest-name fix_code (no core_lint crashes remain)
 - Types usable from agents (#70): module types are visible to nested agents and the derived JSON Schema flows into `llm.json[T]` requests from agent handlers (verified via recording backend); agents never declare their own `type` blocks — nesting is the route (spec §3.7)
+- Replay backend injection (#73): an active `Replay.with_replay/2` context intercepts LLM (via `Llm.ReplayBackend`), HTTP, and tool-call effects, serving recorded responses with zero real calls; recorded events are validated against the live call (model/method/url/tool name) so out-of-sequence runs produce clear errors; LLM/HTTP/tool spans now record full response payloads (`response`, `response_body`/`status`) so live traces are replayable; replay state stays process-scoped
 - Agent nesting inside modules (#63): `module Foo { agent Bar }` compiles to `Skein.User.Foo` + `Skein.Agent.Foo.Bar`; module types and capabilities apply to the nested agent; spec §8.4 and `market_research/single_file.skein` ship the nested shape
 - Named arguments in calls (#56): `f(name: value)` for local fns and documented effect signatures; positional-then-named mixing, analyzer rewrites to positional order (E0026 for unknown/duplicate/misordered names), spec grammar + section 8 updated
 - Release automation (#100, PR #102): green version-bump merges to `main` auto-tag and release (no manual tag step), README badges, per-release docs snapshots incl. `llms*.txt`; superseded PR runs cancel, main/release builds never do

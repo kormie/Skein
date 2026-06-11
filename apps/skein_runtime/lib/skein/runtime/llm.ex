@@ -21,6 +21,7 @@ defmodule Skein.Runtime.Llm do
 
   alias Skein.Runtime.Llm.Error
   alias Skein.Runtime.Llm.Response
+  alias Skein.Runtime.Replay
   alias Skein.Runtime.Trace
 
   @default_truncate_length 200
@@ -37,7 +38,7 @@ defmodule Skein.Runtime.Llm do
     with_enriched_span(%{kind: :llm, method: :chat, model: model}, system, input, fn ->
       case check_model_capability(model, capabilities) do
         :ok ->
-          backend = get_backend()
+          backend = resolve_backend()
           backend.chat(model, system, input)
 
         {:error, reason} ->
@@ -61,7 +62,7 @@ defmodule Skein.Runtime.Llm do
     with_enriched_span(%{kind: :llm, method: :json, model: model}, system, input, fn ->
       case check_model_capability(model, capabilities) do
         :ok ->
-          backend = get_backend()
+          backend = resolve_backend()
 
           case backend.json(model, system, input, schema) do
             {:ok, %Response{text: raw_text} = resp} ->
@@ -105,7 +106,7 @@ defmodule Skein.Runtime.Llm do
     with_enriched_span(%{kind: :llm, method: :stream, model: model}, system, input, fn ->
       case check_model_capability(model, capabilities) do
         :ok ->
-          backend = get_backend()
+          backend = resolve_backend()
 
           case call_stream(backend, model, system, input, on_chunk) do
             {:ok, chunks} when is_list(chunks) ->
@@ -132,14 +133,16 @@ defmodule Skein.Runtime.Llm do
           {:ok, [float()]} | {:error, Error.t()}
   def embed(model, input, capabilities)
       when is_binary(model) and is_binary(input) and is_list(capabilities) do
-    Trace.with_span(%{kind: :llm, method: :embed, model: model}, fn ->
+    Trace.with_recorded_span(%{kind: :llm, method: :embed, model: model}, fn ->
       case check_model_capability(model, capabilities) do
         :ok ->
-          backend = get_backend()
-          call_embed(backend, model, input)
+          case call_embed(resolve_backend(), model, input) do
+            {:ok, vector} = ok -> {ok, %{response: vector}}
+            {:error, _} = error -> {error, %{}}
+          end
 
         {:error, reason} ->
-          {:error, Error.capability_error(reason)}
+          {{:error, Error.capability_error(reason)}, %{}}
       end
     end)
   end
@@ -177,6 +180,12 @@ defmodule Skein.Runtime.Llm do
   # ------------------------------------------------------------------
   # Internal
   # ------------------------------------------------------------------
+
+  # An active replay context overrides the configured backend so recorded
+  # responses are served instead of contacting a real provider.
+  defp resolve_backend do
+    if Replay.active?(), do: Skein.Runtime.Llm.ReplayBackend, else: get_backend()
+  end
 
   # Call stream on the backend, handling both module and {module, config} tuple backends
   defp call_stream({module, config}, model, system, input, _on_chunk) do
@@ -286,10 +295,13 @@ defmodule Skein.Runtime.Llm do
     end
   end
 
-  # Extract trace metadata from backend result, normalizing Response vs raw strings
+  # Extract trace metadata from backend result, normalizing Response vs raw
+  # strings. The full (untruncated) response is recorded under :response so
+  # the trace can later be replayed via Skein.Runtime.Replay.
   defp extract_result_meta({:ok, %Response{} = resp}, truncate) do
     meta = %{
       output: Response.truncate(resp.text, truncate),
+      response: resp.text,
       actual_model: resp.model,
       stop_reason: resp.stop_reason
     }
@@ -311,6 +323,7 @@ defmodule Skein.Runtime.Llm do
   defp extract_result_meta({:ok, parsed, %Response{} = resp}, truncate) do
     meta = %{
       output: Response.truncate(resp.text || inspect(parsed), truncate),
+      response: resp.text || parsed,
       actual_model: resp.model,
       stop_reason: resp.stop_reason
     }
@@ -329,11 +342,11 @@ defmodule Skein.Runtime.Llm do
   end
 
   defp extract_result_meta({:ok, text} = result, truncate) when is_binary(text) do
-    {:ok, result, %{output: Response.truncate(text, truncate)}}
+    {:ok, result, %{output: Response.truncate(text, truncate), response: text}}
   end
 
-  defp extract_result_meta({:ok, _} = result, _truncate) do
-    {:ok, result, %{}}
+  defp extract_result_meta({:ok, value} = result, _truncate) do
+    {:ok, result, %{response: value}}
   end
 
   defp extract_result_meta({:error, _} = result, _truncate) do

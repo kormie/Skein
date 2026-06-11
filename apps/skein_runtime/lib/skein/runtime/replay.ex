@@ -117,17 +117,24 @@ defmodule Skein.Runtime.Replay do
   @doc """
   Executes `fun` with a replay context loaded from the given trace.
 
-  During execution, `next_response/1` can be called to consume recorded
-  responses by kind. The replay state is process-scoped via the process
-  dictionary and is cleaned up after `fun` returns.
+  While the context is active, `Skein.Runtime.Llm`, `Skein.Runtime.Http`,
+  and `Skein.Runtime.Tool` serve effect calls from the recorded trace
+  instead of contacting real backends — `active?/0` reports the context
+  and `next_response/2` consumes recorded responses by kind. The replay
+  state is process-scoped via the process dictionary and is cleaned up
+  after `fun` returns.
+
+  Events may come straight from the in-memory EventStore (atom keys) or
+  from a JSON trace file (string keys); both shapes are accepted.
   """
   @spec with_replay(list(map()), (-> term())) :: term()
   def with_replay(trace, fun) when is_list(trace) and is_function(fun, 0) do
     # Group events by kind for sequential consumption
     grouped =
       trace
-      |> Enum.group_by(fn event -> event["kind"] end)
-      |> Enum.into(%{}, fn {kind, events} -> {kind, events} end)
+      |> Enum.map(&normalize_event/1)
+      |> Enum.filter(&replayable_event?/1)
+      |> Enum.group_by(fn event -> to_string(event["kind"]) end)
 
     Process.put(@replay_key, grouped)
 
@@ -139,6 +146,12 @@ defmodule Skein.Runtime.Replay do
   end
 
   @doc """
+  Returns true when a replay context is active in the calling process.
+  """
+  @spec active?() :: boolean()
+  def active?, do: Process.get(@replay_key) != nil
+
+  @doc """
   Consumes the next recorded response for the given kind.
 
   Returns:
@@ -148,6 +161,29 @@ defmodule Skein.Runtime.Replay do
   """
   @spec next_response(atom()) :: {:ok, term()} | :exhausted | :no_replay
   def next_response(kind) when is_atom(kind) do
+    next_response(kind, %{})
+  end
+
+  @doc """
+  Consumes the next recorded response for the given kind, validating the
+  recorded event against the live call's metadata.
+
+  Each `expected` entry (e.g. `%{method: :get, url: url}`) is compared
+  against the recorded event's field of the same name. Keys the recorded
+  event does not carry are skipped. A differing value means the live run
+  has diverged from the recording — the event is left unconsumed and a
+  `{:mismatch, message}` is returned so callers can surface a clear error
+  instead of silently serving the wrong response.
+
+  Returns:
+  - `{:ok, response}` — the next recorded response
+  - `{:mismatch, message}` — the next recorded event does not match the live call
+  - `:exhausted` — all responses for this kind have been consumed
+  - `:no_replay` — no replay context is active in this process
+  """
+  @spec next_response(atom(), map()) ::
+          {:ok, term()} | {:mismatch, String.t()} | :exhausted | :no_replay
+  def next_response(kind, expected) when is_atom(kind) and is_map(expected) do
     kind_str = Atom.to_string(kind)
 
     case Process.get(@replay_key) do
@@ -160,10 +196,62 @@ defmodule Skein.Runtime.Replay do
             :exhausted
 
           [event | rest] ->
-            Process.put(@replay_key, Map.put(grouped, kind_str, rest))
-            {:ok, extract_response(kind, event)}
+            case validate_expected(kind_str, event, expected) do
+              :ok ->
+                Process.put(@replay_key, Map.put(grouped, kind_str, rest))
+                {:ok, extract_response(kind, event)}
+
+              {:mismatch, _message} = mismatch ->
+                mismatch
+            end
         end
     end
+  end
+
+  # Events recorded in-memory carry atom keys; trace files carry string
+  # keys. Normalize to string keys so consumption logic sees one shape.
+  defp normalize_event(event) when is_map(event) do
+    Map.new(event, fn {key, value} -> {to_string(key), value} end)
+  end
+
+  # Only effect events are consumable during replay. Tool list/schema
+  # spans are local registry reads that re-execute live, so they must not
+  # occupy a slot in the recorded tool-call sequence.
+  defp replayable_event?(%{"kind" => kind, "method" => method}) when kind in [:tool, "tool"] do
+    to_string(method) == "call"
+  end
+
+  defp replayable_event?(_event), do: true
+
+  defp validate_expected(kind_str, event, expected) do
+    Enum.find_value(expected, :ok, fn {key, expected_value} ->
+      recorded = Map.get(event, to_string(key))
+
+      cond do
+        recorded == nil ->
+          nil
+
+        values_match?(key, recorded, expected_value) ->
+          nil
+
+        true ->
+          {:mismatch,
+           "Replay mismatch: next recorded #{kind_str} event has #{key} " <>
+             "#{inspect(to_string(recorded))}, but the live call uses #{key} " <>
+             "#{inspect(to_string(expected_value))}"}
+      end
+    end)
+  end
+
+  # HTTP methods are recorded as atoms (:get) but may appear as "GET" in
+  # hand-written traces — method comparison is case-insensitive. Everything
+  # else (URLs, model names, tool names) must match exactly.
+  defp values_match?(:method, recorded, expected) do
+    String.downcase(to_string(recorded)) == String.downcase(to_string(expected))
+  end
+
+  defp values_match?(_key, recorded, expected) do
+    to_string(recorded) == to_string(expected)
   end
 
   # Extract the relevant response data from a recorded event
@@ -175,6 +263,8 @@ defmodule Skein.Runtime.Replay do
       "response_body" => event["response_body"]
     }
   end
+
+  defp extract_response(:tool, event), do: event["response"]
 
   defp extract_response(_kind, event), do: event
 

@@ -125,4 +125,50 @@ defmodule Skein.Runtime.Trace do
         reraise exception, __STACKTRACE__
     end
   end
+
+  @doc """
+  Executes a function and records a trace span with timing plus extra
+  span fields supplied by the function itself.
+
+  Like `with_span/2`, but `fun` returns `{result, extra_meta}` — the extra
+  map is merged into the recorded span while only `result` is returned to
+  the caller. Used by effect runtimes that record response payloads
+  (HTTP bodies, tool results) so traces are replayable.
+  """
+  @spec with_recorded_span(map(), (-> {any(), map()})) :: any()
+  def with_recorded_span(metadata, fun) when is_map(metadata) and is_function(fun, 0) do
+    start = System.monotonic_time(:microsecond)
+
+    try do
+      {result, extra} = fun.()
+      duration = System.monotonic_time(:microsecond) - start
+
+      outcome =
+        case result do
+          {:error, _} -> :error
+          _ -> :ok
+        end
+
+      span =
+        metadata
+        |> Map.merge(extra)
+        |> Map.merge(%{duration_us: duration, outcome: outcome})
+
+      EventStore.append(span)
+      result
+    rescue
+      exception ->
+        duration = System.monotonic_time(:microsecond) - start
+
+        span =
+          Map.merge(metadata, %{
+            duration_us: duration,
+            outcome: :error,
+            error: Exception.message(exception)
+          })
+
+        EventStore.append(span)
+        reraise exception, __STACKTRACE__
+    end
+  end
 end

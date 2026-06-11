@@ -13,6 +13,7 @@ defmodule Skein.Runtime.Http do
   """
 
   alias Skein.Runtime.Capability
+  alias Skein.Runtime.Replay
   alias Skein.Runtime.Trace
 
   @doc """
@@ -103,15 +104,45 @@ defmodule Skein.Runtime.Http do
   end
 
   defp execute(method, url, body, capabilities) do
-    Trace.with_span(%{kind: :http, method: method, url: url}, fn ->
+    Trace.with_recorded_span(%{kind: :http, method: method, url: url}, fn ->
       case Capability.check_http(url, capabilities) do
         :ok ->
-          do_request(method, url, body)
+          dispatch(method, url, body)
 
         {:error, _reason} = error ->
-          error
+          {error, %{}}
       end
     end)
+  end
+
+  # An active replay context serves recorded responses instead of dialing
+  # the network. The recorded event must match the live call's method and
+  # URL — divergence is a clear error, never a silently wrong response.
+  defp dispatch(method, url, body) do
+    case Replay.next_response(:http, %{method: method, url: url}) do
+      :no_replay ->
+        do_request(method, url, body)
+
+      {:ok, recorded} ->
+        {recorded_result(recorded), %{replayed: true}}
+
+      :exhausted ->
+        {{:error, "Replay trace exhausted: no recorded http event remains for #{method} #{url}"},
+         %{replayed: true}}
+
+      {:mismatch, message} ->
+        {{:error, message}, %{replayed: true}}
+    end
+  end
+
+  defp recorded_result(%{"status" => status, "response_body" => body}) do
+    body = body || ""
+
+    cond do
+      is_integer(status) and status >= 200 and status < 300 -> {:ok, body}
+      is_integer(status) -> {:error, "HTTP #{status}: #{body}"}
+      true -> {:ok, body}
+    end
   end
 
   defp do_request(method, url, body) do
@@ -142,15 +173,17 @@ defmodule Skein.Runtime.Http do
          ) do
       {:ok, {{_version, status, _reason}, _headers, response_body}} ->
         body_string = List.to_string(response_body)
+        # Status and body are recorded on the span so the trace is replayable.
+        extra = %{status: status, response_body: body_string}
 
         if status >= 200 and status < 300 do
-          {:ok, body_string}
+          {{:ok, body_string}, extra}
         else
-          {:error, "HTTP #{status}: #{body_string}"}
+          {{:error, "HTTP #{status}: #{body_string}"}, extra}
         end
 
       {:error, reason} ->
-        {:error, "HTTP request failed: #{inspect(reason)}"}
+        {{:error, "HTTP request failed: #{inspect(reason)}"}, %{}}
     end
   end
 
