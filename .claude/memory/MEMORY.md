@@ -1,12 +1,20 @@
 # Skein Project Memory
 
 ## Project State
-- **BETA RELEASE MILESTONE COMPLETE (2026-06-11)** — all 7 issues closed (#57 #69 #73 #74 #76 #107 #108) across PRs #133-#139; ALPHA completed same week (13 issues, PRs #113-#128); repo-public decision + next release are the owner's calls
-- Current version: 0.1.6 in mix.exs (v0.1.7 released from main earlier; alpha+beta work is on main unreleased — next version bump triggers the auto-tag flow)
-- Test counts on main after #139: 1,774 tests + 202 properties (compiler 1038+88, runtime 555+114, lsp 53, cli 128)
-- Remaining work: NO roadmap items open — post-MVP backlog (#78) + discovered issues #114 (Int interpolation codegen), #118 (flaky memory ETS race), #121 (queue/topic handlers never subscribed)
-- Merge cadence: each PR squash-merged on green CI, branch reset onto main between PRs (beta working branches claude/beta-release-gh-issues-d1oryn, claude/beta-release-security-audit-nkx00l)
+- **v0.2.0 RELEASED 2026-06-11** (PR #160 → auto-tag → binaries published) — packages the complete Beta milestone (7 issues, PRs #133–#139), repo hygiene (MIT license/CoC/security policy #131, one-line installer #132), and the #114 interpolation fix (#153). ALPHA shipped as v0.1.7 same day.
+- Current version: 0.2.0 in mix.exs; latest release v0.2.0; VS Code extension 0.1.4 (ships the `.skein` file icon, PR #163)
+- **v1.0.0 Release milestone is the active gate** (milestone number 6; defined in `.github/milestones.json` via PR #159; ROADMAP has "Path to v1.0.0" with release train v0.2.0 → v0.3.0 → v1.0.0-rc → v1.0.0). Gate status: bugs #114 ✓(#153) #121 ✓(#158) #118 ✓(#161) — open: #154 (llm.json string/atom key mismatch), #147 (guard expressions), #146 (embeddings backend), #155 (spec freeze on Planned annotations), #156 (deprecated-surface removal incl. EventLog facade), #157 (stability policy docs/STABILITY.md)
+- Post-1.0 backlog: Post-MVP 1 (#145 #150), Post-MVP 2 (#141 #143 #144), Future (#142 #148 #149); #78 tracks
+- Test counts: verify from CI job logs (last memorized 1,774 + 202 after #139; #153/#158/#161/#163 landed since)
+- Merge cadence: each PR squash-merged on green CI, branch reset onto main between PRs
 - Elixir 1.19.5, OTP 28, managed by mise
+
+## v1.0.0 Release Planning (2026-06-11 session)
+- Milestone numbers: Alpha=1, Beta=2, Post-MVP1=3, Post-MVP2=4, Future=5, **v1.0.0=6**. GitHub MCP still has no milestone list/create tools — milestones.yml creates from JSON on merge; verify an `issue_write` milestone assignment by `issue_read` read-back of the milestone *title*
+- Issues filed this session: #154 (llm.json results decode string-keyed but codegen field access uses `map_get(:atom,...)` — the pre-existing footgun from the #63 session, finally tracked), #155/#156/#157 (1.0 stability chores), #162 (vscode file icon, closed by #163)
+- 1.0 principle baked into the gate: breaking removals (EventLog facade) and spec "Planned"-annotation decisions land BEFORE 1.0; STABILITY.md classifies surfaces (error codes append-only post-1.0, `__handlers__/0`-style metadata contracts, EventStore schema, skein.toml)
+- VS Code file icon: `contributes.languages[].icon` {light, dark} → `icons/skein-file.svg` (docs-site logo, squared viewBox `-24 0 560 560`, stroke 44→56 for 16px legibility); language icons render under icon themes that support them (Seti fallback yes, "Minimal" no); vsce packaging verified locally (npm ci + npx vsce package works in the remote env)
+- shields.io dynamic badges (release/downloads) intermittently show "Unable to select next GitHub token from pool" — shields-side GitHub-token-pool rate limiting, self-heals; static shields + GitHub-native workflow badges unaffected
 
 ## Replay Backend Injection (issue #73 — 2026-06-11, first Beta item)
 - `Replay.with_replay/2` now actually intercepts effects: `active?/0` + validating `next_response/2` ({:ok,_} | {:mismatch,msg} | :exhausted | :no_replay); mismatch does NOT consume the event; with_replay normalizes atom- or string-keyed events and drops tool list/schema spans from the consumable sequence (registry reads re-execute live)
@@ -217,7 +225,7 @@
 - Merged caps DEDUP structurally (`capability_dedup_key`) — same tool.use at module+agent level would otherwise trip E0015 duplicate short names
 - **CoreErlang.generate/1 contract changed**: returns `{:ok, [{module_atom, binary}]}` (primary first, nested agents after); Compiler.compile_file/compile_string load all, return primary `{:module, mod}`; compile_to_binary returns the list; CLI build writes one .beam per entry
 - Nested agent codegen: `generate_agent(ast, opts)` takes namespace/capabilities/type_decls; module atom `Skein.Agent.<Module>.<Agent>`; type_decls threaded into start/phase handler scopes (`__type_decls__`) so llm.json[T] schema resolution works in agent handlers (was missing even for top-level agents)
-- Field access on llm.json results uses `map_get(:atom, map)` but backends return STRING keys — `.action` on a decoded result crashes (pre-existing; spec 8.4 `d.action` would crash at runtime)
+- Field access on llm.json results uses `map_get(:atom, map)` but backends return STRING keys — `.action` on a decoded result crashes (pre-existing; spec 8.4 `d.action` would crash at runtime) — now tracked as issue #154 (v1.0.0 milestone)
 - Spec 8.4 now shows the nested shape; spec_examples_test's two 8.4 entries merged into one; `examples/market_research/single_file.skein` is the generated-from-two-files single-file variant
 
 ## Types Usable from Agents (issue #70 — 2026-06-10)
@@ -282,7 +290,7 @@
 - Verified end-to-end in-session against real v0.1.7/v0.1.6 releases (latest, pinned, bad-version exit 1)
 
 ## Known Bug Found 2026-06-10 (filed as issue)
-- **Int string interpolation emits raw codepoint**: `"${n}"` with n=42 yields "*" (binary segment treats Int as a byte) — needs to_string coercion in codegen interpolation
+- ~~**Int string interpolation emits raw codepoint**~~ FIXED 2026-06-11 by PR #153 (issue #114, shipped in v0.2.0): interpolation now coerces non-String values to their text form
 
 ## Error Code Alignment — COMPLETE
 - All 22 error codes (E0026 named args added 2026-06-10) + 3 warning codes aligned with SKEIN_SPEC.md section 7
