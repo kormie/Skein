@@ -201,6 +201,74 @@ defmodule Skein.Runtime.Llm.OpenAiCompatibleBackendTest do
       assert {:ok, [0.1, 0.2, 0.3]} =
                OpenAiCompatibleBackend.embed("embed-model", "some text", %{base_url: base_url})
     end
+
+    test "remaps the capability model name through model_map" do
+      base_url =
+        start_stub(fn
+          "/v1/embeddings", _body ->
+            {200, %{"data" => [%{"embedding" => [1.0]}]}}
+        end)
+
+      config = %{base_url: base_url, model_map: %{"voyage-3-large" => "nomic-embed-text"}}
+
+      assert {:ok, [1.0]} = OpenAiCompatibleBackend.embed("voyage-3-large", "text", config)
+
+      assert_receive {:stub_request, "/v1/embeddings", body, _headers}
+      assert body["model"] == "nomic-embed-text"
+      assert body["input"] == "text"
+    end
+  end
+
+  describe "llm.embed from compiled Skein source" do
+    setup do
+      previous = Llm.get_backend()
+      on_exit(fn -> Llm.set_backend(previous) end)
+      :ok
+    end
+
+    test "returns real vectors via the stub /embeddings endpoint" do
+      base_url =
+        start_stub(fn
+          "/v1/embeddings", _body ->
+            {200, %{"data" => [%{"embedding" => [0.5, -0.25, 1.0]}]}}
+        end)
+
+      # The capability keeps the production model name; the per-environment
+      # profile remaps it to the locally hosted embedding model (issue #146).
+      Llm.set_backend(
+        {OpenAiCompatibleBackend,
+         %{base_url: base_url, model_map: %{"voyage-3-large" => "nomic-embed-text"}}}
+      )
+
+      {:module, mod} =
+        Skein.Compiler.compile_string("""
+        module EmbedFlow {
+          capability model("voyage", "voyage-3-large")
+
+          fn vectorize(text: String) -> List[Float] {
+            llm.embed("voyage-3-large", text)!
+          }
+        }
+        """)
+
+      Skein.Runtime.Trace.clear()
+
+      assert mod.vectorize("hello world") == [0.5, -0.25, 1.0]
+
+      assert_receive {:stub_request, "/v1/embeddings", body, _headers}
+      assert body["model"] == "nomic-embed-text"
+      assert body["input"] == "hello world"
+
+      # Embed spans carry backend/base_url like chat/json/stream spans.
+      span =
+        Skein.Runtime.Trace.recent_spans(10)
+        |> Enum.find(&(&1.kind == :llm and &1.method == :embed))
+
+      assert span != nil
+      assert span.model == "voyage-3-large"
+      assert span.backend == "OpenAiCompatibleBackend"
+      assert span.base_url == base_url
+    end
   end
 
   describe "through Skein.Runtime.Llm with a {module, config} backend" do

@@ -4,9 +4,12 @@
 -- and uses llm.chat to generate an answer grounded in retrieved context.
 --
 -- Note: the bundled Anthropic backend does not implement embeddings
--- (Anthropic has no embeddings API). llm.embed runs against a backend
--- that implements embed/2 — e.g. a Voyage AI integration or one of the
--- test backends. llm.chat works against the Anthropic backend as-is.
+-- (Anthropic has no embeddings API). llm.embed runs through the
+-- OpenAI-compatible backend's /embeddings endpoint — a local embedding
+-- model (Ollama, LM Studio, vLLM) in dev, or Voyage AI in production —
+-- selected per environment via the [env.<name>.llm] profile in
+-- skein.toml with model_map remapping the model declared below.
+-- llm.chat works against the Anthropic backend as-is.
 
 module SemanticSearch {
   capability model("voyage", "voyage-3-large")

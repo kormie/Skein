@@ -61,6 +61,34 @@ against the declared `model(...)` capability, and each llm trace span
 records which `backend` and `base_url` served it, so a trace never
 leaves you guessing whether you burned tokens.
 
+## Embeddings
+
+Anthropic has no embeddings API, so `llm.embed` always runs through an
+OpenAI-compatible `/embeddings` endpoint. Two setups cover development
+and production:
+
+```toml
+# Development: a local embedding model (Ollama, LM Studio, vLLM, ...)
+[env.dev.llm]
+backend = "openai_compatible"
+base_url = "http://localhost:11434/v1"
+model_map = { "voyage-3-large" = "nomic-embed-text" }
+
+# Production: Voyage AI (Anthropic's recommended embeddings provider) —
+# its /embeddings endpoint speaks the same OpenAI-compatible shape.
+[env.prod.llm]
+backend = "openai_compatible"
+base_url = "https://api.voyageai.com/v1"
+api_key_env = "VOYAGE_API_KEY"
+```
+
+The source and capability declarations never change: declare
+`capability model("voyage", "voyage-3-large")`, call
+`llm.embed("voyage-3-large", text)`, and `model_map` resolves the model
+per environment. `examples/semantic_search.skein` is the runnable
+end-to-end example. Embed spans record `backend`/`base_url` like chat
+spans, and a server that is down is a structured `LlmError`.
+
 ## Backends
 
 | `backend` | Serves calls via |
