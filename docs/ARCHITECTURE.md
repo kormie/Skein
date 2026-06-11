@@ -341,6 +341,8 @@ end
 
 Every runtime effect wrapper (HTTP, store, memory, LLM, tool) calls `Capability.check!/3` before executing.
 
+**Scoped capability labels (spec §3.2):** for `process.spawn`, `timer`, and `event.log` the capability parameter names a scope label (pool/group/stream). Codegen threads the declared label into every generated runtime call as the first argument — `Process.spawn(pool, task, caps)`, `Timer.after(group, delay, task, caps)`, `EventStore.log(stream, name, data, caps)` — mirroring the `memory.kv` namespace threading. The shared `Capability.check_scoped/3` enforces the label: no capability of the kind blocks the call; a parameterless declaration is unscoped (presence-only); otherwise the call's label must exactly match a declared param (`nil` labels are blocked). The label is recorded on the trace span (`pool:`/`group:`) or stored event (`stream:`). The first declared capability of the kind wins; nested agents list their own capabilities before the module's, so an agent-level label overrides the module's inside the agent (E0017 forbids two declarations in one scope).
+
 ### 2.3 Unified Event Store (`Skein.Runtime.EventStore`)
 
 All runtime events — effect spans, trace annotations, user-defined events, and memory state changes — flow through a single append-only event log backed by one ETS ordered set (`:skein_events`).
@@ -351,9 +353,10 @@ defmodule Skein.Runtime.EventStore do
   @spec append(map()) :: :ok
   def append(event)
 
-  # User-event entry point for compiled event.log() calls
-  @spec log(String.t(), term(), list()) :: :ok
-  def log(event_name, data, _capabilities)
+  # User-event entry point for compiled event.log() calls; the stream is
+  # the scoped capability label threaded in by codegen (nil = unscoped)
+  @spec log(String.t() | nil, String.t(), term(), list()) :: :ok | {:error, String.t()}
+  def log(stream, event_name, data, capabilities)
 
   # Query by kind, namespace, or any field
   @spec query(keyword()) :: [map()]

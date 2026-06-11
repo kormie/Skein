@@ -7,17 +7,70 @@ defmodule Skein.Runtime.ProcessTest do
     on_exit(fn -> SpawnProcess.reset_all() end)
   end
 
-  describe "spawn/2 with a task name (compiled process.spawn(\"name\") calls)" do
-    test "spawns a supervised task for a string task name" do
+  describe "spawn/3 with a pool and task name (compiled process.spawn(\"name\") calls)" do
+    test "spawns when the pool matches the declared label" do
       assert {:ok, pid} =
-               SpawnProcess.spawn("image-resize", [%{kind: "process.spawn", params: ["workers"]}])
+               SpawnProcess.spawn("workers", "image-resize", [
+                 %{kind: "process.spawn", params: ["workers"]}
+               ])
 
       assert is_pid(pid)
     end
 
-    test "string task name without capability is blocked" do
-      assert {:error, message} = SpawnProcess.spawn("image-resize", [])
+    test "blocks a pool outside the declared label" do
+      assert {:error, message} =
+               SpawnProcess.spawn("reports", "image-resize", [
+                 %{kind: "process.spawn", params: ["workers"]}
+               ])
+
+      assert message =~ "reports"
+      assert message =~ "workers"
+    end
+
+    test "unscoped declaration permits any pool" do
+      assert {:ok, pid} =
+               SpawnProcess.spawn("anything", "image-resize", [
+                 %{kind: "process.spawn", params: []}
+               ])
+
+      assert is_pid(pid)
+    end
+
+    test "nil pool with an unscoped declaration is permitted" do
+      assert {:ok, pid} =
+               SpawnProcess.spawn(nil, "image-resize", [%{kind: "process.spawn", params: []}])
+
+      assert is_pid(pid)
+    end
+
+    test "nil pool with a scoped declaration is blocked" do
+      assert {:error, message} =
+               SpawnProcess.spawn(nil, "image-resize", [
+                 %{kind: "process.spawn", params: ["workers"]}
+               ])
+
+      assert message =~ "workers"
+    end
+
+    test "task name without capability is blocked" do
+      assert {:error, message} = SpawnProcess.spawn("workers", "image-resize", [])
       assert message =~ "process.spawn"
+    end
+
+    test "records the pool on the trace span" do
+      Skein.Runtime.Trace.init()
+
+      {:ok, _pid} =
+        SpawnProcess.spawn("workers", "image-resize", [
+          %{kind: "process.spawn", params: ["workers"]}
+        ])
+
+      span =
+        Skein.Runtime.Trace.recent_spans(10)
+        |> Enum.find(&(&1[:kind] == :process and &1[:task] == "image-resize"))
+
+      assert span
+      assert span[:pool] == "workers"
     end
   end
 

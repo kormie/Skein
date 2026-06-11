@@ -8,6 +8,7 @@ defmodule Skein.Runtime.Process do
 
   use DynamicSupervisor
 
+  alias Skein.Runtime.Capability
   alias Skein.Runtime.Trace
 
   @doc """
@@ -30,31 +31,7 @@ defmodule Skein.Runtime.Process do
   Returns `{:ok, pid}` on success or `{:error, reason}` on failure.
   The capabilities argument is passed by compiled Skein code for consistency.
   """
-  @spec spawn(function() | String.t(), list()) :: {:ok, pid()} | {:error, term()}
-  def spawn(task_name, capabilities) when is_binary(task_name) do
-    # Compiled `process.spawn("name")` calls pass a task name. The task is
-    # spawned as a supervised no-op carrying the name in its trace span;
-    # user-defined task bodies are a planned extension.
-    case check_capability(capabilities) do
-      :ok ->
-        ensure_started()
-
-        Trace.with_span(%{kind: :process, method: :spawn, task: task_name}, fn ->
-          case DynamicSupervisor.start_child(__MODULE__, %{
-                 id: make_ref(),
-                 start: {Task, :start_link, [fn -> :ok end]},
-                 restart: :temporary
-               }) do
-            {:ok, pid} -> {:ok, pid}
-            {:error, reason} -> {:error, inspect(reason)}
-          end
-        end)
-
-      {:error, _reason} = error ->
-        error
-    end
-  end
-
+  @spec spawn(function(), list()) :: {:ok, pid()} | {:error, term()}
   def spawn(fun, capabilities) when is_function(fun, 0) do
     case check_capability(capabilities) do
       :ok ->
@@ -77,12 +54,42 @@ defmodule Skein.Runtime.Process do
   end
 
   @doc """
-  Spawns a supervised task that executes the given function with arguments.
+  Spawns a supervised task: either a compiled `process.spawn("name")` call
+  or a function with arguments.
+
+  For the pool/task form, the pool is the scoped capability label (spec
+  §3.2) threaded in by the compiler from the module's
+  `capability process.spawn(pool)` declaration (`nil` when the declaration
+  is parameterless). Calls outside the declared pool are blocked. The task
+  is spawned as a supervised no-op carrying the name and pool in its trace
+  span; user-defined task bodies are a planned extension.
 
   Returns `{:ok, pid}` on success or `{:error, reason}` on failure.
-  The capabilities argument is passed by compiled Skein code for consistency.
   """
-  @spec spawn(function(), list(), list()) :: {:ok, pid()} | {:error, term()}
+  @spec spawn(String.t() | nil | function(), String.t() | list(), list()) ::
+          {:ok, pid()} | {:error, term()}
+  def spawn(pool, task_name, capabilities)
+      when (is_binary(pool) or is_nil(pool)) and is_binary(task_name) and is_list(capabilities) do
+    case Capability.check_scoped("process.spawn", pool, capabilities) do
+      :ok ->
+        ensure_started()
+
+        Trace.with_span(%{kind: :process, method: :spawn, task: task_name, pool: pool}, fn ->
+          case DynamicSupervisor.start_child(__MODULE__, %{
+                 id: make_ref(),
+                 start: {Task, :start_link, [fn -> :ok end]},
+                 restart: :temporary
+               }) do
+            {:ok, pid} -> {:ok, pid}
+            {:error, reason} -> {:error, inspect(reason)}
+          end
+        end)
+
+      {:error, _reason} = error ->
+        error
+    end
+  end
+
   def spawn(fun, args, capabilities) when is_function(fun) and is_list(args) do
     case check_capability(capabilities) do
       :ok ->

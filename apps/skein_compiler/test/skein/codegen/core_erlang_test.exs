@@ -3348,6 +3348,119 @@ defmodule Skein.CodeGen.CoreErlangTest do
     end
   end
 
+  describe "scoped capability label threading (spec section 3.2)" do
+    test "event.log threads the declared stream label into the stored event" do
+      Skein.Runtime.EventLog.reset_all()
+
+      mod =
+        compile!("""
+        module StreamThreading {
+          capability event.log("audit")
+
+          fn log_it() -> String {
+            event.log("test.event", "payload")
+          }
+        }
+        """)
+
+      mod.log_it()
+
+      event = Enum.find(Skein.Runtime.EventLog.all(), &(&1.event == "test.event"))
+      assert event.stream == "audit"
+
+      Skein.Runtime.EventLog.reset_all()
+    end
+
+    test "parameterless event.log declaration stays unscoped (nil stream)" do
+      Skein.Runtime.EventLog.reset_all()
+
+      mod =
+        compile!("""
+        module UnscopedStream {
+          capability event.log
+
+          fn log_it() -> String {
+            event.log("test.event", "payload")
+          }
+        }
+        """)
+
+      mod.log_it()
+
+      event = Enum.find(Skein.Runtime.EventLog.all(), &(&1.event == "test.event"))
+      assert event.stream == nil
+
+      Skein.Runtime.EventLog.reset_all()
+    end
+
+    test "process.spawn threads the declared pool onto the trace span" do
+      Skein.Runtime.Trace.init()
+      Skein.Runtime.Trace.clear()
+
+      mod =
+        compile!("""
+        module PoolThreading {
+          capability process.spawn("workers")
+
+          fn run_task() -> String {
+            process.spawn("resize")
+          }
+        }
+        """)
+
+      mod.run_task()
+
+      span =
+        Skein.Runtime.Trace.recent_spans(10)
+        |> Enum.find(&(&1[:kind] == :process and &1[:task] == "resize"))
+
+      assert span
+      assert span[:pool] == "workers"
+
+      Skein.Runtime.Trace.clear()
+    end
+
+    test "a nested agent's label overrides the module's for calls inside the agent" do
+      Skein.Runtime.EventLog.reset_all()
+
+      compile!("""
+      module Outer {
+        capability event.log("module_stream")
+
+        agent Logger {
+          capability event.log("agent_stream")
+
+          enum Phase {
+            Init -> [Done]
+            Done -> []
+          }
+
+          on start() -> {
+            transition(Phase.Init)
+          }
+
+          on phase(Phase.Init) -> {
+            event.log("agent.event", "x")
+            transition(Phase.Done)
+          }
+
+          on phase(Phase.Done) -> {
+            stop()
+          }
+        }
+      }
+      """)
+
+      agent_mod = Module.concat(["Skein", "Agent", "Outer", "Logger"])
+      agent_mod.__phase_handler__(:init, %{}, [])
+
+      event = Enum.find(Skein.Runtime.EventLog.all(), &(&1.event == "agent.event"))
+      assert event.stream == "agent_stream"
+
+      Skein.Runtime.EventLog.reset_all()
+    end
+  end
+
   describe "map literal codegen" do
     test "compiles empty map literal" do
       mod =

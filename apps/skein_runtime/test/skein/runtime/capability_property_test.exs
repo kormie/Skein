@@ -98,4 +98,68 @@ defmodule Skein.Runtime.CapabilityPropertyTest do
       assert {:ok, ^host} = Capability.extract_host(url)
     end
   end
+
+  # ------------------------------------------------------------------
+  # Scoped capability labels (check_scoped/3)
+  # ------------------------------------------------------------------
+
+  @scoped_kinds ["process.spawn", "timer", "event.log"]
+
+  defp label_gen do
+    StreamData.string(Enum.to_list(?a..?z), min_length: 1, max_length: 12)
+  end
+
+  defp scoped_capability_gen do
+    gen all(
+          kind <- StreamData.member_of(@scoped_kinds),
+          params <- StreamData.list_of(label_gen(), min_length: 0, max_length: 3)
+        ) do
+      %{kind: kind, params: params}
+    end
+  end
+
+  property "a label matching the declared label always permits" do
+    check all(kind <- StreamData.member_of(@scoped_kinds), label <- label_gen()) do
+      capabilities = [%{kind: kind, params: [label]}]
+      assert :ok = Capability.check_scoped(kind, label, capabilities)
+    end
+  end
+
+  property "a label outside the declared label always denies" do
+    check all(
+            kind <- StreamData.member_of(@scoped_kinds),
+            declared <- label_gen(),
+            called <- label_gen(),
+            declared != called
+          ) do
+      capabilities = [%{kind: kind, params: [declared]}]
+      assert {:error, _} = Capability.check_scoped(kind, called, capabilities)
+    end
+  end
+
+  property "an unscoped declaration permits any label" do
+    check all(kind <- StreamData.member_of(@scoped_kinds), label <- label_gen()) do
+      capabilities = [%{kind: kind, params: []}]
+      assert :ok = Capability.check_scoped(kind, label, capabilities)
+    end
+  end
+
+  property "randomized capability sets permit or deny based on exact label match" do
+    check all(
+            capabilities <- StreamData.list_of(scoped_capability_gen(), max_length: 5),
+            kind <- StreamData.member_of(@scoped_kinds),
+            label <- label_gen()
+          ) do
+      matching = Enum.filter(capabilities, &(&1.kind == kind))
+
+      permitted? =
+        matching != [] and
+          Enum.any?(matching, fn cap -> cap.params == [] or label in cap.params end)
+
+      case Capability.check_scoped(kind, label, capabilities) do
+        :ok -> assert permitted?
+        {:error, _} -> refute permitted?
+      end
+    end
+  end
 end

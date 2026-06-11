@@ -7,12 +7,12 @@ defmodule Skein.Runtime.TimerTest do
     on_exit(fn -> Timer.reset_all() end)
   end
 
-  # Helper to call Timer.after/3 (reserved word in Elixir)
-  defp timer_after(delay_ms, callback, caps) do
-    apply(Timer, :after, [delay_ms, callback, caps])
+  # Helper to call Timer.after/4 (reserved word in Elixir)
+  defp timer_after(group \\ nil, delay_ms, callback, caps) do
+    apply(Timer, :after, [group, delay_ms, callback, caps])
   end
 
-  describe "after/3" do
+  describe "after/4" do
     test "fires callback after delay" do
       test_pid = self()
 
@@ -48,14 +48,77 @@ defmodule Skein.Runtime.TimerTest do
       {:ok, ref2} = timer_after(1000, noop, [%{kind: "timer", params: []}])
       assert ref1 != ref2
     end
+
+    test "accepts a string task name (compiled timer.after calls) as a named no-op" do
+      assert {:ok, ref} =
+               timer_after("maintenance", 10, "send-notification", [
+                 %{kind: "timer", params: ["maintenance"]}
+               ])
+
+      assert is_binary(ref)
+      # The fire is a named no-op; just make sure nothing crashes
+      Process.sleep(50)
+    end
   end
 
-  describe "interval/3" do
+  describe "scoped capability labels" do
+    test "permits a group matching the declared label" do
+      assert {:ok, _ref} =
+               timer_after("maintenance", 1000, fn -> :ok end, [
+                 %{kind: "timer", params: ["maintenance"]}
+               ])
+    end
+
+    test "blocks a group outside the declared label" do
+      assert {:error, message} =
+               timer_after("billing", 1000, fn -> :ok end, [
+                 %{kind: "timer", params: ["maintenance"]}
+               ])
+
+      assert message =~ "billing"
+      assert message =~ "maintenance"
+    end
+
+    test "blocks a nil group when the declaration is scoped" do
+      assert {:error, _} =
+               timer_after(1000, fn -> :ok end, [%{kind: "timer", params: ["maintenance"]}])
+    end
+
+    test "interval blocks a group outside the declared label" do
+      assert {:error, _} =
+               Timer.interval("billing", 1000, fn -> :ok end, [
+                 %{kind: "timer", params: ["maintenance"]}
+               ])
+    end
+
+    test "cancel blocks a group outside the declared label" do
+      assert {:error, _} =
+               Timer.cancel("billing", "some-ref", [%{kind: "timer", params: ["maintenance"]}])
+    end
+
+    test "records the group on the trace span" do
+      Skein.Runtime.Trace.init()
+
+      {:ok, _ref} =
+        timer_after("maintenance", 1000, fn -> :ok end, [
+          %{kind: "timer", params: ["maintenance"]}
+        ])
+
+      span =
+        Skein.Runtime.Trace.recent_spans(10)
+        |> Enum.find(&(&1[:kind] == :timer and &1[:method] == :after))
+
+      assert span
+      assert span[:group] == "maintenance"
+    end
+  end
+
+  describe "interval/4" do
     test "fires callback repeatedly" do
       test_pid = self()
 
       {:ok, _ref} =
-        Timer.interval(50, fn -> send(test_pid, :tick) end, [%{kind: "timer", params: []}])
+        Timer.interval(nil, 50, fn -> send(test_pid, :tick) end, [%{kind: "timer", params: []}])
 
       assert_receive :tick, 1000
       assert_receive :tick, 1000
@@ -63,13 +126,13 @@ defmodule Skein.Runtime.TimerTest do
 
     test "returns a string ref" do
       {:ok, ref} =
-        Timer.interval(1000, fn -> :ok end, [%{kind: "timer", params: []}])
+        Timer.interval(nil, 1000, fn -> :ok end, [%{kind: "timer", params: []}])
 
       assert is_binary(ref)
     end
   end
 
-  describe "cancel/2" do
+  describe "cancel/3" do
     test "cancels a pending after timer" do
       test_pid = self()
 
@@ -78,7 +141,7 @@ defmodule Skein.Runtime.TimerTest do
           %{kind: "timer", params: []}
         ])
 
-      assert :ok = Timer.cancel(ref, [%{kind: "timer", params: []}])
+      assert :ok = Timer.cancel(nil, ref, [%{kind: "timer", params: []}])
       refute_receive :should_not_fire, 700
     end
 
@@ -86,13 +149,13 @@ defmodule Skein.Runtime.TimerTest do
       test_pid = self()
 
       {:ok, ref} =
-        Timer.interval(50, fn -> send(test_pid, :tick) end, [%{kind: "timer", params: []}])
+        Timer.interval(nil, 50, fn -> send(test_pid, :tick) end, [%{kind: "timer", params: []}])
 
       # Let it fire once
       assert_receive :tick, 1000
 
       # Cancel it
-      assert :ok = Timer.cancel(ref, [%{kind: "timer", params: []}])
+      assert :ok = Timer.cancel(nil, ref, [%{kind: "timer", params: []}])
       Process.sleep(150)
 
       # Drain any remaining messages that were in-flight
@@ -106,7 +169,7 @@ defmodule Skein.Runtime.TimerTest do
     end
 
     test "cancelling a nonexistent ref returns :ok" do
-      assert :ok = Timer.cancel("nonexistent-ref", [%{kind: "timer", params: []}])
+      assert :ok = Timer.cancel(nil, "nonexistent-ref", [%{kind: "timer", params: []}])
     end
   end
 
@@ -128,7 +191,7 @@ defmodule Skein.Runtime.TimerTest do
       {:ok, ref1} = timer_after(5000, fn -> :ok end, [%{kind: "timer", params: []}])
       {:ok, ref2} = timer_after(5000, fn -> :ok end, [%{kind: "timer", params: []}])
 
-      Timer.cancel(ref1, [%{kind: "timer", params: []}])
+      Timer.cancel(nil, ref1, [%{kind: "timer", params: []}])
 
       timers = Timer.list_timers()
       refute ref1 in timers
