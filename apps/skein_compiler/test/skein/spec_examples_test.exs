@@ -86,6 +86,7 @@ defmodule Skein.SpecExamplesTest do
 
        fn handle_dispute(dispute_id: String, charge_id: String) -> Result[String, HttpError] {
          let charge = http.get("https://api.stripe.com/v1/charges/${charge_id}")?
+         trace.annotate("dispute_charge", charge.body)
          Ok("resolved")
        }
      }
@@ -149,7 +150,7 @@ defmodule Skein.SpecExamplesTest do
          }
 
          enum Phase {
-           Analyze  -> [Refund, Done]
+           Analyze  -> [Refund, Done, Failed]
            Refund   -> [Done, Failed]
            Failed   -> [Analyze]
            Done     -> []
@@ -211,6 +212,10 @@ defmodule Skein.SpecExamplesTest do
          on phase(Phase.Failed) -> {
            suspend("Requires human review")
          }
+
+         on phase(Phase.Done) -> {
+           stop()
+         }
        }
      }
      """},
@@ -250,21 +255,26 @@ defmodule Skein.SpecExamplesTest do
 
   for {name, source} <- @section_8_examples do
     @tag :spec_example
-    test "spec example: #{name} parses successfully" do
+    test "spec example: #{name} compiles with zero diagnostics" do
       source = unquote(source)
-      {:ok, tokens} = Skein.Lexer.tokenize(source)
+      path = Path.join(System.tmp_dir!(), "spec_example_#{:erlang.phash2(unquote(name))}.skein")
+      File.write!(path, source)
+      on_exit(fn -> File.rm(path) end)
 
-      case Skein.Parser.parse(tokens, "spec.skein") do
-        {:ok, _ast} ->
+      case Skein.Compiler.check_file(path) do
+        {:ok, %{errors: [], warnings: []}} ->
           :ok
 
-        {:error, errors} ->
+        {:ok, %{errors: errors, warnings: warnings}} ->
           flunk(
-            "Failed to parse spec example:\n" <>
-              Enum.map_join(errors, "\n", fn e ->
-                "  L#{e.location.line}: #{e.message}"
+            "Spec example has diagnostics:\n" <>
+              Enum.map_join(errors ++ warnings, "\n", fn e ->
+                "  [#{e.code}] L#{e.location.line}: #{e.message}"
               end)
           )
+
+        {:error, message} ->
+          flunk(message)
       end
     end
   end
