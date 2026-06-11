@@ -53,6 +53,11 @@ A release is a PR that bumps `version` in `mix.exs` + `apps/skein_cli/mix.exs` a
 `CHANGELOG.md` section. After merge, pushing the annotated `v*` tag triggers the binary build
 matrix and publishes the GitHub Release (automating the tag step is tracked in #100).
 
+What a version number is allowed to change — stability classes for every
+public surface, release cadence, and the deprecation policy — is defined in
+[docs/STABILITY.md](docs/STABILITY.md). Check it before merging anything that
+touches public surface.
+
 ## License
 
 By contributing to Skein, you agree that your contributions will be licensed
