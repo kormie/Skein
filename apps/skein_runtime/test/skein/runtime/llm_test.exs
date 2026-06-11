@@ -73,6 +73,98 @@ defmodule Skein.Runtime.LlmTest do
       assert Map.has_key?(result, "action") or Map.has_key?(result, :action)
     end
 
+    test "atomizes schema-declared keys, including nested objects and arrays" do
+      Llm.set_backend(Skein.Runtime.LlmTest.NestedJsonBackend)
+
+      schema = %{
+        "type" => "object",
+        "required" => ["user"],
+        "properties" => %{
+          "user" => %{
+            "type" => "object",
+            "required" => ["name"],
+            "properties" => %{
+              "name" => %{"type" => "string"},
+              "tags" => %{
+                "type" => "array",
+                "items" => %{
+                  "type" => "object",
+                  "required" => ["label"],
+                  "properties" => %{"label" => %{"type" => "string"}}
+                }
+              }
+            }
+          },
+          "scores" => %{
+            "type" => "object",
+            "additionalProperties" => %{
+              "type" => "object",
+              "required" => ["value"],
+              "properties" => %{"value" => %{"type" => "integer"}}
+            }
+          }
+        }
+      }
+
+      assert {:ok, result} =
+               Llm.json("claude-sonnet-4-5", "Return JSON.", "input", schema, @valid_capabilities)
+
+      # Schema-declared field names become atoms at every nesting level.
+      assert result.user.name == "Ada"
+      assert [%{label: "vip"}] = result.user.tags
+
+      # Map[K, V] keys are data, not field names — they stay strings, but
+      # the value objects' declared fields atomize.
+      assert %{"q1" => %{value: 10}} = result.scores
+
+      # Keys outside the schema's closed set are left untouched (no
+      # uncontrolled String.to_atom on wire data).
+      assert result["extra"] == "untouched"
+    end
+
+    test "atomizes enum variant objects against their matching oneOf branch" do
+      Llm.set_backend(Skein.Runtime.LlmTest.VariantJsonBackend)
+
+      schema = %{
+        "oneOf" => [
+          %{
+            "type" => "object",
+            "properties" => %{
+              "type" => %{"const" => "Charge"},
+              "amount" => %{"type" => "integer"}
+            },
+            "required" => ["amount", "type"]
+          },
+          %{
+            "type" => "object",
+            "properties" => %{"type" => %{"const" => "Waive"}},
+            "required" => ["type"]
+          }
+        ]
+      }
+
+      assert {:ok, result} =
+               Llm.json("claude-sonnet-4-5", "Return JSON.", "input", schema, @valid_capabilities)
+
+      assert result.type == "Charge"
+      assert result.amount == 5
+    end
+
+    test "atomizes results parsed from raw JSON text backends" do
+      Llm.set_backend(Skein.Runtime.LlmTest.RawTextJsonBackend)
+
+      schema = %{
+        "type" => "object",
+        "required" => ["action"],
+        "properties" => %{"action" => %{"type" => "string"}}
+      }
+
+      assert {:ok, result} =
+               Llm.json("claude-sonnet-4-5", "Return JSON.", "input", schema, @valid_capabilities)
+
+      assert result.action == "go"
+    end
+
     test "returns parse_failed error when response is not valid JSON" do
       Llm.set_backend(Skein.Runtime.Llm.InvalidJsonBackend)
 
@@ -174,5 +266,49 @@ defmodule Skein.Runtime.LlmTest do
       assert {:ok, _} =
                Llm.chat("claude-sonnet-4-5", "system", "input", @valid_capabilities)
     end
+  end
+end
+
+defmodule Skein.Runtime.LlmTest.NestedJsonBackend do
+  @moduledoc false
+  @behaviour Skein.Runtime.Llm.Backend
+
+  @impl true
+  def chat(_model, _system, _input), do: {:ok, ""}
+
+  @impl true
+  def json(_model, _system, _input, _schema) do
+    {:ok,
+     %{
+       "user" => %{"name" => "Ada", "tags" => [%{"label" => "vip"}]},
+       "scores" => %{"q1" => %{"value" => 10}},
+       "extra" => "untouched"
+     }}
+  end
+end
+
+defmodule Skein.Runtime.LlmTest.VariantJsonBackend do
+  @moduledoc false
+  @behaviour Skein.Runtime.Llm.Backend
+
+  @impl true
+  def chat(_model, _system, _input), do: {:ok, ""}
+
+  @impl true
+  def json(_model, _system, _input, _schema) do
+    {:ok, %{"type" => "Charge", "amount" => 5}}
+  end
+end
+
+defmodule Skein.Runtime.LlmTest.RawTextJsonBackend do
+  @moduledoc false
+  @behaviour Skein.Runtime.Llm.Backend
+
+  @impl true
+  def chat(_model, _system, _input), do: {:ok, ""}
+
+  @impl true
+  def json(_model, _system, _input, _schema) do
+    {:ok, ~s({"action": "go", "noise": true})}
   end
 end

@@ -70,15 +70,18 @@ defmodule Skein.Runtime.Llm do
           case call_json(backend, model, system, input, schema) do
             {:ok, %Response{text: raw_text} = resp} ->
               case parse_json_response(raw_text) do
-                {:ok, parsed} -> {:ok, parsed, resp}
+                {:ok, parsed} -> {:ok, atomize_by_schema(parsed, schema), resp}
                 error -> error
               end
 
             {:ok, raw_text} when is_binary(raw_text) ->
-              parse_json_response(raw_text)
+              case parse_json_response(raw_text) do
+                {:ok, parsed} -> {:ok, atomize_by_schema(parsed, schema)}
+                error -> error
+              end
 
             {:ok, %{} = parsed} ->
-              {:ok, parsed}
+              {:ok, atomize_by_schema(parsed, schema)}
 
             {:error, _} = error ->
               error
@@ -289,6 +292,46 @@ defmodule Skein.Runtime.Llm do
         {:error, Error.parse_failed(raw_text, "JSON", Exception.message(decode_error))}
     end
   end
+
+  # -- Schema-directed key atomization ---------------------------------------
+  #
+  # Backends decode JSON with string keys, but compiled field access reads
+  # atom keys (`d.action` -> `map_get(:action, d)`). The schema derived from
+  # `T` in `llm.json[T]` closes the key set, so atomizing exactly the
+  # schema-declared property names is safe — wire data outside the schema
+  # never reaches String.to_atom and is passed through unchanged.
+
+  # Enum variants (`oneOf`): atomize against the branch whose "type" const
+  # matches the value's discriminator.
+  defp atomize_by_schema(%{} = value, %{"oneOf" => branches}) do
+    discriminator = Map.get(value, "type")
+
+    case Enum.find(branches, &(get_in(&1, ["properties", "type", "const"]) == discriminator)) do
+      nil -> value
+      branch -> atomize_by_schema(value, branch)
+    end
+  end
+
+  defp atomize_by_schema(%{} = value, %{"type" => "object", "properties" => properties}) do
+    Map.new(value, fn {key, sub_value} ->
+      case Map.fetch(properties, key) do
+        {:ok, sub_schema} -> {String.to_atom(key), atomize_by_schema(sub_value, sub_schema)}
+        :error -> {key, sub_value}
+      end
+    end)
+  end
+
+  # Map[K, V] (`additionalProperties`): keys are data, not field names —
+  # they stay strings; only the values' declared fields atomize.
+  defp atomize_by_schema(%{} = value, %{"type" => "object", "additionalProperties" => sub}) do
+    Map.new(value, fn {key, sub_value} -> {key, atomize_by_schema(sub_value, sub)} end)
+  end
+
+  defp atomize_by_schema(value, %{"type" => "array", "items" => items}) when is_list(value) do
+    Enum.map(value, &atomize_by_schema(&1, items))
+  end
+
+  defp atomize_by_schema(value, _schema), do: value
 
   # -- Enriched span recording ---------------------------------------------
 
