@@ -706,7 +706,7 @@ defmodule Skein.ExamplesTest do
     end
 
     test "login handler logs event and responds" do
-      Skein.Runtime.EventLog.reset_all()
+      Skein.Runtime.EventStore.clear()
 
       {:module, mod} =
         Compiler.compile_file(Path.join(project_root(), "examples/audit_log.skein"))
@@ -714,29 +714,29 @@ defmodule Skein.ExamplesTest do
       result = mod.__handler_0__(%{user: "alice"})
       assert {:respond_json, 200, "logged-in"} = result
 
-      events = Skein.Runtime.EventLog.all()
+      events = Skein.Runtime.EventStore.query(kind: :user_event)
       login_events = Enum.filter(events, &(&1.event == "user.login"))
       assert length(login_events) >= 1
 
-      Skein.Runtime.EventLog.reset_all()
+      Skein.Runtime.EventStore.clear()
     end
 
     test "logged events carry the declared stream label (compiler-threaded)" do
-      Skein.Runtime.EventLog.reset_all()
+      Skein.Runtime.EventStore.clear()
 
       {:module, mod} =
         Compiler.compile_file(Path.join(project_root(), "examples/audit_log.skein"))
 
       mod.__handler_0__(%{user: "alice"})
 
-      [event | _] = Skein.Runtime.EventLog.all()
+      [event | _] = Skein.Runtime.EventStore.query(kind: :user_event)
       assert event.stream == "audit"
 
-      Skein.Runtime.EventLog.reset_all()
+      Skein.Runtime.EventStore.clear()
     end
 
     test "health handler returns ok without logging" do
-      Skein.Runtime.EventLog.reset_all()
+      Skein.Runtime.EventStore.clear()
 
       {:module, mod} =
         Compiler.compile_file(Path.join(project_root(), "examples/audit_log.skein"))
@@ -744,7 +744,7 @@ defmodule Skein.ExamplesTest do
       result = mod.__handler_3__(%{})
       assert {:respond_json, 200, "ok"} = result
 
-      Skein.Runtime.EventLog.reset_all()
+      Skein.Runtime.EventStore.clear()
     end
   end
 

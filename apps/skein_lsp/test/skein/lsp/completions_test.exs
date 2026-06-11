@@ -20,6 +20,25 @@ defmodule Skein.Lsp.CompletionsTest do
       assert "String" in labels
     end
 
+    test "annotation completions offer exactly the spec 4.2 set" do
+      items = Completions.complete(nil, "@", %Position{line: 0, character: 1})
+
+      labels = items |> Enum.map(& &1.label) |> Enum.sort()
+
+      # Spec section 4.2 — the implemented constraint annotations. Nothing
+      # unimplemented (@pattern/@optional/@deprecated) may be offered.
+      assert labels ==
+               Enum.sort([
+                 "@min",
+                 "@max",
+                 "@one_of",
+                 "@default",
+                 "@primary",
+                 "@unique",
+                 "@description"
+               ])
+    end
+
     test "provides effect namespace completions" do
       items = Completions.complete(nil, "ll", %Position{line: 0, character: 2})
 
