@@ -25,6 +25,7 @@ defmodule Skein.Analyzer do
   ### Tool (E001x)
   - E0014: Tool name not declared in `capability tool.use` params
   - E0015: Duplicate short tool name in `capability tool.use` params
+  - E0017: Duplicate scoped capability declaration (memory.kv, event.log, process.spawn, timer)
 
   ### Type Checking (E002x)
   - E0020: Type mismatch (return type, match arm types, operator types, arity)
@@ -2335,8 +2336,11 @@ defmodule Skein.Analyzer do
   # ------------------------------------------------------------------
 
   defp check_capabilities(declarations, env) do
-    # Check for duplicate short tool names across all tool.use capabilities
-    dup_errors = check_duplicate_tool_short_names(env)
+    # Check for duplicate short tool names across all tool.use capabilities,
+    # and duplicate declarations of single-label (scoped) capability kinds
+    dup_errors =
+      check_duplicate_tool_short_names(env) ++
+        check_duplicate_scoped_capabilities(env)
 
     fn_errors =
       declarations
@@ -2645,6 +2649,58 @@ defmodule Skein.Analyzer do
         []
       end
     end)
+  end
+
+  # Scoped (single-label) capability kinds: the parameter names a scope
+  # label — a memory namespace, event stream, process pool, or timer group
+  # — that the compiler threads into every generated runtime call (spec
+  # §3.2). Two declarations of the same kind in one scope would make that
+  # label ambiguous, so each module or agent may declare at most one.
+  @scoped_capability_kinds ["memory.kv", "event.log", "process.spawn", "timer"]
+
+  defp check_duplicate_scoped_capabilities(env) do
+    # A nested agent's env merges the enclosing module's capabilities;
+    # only the scope's own declarations count toward the duplicate rule
+    # (the agent's label overrides the module's for calls inside it).
+    env
+    |> Map.get(:own_capabilities, env.capabilities)
+    |> Enum.filter(fn %AST.Capability{kind: kind} -> kind in @scoped_capability_kinds end)
+    |> Enum.group_by(fn %AST.Capability{kind: kind} -> kind end)
+    |> Enum.flat_map(fn
+      {_kind, [_single]} ->
+        []
+
+      {kind, [first | rest]} ->
+        first_label = scoped_capability_label(first)
+
+        Enum.map(rest, fn cap ->
+          %Error{
+            code: "E0017",
+            severity: :error,
+            message:
+              "Duplicate '#{kind}' capability: #{scoped_capability_label(cap)}. " <>
+                "This module already declares #{kind}(#{inspect(first_label)}) — " <>
+                "the parameter names the scope label for every #{kind} call, " <>
+                "so at most one #{kind} capability is allowed per module or agent.",
+            location: location_from_meta(cap.meta, env.file),
+            fix_hint:
+              "Remove this declaration or merge its uses into " <>
+                "#{kind}(#{inspect(first_label)})",
+            fix_code: "// Remove: capability #{kind}(#{inspect(scoped_capability_label(cap))})"
+          }
+        end)
+    end)
+  end
+
+  defp scoped_capability_label(%AST.Capability{params: []}), do: ""
+
+  defp scoped_capability_label(%AST.Capability{params: [param | _]}) do
+    case param do
+      %AST.StringLit{segments: [{:literal, text}]} -> text
+      %AST.StringLit{segments: []} -> ""
+      %AST.Identifier{name: name} -> name
+      _ -> ""
+    end
   end
 
   # ------------------------------------------------------------------
