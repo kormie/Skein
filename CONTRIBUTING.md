@@ -51,8 +51,14 @@ roadmap item links its tracking issue. If you change an item's scope, update bot
 ## Releases
 
 A release is a PR that bumps `version` in `mix.exs` + `apps/skein_cli/mix.exs` and dates the
-`CHANGELOG.md` section. After merge, pushing the annotated `v*` tag triggers the binary build
-matrix and publishes the GitHub Release (automating the tag step is tracked in #100).
+`CHANGELOG.md` section. Merging it with green CI auto-tags `v<version>`, builds the binary
+matrix, and publishes the GitHub Release (`release.yml` → `build.yml`); there is no manual
+tag step.
+
+Before merging a bump PR, dispatch the **Release Readiness** workflow (Actions → Release
+Readiness) with the intended version for a full dry run — tests, the release gates, real
+binaries for all targets, a CLI smoke test against the built binary, and the docs build —
+without creating any tag or release.
 
 What a version number is allowed to change — stability classes for every
 public surface, release cadence, and the deprecation policy — is defined in

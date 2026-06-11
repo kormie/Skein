@@ -13,7 +13,7 @@ skein/
 ├── CLAUDE.md                    # This file
 ├── mix.exs                      # Root umbrella project
 ├── .github/
-│   ├── workflows/               # CI (format/compile/tests), binary builds, docs deploy, milestone sync
+│   ├── workflows/               # CI (format/compile/tests), binary builds, release tagging + readiness, docs deploy, milestone sync
 │   ├── ISSUE_TEMPLATE/          # Issue forms (bug/feature/chore) — auto-label status/triage
 │   └── milestones.json          # Milestones-as-code (synced by workflows/milestones.yml)
 ├── docs/

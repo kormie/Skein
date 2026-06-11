@@ -111,12 +111,14 @@ jobs:
           # 4. Consistency lint: no doc may advertise a version string that has
           #    drifted from the one we are about to ship (e.g. a quickstart that
           #    still reads "skein 0.1.2"). CHANGELOG.md is exempt — it is the one
-          #    place old versions belong.
+          #    place old versions belong. The extraction keeps any prerelease
+          #    suffix so a "skein 1.0.0-rc.1" banner compares as 1.0.0-rc.1,
+          #    not 1.0.0.
           echo "Linting 'skein <version>' strings in README.md and docs/ ..."
           DRIFT=0
           while IFS= read -r match; do
             [ -z "$match" ] && continue
-            found="$(printf '%s' "$match" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)"
+            found="$(printf '%s' "$match" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?' | head -1)"
             if [ "$found" != "$VERSION" ]; then
               echo "::error::Stale version string ($found, expected $VERSION): $match"
               DRIFT=1
