@@ -367,6 +367,81 @@ defmodule Skein.CodeGen.CoreErlangTest do
 
       assert mod.greet("Jane", "Doe") == "Jane Doe"
     end
+
+    test "interpolating an Int renders decimal digits" do
+      mod =
+        compile!("""
+        module StrInterpInt {
+          fn show(n: Int) -> String {
+            "value: ${n}"
+          }
+        }
+        """)
+
+      assert mod.show(42) == "value: 42"
+      assert mod.show(0) == "value: 0"
+      assert mod.show(-7) == "value: -7"
+      assert mod.show(1_000_000_000_000) == "value: 1000000000000"
+    end
+
+    test "interpolating a Float renders decimal digits" do
+      mod =
+        compile!("""
+        module StrInterpFloat {
+          fn show(x: Float) -> String {
+            "value: ${x}"
+          }
+        }
+        """)
+
+      assert mod.show(3.14) == "value: 3.14"
+      assert mod.show(-0.5) == "value: -0.5"
+    end
+
+    test "interpolating a Bool renders true or false" do
+      mod =
+        compile!("""
+        module StrInterpBool {
+          fn show(b: Bool) -> String {
+            "value: ${b}"
+          }
+        }
+        """)
+
+      assert mod.show(true) == "value: true"
+      assert mod.show(false) == "value: false"
+    end
+
+    test "interpolating mixed String and Int segments" do
+      mod =
+        compile!("""
+        module StrInterpMixed {
+          fn show(name: String, count: Int) -> String {
+            "${name}:${count}"
+          }
+        }
+        """)
+
+      assert mod.show("widget", 3) == "widget:3"
+    end
+
+    test "interpolating an Int field access renders decimal digits" do
+      mod =
+        compile!("""
+        module StrInterpField {
+          type Item {
+            name: String
+            count: Int
+          }
+
+          fn show(item: Item) -> String {
+            "${item.name} x${item.count}"
+          }
+        }
+        """)
+
+      assert mod.show(%{name: "widget", count: 12}) == "widget x12"
+    end
   end
 
   describe "match expressions" do

@@ -201,6 +201,24 @@ defmodule Skein.CodeGen.CoreErlangPropertyTest do
     end
   end
 
+  property "interpolating any Int renders its decimal representation" do
+    mod_name = unique_module_name()
+
+    source = """
+    module #{mod_name} {
+      fn show(n: Int) -> String {
+        "value: ${n}"
+      }
+    }
+    """
+
+    {:module, mod} = Compiler.compile_string(source)
+
+    check all(n <- StreamData.integer()) do
+      assert mod.show(n) == "value: #{n}"
+    end
+  end
+
   property "let binding preserves computed value" do
     check all(n <- StreamData.integer(0..1000)) do
       mod_name = unique_module_name()
