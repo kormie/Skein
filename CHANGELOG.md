@@ -14,6 +14,10 @@
 - Queue and topic handlers from compiled modules are subscribed at server startup, so `queue.publish`/`topic.publish` reach declared handlers in a running service (#121)
 - All named runtime ETS tables are owned by the supervised `Skein.Runtime.EtsTables` process instead of whichever process touched them first, eliminating mid-run table loss (#118)
 
+### Documentation
+
+- `docs/STABILITY.md`: the versioning and stability policy for 1.0 — stability classes for every public surface (language, error codes, metadata contracts, EventStore schema, `skein.toml`, schema derivation), release cadence, spec versioning, and the deprecation policy; linked from the README, CONTRIBUTING, and the docs site (#157)
+
 ### Editor & Tooling
 
 - LSP annotation completions offer exactly the implemented spec §4.2 set (`@one_of` added; unimplemented `@pattern`/`@optional`/`@deprecated` removed) (#156)

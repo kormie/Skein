@@ -235,6 +235,10 @@ Traces can be replayed for testing: fully recorded, live against real services, 
 | Structured errors | JSON with `fix_hint` and `fix_code` | Enables automated self-correction loops |
 | Spec fits in 128K tokens | Entire language in one document | Any LLM can hold the full language in context |
 
+What these promises mean across versions — which surfaces are stable, what
+semver covers for a language + runtime + toolchain, and the deprecation
+policy — is defined in [docs/STABILITY.md](docs/STABILITY.md).
+
 ---
 
 ## Getting Started

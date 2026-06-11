@@ -108,6 +108,7 @@ export default defineConfig({
             { label: 'API Reference (ExDoc)', link: '/api/' },
             { label: 'Agent Quick Reference', slug: 'reference/agent-quick-reference' },
             { label: 'Agent Primer', slug: 'reference/agent-primer' },
+            { label: 'Stability & Versioning', slug: 'reference/stability' },
           ],
         },
       ],
