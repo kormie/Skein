@@ -89,6 +89,11 @@ workflow enforces after merge**, so nothing half-releases.
   **Release Readiness** workflow (`.github/workflows/release-readiness.yml`)
   on the bump branch or main with `expected_version: <NEW>`. It runs everything
   the post-merge flow will, without tagging or publishing anything.
+- For the local equivalent inside a Claude Code session, run the
+  `/release-readiness <NEW>` dynamic workflow
+  (`.claude/workflows/release-readiness.js`): the same gates plus an
+  adversarially verified agent sweep of every docs page, spec section, and
+  example.
 - Don't create or push the `v<NEW>` tag yourself — the workflow owns tagging. A
   human-pushed tag still works (it triggers `build.yml` directly) but bypasses
   the changelog/banner gates this flow exists to enforce.

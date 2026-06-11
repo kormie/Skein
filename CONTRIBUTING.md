@@ -58,7 +58,9 @@ tag step.
 Before merging a bump PR, dispatch the **Release Readiness** workflow (Actions → Release
 Readiness) with the intended version for a full dry run — tests, the release gates, real
 binaries for all targets, a CLI smoke test against the built binary, and the docs build —
-without creating any tag or release.
+without creating any tag or release. In a Claude Code session, `/release-readiness <version>`
+runs the complementary local pass: the same gates plus an agent audit of every docs page,
+spec section, and example.
 
 What a version number is allowed to change — stability classes for every
 public surface, release cadence, and the deprecation policy — is defined in
