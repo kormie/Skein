@@ -1,11 +1,11 @@
 # Skein Project Memory
 
 ## Project State
-- All phases complete (1-8f plus unified event store / Phase 10) — MVP reached
-- Distribution prerequisites complete: enum variant matching, supervisors, build --output
-- Current version: 0.1.5 (released 2026-06-10: binaries for 4 targets incl. linux-aarch64, skein-vscode.vsix, checksums; `v*` tag push triggers build.yml release)
-- Test counts on main @ v0.1.5, from CI job logs: 1,547 tests + 195 properties (compiler 941+87, runtime 462+108, lsp 44, cli 100)
-- Remaining work tracked in docs/ROADMAP.md (12 items, each linking its GH issue) + Alpha/Beta milestones
+- **ALPHA RELEASE MILESTONE COMPLETE (2026-06-11)** — all 13 issues closed (#56 #63 #70 #71 #72 #77 #96 #100 #101 #104 #105 #106 #109) across PRs #113-#128; repo-public decision + v0.1.7 release are the owner's calls
+- Current version: 0.1.6 (released 2026-06-10 via the auto-tag flow; v0.1.7 not yet cut — alpha work is on main unreleased)
+- Test counts on main after #128: 1,651 tests + 198 properties (compiler 1010+88, runtime 479+110, lsp 44, cli 114)
+- Remaining work: Beta milestone (#57 #69 #73 #74 #76 #107 #108) + discovered issues #114 (Int interpolation codegen), #118 (flaky memory ETS race), #121 (queue/topic handlers never subscribed); docs/ROADMAP.md has 5 items
+- Merge cadence this session: each PR squash-merged on green CI, branch reset onto main between PRs (single working branch claude/alpha-release-gh-issues-c7wkws)
 - Elixir 1.19.5, OTP 28, managed by mise
 
 ## Repo Hygiene / Issue Tracking (2026-06-10 audit session)
