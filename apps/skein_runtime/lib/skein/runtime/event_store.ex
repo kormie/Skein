@@ -55,15 +55,10 @@ defmodule Skein.Runtime.EventStore do
   """
   @spec init() :: :ok
   def init do
-    if :ets.whereis(@table) == :undefined do
-      try do
-        :ets.new(@table, [:named_table, :ordered_set, :public, read_concurrency: true])
-      rescue
-        ArgumentError -> :ok
-      end
-    end
-
-    :ok
+    Skein.Runtime.EtsTables.ensure_table(
+      @table,
+      [:named_table, :ordered_set, :public, read_concurrency: true]
+    )
   end
 
   @doc """

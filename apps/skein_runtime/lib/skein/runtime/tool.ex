@@ -28,16 +28,7 @@ defmodule Skein.Runtime.Tool do
   """
   @spec init() :: :ok
   def init do
-    if :ets.whereis(@registry_table) == :undefined do
-      try do
-        :ets.new(@registry_table, [:named_table, :public, :set])
-      rescue
-        # Another process won the creation race; the table now exists.
-        ArgumentError -> :ok
-      end
-    end
-
-    :ok
+    Skein.Runtime.EtsTables.ensure_table(@registry_table, [:named_table, :public, :set])
   end
 
   @doc """

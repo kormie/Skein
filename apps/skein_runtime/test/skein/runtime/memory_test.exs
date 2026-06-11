@@ -16,6 +16,29 @@ defmodule Skein.Runtime.MemoryTest do
   end
 
   # ------------------------------------------------------------------
+  # Table ownership (#118)
+  # ------------------------------------------------------------------
+
+  describe "table ownership" do
+    test "memory state survives the death of the process that touched it" do
+      caps = [%{kind: "memory.kv", params: ["owner_test_ns"]}]
+
+      task = Task.async(fn -> Memory.put("owner_test_ns", "k", 42, caps) end)
+      assert {:ok, 42} = Task.await(task)
+
+      ref = Process.monitor(task.pid)
+      assert_receive {:DOWN, ^ref, :process, _, _}, 1000
+
+      # The table must be owned by the long-lived owner, never the caller —
+      # a caller-owned table would vanish with the caller (#118).
+      assert :ets.info(:skein_memory, :owner) == Process.whereis(Skein.Runtime.EtsTables)
+      assert {:ok, 42} = Memory.get("owner_test_ns", "k", caps)
+
+      Memory.clear("owner_test_ns")
+    end
+  end
+
+  # ------------------------------------------------------------------
   # put/3
   # ------------------------------------------------------------------
 
