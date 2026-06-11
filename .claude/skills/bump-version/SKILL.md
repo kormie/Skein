@@ -84,6 +84,16 @@ workflow enforces after merge**, so nothing half-releases.
 - The release gates run **post-merge** in `release.yml`; this skill's preflight
   is how you catch problems **before** merging. If you change the gate logic in
   the workflow, update `check-release.sh` to match (and vice versa).
+- For a full pre-release pass (tests, gates, real binaries for all targets, a
+  CLI smoke test on the built binary, docs + llms*.txt build), dispatch the
+  **Release Readiness** workflow (`.github/workflows/release-readiness.yml`)
+  on the bump branch or main with `expected_version: <NEW>`. It runs everything
+  the post-merge flow will, without tagging or publishing anything.
+- For the local equivalent inside a Claude Code session, run the
+  `/release-readiness <NEW>` dynamic workflow
+  (`.claude/workflows/release-readiness.js`): the same gates plus an
+  adversarially verified agent sweep of every docs page, spec section, and
+  example.
 - Don't create or push the `v<NEW>` tag yourself — the workflow owns tagging. A
   human-pushed tag still works (it triggers `build.yml` directly) but bypasses
   the changelog/banner gates this flow exists to enforce.

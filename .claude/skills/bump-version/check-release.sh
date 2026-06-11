@@ -53,11 +53,13 @@ else
   fail=1
 fi
 
-# 3. Version-banner drift in README.md / docs.
+# 3. Version-banner drift in README.md / docs. The extraction keeps any
+#    prerelease suffix so a "skein 1.0.0-rc.1" banner compares as 1.0.0-rc.1,
+#    not 1.0.0.
 drift=0
 while IFS= read -r match; do
   [ -z "$match" ] && continue
-  found="$(printf '%s' "$match" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)"
+  found="$(printf '%s' "$match" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?' | head -1)"
   if [ "$found" != "$VERSION" ]; then
     echo "ERROR: stale version banner ($found, expected $VERSION): $match"
     drift=1

@@ -255,4 +255,8 @@ jobs:
         with:
           tag_name: ${{ inputs.release_ref || github.ref_name }}
           generate_release_notes: true
+          # A semver prerelease tag (e.g. v1.0.0-rc.1) publishes as a GitHub
+          # prerelease, so it never becomes "latest" (and the installer's
+          # releases/latest default keeps pointing at the last stable).
+          prerelease: ${{ contains(inputs.release_ref || github.ref_name, '-') }}
           files: release/*

@@ -1,0 +1,272 @@
+name: Release Readiness
+
+# On-demand full pass of the project before cutting a release tag (built for
+# the v1.0.0-rc gate, reusable for any release). Dispatch it from the branch
+# you intend to release (normally main); optionally pass the version you
+# intend to ship and it will also assert the version-bump state.
+#
+# What it runs, in parallel:
+#
+#   test           — format check, compile with warnings-as-errors, full test
+#                    suite (exactly what ci.yml enforces on PRs)
+#   release-gates  — the same gates release.yml enforces post-merge (version
+#                    agreement, dated CHANGELOG, doc banner drift) via the
+#                    shared preflight script, plus the expected_version assert
+#   build          — the real release build via build.yml (all four Burrito
+#                    targets + the VS Code extension), uploaded as artifacts
+#   cli-smoke      — downloads the built Linux binary and exercises it like a
+#                    user would: version, scaffold a project, run its tests,
+#                    compile every canonical example
+#   docs           — ExDoc + Astro site build with the llms*.txt gates from
+#                    the release docs snapshot
+#   verdict        — aggregates everything into a go / no-go summary
+#
+# It creates no tags and no GitHub Releases, and pushes nothing — read-only
+# with respect to the repo. Releasing itself stays "merge a version-bump PR"
+# (see release.yml).
+
+on:
+  workflow_dispatch:
+    inputs:
+      expected_version:
+        description: >-
+          Version you intend to ship (e.g. 1.0.0-rc.1, no leading v). When
+          set, the gates also assert mix.exs already carries it and that tag
+          v<version> is still unclaimed. Leave empty for a general health
+          pass.
+        required: false
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-readiness-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  OTP_VERSION: "28.1"
+  ELIXIR_VERSION: "1.19.5-otp-28"
+
+jobs:
+  test:
+    name: Format, compile, and test
+    runs-on: ubuntu-latest
+    env:
+      MIX_ENV: test
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Erlang & Elixir
+        uses: erlef/setup-beam@v1
+        with:
+          otp-version: ${{ env.OTP_VERSION }}
+          elixir-version: ${{ env.ELIXIR_VERSION }}
+
+      # Same key as ci.yml so readiness runs reuse CI's warm cache.
+      - name: Cache deps and build
+        uses: actions/cache@v5
+        with:
+          path: |
+            deps
+            _build
+          key: ${{ runner.os }}-mix-test-${{ hashFiles('mix.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-mix-test-
+
+      - name: Install dependencies
+        run: |
+          mix local.hex --force
+          mix local.rebar --force
+          mix deps.get
+
+      - name: Check formatting
+        run: mix format --check-formatted
+
+      - name: Compile
+        run: mix compile --warnings-as-errors
+
+      - name: Run tests
+        run: mix test
+
+  release-gates:
+    name: Release gates
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      # The shared preflight mirrors release.yml's post-merge gates: version
+      # agreement between the two mix.exs files, a dated CHANGELOG section,
+      # and no version-banner drift in README.md / docs.
+      - name: Run release preflight
+        run: bash .claude/skills/bump-version/check-release.sh
+
+      - name: Assert the intended version is staged
+        if: inputs.expected_version != ''
+        env:
+          EXPECTED: ${{ inputs.expected_version }}
+        run: |
+          set -euo pipefail
+          WANT="${EXPECTED#v}"
+          HAVE="$(grep -E '^[[:space:]]*version:[[:space:]]*"' mix.exs | head -1 \
+            | sed -E 's/.*version:[[:space:]]*"([^"]+)".*/\1/')"
+          echo "mix.exs version: $HAVE — intending to ship: $WANT"
+          if [ "$HAVE" != "$WANT" ]; then
+            echo "::error::mix.exs is at $HAVE but the intended release is $WANT — the version-bump PR has not landed on this ref."
+            exit 1
+          fi
+          if git ls-remote --exit-code --tags origin "refs/tags/v$WANT" >/dev/null 2>&1; then
+            echo "::error::Tag v$WANT already exists — merging this bump would no-op in release.yml. Pick a new version."
+            exit 1
+          fi
+          echo "OK: mix.exs carries $WANT and tag v$WANT is unclaimed."
+
+  build:
+    name: Release build
+    # The actual release build (all four Burrito targets + the VS Code
+    # extension) through the same reusable workflow release.yml invokes —
+    # with is_release left false, so the docs-snapshot/release jobs are
+    # skipped and no GitHub Release is created. Binaries land as run
+    # artifacts; cli-smoke picks the Linux one up.
+    permissions:
+      # build.yml declares contents: write for its (skipped-here) release
+      # job; a called workflow can only downgrade the caller's grant.
+      contents: write
+    uses: ./.github/workflows/build.yml
+    with:
+      release_ref: ${{ github.sha }}
+
+  cli-smoke:
+    name: CLI end-to-end smoke
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Download Linux binary
+        uses: actions/download-artifact@v8
+        with:
+          name: skein-linux-x86_64
+          path: bin
+
+      - name: skein version / help
+        run: |
+          set -euo pipefail
+          chmod +x bin/skein_linux
+          SKEIN="$GITHUB_WORKSPACE/bin/skein_linux"
+          "$SKEIN" version
+          "$SKEIN" help
+
+      - name: Scaffold a project and run its tests
+        run: |
+          set -euo pipefail
+          SKEIN="$GITHUB_WORKSPACE/bin/skein_linux"
+          cd "$RUNNER_TEMP"
+          "$SKEIN" new readiness_smoke
+          "$SKEIN" test readiness_smoke
+
+      - name: Compile every canonical example
+        run: |
+          set -euo pipefail
+          SKEIN="$GITHUB_WORKSPACE/bin/skein_linux"
+          status=0
+          for f in examples/*.skein examples/market_research/*.skein; do
+            echo "::group::skein compile $f"
+            if ! "$SKEIN" compile "$f"; then
+              echo "::error file=$f::example failed to compile through the CLI binary"
+              status=1
+            fi
+            echo "::endgroup::"
+          done
+          exit "$status"
+
+  docs:
+    name: Docs build (ExDoc + site + llms)
+    runs-on: ubuntu-latest
+    env:
+      # ex_doc is a dev-only dep.
+      MIX_ENV: dev
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Erlang & Elixir
+        uses: erlef/setup-beam@v1
+        with:
+          otp-version: ${{ env.OTP_VERSION }}
+          elixir-version: ${{ env.ELIXIR_VERSION }}
+
+      - name: Cache deps and build
+        uses: actions/cache@v5
+        with:
+          path: |
+            deps
+            _build
+          key: ${{ runner.os }}-mix-dev-${{ hashFiles('mix.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-mix-dev-
+
+      - name: Install dependencies
+        run: |
+          mix local.hex --force
+          mix local.rebar --force
+          mix deps.get
+
+      - name: Build API reference (ExDoc)
+        run: mix docs
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Build docs site
+        working-directory: docs/site
+        run: |
+          bun install
+          bunx astro build
+
+      # The same agent-docs gate the release docs snapshot enforces.
+      - name: Check llms*.txt output
+        run: |
+          set -euo pipefail
+          for f in llms.txt llms-full.txt llms-small.txt; do
+            match="$(find docs/site/dist -name "$f" -print -quit)"
+            if [ -z "$match" ]; then
+              echo "::error::Expected $f in docs/site/dist but it was not generated"
+              exit 1
+            fi
+            echo "OK: $match"
+          done
+
+  verdict:
+    name: Go / no-go
+    needs: [test, release-gates, build, cli-smoke, docs]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Summarize results
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+          EXPECTED: ${{ inputs.expected_version }}
+        run: |
+          set -euo pipefail
+          {
+            if [ -n "$EXPECTED" ]; then
+              echo "## Release readiness for v${EXPECTED#v}"
+            else
+              echo "## Release readiness (no target version given)"
+            fi
+            echo
+            echo "| Check | Result |"
+            echo "| --- | --- |"
+            jq -r 'to_entries[] | "| \(.key) | \(if .value.result == "success" then "✅ success" else "❌ \(.value.result)" end) |"' <<<"$RESULTS"
+            echo
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          failed="$(jq -r '[to_entries[] | select(.value.result != "success") | .key] | join(", ")' <<<"$RESULTS")"
+          if [ -n "$failed" ]; then
+            echo "**NOT ready to cut the tag** — failed: $failed" >> "$GITHUB_STEP_SUMMARY"
+            echo "::error::Release readiness failed: $failed"
+            exit 1
+          fi
+          echo "**All checks green** — good to cut the tag (merge the version-bump PR)." >> "$GITHUB_STEP_SUMMARY"
+          echo "All checks green."

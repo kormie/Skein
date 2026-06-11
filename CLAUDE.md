@@ -13,7 +13,7 @@ skein/
 ├── CLAUDE.md                    # This file
 ├── mix.exs                      # Root umbrella project
 ├── .github/
-│   ├── workflows/               # CI (format/compile/tests), binary builds, docs deploy, milestone sync
+│   ├── workflows/               # CI (format/compile/tests), binary builds, release tagging + readiness, docs deploy, milestone sync
 │   ├── ISSUE_TEMPLATE/          # Issue forms (bug/feature/chore) — auto-label status/triage
 │   └── milestones.json          # Milestones-as-code (synced by workflows/milestones.yml)
 ├── docs/
@@ -422,6 +422,12 @@ The `github-pages-astro` plugin (`.claude/plugins/github-pages-astro/`) provides
 
 - **Stop:** Runs `docs-freshness-check.sh` (warns about stale docs on session end)
 - **SessionEnd:** Runs `stop-dev-server.sh` (cleans up any running Astro dev server)
+
+### Workflows
+
+| Command | Description |
+|---------|-------------|
+| `/release-readiness [version]` | Dynamic workflow (`.claude/workflows/release-readiness.js`): full pre-release pass — build/test/preflight gates, toolchain e2e, and an adversarially verified sweep of every docs page, spec section, example, and meta-doc. Run before cutting a release tag; pass the intended version (e.g. `1.0.0-rc.1`) to also assert the bump is staged. |
 
 ## Session Memory
 
