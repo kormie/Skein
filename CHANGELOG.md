@@ -1,5 +1,23 @@
 # Changelog
 
+## Unreleased
+
+### Language & Compiler
+
+- Guard expressions in match arms: `pattern if expr -> body` with contextual `if`; guard-safe expression subset enforced as the new `E0027`, non-Bool guards are `E0020`, and guarded arms no longer count toward exhaustiveness (#147)
+
+### Runtime
+
+- **Removed** the deprecated `Skein.Runtime.EventLog` facade (superseded by `Skein.Runtime.EventStore` since the unified event store shipped); compiled code already called EventStore directly — external callers should use `EventStore.log/4`, `EventStore.query/1`, and `EventStore.clear/0` (#156)
+- `llm.json[T]` results are usable from compiled code: schema-declared keys atomize at the decode boundary (nested objects, arrays, enum-variant `oneOf` branches; `Map[K, V]` keys stay strings), fixing the runtime crash on field access like spec §8.4's `d.action` (#154)
+- `llm.embed` is production-ready through the OpenAI-compatible backend's `/embeddings` endpoint (Voyage AI in production, local embedding models in dev, selected per environment in `skein.toml`); embed trace spans now record `backend`/`base_url` (#146)
+- Queue and topic handlers from compiled modules are subscribed at server startup, so `queue.publish`/`topic.publish` reach declared handlers in a running service (#121)
+- All named runtime ETS tables are owned by the supervised `Skein.Runtime.EtsTables` process instead of whichever process touched them first, eliminating mid-run table loss (#118)
+
+### Editor & Tooling
+
+- LSP annotation completions offer exactly the implemented spec §4.2 set (`@one_of` added; unimplemented `@pattern`/`@optional`/`@deprecated` removed) (#156)
+
 ## v0.2.0 (2026-06-11)
 
 The **Beta Release milestone is complete** — replay-driven testing, scope-enforced capabilities, local-model development, and editor quickfixes — plus the public-repo essentials (license, security policy, one-line installer) and a string-interpolation correctness fix.

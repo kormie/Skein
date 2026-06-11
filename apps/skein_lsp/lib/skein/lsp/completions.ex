@@ -365,16 +365,16 @@ defmodule Skein.Lsp.Completions do
   # -- Annotation completions --
 
   defp annotation_completions do
+    # Exactly the implemented constraint annotations (spec section 4.2) —
+    # the LSP must not offer surface the compiler doesn't accept.
     annotations = [
       {"@description", "Add a description to a field or tool"},
       {"@min", "Minimum value constraint"},
       {"@max", "Maximum value constraint"},
-      {"@pattern", "Regex pattern constraint"},
+      {"@one_of", "Allowed values constraint"},
       {"@primary", "Mark field as primary key"},
       {"@unique", "Mark field as unique"},
-      {"@default", "Default value for field"},
-      {"@optional", "Mark field as optional"},
-      {"@deprecated", "Mark as deprecated"}
+      {"@default", "Default value for field"}
     ]
 
     Enum.map(annotations, fn {label, detail} ->

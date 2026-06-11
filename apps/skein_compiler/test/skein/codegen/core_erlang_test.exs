@@ -3463,7 +3463,7 @@ defmodule Skein.CodeGen.CoreErlangTest do
     end
 
     test "process.spawn with a task body executes the referenced fn in the background" do
-      Skein.Runtime.EventLog.reset_all()
+      Skein.Runtime.EventStore.clear()
 
       mod =
         compile!("""
@@ -3485,13 +3485,13 @@ defmodule Skein.CodeGen.CoreErlangTest do
 
       event =
         await(fn ->
-          Enum.find(Skein.Runtime.EventLog.all(), &(&1.event == "task.ran"))
+          Enum.find(Skein.Runtime.EventStore.query(kind: :user_event), &(&1.event == "task.ran"))
         end)
 
       assert event, "spawned task body never executed (no task.ran event)"
       assert event.stream == "audit"
 
-      Skein.Runtime.EventLog.reset_all()
+      Skein.Runtime.EventStore.clear()
     end
 
     test "a crashing task body does not crash the caller (from Skein source)" do
@@ -3586,7 +3586,7 @@ defmodule Skein.CodeGen.CoreErlangTest do
     end
 
     test "event.log is callable and records events" do
-      Skein.Runtime.EventLog.reset_all()
+      Skein.Runtime.EventStore.clear()
 
       mod =
         compile!("""
@@ -3601,17 +3601,17 @@ defmodule Skein.CodeGen.CoreErlangTest do
 
       mod.log_it()
 
-      events = Skein.Runtime.EventLog.all()
+      events = Skein.Runtime.EventStore.query(kind: :user_event)
       assert length(events) >= 1
       event = Enum.find(events, &(&1.event == "test.event"))
       assert event != nil
       assert event.data == "payload"
 
-      Skein.Runtime.EventLog.reset_all()
+      Skein.Runtime.EventStore.clear()
     end
 
     test "multiple event.log calls in same function" do
-      Skein.Runtime.EventLog.reset_all()
+      Skein.Runtime.EventStore.clear()
 
       mod =
         compile!("""
@@ -3627,18 +3627,18 @@ defmodule Skein.CodeGen.CoreErlangTest do
 
       mod.log_multiple()
 
-      events = Skein.Runtime.EventLog.all()
+      events = Skein.Runtime.EventStore.query(kind: :user_event)
       event_names = Enum.map(events, & &1.event)
       assert "start" in event_names
       assert "end" in event_names
 
-      Skein.Runtime.EventLog.reset_all()
+      Skein.Runtime.EventStore.clear()
     end
   end
 
   describe "scoped capability label threading (spec section 3.2)" do
     test "event.log threads the declared stream label into the stored event" do
-      Skein.Runtime.EventLog.reset_all()
+      Skein.Runtime.EventStore.clear()
 
       mod =
         compile!("""
@@ -3653,14 +3653,16 @@ defmodule Skein.CodeGen.CoreErlangTest do
 
       mod.log_it()
 
-      event = Enum.find(Skein.Runtime.EventLog.all(), &(&1.event == "test.event"))
+      event =
+        Enum.find(Skein.Runtime.EventStore.query(kind: :user_event), &(&1.event == "test.event"))
+
       assert event.stream == "audit"
 
-      Skein.Runtime.EventLog.reset_all()
+      Skein.Runtime.EventStore.clear()
     end
 
     test "parameterless event.log declaration stays unscoped (nil stream)" do
-      Skein.Runtime.EventLog.reset_all()
+      Skein.Runtime.EventStore.clear()
 
       mod =
         compile!("""
@@ -3675,10 +3677,12 @@ defmodule Skein.CodeGen.CoreErlangTest do
 
       mod.log_it()
 
-      event = Enum.find(Skein.Runtime.EventLog.all(), &(&1.event == "test.event"))
+      event =
+        Enum.find(Skein.Runtime.EventStore.query(kind: :user_event), &(&1.event == "test.event"))
+
       assert event.stream == nil
 
-      Skein.Runtime.EventLog.reset_all()
+      Skein.Runtime.EventStore.clear()
     end
 
     test "process.spawn threads the declared pool onto the trace span" do
@@ -3709,7 +3713,7 @@ defmodule Skein.CodeGen.CoreErlangTest do
     end
 
     test "a nested agent's label overrides the module's for calls inside the agent" do
-      Skein.Runtime.EventLog.reset_all()
+      Skein.Runtime.EventStore.clear()
 
       compile!("""
       module Outer {
@@ -3742,10 +3746,12 @@ defmodule Skein.CodeGen.CoreErlangTest do
       agent_mod = Module.concat(["Skein", "Agent", "Outer", "Logger"])
       agent_mod.__phase_handler__(:init, %{}, [])
 
-      event = Enum.find(Skein.Runtime.EventLog.all(), &(&1.event == "agent.event"))
+      event =
+        Enum.find(Skein.Runtime.EventStore.query(kind: :user_event), &(&1.event == "agent.event"))
+
       assert event.stream == "agent_stream"
 
-      Skein.Runtime.EventLog.reset_all()
+      Skein.Runtime.EventStore.clear()
     end
   end
 

@@ -5,7 +5,7 @@ defmodule Skein.Runtime.EventStore do
   Every runtime event — effect spans, trace annotations, user-defined events,
   and memory state changes — flows through a single ordered log. This provides
   a unified "what happened" record that subsumes the previously separate
-  Trace, EventLog, and Memory audit concerns.
+  trace and memory audit concerns.
 
   ## Event Kinds
 
