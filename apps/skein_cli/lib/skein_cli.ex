@@ -52,11 +52,18 @@ defmodule Skein.CLI do
   # new — project scaffolding
   # ------------------------------------------------------------------
 
+  @new_usage "Usage: skein new <project-directory> [--backend <backend>] [--no-agents] [--no-git]"
+
+  # The llm backends skein.toml accepts — keep in sync with the
+  # Skein.CLI.Config.activate/1 clauses.
+  @new_backends ~w(anthropic bedrock openai_compatible test)
+
   @doc """
   Scaffolds a new Skein project at the given directory path.
 
   Creates a project structure with:
-  - `skein.toml` — project configuration
+  - `skein.toml` — project configuration (`--backend` selects the `[llm]`
+    profile: `anthropic` (default), `openai_compatible`, or `test`)
   - `README.md` — project readme
   - `AGENTS.md` — Skein primer for coding agents (skip with `--no-agents`)
   - `CLAUDE.md` — one-line pointer to AGENTS.md
@@ -67,29 +74,58 @@ defmodule Skein.CLI do
   """
   @spec new([String.t()]) :: {:ok, String.t()} | {:error, String.t()}
   def new([]) do
-    {:error, "Usage: skein new <project-directory> [--no-agents] [--no-git]"}
+    {:error, @new_usage}
   end
 
   def new(args) do
-    {flags, positional} = Enum.split_with(args, &String.starts_with?(&1, "-"))
-
-    with :ok <- validate_new_flags(flags),
+    with {:ok, positional, opts} <- parse_new_args(args, [], default_new_opts()),
          [project_dir | _] <- positional do
-      do_new(project_dir, "--no-agents" not in flags, "--no-git" not in flags)
+      do_new(project_dir, opts)
     else
-      [] -> {:error, "Usage: skein new <project-directory> [--no-agents] [--no-git]"}
+      [] -> {:error, @new_usage}
       {:error, _} = err -> err
     end
   end
 
-  defp validate_new_flags(flags) do
-    case Enum.reject(flags, &(&1 in ["--no-agents", "--no-git"])) do
-      [] -> :ok
-      [flag | _] -> {:error, "Unknown option: #{flag} (run 'skein help' for usage)"}
-    end
+  defp default_new_opts, do: %{agents: true, git: true, backend: "anthropic"}
+
+  defp parse_new_args([], positional, opts), do: {:ok, Enum.reverse(positional), opts}
+
+  defp parse_new_args(["--no-agents" | rest], positional, opts),
+    do: parse_new_args(rest, positional, %{opts | agents: false})
+
+  defp parse_new_args(["--no-git" | rest], positional, opts),
+    do: parse_new_args(rest, positional, %{opts | git: false})
+
+  defp parse_new_args(["--backend=" <> backend | rest], positional, opts),
+    do: parse_new_backend(backend, rest, positional, opts)
+
+  defp parse_new_args(["--backend", backend | rest], positional, opts)
+       when binary_part(backend, 0, 1) != "-",
+       do: parse_new_backend(backend, rest, positional, opts)
+
+  defp parse_new_args(["--backend" | _rest], _positional, _opts) do
+    {:error, "--backend requires a value: #{Enum.join(@new_backends, ", ")}"}
   end
 
-  defp do_new(project_dir, write_agents_md?, git_init?) do
+  defp parse_new_args(["-" <> _ = flag | _rest], _positional, _opts) do
+    {:error, "Unknown option: #{flag} (run 'skein help' for usage)"}
+  end
+
+  defp parse_new_args([arg | rest], positional, opts),
+    do: parse_new_args(rest, [arg | positional], opts)
+
+  defp parse_new_backend(backend, rest, positional, opts) when backend in @new_backends do
+    parse_new_args(rest, positional, %{opts | backend: backend})
+  end
+
+  defp parse_new_backend(backend, _rest, _positional, _opts) do
+    {:error,
+     "Unknown llm backend '#{backend}' for --backend " <>
+       "(expected \"anthropic\", \"bedrock\", \"openai_compatible\", or \"test\")"}
+  end
+
+  defp do_new(project_dir, %{agents: write_agents_md?, git: git_init?, backend: backend}) do
     project_dir = Path.expand(project_dir)
     name = Path.basename(project_dir)
 
@@ -100,7 +136,7 @@ defmodule Skein.CLI do
       File.mkdir_p!(Path.join(project_dir, "src"))
       File.mkdir_p!(Path.join(project_dir, "test"))
 
-      File.write!(Path.join(project_dir, "skein.toml"), skein_toml(name))
+      File.write!(Path.join(project_dir, "skein.toml"), skein_toml(name, backend))
       File.write!(Path.join(project_dir, "README.md"), readme(name))
       File.write!(Path.join(project_dir, "src/main.skein"), main_skein(name))
       File.write!(Path.join(project_dir, "test/main_test.skein"), main_test_skein(name))
@@ -231,6 +267,7 @@ defmodule Skein.CLI do
           ;;
         new)
           _arguments \\
+            '--backend[LLM backend for skein.toml (default anthropic)]:backend:(anthropic bedrock openai_compatible test)' \\
             '--no-agents[Skip generating AGENTS.md / CLAUDE.md]' \\
             '--no-git[Skip git init (a .gitignore is always written)]' \\
             '*:project directory:_directories'
@@ -288,7 +325,7 @@ defmodule Skein.CLI do
     end
   end
 
-  defp skein_toml(name) do
+  defp skein_toml(name, backend) do
     """
     [project]
     name = "#{name}"
@@ -298,6 +335,11 @@ defmodule Skein.CLI do
     src = "src"
     test = "test"
 
+    """ <> llm_profile_toml(backend)
+  end
+
+  defp llm_profile_toml("anthropic") do
+    """
     [llm]
     backend = "anthropic"
 
@@ -307,6 +349,43 @@ defmodule Skein.CLI do
     # backend = "openai_compatible"
     # base_url = "http://localhost:10240/v1"
     # model_map = { "claude-opus-4-8" = "your/local-model" }
+    """
+  end
+
+  defp llm_profile_toml("bedrock") do
+    """
+    # Amazon Bedrock (Converse API). Requests are SigV4-signed with
+    # credentials from the standard AWS environment variables
+    # (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_SESSION_TOKEN) —
+    # for profile/SSO setups, export them first:
+    #   aws configure export-credentials --format env --profile <name>
+    [llm]
+    backend = "bedrock"
+    region = "us-east-1"
+    # Capabilities keep the canonical model name; map it to the Bedrock
+    # model ID or inference profile that serves it:
+    # model_map = { "claude-sonnet-4-6" = "global.anthropic.claude-sonnet-4-6" }
+    """
+  end
+
+  defp llm_profile_toml("openai_compatible") do
+    """
+    # Serve llm.* calls from a local OpenAI-compatible model server
+    # (oMLX, Ollama, LM Studio, llama.cpp, vLLM, ...).
+    [llm]
+    backend = "openai_compatible"
+    base_url = "http://localhost:10240/v1"
+    # api_key_env = "OMLX_API_KEY"    # most local servers need no key
+    # model_map = { "claude-opus-4-8" = "your/local-model" }
+    """
+  end
+
+  defp llm_profile_toml("test") do
+    """
+    # Deterministic built-in responses — no API key or model server needed.
+    # Switch to "anthropic" (and set ANTHROPIC_API_KEY) for real traffic.
+    [llm]
+    backend = "test"
     """
   end
 

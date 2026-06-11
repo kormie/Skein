@@ -18,6 +18,11 @@ defmodule Skein.CLI.Config do
       api_key_env = "OMLX_API_KEY"        # optional; most local servers need none
       model_map = { "claude-opus-4-8" = "mlx-community/Qwen3-30B" }
 
+      [env.prod.llm]
+      backend = "bedrock"                 # Amazon Bedrock (SigV4, AWS env credentials)
+      region = "us-west-2"
+      model_map = { "claude-sonnet-4-6" = "global.anthropic.claude-sonnet-4-6" }
+
   The parser covers the TOML subset skein.toml uses: `[table]` headers
   (dotted), `key = "string"` / `key = 123` pairs, inline string tables,
   comments, and blank lines.
@@ -128,10 +133,39 @@ defmodule Skein.CLI.Config do
     end
   end
 
+  # Amazon Bedrock (issue #173). Credentials resolve at call time from the
+  # standard AWS env vars; only region and the model mapping live here.
+  defp activate(%{"backend" => "bedrock"} = profile) do
+    case bedrock_region(profile) do
+      region when is_binary(region) and region != "" ->
+        config = %{
+          region: region,
+          model_map: profile["model_map"] || %{}
+        }
+
+        config =
+          case profile["base_url"] do
+            base_url when is_binary(base_url) and base_url != "" ->
+              Map.put(config, :base_url, base_url)
+
+            _ ->
+              config
+          end
+
+        Llm.set_backend({Skein.Runtime.Llm.BedrockBackend, config})
+        {:ok, "llm backend: bedrock (#{region})"}
+
+      _ ->
+        {:error,
+         "skein.toml llm profile 'bedrock' requires region " <>
+           "(e.g. region = \"us-west-2\") or AWS_REGION in the environment"}
+    end
+  end
+
   defp activate(%{"backend" => other}) do
     {:error,
      "Unknown llm backend '#{other}' in skein.toml " <>
-       "(expected \"anthropic\", \"openai_compatible\", or \"test\")"}
+       "(expected \"anthropic\", \"bedrock\", \"openai_compatible\", or \"test\")"}
   end
 
   defp activate(_profile) do
@@ -143,6 +177,10 @@ defmodule Skein.CLI.Config do
   end
 
   defp resolve_api_key(_), do: nil
+
+  defp bedrock_region(profile) do
+    profile["region"] || System.get_env("AWS_REGION")
+  end
 
   # -- TOML-subset parsing ------------------------------------------------------
 

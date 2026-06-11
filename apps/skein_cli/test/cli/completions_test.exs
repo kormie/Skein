@@ -40,6 +40,12 @@ defmodule Skein.CLI.CompletionsTest do
     assert script =~ "--kind"
     assert script =~ "--no-agents"
     assert script =~ "--no-git"
+    assert script =~ "--backend"
+  end
+
+  test "new --backend offers the recognized llm backends" do
+    {:ok, script} = CLI.completions(["zsh"])
+    assert script =~ "anthropic bedrock openai_compatible test"
   end
 
   test "compile completes .skein files and trace --kind offers span kinds" do
