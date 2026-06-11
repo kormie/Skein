@@ -258,7 +258,7 @@ note that workflow artifacts expire after a while — prefer a release.)
 chmod +x skein-*
 mv skein-* /usr/local/bin/skein
 
-skein version             # → skein 0.1.6
+skein version             # → skein 0.1.7
 
 # Compile a file
 skein compile hello.skein

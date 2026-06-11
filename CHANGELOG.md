@@ -1,5 +1,36 @@
 # Changelog
 
+## v0.1.7 (2026-06-11)
+
+The **Alpha Release milestone is complete** — this release packages everything that gated taking the repo public: the last spec-vs-implementation gaps in the language, runtime completeness for schedules and agent events, and a first-five-minutes DX pass across the CLI, test runner, and MCP server.
+
+### Language & Compiler
+
+- **Agents nest inside modules** (#63) — `module RefundService { agent RefundAgent { ... } }` compiles to its own BEAM module (`Skein.Agent.RefundService.RefundAgent`). The nested agent sees the module's `type` declarations (so `llm.json[Decision]` works in phase handlers — the derived JSON Schema verifiably reaches the LLM request, #70) and module-level capabilities apply to it. Agents never declare their own `type` blocks; nesting is the route (spec §3.7). The compiler now emits one BEAM module per construct in a file, and `skein build` writes each. `examples/market_research/single_file.skein` ships the single-file shape alongside the two-file one.
+- **Enum variant construction completeness** (#96) — zero-field variants construct in expression position (`Status.Active`, bare `Active`, and `Status.Active()` all lower to `:active`, matching patterns). Unknown variants, wrong constructor arity, and wrong argument types are structured E0010/E0020 errors with closest-name fixes — no `core_lint` crashes remain.
+- **Structured assertion failures** (#105) — a failing `assert` raises `Skein.Runtime.AssertionError` carrying the operator, both inspected operands, the rendered expression, and the assert's `file:line`; `skein test` FAIL lines print all of it. Scenario and golden tests inherit the behavior.
+- **Capability checks cover test blocks** (#104) — `test`/`scenario`/`golden` bodies are now part of E0012 coverage and capability-usage accounting, so the fresh scaffold no longer warns on its own `tool.use` and missing capabilities in tests fail at compile time.
+- **Effect error types are language surface** — `HttpError`, `StoreError`, `NotFound`, `LlmError`, and the other spec §6 types are known type names (`Result[String, HttpError]` was a false E0024); `store.<table>` usage now counts toward unused-capability analysis.
+
+### Runtime
+
+- **Schedule handlers auto-fire** (#71) — full 5-field cron matching (`*`, `n`, `a-b`, `*/n`, lists; weekday 0/7 = Sunday; standard DOM/DOW OR rule) on a configurable 1s tick, deduped to once per cron minute. Invalid cron expressions are rejected at registration. `skein run` services register schedule handlers at startup; `trigger/1` and a deterministic `tick_at/1` remain for tests.
+- **Agent `emit` events persist** (#72) — events flush to the EventStore as `:user_event` records (tagged agent/instance/phase) after each handler completes and *before* the result is acted on, so events emitted ahead of a crash survive and `EventStore.query/1` sees them.
+
+### CLI & Tooling
+
+- **`skein new` initializes git** (#106) — cargo-style: `git init` by default (never nested inside an existing work tree; `--no-git` to skip; missing git doesn't fail the scaffold) and a baseline `.gitignore` always written.
+- **`skein completions zsh`** (#101) — tab-completion for every subcommand, flag, `.skein`/directory positionals, and `trace --kind` span kinds, drift-tested against the help text. Install snippet in the README.
+- **MCP `skein_compile_check` matches `skein test`** (#109) — warnings are included (new `Compiler.check_file/1` API), project mode checks `src/` and `test/`, and `ok` stays errors-only.
+
+### Spec & Docs
+
+- **Every spec section 8 example compiles with zero diagnostics** (#77), enforced by `spec_examples_test.exs` at full-compile strength. The sweep fixed real bugs in 8.4's phase machine (undeclared `Analyze -> Failed` transition, missing `Done` handler). Tuple destructuring is explicitly annotated Planned. Spec 8.4 now shows the nested-agent shape.
+
+### Testing
+
+- Suite grew from 1,547 tests + 195 properties to **1,651 tests + 198 properties**, including properties for cron firing counts and agent event flushing.
+
 ## v0.1.6 (2026-06-10)
 
 Named arguments land in the language, and the project itself gets release and triage automation: green version-bump merges now tag and publish on their own, and issues/milestones are managed as code.
