@@ -419,6 +419,57 @@ defmodule Skein.Integration.MemoryLlmTest do
       assert is_binary(response)
     end
 
+    test "llm.stream delivers each chunk to the on_chunk callback" do
+      Skein.Runtime.Llm.set_backend(Skein.Runtime.Llm.StreamingTestBackend)
+      Skein.Runtime.Memory.clear("chunks")
+
+      {:module, mod} =
+        Skein.Compiler.compile_string("""
+        module StreamCallback {
+          capability model("anthropic", "claude-sonnet-4-5")
+          capability memory.kv("chunks")
+
+          fn record(chunk: String) -> String {
+            memory.put(chunk, chunk)!
+            chunk
+          }
+
+          fn stream_it(data: String) -> String {
+            llm.stream("claude-sonnet-4-5", "system", data, &record)
+          }
+        }
+        """)
+
+      assert {:ok, "Hello, world!"} = mod.stream_it("Hi")
+
+      # StreamingTestBackend emits ["Hello, ", "world!"] — the callback
+      # must observe every chunk, not a fabricated no-op.
+      caps = [%{kind: "memory.kv", params: ["chunks"]}]
+      assert {:ok, "Hello, "} = Skein.Runtime.Memory.get("chunks", "Hello, ", caps)
+      assert {:ok, "world!"} = Skein.Runtime.Memory.get("chunks", "world!", caps)
+    end
+
+    test "llm.stream with a named on_chunk argument compiles and runs" do
+      Skein.Runtime.Llm.set_backend(Skein.Runtime.Llm.StreamingTestBackend)
+
+      {:module, mod} =
+        Skein.Compiler.compile_string("""
+        module StreamNamedCallback {
+          capability model("anthropic", "claude-sonnet-4-5")
+
+          fn record(chunk: String) -> String {
+            chunk
+          }
+
+          fn stream_it(data: String) -> String {
+            llm.stream("claude-sonnet-4-5", "system", data, on_chunk: &record)
+          }
+        }
+        """)
+
+      assert {:ok, "Hello, world!"} = mod.stream_it("Hi")
+    end
+
     test "llm.stream uses same model capability as chat and json" do
       Skein.Runtime.Llm.set_backend(Skein.Runtime.Llm.StreamingTestBackend)
 

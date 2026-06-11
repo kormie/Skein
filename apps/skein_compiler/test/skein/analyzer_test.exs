@@ -3392,6 +3392,116 @@ defmodule Skein.AnalyzerTest do
   end
 
   # ------------------------------------------------------------------
+  # Effect call arity (documented effect signatures)
+  # ------------------------------------------------------------------
+
+  describe "effect call arity validation" do
+    test "llm.stream accepts the documented 3-arg form" do
+      assert {:ok, _} =
+               analyze("""
+               module M {
+                 capability model("anthropic", "claude-sonnet-4-5")
+
+                 fn f(data: String) -> String {
+                   llm.stream("claude-sonnet-4-5", "system", data)
+                 }
+               }
+               """)
+    end
+
+    test "llm.stream accepts a fourth on_chunk callback argument" do
+      assert {:ok, _} =
+               analyze("""
+               module M {
+                 capability model("anthropic", "claude-sonnet-4-5")
+
+                 fn on_piece(chunk: String) -> String {
+                   chunk
+                 }
+
+                 fn f(data: String) -> String {
+                   llm.stream("claude-sonnet-4-5", "system", data, &on_piece)
+                 }
+               }
+               """)
+    end
+
+    test "llm.stream accepts on_chunk as a named argument" do
+      assert {:ok, _} =
+               analyze("""
+               module M {
+                 capability model("anthropic", "claude-sonnet-4-5")
+
+                 fn on_piece(chunk: String) -> String {
+                   chunk
+                 }
+
+                 fn f(data: String) -> String {
+                   llm.stream("claude-sonnet-4-5", "system", data, on_chunk: &on_piece)
+                 }
+               }
+               """)
+    end
+
+    test "reports E0020 when llm.stream gets too many arguments" do
+      errors =
+        analyze_errors("""
+        module M {
+          capability model("anthropic", "claude-sonnet-4-5")
+
+          fn on_piece(chunk: String) -> String {
+            chunk
+          }
+
+          fn f(data: String) -> String {
+            llm.stream("claude-sonnet-4-5", "system", data, &on_piece, &on_piece)
+          }
+        }
+        """)
+
+      assert Enum.any?(errors, fn e ->
+               e.code == "E0020" and e.severity == :error and e.message =~ "llm.stream"
+             end)
+    end
+
+    test "reports E0020 when llm.chat gets too few arguments" do
+      errors =
+        analyze_errors("""
+        module M {
+          capability model("anthropic", "claude-sonnet-4-5")
+
+          fn f() -> String {
+            llm.chat("claude-sonnet-4-5")
+          }
+        }
+        """)
+
+      assert Enum.any?(errors, fn e ->
+               e.code == "E0020" and e.severity == :error and e.message =~ "llm.chat"
+             end)
+    end
+
+    test "process.spawn still accepts both 1-arg and 2-arg forms" do
+      assert {:ok, _} =
+               analyze("""
+               module M {
+                 capability process.spawn("workers")
+
+                 fn work() -> Int {
+                   1
+                 }
+
+                 fn f() -> String {
+                   process.spawn("named-task")
+                   process.spawn("with-body", &work)
+                   "ok"
+                 }
+               }
+               """)
+    end
+  end
+
+  # ------------------------------------------------------------------
   # E0033/E0036: transition()/stop() outside agent
   # ------------------------------------------------------------------
 

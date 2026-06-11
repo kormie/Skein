@@ -581,7 +581,8 @@ memory.list(prefix: String) -> List[String]
 -- Requires: capability model(provider, model_name)
 llm.chat(model: String, system: String, input: T) -> Result[String, LlmError]
 llm.json[T](model: String, system: String, input: U) -> Result[T, LlmError]
-llm.stream[T](model: String, system: String, input: U, on_chunk: &(Chunk -> ())) -> Result[T, LlmError]
+llm.stream(model: String, system: String, input: T) -> Result[String, LlmError]
+llm.stream(model: String, system: String, input: T, on_chunk) -> Result[String, LlmError]
 llm.embed(model: String, input: String) -> Result[List[Float], LlmError]
 
 enum LlmError {
@@ -594,6 +595,11 @@ enum LlmError {
   ProviderError(code: String, message: String)
 }
 ```
+
+The optional `on_chunk` argument to `llm.stream` is a `&fn` reference to a
+one-parameter local function; it is invoked with each text chunk (a `String`)
+as it arrives. With or without `on_chunk`, the call returns the full
+assembled response text once the stream completes.
 
 ### 6.5 Tools
 

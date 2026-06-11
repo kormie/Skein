@@ -536,7 +536,7 @@ defmodule Skein.Analyzer do
     {"memory", "list"} => ["prefix"],
     {"llm", "chat"} => ["model", "system", "input"],
     {"llm", "json"} => ["model", "system", "input"],
-    {"llm", "stream"} => ["model", "system", "input"],
+    {"llm", "stream"} => ["model", "system", "input", "on_chunk"],
     {"llm", "embed"} => ["model", "input"],
     {"topic", "publish"} => ["name", "data"],
     {"trace", "annotate"} => ["key", "value"],
@@ -552,6 +552,7 @@ defmodule Skein.Analyzer do
   # body (spec §6.11). Only trailing parameters can be optional — omitting
   # a middle parameter would shift the positional order.
   @effect_optional_params %{
+    {"llm", "stream"} => ["on_chunk"],
     {"process", "spawn"} => ["work"],
     {"timer", "after"} => ["work"],
     {"timer", "interval"} => ["work"]
@@ -779,6 +780,46 @@ defmodule Skein.Analyzer do
   end
 
   defp callee_param_names(_call, _env), do: :unsupported
+
+  # Positional-arity bounds for documented effect signatures. Codegen
+  # appends trailing runtime arguments (callbacks, scope labels, the
+  # capability list) to effect calls, so over- or under-application in
+  # source would otherwise silently compile to a call on a nonexistent
+  # runtime arity. Effects without a param-table entry (tool.*, store.*)
+  # have their own checks and are skipped here.
+  defp effect_call_arity_errors(namespace, method, args, meta, env) do
+    case Map.fetch(@effect_param_names, {namespace, method}) do
+      {:ok, names} ->
+        optional = Map.get(@effect_optional_params, {namespace, method}, [])
+        min_arity = length(names) - length(optional)
+        max_arity = length(names)
+        actual = length(args)
+
+        if actual < min_arity or actual > max_arity do
+          expected =
+            if min_arity == max_arity,
+              do: "#{max_arity}",
+              else: "#{min_arity} to #{max_arity}"
+
+          [
+            %Error{
+              code: "E0020",
+              severity: :error,
+              message:
+                "Effect '#{namespace}.#{method}' expects #{expected} argument(s) (#{Enum.join(names, ", ")}), got #{actual}",
+              location: location_from_meta(meta, env.file),
+              fix_hint: "Pass #{expected} argument(s) to '#{namespace}.#{method}'",
+              fix_code: call_skeleton("#{namespace}.#{method}", max_arity)
+            }
+          ]
+        else
+          []
+        end
+
+      :error ->
+        []
+    end
+  end
 
   defp describe_callee(%AST.Identifier{name: name}), do: "'#{name}'"
 
@@ -1755,6 +1796,10 @@ defmodule Skein.Analyzer do
           cross_module_call_head?(mod_name, env) ->
             {:unknown,
              args_errors ++ [cross_module_call_error(mod_name, fn_name, length(args), meta, env)]}
+
+          effect_namespace?(mod_name) and effect_method?(mod_name, fn_name) ->
+            {:unknown,
+             args_errors ++ effect_call_arity_errors(mod_name, fn_name, args, meta, env)}
 
           true ->
             {:unknown, args_errors}
