@@ -535,8 +535,16 @@ defmodule Skein.Analyzer do
     {"llm", "embed"} => ["model", "input"],
     {"topic", "publish"} => ["name", "data"],
     {"trace", "annotate"} => ["key", "value"],
-    {"process", "spawn"} => ["name"],
+    {"process", "spawn"} => ["name", "work"],
     {"event", "log"} => ["name", "data"]
+  }
+
+  # Trailing effect parameters that may be omitted. `process.spawn(name)`
+  # spawns a named no-op; the optional `work` fn reference attaches a task
+  # body (spec §6.11). Only trailing parameters can be optional — omitting
+  # a middle parameter would shift the positional order.
+  @effect_optional_params %{
+    {"process", "spawn"} => ["work"]
   }
 
   defp resolve_named_args(%AST.Call{} = call, env) do
@@ -609,8 +617,16 @@ defmodule Skein.Analyzer do
     case Enum.find(named_section, &(not match?(%AST.NamedArg{}, &1))) do
       nil ->
         case callee_param_names(call, env) do
-          {:ok, callee, param_names} ->
-            apply_named_args(call, positional, named_section, callee, param_names, env)
+          {:ok, callee, param_names, optional_names} ->
+            apply_named_args(
+              call,
+              positional,
+              named_section,
+              callee,
+              param_names,
+              optional_names,
+              env
+            )
 
           :unsupported ->
             error = %Error{
@@ -637,7 +653,7 @@ defmodule Skein.Analyzer do
     end
   end
 
-  defp apply_named_args(call, positional, named, callee, param_names, env) do
+  defp apply_named_args(call, positional, named, callee, param_names, optional_names, env) do
     filled_positionally = Enum.take(param_names, length(positional))
     remaining = Enum.drop(param_names, length(positional))
 
@@ -675,7 +691,11 @@ defmodule Skein.Analyzer do
         end)
 
     named_by_name = Map.new(named, fn %AST.NamedArg{name: name} = arg -> {name, arg} end)
-    missing = Enum.reject(remaining, &Map.has_key?(named_by_name, &1))
+
+    missing =
+      Enum.reject(remaining, fn name ->
+        Map.has_key?(named_by_name, name) or name in optional_names
+      end)
 
     missing_errors =
       if name_errors == [] and missing != [] do
@@ -696,7 +716,12 @@ defmodule Skein.Analyzer do
 
     case name_errors ++ missing_errors do
       [] ->
-        ordered_named = Enum.map(remaining, fn name -> Map.fetch!(named_by_name, name).value end)
+        # Omitted trailing optional params simply drop out of the call
+        ordered_named =
+          remaining
+          |> Enum.filter(&Map.has_key?(named_by_name, &1))
+          |> Enum.map(fn name -> Map.fetch!(named_by_name, name).value end)
+
         {%{call | args: positional ++ ordered_named}, []}
 
       errors ->
@@ -722,7 +747,7 @@ defmodule Skein.Analyzer do
 
   defp callee_param_names(%AST.Call{target: %AST.Identifier{name: name}}, env) do
     case Map.fetch(env.functions, name) do
-      {:ok, fn_info} -> {:ok, "'#{name}'", Enum.map(fn_info.params, & &1.name)}
+      {:ok, fn_info} -> {:ok, "'#{name}'", Enum.map(fn_info.params, & &1.name), []}
       :error -> :unsupported
     end
   end
@@ -734,8 +759,12 @@ defmodule Skein.Analyzer do
          _env
        ) do
     case Map.fetch(@effect_param_names, {namespace, method}) do
-      {:ok, names} -> {:ok, "'#{namespace}.#{method}'", names}
-      :error -> :unsupported
+      {:ok, names} ->
+        optional = Map.get(@effect_optional_params, {namespace, method}, [])
+        {:ok, "'#{namespace}.#{method}'", names, optional}
+
+      :error ->
+        :unsupported
     end
   end
 

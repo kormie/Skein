@@ -74,6 +74,67 @@ defmodule Skein.Runtime.ProcessTest do
     end
   end
 
+  describe "spawn/4 with a task body (compiled process.spawn(\"name\", &fn) calls)" do
+    test "executes the function in the background" do
+      test_pid = self()
+
+      assert {:ok, pid} =
+               SpawnProcess.spawn(
+                 "workers",
+                 "notify",
+                 fn -> send(test_pid, :task_ran) end,
+                 [%{kind: "process.spawn", params: ["workers"]}]
+               )
+
+      assert is_pid(pid)
+      assert_receive :task_ran, 1000
+    end
+
+    test "blocks a pool outside the declared label without running the task" do
+      test_pid = self()
+
+      assert {:error, message} =
+               SpawnProcess.spawn(
+                 "reports",
+                 "notify",
+                 fn -> send(test_pid, :should_not_run) end,
+                 [%{kind: "process.spawn", params: ["workers"]}]
+               )
+
+      assert message =~ "reports"
+      refute_receive :should_not_run, 200
+    end
+
+    test "a crashing task body does not crash the caller or supervisor" do
+      {:ok, _pid} =
+        SpawnProcess.spawn(
+          "workers",
+          "crasher",
+          fn -> raise "intentional crash" end,
+          [%{kind: "process.spawn", params: ["workers"]}]
+        )
+
+      Process.sleep(100)
+      assert Process.whereis(SpawnProcess) != nil
+    end
+
+    test "records task name and pool on the trace span" do
+      Skein.Runtime.Trace.init()
+
+      {:ok, _pid} =
+        SpawnProcess.spawn("workers", "bodied-task", fn -> :ok end, [
+          %{kind: "process.spawn", params: ["workers"]}
+        ])
+
+      span =
+        Skein.Runtime.Trace.recent_spans(10)
+        |> Enum.find(&(&1[:kind] == :process and &1[:task] == "bodied-task"))
+
+      assert span
+      assert span[:pool] == "workers"
+    end
+  end
+
   describe "spawn/2" do
     test "spawns a function and returns {:ok, pid}" do
       test_pid = self()

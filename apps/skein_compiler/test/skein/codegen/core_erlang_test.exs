@@ -11,6 +11,26 @@ defmodule Skein.CodeGen.CoreErlangTest do
     end
   end
 
+  # Polls until the fun returns a truthy value or the deadline passes
+  # (background tasks land asynchronously).
+  defp await(fun, timeout_ms \\ 2_000) do
+    deadline = System.monotonic_time(:millisecond) + timeout_ms
+    do_await(fun, deadline)
+  end
+
+  defp do_await(fun, deadline) do
+    case fun.() do
+      nil ->
+        if System.monotonic_time(:millisecond) < deadline do
+          Process.sleep(20)
+          do_await(fun, deadline)
+        end
+
+      value ->
+        value
+    end
+  end
+
   # Helper: same as compile! but for modules with capabilities and effect calls
   defp compile_with_caps!(source) do
     compile!(source)
@@ -3227,6 +3247,61 @@ defmodule Skein.CodeGen.CoreErlangTest do
 
       fns = mod.__info__(:functions)
       assert {:do_work, 0} in fns
+    end
+
+    test "process.spawn with a task body executes the referenced fn in the background" do
+      Skein.Runtime.EventLog.reset_all()
+
+      mod =
+        compile!("""
+        module SpawnTaskBody {
+          capability process.spawn("workers")
+          capability event.log("audit")
+
+          fn record_run() -> String {
+            event.log("task.ran", "background")
+          }
+
+          fn start_task() -> String {
+            process.spawn("recorder", &record_run)
+          }
+        }
+        """)
+
+      mod.start_task()
+
+      event =
+        await(fn ->
+          Enum.find(Skein.Runtime.EventLog.all(), &(&1.event == "task.ran"))
+        end)
+
+      assert event, "spawned task body never executed (no task.ran event)"
+      assert event.stream == "audit"
+
+      Skein.Runtime.EventLog.reset_all()
+    end
+
+    test "a crashing task body does not crash the caller (from Skein source)" do
+      mod =
+        compile!("""
+        module SpawnCrashIsolation {
+          capability process.spawn("workers")
+
+          fn boom() -> Int {
+            1 / 0
+          }
+
+          fn start_task() -> String {
+            process.spawn("crasher", &boom)
+          }
+        }
+        """)
+
+      # The caller returns normally even though the spawned task crashes
+      assert {:ok, _pid} = mod.start_task()
+
+      Process.sleep(100)
+      assert Process.whereis(Skein.Runtime.Process) != nil
     end
   end
 
