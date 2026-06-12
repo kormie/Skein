@@ -5,7 +5,9 @@ description: Declaring supervision trees for agent pools and crash recovery in S
 
 ## Overview
 
-Supervisors manage groups of child processes and define crash-recovery strategies. They are the standard OTP mechanism for building fault-tolerant systems. In Skein, you declare supervisors alongside your other module-level constructs.
+Supervisor declarations describe groups of child processes and the crash-recovery strategies a host should apply to them, following the standard OTP supervision model. You declare supervisors alongside your other module-level constructs.
+
+In 1.0, supervisor declarations are **compile-time constructs**: the compiler parses and validates them (see [Analyzer Validation](#analyzer-validation)) and emits the tree as [`__supervisors__/0` metadata](#runtime-metadata) on the compiled module. The Skein runtime does not itself start OTP supervision trees from these declarations — materializing the tree (e.g. mapping it onto `Supervisor.start_link/2`) is the host application's job. The behavior tables below document the *declared semantics* of each directive, i.e. what a host that honors the metadata applies.
 
 ## Syntax
 
@@ -56,17 +58,17 @@ supervisor Main {
 }
 ```
 
-**Restart policies:**
+**Restart policies (declared semantics):**
 
-| Policy | Behavior |
-|--------|----------|
+| Policy | Declared behavior |
+|--------|-------------------|
 | `permanent` | Always restarted when it exits |
 | `transient` | Restarted only on abnormal exit |
 | `temporary` | Never restarted |
 
 ## Strategy
 
-The `strategy:` directive controls how sibling children are affected when one crashes:
+The `strategy:` directive declares how sibling children are affected when one crashes:
 
 ```skein
 supervisor Main {
@@ -76,8 +78,8 @@ supervisor Main {
 }
 ```
 
-| Strategy | Behavior |
-|----------|----------|
+| Strategy | Declared behavior |
+|----------|-------------------|
 | `one_for_one` | Only the crashed child is restarted |
 | `one_for_all` | All children are restarted when one crashes |
 | `rest_for_one` | The crashed child and all children started after it are restarted |
@@ -86,7 +88,7 @@ If omitted, `one_for_one` is the default.
 
 ## Max Restarts
 
-The `max_restarts:` directive sets a crash intensity limit. If more than `count` restarts happen within `period` seconds, the supervisor itself shuts down:
+The `max_restarts:` directive declares a crash intensity limit: more than `count` restarts within `period` seconds should shut down the supervisor itself.
 
 ```skein
 supervisor Main {
@@ -112,7 +114,7 @@ module RefundService {
 
 ## Runtime Metadata
 
-Compiled modules with supervisors expose a `__supervisors__/0` function that returns the supervisor tree metadata:
+The `__supervisors__/0` metadata function is the supervisor declaration's compiled artifact — the [stability policy](/Skein/reference/stability/) classifies it as compiled-module metadata. Modules with supervisors expose it, returning the supervisor tree:
 
 ```elixir
 mod.__supervisors__()

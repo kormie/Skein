@@ -512,7 +512,7 @@ Skein.Runtime.Agent.get_events(pid)
 
 ## Supervision
 
-Agents can be managed by Skein supervisors for automatic restart on failure:
+Supervisor declarations can name agents as children. In 1.0 the declaration is validated at compile time and emitted as `__supervisors__/0` metadata for the host application to materialize — the Skein runtime does not restart agents from it:
 
 ```skein
 supervisor RefundPool {
