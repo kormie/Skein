@@ -3546,6 +3546,54 @@ defmodule Skein.AnalyzerTest do
                }
                """)
     end
+
+    test "reports E0020 for wrong effect arity inside agent phase handlers" do
+      errors =
+        analyze_errors("""
+        agent A {
+          capability memory.kv("ns")
+
+          enum Phase {
+            Active -> []
+          }
+
+          on start() -> {
+            transition(Phase.Active)
+          }
+
+          on phase(Phase.Active) -> {
+            memory.put("ns", "key", "value")
+            stop()
+          }
+        }
+        """)
+
+      assert Enum.any?(errors, fn e ->
+               e.code == "E0020" and e.severity == :error and e.message =~ "memory.put"
+             end)
+    end
+
+    test "correct effect arity inside agent handlers analyzes clean" do
+      assert {:ok, _} =
+               analyze("""
+               agent A {
+                 capability memory.kv("ns")
+
+                 enum Phase {
+                   Active -> []
+                 }
+
+                 on start() -> {
+                   transition(Phase.Active)
+                 }
+
+                 on phase(Phase.Active) -> {
+                   memory.put("key", "value")
+                   stop()
+                 }
+               }
+               """)
+    end
   end
 
   # ------------------------------------------------------------------

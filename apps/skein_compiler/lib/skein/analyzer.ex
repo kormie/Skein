@@ -406,6 +406,12 @@ defmodule Skein.Analyzer do
     # Pass 5: Type-check agent function bodies
     errors = errors ++ check_functions(ast.fns, env)
 
+    # Pass 5b: Effect-call arity in handler bodies. Handler bodies don't
+    # run the full infer_type pass, so without this walk an
+    # over/under-applied effect call would silently compile to a call on
+    # a nonexistent runtime arity (codegen appends labels/callbacks/caps).
+    errors = errors ++ check_handler_effect_arity(ast.handlers, env)
+
     all_decls = agent_decl_views(ast)
 
     # Pass 6: Unreachable code after stop() warnings
@@ -823,6 +829,47 @@ defmodule Skein.Analyzer do
         []
     end
   end
+
+  # Agent handler bodies skip infer_type, so the arity bounds are applied
+  # by a dedicated walk over every Call node in each handler body.
+  defp check_handler_effect_arity(handlers, env) do
+    handlers
+    |> Enum.flat_map(fn %AST.AgentHandler{body: body} -> collect_calls(body) end)
+    |> Enum.flat_map(fn
+      %AST.Call{
+        target: %AST.FieldAccess{subject: %AST.Identifier{name: namespace}, field: method},
+        args: args,
+        meta: meta
+      } ->
+        if effect_namespace?(namespace) and effect_method?(namespace, method) do
+          effect_call_arity_errors(namespace, method, args, meta, env)
+        else
+          []
+        end
+
+      _other ->
+        []
+    end)
+  end
+
+  # Generic expression walker collecting every Call node (including calls
+  # nested in arguments, match arms, interpolations, and map literals).
+  defp collect_calls(%AST.Call{target: target, args: args} = call) do
+    [call | Enum.flat_map([target | args], &collect_calls/1)]
+  end
+
+  defp collect_calls(%_{} = node) do
+    node
+    |> Map.from_struct()
+    |> Enum.flat_map(fn
+      {:meta, _} -> []
+      {_key, value} -> collect_calls(value)
+    end)
+  end
+
+  defp collect_calls(nodes) when is_list(nodes), do: Enum.flat_map(nodes, &collect_calls/1)
+  defp collect_calls({_tag, value}), do: collect_calls(value)
+  defp collect_calls(_other), do: []
 
   defp describe_callee(%AST.Identifier{name: name}), do: "'#{name}'"
 
