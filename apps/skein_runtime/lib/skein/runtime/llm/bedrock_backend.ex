@@ -44,8 +44,9 @@ defmodule Skein.Runtime.Llm.BedrockBackend do
 
   Model IDs go into the URL path unencoded; Req percent-encodes them in
   the SigV4 canonical request exactly as AWS does server-side. ARN-form
-  model IDs (which contain `/`) are not supported — use the model ID or
-  inference profile ID.
+  model IDs (which contain `/`) cannot be represented that way, so they
+  are rejected before any request with a structured error naming the
+  supported alternatives (model ID or inference profile ID).
   """
 
   alias Skein.Runtime.Llm.Error
@@ -80,12 +81,13 @@ defmodule Skein.Runtime.Llm.BedrockBackend do
   @spec chat(String.t(), String.t(), any(), config()) ::
           {:ok, Response.t()} | {:error, Error.t()}
   def chat(model, system, input, config) do
-    mapped_model = map_model(model, config)
-    body = build_request_body(system, input)
+    with {:ok, mapped_model} <- validated_model(model, config) do
+      body = build_request_body(system, input)
 
-    case post(config, "/model/#{mapped_model}/converse", body) do
-      {:ok, response} -> build_response(response, mapped_model)
-      {:error, _} = error -> error
+      case post(config, "/model/#{mapped_model}/converse", body) do
+        {:ok, response} -> build_response(response, mapped_model)
+        {:error, _} = error -> error
+      end
     end
   end
 
@@ -133,9 +135,8 @@ defmodule Skein.Runtime.Llm.BedrockBackend do
   """
   @spec embed(String.t(), String.t(), config()) :: {:ok, [float()]} | {:error, Error.t()}
   def embed(model, input, config) do
-    mapped_model = map_model(model, config)
-
-    with {:ok, body} <- embed_request_body(mapped_model, input),
+    with {:ok, mapped_model} <- validated_model(model, config),
+         {:ok, body} <- embed_request_body(mapped_model, input),
          {:ok, response} <- post(config, "/model/#{mapped_model}/invoke", body) do
       extract_embedding(response)
     end
@@ -159,6 +160,35 @@ defmodule Skein.Runtime.Llm.BedrockBackend do
   @spec map_model(String.t(), config()) :: String.t()
   def map_model(model, config) do
     config |> Map.get(:model_map, %{}) |> Map.get(model, model)
+  end
+
+  # ARN-form model IDs contain `/`: sent raw, the `/` splits the URL path
+  # into extra segments (Bedrock 404); pre-encoded as %2F, Req's SigV4
+  # canonicalization re-encodes the `%` (signature mismatch). Reject
+  # before any request with the supported alternatives (issue #180).
+  @doc false
+  @spec validated_model(String.t(), config()) :: {:ok, String.t()} | {:error, Error.t()}
+  def validated_model(model, config) do
+    mapped_model = map_model(model, config)
+
+    if String.contains?(mapped_model, "/") do
+      {:error, Error.provider_error("unsupported_model_id", arn_model_message(mapped_model))}
+    else
+      {:ok, mapped_model}
+    end
+  end
+
+  defp arn_model_message(mapped_model) do
+    base =
+      "Bedrock model ID '#{mapped_model}' contains '/' (ARN-form model IDs " <>
+        "cannot be represented in the SigV4-signed request path). Use the " <>
+        "model ID or inference profile ID instead, mapping the capability " <>
+        "model name via model_map if needed."
+
+    case Regex.run(~r{:inference-profile/(.+)$}, mapped_model) do
+      [_, profile_id] -> base <> " For this ARN, use \"#{profile_id}\"."
+      nil -> base
+    end
   end
 
   defp embed_request_body("amazon.titan-embed" <> _, input) do

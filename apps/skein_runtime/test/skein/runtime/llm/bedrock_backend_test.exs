@@ -4,6 +4,7 @@ defmodule Skein.Runtime.Llm.BedrockBackendTest do
   the inference-free CI path for Bedrock deployments (issue #173).
   """
   use ExUnit.Case, async: false
+  use ExUnitProperties
 
   alias Skein.Runtime.Llm
   alias Skein.Runtime.Llm.BedrockBackend
@@ -262,6 +263,69 @@ defmodule Skein.Runtime.Llm.BedrockBackendTest do
     test "an explicit base_url (VPC endpoint) wins" do
       assert BedrockBackend.endpoint_url(%{base_url: "https://vpce.example.com/"}, "us-west-2") ==
                "https://vpce.example.com"
+    end
+  end
+
+  describe "ARN-form model IDs" do
+    @profile_arn "arn:aws:bedrock:us-west-2:123456789012:inference-profile/global.anthropic.claude-sonnet-4-6"
+
+    test "are rejected before any request with the supported alternatives" do
+      base_url = start_stub(fn _path, _body -> converse_response("never reached") end)
+      config = config(base_url, %{model_map: %{"claude-sonnet-4-6" => @profile_arn}})
+
+      assert {:error, %Error{kind: :provider_error, detail: detail}} =
+               BedrockBackend.chat("claude-sonnet-4-6", "s", "i", config)
+
+      assert detail.code == "unsupported_model_id"
+      assert detail.message =~ "model_map"
+      refute_receive {:stub_request, _, _, _}
+    end
+
+    test "an inference-profile ARN names its profile ID as the fix" do
+      assert {:error, %Error{kind: :provider_error, detail: detail}} =
+               BedrockBackend.chat(@profile_arn, "s", "i", config("http://unused"))
+
+      assert detail.message =~ ~s("global.anthropic.claude-sonnet-4-6")
+    end
+
+    test "stream rejects ARNs the same way" do
+      assert {:error, %Error{kind: :provider_error, detail: %{code: "unsupported_model_id"}}} =
+               BedrockBackend.stream(@profile_arn, "s", "i", config("http://unused"))
+    end
+
+    test "embed rejects ARNs without an inference-profile hint" do
+      assert {:error, %Error{kind: :provider_error, detail: detail}} =
+               BedrockBackend.embed(
+                 "arn:aws:bedrock:us-west-2:123456789012:provisioned-model/abc123",
+                 "text",
+                 config("http://unused")
+               )
+
+      assert detail.code == "unsupported_model_id"
+      refute detail.message =~ "For this ARN"
+    end
+
+    test "json rejects ARNs via the chat path" do
+      assert {:error, %Error{kind: :provider_error, detail: %{code: "unsupported_model_id"}}} =
+               BedrockBackend.json(
+                 @profile_arn,
+                 "s",
+                 "i",
+                 %{"type" => "object"},
+                 config("http://unused")
+               )
+    end
+
+    property "model IDs pass through validation exactly when they contain no slash" do
+      check all(id <- StreamData.string(:printable, min_length: 1)) do
+        case BedrockBackend.validated_model(id, %{}) do
+          {:ok, ^id} ->
+            refute String.contains?(id, "/")
+
+          {:error, %Error{detail: %{code: "unsupported_model_id"}}} ->
+            assert String.contains?(id, "/")
+        end
+      end
     end
   end
 
