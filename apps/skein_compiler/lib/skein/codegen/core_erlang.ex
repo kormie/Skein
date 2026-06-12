@@ -1588,21 +1588,17 @@ defmodule Skein.CodeGen.CoreErlang do
   end
 
   # Pipe expression: left |> right
-  # Threads left as first argument to right
+  # The piped value becomes the first argument of the right-hand call, so
+  # the desugared Call hits the regular stdlib/local/effect call clauses.
+  defp generate_expr(%AST.Pipe{left: left, right: %AST.Call{args: args} = call}, scope) do
+    generate_expr(%{call | args: [left | args]}, scope)
+  end
+
   defp generate_expr(%AST.Pipe{left: left, right: right}, scope) do
+    # The right side is a function reference; apply it
     left_expr = generate_expr(left, scope)
-
-    case right do
-      %AST.Call{target: target, args: args} ->
-        right_target = generate_expr(target, scope)
-        right_args = [left_expr | Enum.map(args, &generate_expr(&1, scope))]
-        generate_call(right_target, right_args)
-
-      _ ->
-        # If the right side is just a function reference, apply it
-        right_expr = generate_expr(right, scope)
-        :cerl.c_apply(right_expr, [left_expr])
-    end
+    right_expr = generate_expr(right, scope)
+    :cerl.c_apply(right_expr, [left_expr])
   end
 
   # Standard library call: Module.function(args) where Module is a stdlib module
@@ -2310,6 +2306,13 @@ defmodule Skein.CodeGen.CoreErlang do
       :cerl.c_atom(:iolist_to_binary),
       [iolist]
     )
+  end
+
+  # List literal
+  defp generate_expr(%AST.ListLit{elements: elements}, scope) do
+    elements
+    |> Enum.map(&generate_expr(&1, scope))
+    |> :cerl.make_list()
   end
 
   # Map literal

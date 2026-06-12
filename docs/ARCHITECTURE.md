@@ -220,10 +220,10 @@ The code generator translates Skein constructs to Core Erlang + Skein runtime ca
 | `handler http` | Function registered with `Skein.Runtime.Handler` |
 | `handler queue` | Function dispatched by `Skein.Runtime.Queue` |
 | `handler schedule` | Function triggered by `Skein.Runtime.Schedule` |
-| `agent` | Module implementing `Skein.Runtime.Agent` behaviour |
-| `tool` | Module registered with `Skein.Runtime.Tool.Registry` |
+| `agent` | Module driven by `Skein.Runtime.Agent` (gen_statem) |
+| `tool` | `__tools__/0` metadata + `__tool_impl_N__/1` exports, registered via `Skein.Runtime.Tool.register_module/1` |
 | `capability` | Metadata stored in module attributes |
-| `emit` | Call to `Skein.Runtime.Event.emit/2` |
+| `emit` | Event map in the handler result, appended to `Skein.Runtime.EventStore` |
 | `transition` | Call to `gen_statem` state change |
 | `store.*` | Calls to `Skein.Runtime.Store` |
 | `memory.*` | Calls to `Skein.Runtime.Memory` |
@@ -301,24 +301,19 @@ The Skein runtime is an OTP application that provides behaviours, services, and 
 
 ### 2.1 Agent Behaviour (`Skein.Runtime.Agent`)
 
-Compiled Skein agents implement the `Skein.Runtime.Agent` behaviour, which wraps `gen_statem`.
+Compiled Skein agents are driven by `Skein.Runtime.Agent`, a `gen_statem` that calls into the generated module's exports:
 
 ```elixir
-defmodule Skein.Runtime.Agent do
-  @callback init(args :: map()) :: {:ok, initial_state :: map()}
-  @callback handle_phase(phase :: atom(), state :: map()) :: phase_result()
-
-  @type phase_result ::
-    {:transition, atom(), map()} |       # move to new phase with updated state
-    {:stop, :normal, map()} |             # graceful shutdown
-    {:suspend, String.t(), map()} |       # pause for human-in-the-loop
-    {:error, term()}                      # crash (supervisor handles restart)
-end
+# Generated surface of a compiled agent module
+start_link(args)                      # start the gen_statem with initial params
+__phases__()                          # phase metadata: variants + valid transitions
+__start_handler__(args, capabilities) # the on start(...) body
+__phase_handler__(phase, state, capabilities) # the on phase(Phase.X) bodies, dispatched by phase atom
 ```
 
-The generated module translates Skein's `on phase(Phase.X) -> { ... }` blocks into `handle_phase/2` clauses.
+Handler results tell the state machine what to do next: transition to a phase, keep the current phase, stop, or suspend (pause for human-in-the-loop), and carry the events emitted during that invocation.
 
-**State checkpointing:** After each phase transition, the agent's state is serialized and persisted to the memory store. On supervisor restart, the agent resumes from the last checkpoint.
+**Durability:** agent state lives only in the gen_statem process. Durable data goes through `memory.kv` writes and emitted events (appended to the EventStore); a restarted agent process starts fresh from its `on start` handler — there is no automatic state checkpoint/resume.
 
 **Instance ID:** Each agent instance gets a unique 16-byte hex ID (via `:crypto.strong_rand_bytes/16`) stored in the process dictionary as `:skein_agent_instance_id`. The `Memory` module reads this transparently to prefix keys with `{agent_name}:{instance_id}:`, providing automatic isolation between concurrent instances. The `list` operation filters and unscopes keys so callers see only their own unprefixed key names.
 
@@ -417,18 +412,22 @@ end
 
 ### 2.5 Tool Registry (`Skein.Runtime.Tool`)
 
-Compiled tool declarations register with the tool registry at application startup.
+Compiled tool declarations register with the tool registry (an ETS table owned by `EtsTables`) when their module is loaded — the CLI's compile/build/test/run paths call `register_module/1` after loading each module.
 
 ```elixir
-defmodule Skein.Runtime.Tool.Registry do
-  # Tools register at startup
-  def register(name, %{input_schema: _, output_schema: _, implement: _, policy: _})
+defmodule Skein.Runtime.Tool do
+  # Reads __tools__/0 metadata and registers each tool (idempotent)
+  def register_module(mod)
 
-  # Agents call tools through this
-  def call(name, args, opts \\ [])
+  # Register a single tool by name/schema/implementation
+  def register(name, schema, impl)
 
-  # Generate LLM function-calling manifest for a set of tools
-  def manifest(tool_names, provider: :anthropic | :openai)
+  # Callers invoke tools through this (capability-checked)
+  def call(name, input, capabilities)
+
+  # Registry reads
+  def list(capabilities)
+  def schema(name, capabilities)
 end
 ```
 
@@ -453,19 +452,17 @@ Scoped key-value store for agent working memory.
 
 ```elixir
 defmodule Skein.Runtime.Memory do
-  # Agent-scoped operations (scope derived from process context)
-  def put(key, value)
-  def get(key)
-  def get!(key)    # raises on missing
-  def delete(key)
-  def list(prefix \\ "")
-
-  # Cross-agent read (requires explicit capability)
-  def read(agent_name, instance_id, key)
+  # The namespace comes from the memory.kv capability declaration;
+  # codegen threads it into every call along with the capability list
+  def put(namespace, key, value, capabilities)
+  def get(namespace, key, capabilities)
+  def get!(namespace, key, capabilities)   # raises on missing
+  def delete(namespace, key, capabilities)
+  def list(namespace, prefix, capabilities)
 end
 ```
 
-Backed by ETS for ephemeral (fast, lost on restart) or Postgres/SQLite for durable (slower, survives restart). Agents use durable memory by default; the runtime handles serialization.
+Backed by a single ETS table (`:skein_memory`, keyed `{namespace, key}`, owned by `EtsTables`) — fast and ephemeral. Inside a running agent, keys are additionally prefixed with the agent name and instance ID (read from the process dictionary) for isolation between concurrent instances. Each `memory.put`/`memory.delete` also appends a `:state_change` event to the EventStore, so memory state can be reconstructed from the event stream (`Memory.rebuild_from_events/1`); there is no durable database-backed memory in 1.0.
 
 ### 2.8 Queue Dispatch (`Skein.Runtime.Queue`)
 
@@ -586,21 +583,30 @@ Consumption is sequential per kind and validated: the recorded event's `model`/`
 ## 3. Supervision Tree
 
 ```
-Skein.Application (Application)
-├── Skein.Runtime.Supervisor (Supervisor, one_for_one)
-│   ├── Skein.Runtime.Store (GenServer — Ecto repo manager)
-│   ├── Skein.Runtime.Memory (GenServer — KV store manager)
-│   ├── Skein.Runtime.Tool.Registry (GenServer — tool registration)
-│   ├── Skein.Runtime.EventStore (ETS-backed — unified event log)
-│   ├── Skein.Runtime.Capability.Store (ETS-backed capability cache)
-│   ├── Skein.Runtime.Queue (GenServer — queue dispatch)
-│   ├── Skein.Runtime.Schedule (GenServer — cron dispatch)
-│   ├── Skein.Runtime.HTTP.Server (Bandit — HTTP listener)
-│   └── Skein.Runtime.AgentSupervisor (DynamicSupervisor — agent pool)
-│       ├── Agent instance 1 (gen_statem)
-│       ├── Agent instance 2 (gen_statem)
-│       └── ...
+SkeinRuntime.Application (Application)
+└── SkeinRuntime.Supervisor (Supervisor, one_for_one)
+    ├── Skein.Runtime.EtsTables (GenServer — owns ALL named runtime ETS
+    │     tables: memory, store, event store, timers, tool registry, ...)
+    ├── Skein.Runtime.Process (DynamicSupervisor — process.spawn tasks)
+    ├── Skein.Runtime.Queue (GenServer — queue dispatch)
+    ├── Skein.Runtime.Topic (GenServer — pub/sub fan-out)
+    ├── Skein.Runtime.Schedule (GenServer — cron dispatch)
+    └── Skein.Runtime.Timer (GenServer — timers)
 ```
+
+`EtsTables` starts first so sibling processes (and everything after app
+start) can request named tables that outlive their callers. Store, Memory,
+EventStore, and Tool are plain modules over those ETS tables, not
+supervised processes of their own; `Skein.Runtime.Capability` checks are
+pure functions over the capability lists codegen threads into each call.
+
+Outside this tree:
+
+- **Agents** run as `gen_statem` processes (`Skein.Runtime.Agent`), started
+  by the host via the compiled module's `start_link/1` — there is no
+  runtime-owned agent pool supervisor.
+- **HTTP serving** is started by `skein run` via `Skein.Runtime.Server`
+  (Bandit + the Plug router built from `__handlers__/0` metadata).
 
 ---
 

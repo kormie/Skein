@@ -334,21 +334,46 @@ defmodule Skein.Lexer do
       {:ok, tokens, <<"}", rest::binary>>, end_line, end_col} ->
         {:ok, tokens, rest, end_line, end_col + 1}
 
-      {:ok, _tokens, _rest, end_line, end_col} ->
-        {:error,
-         %Skein.Error{
-           code: "E0002",
-           severity: :error,
-           message: "Unterminated string interpolation, expected '}'",
-           location: %{file: "unknown", line: end_line, col: end_col},
-           fix_hint: "Add a closing '}' after the interpolation expression",
-           fix_code: "}"
-         }}
+      {:ok, _tokens, rest, end_line, end_col} ->
+        if closing_brace_ahead?(rest) do
+          {:error,
+           %Skein.Error{
+             code: "E0002",
+             severity: :error,
+             message:
+               "Expressions are not allowed in string interpolation; " <>
+                 "only an identifier with optional dot access is supported " <>
+                 "(e.g. ${name}, ${user.id})",
+             location: %{file: "unknown", line: end_line, col: end_col},
+             fix_hint:
+               "Bind the expression to a variable with 'let' first, " <>
+                 "then interpolate the variable",
+             fix_code: nil
+           }}
+        else
+          {:error,
+           %Skein.Error{
+             code: "E0002",
+             severity: :error,
+             message: "Unterminated string interpolation, expected '}'",
+             location: %{file: "unknown", line: end_line, col: end_col},
+             fix_hint: "Add a closing '}' after the interpolation expression",
+             fix_code: "}"
+           }}
+        end
 
       {:error, _} = error ->
         error
     end
   end
+
+  # A '}' later on the same line means the interpolation is closed but
+  # contains more than the supported identifier/dot-access form.
+  defp closing_brace_ahead?(<<"}", _::binary>>), do: true
+  defp closing_brace_ahead?(<<"\"", _::binary>>), do: false
+  defp closing_brace_ahead?(<<"\n", _::binary>>), do: false
+  defp closing_brace_ahead?(<<_, rest::binary>>), do: closing_brace_ahead?(rest)
+  defp closing_brace_ahead?(<<>>), do: false
 
   # Simple interpolation: just an identifier, possibly with dot access
   defp lex_interpolation_expr(<<c, _::binary>> = source, line, col) when c in ?a..?z or c == ?_ do

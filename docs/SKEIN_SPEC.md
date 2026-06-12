@@ -80,7 +80,8 @@ is an ordinary identifier elsewhere.
 ```
 integer     = [0-9][0-9_]*                        -- 42, 1_000_000
 float       = [0-9]+\.[0-9]+                      -- 3.14
-string      = "..." with ${expr} interpolation     -- "hello ${name}"
+string      = "..." with ${ident} interpolation    -- "hello ${name}", "${user.id}"
+              (an identifier with optional dot access; not arbitrary expressions)
 boolean     = true | false
 ```
 
@@ -424,7 +425,7 @@ String.replace(s: String, pattern: String, replacement: String) -> String
 ### 5.2 Int
 
 ```
-Int.parse(s: String) -> Result[Int, ParseError]
+Int.parse(s: String) -> Result[Int, String]
 Int.to_string(n: Int) -> String
 Int.abs(n: Int) -> Int
 Int.min(a: Int, b: Int) -> Int
@@ -435,7 +436,7 @@ Int.clamp(n: Int, low: Int, high: Int) -> Int
 ### 5.3 Float
 
 ```
-Float.parse(s: String) -> Result[Float, ParseError]
+Float.parse(s: String) -> Result[Float, String]
 Float.to_string(f: Float) -> String
 Float.round(f: Float, decimals: Int) -> Float
 Float.ceil(f: Float) -> Int
@@ -475,7 +476,6 @@ List.group_by(l: List[T], f: &(T -> K)) -> Map[K, List[T]]
 
 ```
 Map.get(m: Map[K, V], key: K) -> Option[V]
-Map.get!(m: Map[K, V], key: K) -> V
 Map.put(m: Map[K, V], key: K, value: V) -> Map[K, V]
 Map.delete(m: Map[K, V], key: K) -> Map[K, V]
 Map.keys(m: Map[K, V]) -> List[K]
@@ -529,7 +529,7 @@ Result.err(error: E) -> Result[T, E]
 
 ```
 Uuid.new() -> Uuid
-Uuid.parse(s: String) -> Result[Uuid, ParseError]
+Uuid.parse(s: String) -> Result[Uuid, String]
 Uuid.to_string(u: Uuid) -> String
 ```
 
@@ -537,7 +537,7 @@ Uuid.to_string(u: Uuid) -> String
 
 ```
 Instant.now() -> Instant
-Instant.parse(s: String) -> Result[Instant, ParseError]
+Instant.parse(s: String) -> Result[Instant, String]
 Instant.to_string(i: Instant) -> String
 Instant.add(i: Instant, d: Duration) -> Instant
 Instant.subtract(i: Instant, d: Duration) -> Instant
@@ -635,8 +635,8 @@ assembled response text once the stream completes.
 ```
 -- Requires: capability tool.use(ToolNames)
 tool.call(name: ToolName, args: Map) -> Result[Map, ToolError]
-tool.list() -> List[ToolInfo]
-tool.schema(name: ToolName) -> Map
+tool.list() -> Result[List[ToolInfo], ToolError]
+tool.schema(name: ToolName) -> Result[Map, ToolError]
 ```
 
 **Input validation:** `tool.call` validates input arguments against the tool's declared input schema before execution. Two schema formats are supported:
@@ -700,14 +700,16 @@ Memory mutations (`memory.put`, `memory.delete`) automatically emit `:state_chan
 
 ```
 -- Requires: capability process.spawn(pool)
-process.spawn(task: String) -> ()         -- run a named supervised background task (no-op body)
-process.spawn(task: String, work) -> ()   -- run `work` (a &fn reference) in the background
+-- Ok payload is an opaque process handle
+process.spawn(task: String) -> Result[_, String]         -- run a named supervised background task (no-op body)
+process.spawn(task: String, work) -> Result[_, String]   -- run `work` (a &fn reference) in the background
 
 -- Requires: capability timer(group)
-timer.after(delay_ms: Int, task: String) -> String           -- one-shot; returns a timer ref
-timer.after(delay_ms: Int, task: String, work) -> String     -- one-shot with a task body
-timer.interval(every_ms: Int, task: String) -> String        -- repeating; returns a timer ref
-timer.interval(every_ms: Int, task: String, work) -> String  -- repeating with a task body
+-- Ok payload is the timer ref accepted by timer.cancel
+timer.after(delay_ms: Int, task: String) -> Result[String, String]           -- one-shot
+timer.after(delay_ms: Int, task: String, work) -> Result[String, String]     -- one-shot with a task body
+timer.interval(every_ms: Int, task: String) -> Result[String, String]        -- repeating
+timer.interval(every_ms: Int, task: String, work) -> Result[String, String]  -- repeating with a task body
 timer.cancel(ref: String) -> ()
 ```
 

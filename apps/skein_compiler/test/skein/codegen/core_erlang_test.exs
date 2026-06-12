@@ -3948,4 +3948,169 @@ defmodule Skein.CodeGen.CoreErlangTest do
       assert mod.make_response() == %{status: "ok", message: "done"}
     end
   end
+
+  describe "list literal codegen" do
+    test "compiles empty list literal" do
+      mod =
+        compile!("""
+          module EmptyListTest {
+            fn empty() -> List[Int] {
+              []
+            }
+          }
+        """)
+
+      assert mod.empty() == []
+    end
+
+    test "compiles list literal with int elements" do
+      mod =
+        compile!("""
+          module ListIntTest {
+            fn nums() -> List[Int] {
+              [1, 2, 3]
+            }
+          }
+        """)
+
+      assert mod.nums() == [1, 2, 3]
+    end
+
+    test "compiles list literal with variable references" do
+      mod =
+        compile!("""
+          module ListVarTest {
+            fn pair(a: String, b: String) -> List[String] {
+              [a, b]
+            }
+          }
+        """)
+
+      assert mod.pair("x", "y") == ["x", "y"]
+    end
+
+    test "list literal works as a stdlib call argument" do
+      mod =
+        compile!("""
+          module ListStdlibTest {
+            fn count() -> Int {
+              List.length([1, 2, 3])
+            }
+          }
+        """)
+
+      assert mod.count() == 3
+    end
+
+    test "compiles nested list literals" do
+      mod =
+        compile!("""
+          module ListNestedTest {
+            fn nested() -> List[List[Int]] {
+              [[1], [2, 3]]
+            }
+          }
+        """)
+
+      assert mod.nested() == [[1], [2, 3]]
+    end
+
+    test "check_file never raises on list literal source" do
+      path =
+        Path.join(System.tmp_dir!(), "list_lit_check_#{System.unique_integer([:positive])}.skein")
+
+      File.write!(path, """
+      module P {
+        fn g() -> List[Int] {
+          [1, 2]
+        }
+      }
+      """)
+
+      try do
+        assert {:ok, %{errors: [], warnings: []}} = Skein.Compiler.check_file(path)
+      after
+        File.rm(path)
+      end
+    end
+  end
+
+  describe "pipe expression codegen" do
+    test "pipes into a one-argument local function" do
+      mod =
+        compile!("""
+          module PipeLocalTest {
+            fn double(x: Int) -> Int {
+              x * 2
+            }
+
+            fn run(x: Int) -> Int {
+              x |> double()
+            }
+          }
+        """)
+
+      assert mod.run(21) == 42
+    end
+
+    test "pipes into a stdlib call" do
+      mod =
+        compile!("""
+          module PipeStdlibTest {
+            fn shout(s: String) -> String {
+              s |> String.upcase()
+            }
+          }
+        """)
+
+      assert mod.shout("hi") == "HI"
+    end
+
+    test "pipes into a multi-argument call with remaining args" do
+      mod =
+        compile!("""
+          module PipeArgsTest {
+            fn add(a: Int, b: Int) -> Int {
+              a + b
+            }
+
+            fn run(x: Int) -> Int {
+              x |> add(1)
+            }
+          }
+        """)
+
+      assert mod.run(41) == 42
+    end
+
+    test "chains multiple pipes" do
+      mod =
+        compile!("""
+          module PipeChainTest {
+            fn double(x: Int) -> Int {
+              x * 2
+            }
+
+            fn run(x: Int) -> Int {
+              x |> double() |> double()
+            }
+          }
+        """)
+
+      assert mod.run(10) == 40
+    end
+
+    test "pipes into a stdlib call with remaining args" do
+      mod =
+        compile!("""
+          module PipeStdlibArgsTest {
+            fn run(s: String) -> Bool {
+              s |> String.contains("ell")
+            }
+          }
+        """)
+
+      assert mod.run("hello") == true
+    end
+  end
 end

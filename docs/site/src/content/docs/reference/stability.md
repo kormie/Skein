@@ -80,7 +80,7 @@ Recorded traces are replayable data: events recorded by any 1.x runtime
 replay on every later 1.y (y ≥ x). Event shapes only gain fields within 1.x;
 existing fields are never renamed or repurposed. A major release may change
 the storage schema, in which case it must document an export path for traces
-worth keeping (`trace export` JSON is the durable interchange form).
+worth keeping as a documented JSON export path (no such command ships in 1.0).
 
 ### `skein.toml` and the CLI
 

@@ -1009,6 +1009,84 @@ defmodule Skein.AnalyzerTest do
     end
   end
 
+  describe "pipe expressions" do
+    test "piped value counts as the first argument of the right-hand call" do
+      assert {:ok, _} =
+               analyze("""
+               module M {
+                 fn double(x: Int) -> Int {
+                   x * 2
+                 }
+
+                 fn run(x: Int) -> Int {
+                   x |> double()
+                 }
+               }
+               """)
+    end
+
+    test "pipe into a stdlib call type-checks and yields the call's return type" do
+      assert {:ok, _} =
+               analyze("""
+               module M {
+                 fn shout(s: String) -> String {
+                   s |> String.upcase()
+                 }
+               }
+               """)
+    end
+
+    test "pipe with missing remaining arguments is an arity error" do
+      errors =
+        analyze_errors("""
+        module M {
+          fn add(a: Int, b: Int) -> Int {
+            a + b
+          }
+
+          fn run(x: Int) -> Int {
+            x |> add()
+          }
+        }
+        """)
+
+      assert Enum.any?(errors, &(&1.code == "E0020" and &1.message =~ "expects 2 argument"))
+    end
+
+    test "pipe supplying all arguments plus the piped value is an arity error" do
+      errors =
+        analyze_errors("""
+        module M {
+          fn double(x: Int) -> Int {
+            x * 2
+          }
+
+          fn run(x: Int) -> Int {
+            x |> double(x)
+          }
+        }
+        """)
+
+      assert Enum.any?(errors, &(&1.code == "E0020"))
+    end
+
+    test "piped value type mismatch into a stdlib call is reported" do
+      errors =
+        analyze_errors("""
+        module M {
+          fn run(x: Int) -> String {
+            x |> String.upcase()
+          }
+        }
+        """)
+
+      assert Enum.any?(
+               errors,
+               &(&1.code == "E0020" and &1.message =~ "expected String, got Int")
+             )
+    end
+  end
+
   describe "capability checking - nested effect calls" do
     test "effect call in let binding is checked" do
       errors =

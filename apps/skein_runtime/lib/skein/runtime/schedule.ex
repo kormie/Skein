@@ -297,12 +297,23 @@ defmodule Skein.Runtime.Schedule do
     end)
   end
 
+  # Handlers fire inside the Schedule GenServer process, so an escaping
+  # idempotent-skip throw would become a bad callback return and crash the
+  # server (losing every registration). Skip silently like queue/topic.
   defp dispatch_handler({:module, module, handler_fn}) do
-    apply(module, handler_fn, [%{}])
+    try do
+      apply(module, handler_fn, [%{}])
+    catch
+      {:idempotent_skip} -> :ok
+    end
   end
 
   defp dispatch_handler({:fn, fun}) do
-    fun.(%{})
+    try do
+      fun.(%{})
+    catch
+      {:idempotent_skip} -> :ok
+    end
   end
 
   # ------------------------------------------------------------------
