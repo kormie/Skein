@@ -40,7 +40,11 @@ defmodule Skein.CLI.Main do
   @spec dispatch([String.t()]) :: no_return()
   def dispatch(["compile" | rest]) do
     case Skein.CLI.compile(rest) do
-      {:ok, mod} ->
+      {:ok, mod, warnings} ->
+        for w <- warnings do
+          IO.puts(:stderr, "Warning: #{format_error(w)}")
+        end
+
         IO.puts("Compiled: #{inspect(mod)}")
         System.halt(0)
 

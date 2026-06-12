@@ -26,18 +26,30 @@ defmodule Skein.CLI do
   @doc """
   Compiles a .skein file to BEAM bytecode and loads the resulting module.
 
-  Returns `{:ok, module}` on success or `{:error, reason}` on failure.
+  Returns `{:ok, module, warnings}` on success (analyzer warnings are
+  surfaced, not swallowed) or `{:error, reason}` on failure.
   """
-  @spec compile([String.t()]) :: {:ok, module()} | {:error, term()}
+  @spec compile([String.t()]) :: {:ok, module(), [Skein.Error.t()]} | {:error, term()}
   def compile([]) do
     {:error, "Usage: skein compile <file.skein>"}
   end
 
   def compile([path | _]) do
-    case Compiler.compile_file(path) do
-      {:module, mod} ->
-        register_tools(mod)
-        {:ok, mod}
+    # check_file runs the same pipeline without loading and is the only
+    # API that reports warnings — compile_file discards them.
+    case Compiler.check_file(path) do
+      {:ok, %{errors: [], warnings: warnings}} ->
+        case Compiler.compile_file(path) do
+          {:module, mod} ->
+            register_tools(mod)
+            {:ok, mod, warnings}
+
+          {:error, _} = err ->
+            err
+        end
+
+      {:ok, %{errors: errors}} ->
+        {:error, errors}
 
       {:error, _} = err ->
         err
@@ -608,7 +620,7 @@ defmodule Skein.CLI do
 
   def test([path | _]) do
     case compile([path]) do
-      {:ok, mod} ->
+      {:ok, mod, _warnings} ->
         run_tests_for_module(mod)
 
       {:error, _} = err ->
