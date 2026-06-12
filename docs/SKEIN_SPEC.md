@@ -425,7 +425,7 @@ String.replace(s: String, pattern: String, replacement: String) -> String
 ### 5.2 Int
 
 ```
-Int.parse(s: String) -> Result[Int, ParseError]
+Int.parse(s: String) -> Result[Int, String]
 Int.to_string(n: Int) -> String
 Int.abs(n: Int) -> Int
 Int.min(a: Int, b: Int) -> Int
@@ -436,7 +436,7 @@ Int.clamp(n: Int, low: Int, high: Int) -> Int
 ### 5.3 Float
 
 ```
-Float.parse(s: String) -> Result[Float, ParseError]
+Float.parse(s: String) -> Result[Float, String]
 Float.to_string(f: Float) -> String
 Float.round(f: Float, decimals: Int) -> Float
 Float.ceil(f: Float) -> Int
@@ -529,7 +529,7 @@ Result.err(error: E) -> Result[T, E]
 
 ```
 Uuid.new() -> Uuid
-Uuid.parse(s: String) -> Result[Uuid, ParseError]
+Uuid.parse(s: String) -> Result[Uuid, String]
 Uuid.to_string(u: Uuid) -> String
 ```
 
@@ -537,7 +537,7 @@ Uuid.to_string(u: Uuid) -> String
 
 ```
 Instant.now() -> Instant
-Instant.parse(s: String) -> Result[Instant, ParseError]
+Instant.parse(s: String) -> Result[Instant, String]
 Instant.to_string(i: Instant) -> String
 Instant.add(i: Instant, d: Duration) -> Instant
 Instant.subtract(i: Instant, d: Duration) -> Instant
