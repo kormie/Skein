@@ -1,6 +1,6 @@
 # SKEIN_SPEC.md — Complete Language Specification
 
-**Version 0.1 — February 2026**
+**Version 1.0 — June 2026** (frozen for the 1.0 release)
 
 This document is the single-file specification for Skein. It is designed to fit within an LLM context window alongside task-specific code and instructions.
 
@@ -748,7 +748,7 @@ All errors are JSON-serializable with this structure:
 | Code | Category | Severity | Meaning |
 |------|----------|----------|---------|
 | E0001 | Syntax | error | Unexpected token |
-| E0002 | Syntax | error | Unterminated string |
+| E0002 | Syntax | error | Invalid string: unterminated string literal, an expression inside `${...}` interpolation (only an identifier with optional dot access is allowed), or an unterminated interpolation |
 | E0003 | Syntax | error | Invalid number literal (e.g. underscore grouping in a float: `1_000.5`) |
 | E0010 | Name | error | Undefined identifier |
 | E0011 | Name | error | Duplicate definition |
@@ -1059,4 +1059,4 @@ with `tool.call` — there is no cross-module function access to test against.
 
 ---
 
-*End of Skein Language Specification v0.1*
+*End of Skein Language Specification v1.0*
