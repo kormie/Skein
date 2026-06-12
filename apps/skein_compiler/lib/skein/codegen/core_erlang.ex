@@ -2312,6 +2312,13 @@ defmodule Skein.CodeGen.CoreErlang do
     )
   end
 
+  # List literal
+  defp generate_expr(%AST.ListLit{elements: elements}, scope) do
+    elements
+    |> Enum.map(&generate_expr(&1, scope))
+    |> :cerl.make_list()
+  end
+
   # Map literal
   defp generate_expr(%AST.MapLit{entries: entries}, scope) do
     pairs =
