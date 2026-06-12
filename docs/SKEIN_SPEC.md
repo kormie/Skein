@@ -700,14 +700,16 @@ Memory mutations (`memory.put`, `memory.delete`) automatically emit `:state_chan
 
 ```
 -- Requires: capability process.spawn(pool)
-process.spawn(task: String) -> ()         -- run a named supervised background task (no-op body)
-process.spawn(task: String, work) -> ()   -- run `work` (a &fn reference) in the background
+-- Ok payload is an opaque process handle
+process.spawn(task: String) -> Result[_, String]         -- run a named supervised background task (no-op body)
+process.spawn(task: String, work) -> Result[_, String]   -- run `work` (a &fn reference) in the background
 
 -- Requires: capability timer(group)
-timer.after(delay_ms: Int, task: String) -> String           -- one-shot; returns a timer ref
-timer.after(delay_ms: Int, task: String, work) -> String     -- one-shot with a task body
-timer.interval(every_ms: Int, task: String) -> String        -- repeating; returns a timer ref
-timer.interval(every_ms: Int, task: String, work) -> String  -- repeating with a task body
+-- Ok payload is the timer ref accepted by timer.cancel
+timer.after(delay_ms: Int, task: String) -> Result[String, String]           -- one-shot
+timer.after(delay_ms: Int, task: String, work) -> Result[String, String]     -- one-shot with a task body
+timer.interval(every_ms: Int, task: String) -> Result[String, String]        -- repeating
+timer.interval(every_ms: Int, task: String, work) -> Result[String, String]  -- repeating with a task body
 timer.cancel(ref: String) -> ()
 ```
 
