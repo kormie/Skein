@@ -423,7 +423,7 @@ Memory effects extract the namespace from the `memory.kv(namespace)` capability 
 
 ```skein
 -- Module has: capability memory.kv("sessions")
-memory.put("sessions", "user", user_id)
+memory.put("user", user_id)
 
 -- Compiles to:
 call 'Elixir.Skein.Runtime.Memory':'put'("sessions", "user", UserId, Capabilities)
@@ -545,7 +545,7 @@ A module with no capabilities returns an empty list. Each capability map has:
 
 ## Property-Tested Invariants
 
-The code generator has 9 property-based tests verifying:
+The code generator's property-based tests verify invariants including:
 
 - Integer addition computes correctly for random inputs
 - Integer subtraction computes correctly for random inputs
