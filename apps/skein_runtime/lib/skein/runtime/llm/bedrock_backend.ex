@@ -44,9 +44,10 @@ defmodule Skein.Runtime.Llm.BedrockBackend do
 
   `json` requests inject the schema into the system prompt (Converse has
   no schema-constrained mode that works across model families). `stream`
-  performs a regular converse call and returns the text as a single
-  chunk — `converse-stream` uses AWS's binary event-stream framing,
-  deferred. `embed` calls InvokeModel for Titan (`amazon.titan-embed-*`)
+  calls `converse-stream` and decodes AWS's binary event-stream framing
+  (`Skein.Runtime.Llm.EventStream`) into per-token text deltas;
+  mid-stream exception events map to the structured `Llm.Error` kinds.
+  `embed` calls InvokeModel for Titan (`amazon.titan-embed-*`)
   and Cohere (`cohere.embed-*`) embedding models.
 
   Model IDs go into the URL path unencoded; Req percent-encodes them in
@@ -56,8 +57,10 @@ defmodule Skein.Runtime.Llm.BedrockBackend do
   supported alternatives (model ID or inference profile ID).
   """
 
+  alias Skein.Runtime.Llm.AsyncBody
   alias Skein.Runtime.Llm.AwsWebIdentityProvider
   alias Skein.Runtime.Llm.Error
+  alias Skein.Runtime.Llm.EventStream
   alias Skein.Runtime.Llm.Response
 
   @receive_timeout 120_000
@@ -133,18 +136,21 @@ defmodule Skein.Runtime.Llm.BedrockBackend do
   end
 
   @doc """
-  Streams a completion. `converse-stream` uses AWS's binary event-stream
-  framing (not SSE), so this performs a regular converse call and
-  returns the full text as a single chunk.
+  Streams a completion via `POST /model/{modelId}/converse-stream`,
+  decoding AWS's binary event-stream framing
+  (`Skein.Runtime.Llm.EventStream`) into the text deltas of
+  `contentBlockDelta` events. `messageStop`/`metadata` events are
+  consumed; mid-stream `exception` events map to the matching
+  `Llm.Error` kinds (throttling → `:rate_limit`).
 
   Returns `{:ok, [chunk]}` or `{:error, %Error{}}`.
   """
   @spec stream(String.t(), String.t(), any(), config()) ::
           {:ok, [String.t()]} | {:error, Error.t()}
   def stream(model, system, input, config) do
-    case chat(model, system, input, config) do
-      {:ok, %Response{text: text}} -> {:ok, [text]}
-      {:error, _} = error -> error
+    with {:ok, mapped_model} <- validated_model(model, config) do
+      body = build_request_body(system, input)
+      post_stream(config, "/model/#{mapped_model}/converse-stream", body)
     end
   end
 
@@ -271,6 +277,158 @@ defmodule Skein.Runtime.Llm.BedrockBackend do
       end
     end
   end
+
+  defp post_stream(config, path, body) do
+    with {:ok, credentials} <- resolve_credentials(config),
+         {:ok, region} <- resolve_region(config, credentials) do
+      url = endpoint_url(config, region) <> path
+
+      case Req.post(url,
+             json: body,
+             aws_sigv4: sigv4_options(credentials, region),
+             receive_timeout: @receive_timeout,
+             into: :self
+           ) do
+        {:ok, %Req.Response{status: 200, body: %Req.Response.Async{} = async}} ->
+          collect_event_stream(async)
+
+        {:ok, %Req.Response{status: status} = resp} ->
+          {:error, map_http_error(status, aws_error_type(resp), drained_body(resp))}
+
+        {:error, %Req.TransportError{reason: :timeout}} ->
+          {:error, Error.timeout(@receive_timeout)}
+
+        {:error, exception} ->
+          {:error,
+           Error.provider_error(
+             "transport",
+             "Cannot reach Bedrock at #{url}: " <>
+               redact_credentials(Exception.message(exception), credentials)
+           )}
+      end
+    end
+  end
+
+  # Folds the event-stream frames into the chunk list: text deltas
+  # accumulate, lifecycle events (messageStart/contentBlockStop/
+  # messageStop/metadata) are consumed, exception events halt with the
+  # mapped error. The buffer carries bytes of a frame split across
+  # transport chunks.
+  defp collect_event_stream(async) do
+    result =
+      AsyncBody.collect(async, {[], <<>>}, @receive_timeout, fn data, {chunks, buffer} ->
+        case EventStream.parse_frames(buffer <> data) do
+          {:ok, messages, rest} ->
+            case fold_stream_messages(messages, chunks) do
+              {:ok, chunks} -> {:cont, {chunks, rest}}
+              {:error, _} = error -> {:halt, error}
+            end
+
+          {:error, reason} ->
+            {:halt,
+             {:error,
+              Error.provider_error(
+                "event_stream",
+                "Corrupt event-stream frame: #{inspect(reason)}"
+              )}}
+        end
+      end)
+
+    case result do
+      {:done, {chunks, <<>>}} ->
+        {:ok, Enum.reverse(chunks)}
+
+      {:done, {_chunks, leftover}} ->
+        {:error,
+         Error.provider_error(
+           "event_stream",
+           "Truncated event stream: #{byte_size(leftover)} leftover bytes"
+         )}
+
+      {:halted, result} ->
+        result
+
+      {:stream_error, reason} ->
+        {:error, Error.provider_error("stream", "Stream error: #{inspect(reason)}")}
+
+      :timeout ->
+        {:error, Error.timeout(@receive_timeout)}
+    end
+  end
+
+  defp fold_stream_messages([], chunks), do: {:ok, chunks}
+
+  defp fold_stream_messages([message | rest], chunks) do
+    case stream_message_result(message) do
+      {:chunk, text} -> fold_stream_messages(rest, [text | chunks])
+      :skip -> fold_stream_messages(rest, chunks)
+      {:error, _} = error -> error
+    end
+  end
+
+  defp stream_message_result(%{
+         headers: %{":message-type" => "event"} = headers,
+         payload: payload
+       }) do
+    case headers[":event-type"] do
+      "contentBlockDelta" ->
+        case Jason.decode(payload) do
+          {:ok, %{"delta" => %{"text" => text}}} when is_binary(text) -> {:chunk, text}
+          # Non-text deltas (tool use) and undecodable payloads carry no text.
+          _ -> :skip
+        end
+
+      # messageStart/contentBlockStart/contentBlockStop/messageStop/
+      # metadata — stopReason and usage have no channel in the [chunk]
+      # contract (parity with the other streaming backends).
+      _ ->
+        :skip
+    end
+  end
+
+  defp stream_message_result(%{headers: %{":message-type" => "exception"} = headers} = message) do
+    type = headers[":exception-type"] || "exception"
+    {:error, map_stream_exception(type, exception_message(message.payload))}
+  end
+
+  defp stream_message_result(%{headers: %{":message-type" => "error"} = headers}) do
+    {:error,
+     Error.provider_error(
+       headers[":error-code"] || "stream",
+       headers[":error-message"] || "Connection-level event-stream error"
+     )}
+  end
+
+  defp stream_message_result(_message), do: :skip
+
+  defp map_stream_exception(type, message) do
+    if String.downcase(type) == "throttlingexception" do
+      Error.rate_limit(60_000)
+    else
+      Error.provider_error(type, message)
+    end
+  end
+
+  defp exception_message(payload) do
+    case Jason.decode(payload) do
+      {:ok, decoded} -> extract_error_message(decoded)
+      _ -> extract_error_message(payload)
+    end
+  end
+
+  # Non-200 answers to a streaming request still deliver their (JSON)
+  # error body through the async mailbox — drain it so the structured
+  # error carries the real message instead of an opaque struct.
+  defp drained_body(%Req.Response{body: %Req.Response.Async{} = async}) do
+    raw = AsyncBody.drain(async, 5_000)
+
+    case Jason.decode(raw) do
+      {:ok, decoded} -> decoded
+      _ -> raw
+    end
+  end
+
+  defp drained_body(%Req.Response{body: body}), do: body
 
   defp sigv4_options(credentials, region) do
     base = [

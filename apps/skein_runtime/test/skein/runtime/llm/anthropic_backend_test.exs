@@ -191,4 +191,116 @@ defmodule Skein.Runtime.Llm.AnthropicBackendTest do
       assert remaining == ""
     end
   end
+
+  describe "stream/3 against a stub SSE server" do
+    # Regression for the receive loop matching on the whole
+    # Req.Response.Async struct instead of its ref — real streaming
+    # received nothing and timed out (found while building the Bedrock
+    # event-stream loop, issue #178).
+
+    defmodule StubServer do
+      @behaviour Plug
+
+      import Plug.Conn
+
+      @impl true
+      def init(opts), do: opts
+
+      @impl true
+      def call(conn, opts) do
+        case opts[:respond].() do
+          {:sse, chunks} ->
+            conn =
+              conn
+              |> put_resp_content_type("text/event-stream")
+              |> send_chunked(200)
+
+            Enum.reduce(chunks, conn, fn data, c ->
+              {:ok, c} = chunk(c, data)
+              c
+            end)
+
+          {status, response} ->
+            conn
+            |> put_resp_content_type("application/json")
+            |> send_resp(status, Jason.encode!(response))
+        end
+      end
+    end
+
+    setup do
+      previous_url = Application.get_env(:skein_runtime, :anthropic_api_url)
+      previous_key = Application.get_env(:skein_runtime, :anthropic_api_key)
+      Application.put_env(:skein_runtime, :anthropic_api_key, "sk-ant-test")
+
+      on_exit(fn ->
+        restore = fn
+          key, nil -> Application.delete_env(:skein_runtime, key)
+          key, value -> Application.put_env(:skein_runtime, key, value)
+        end
+
+        restore.(:anthropic_api_url, previous_url)
+        restore.(:anthropic_api_key, previous_key)
+      end)
+
+      :ok
+    end
+
+    defp start_stub(respond) do
+      port = Enum.random(10_000..60_000)
+
+      {:ok, pid} =
+        Bandit.start_link(
+          plug: {StubServer, [respond: respond]},
+          port: port,
+          ip: {127, 0, 0, 1},
+          startup_log: false
+        )
+
+      on_exit(fn ->
+        try do
+          GenServer.stop(pid)
+        catch
+          :exit, _ -> :ok
+        end
+      end)
+
+      Application.put_env(:skein_runtime, :anthropic_api_url, "http://127.0.0.1:#{port}")
+    end
+
+    defp sse_event(data), do: "event: #{data["type"]}\ndata: #{Jason.encode!(data)}\n\n"
+
+    test "collects content_block_delta chunks from the live stream" do
+      sse =
+        IO.iodata_to_binary([
+          sse_event(%{"type" => "message_start"}),
+          sse_event(%{"type" => "content_block_delta", "delta" => %{"text" => "Hel"}}),
+          sse_event(%{"type" => "content_block_delta", "delta" => %{"text" => "lo"}}),
+          sse_event(%{"type" => "message_stop"})
+        ])
+
+      # Split mid-event so the loop has to carry the buffer across
+      # transport chunks.
+      split_at = div(byte_size(sse), 2) + 1
+      <<first::binary-size(split_at), second::binary>> = sse
+      start_stub(fn -> {:sse, [first, second]} end)
+
+      assert {:ok, ["Hel", "lo"]} = AnthropicBackend.stream("claude-opus-4-8", "sys", "hi")
+    end
+
+    test "an empty stream returns zero chunks" do
+      start_stub(fn -> {:sse, [sse_event(%{"type" => "message_stop"})]} end)
+
+      assert {:ok, []} = AnthropicBackend.stream("claude-opus-4-8", "sys", "hi")
+    end
+
+    test "a non-200 response drains and maps the error body" do
+      start_stub(fn ->
+        {429, %{"error" => %{"message" => "rate limited, retry after 7 seconds"}}}
+      end)
+
+      assert {:error, %Error{kind: :rate_limit, detail: %{retry_after_ms: 7_000}}} =
+               AnthropicBackend.stream("claude-opus-4-8", "sys", "hi")
+    end
+  end
 end
