@@ -1,5 +1,37 @@
 # Changelog
 
+## v1.0.0-rc.2 (2026-06-12)
+
+The **second 1.0 release candidate** — the rc.1 soak audit (`/release-readiness`) plus an adversarial code review of its own fix PR (#230), closing the entire v1.0.0 Release GA milestone. The soak continues on this rc, which actually contains the fixes.
+
+### Language & Compiler
+
+- A guarded match arm with a block body no longer crashes the analyzer with a raw `ArgumentError` (improper list in the unused-binding walker) (#231)
+- `"${Foo}"` — an uppercase identifier in string interpolation — is a structured E0010 with a bind-it-first fix hint instead of an unstructured codegen `FunctionClauseError` reaching MCP/LSP (#232)
+- W0001 (unused binding) no longer false-positives on bindings referenced only via string interpolation (#196), or only inside list/map literals (#233) — the old warnings carried a `_name` fix_code that would have broken the program
+- Float literals with underscore grouping (`1_000.5`) emit structured **E0003** "Invalid number literal" with a fix_code stripping the underscores, instead of crashing the whole compile (#197); E0003 is now an emitted code (spec §7 updated; E0013 stays reserved)
+- Dropped the unused `nimble_parsec` dependency — the lexer is, and always was, hand-written binary matching (#228)
+
+### Examples
+
+- All sixteen examples now check **diagnostic-clean**, enforced by a new test guard over `examples/**/*.skein` (#199)
+- `semantic_search` performs a real RAG flow (stores the vector, grounds the answer in retrieved context); `refund_agent`/`incident_triage` decide phases by exact match on the LLM's one-word reply, so Denied/Failed and Escalate/Ignore are reachable and negated wordings can't mis-route; `skein_assistant` actually remembers conversation context (history fed into the prompt and appended); `stdlib_demo` tours List/Map/Option/Result and `word_count` counts words; `market_research/service` drops its unused `tool.use` declarations (#199)
+
+### Spec & Docs
+
+- Spec §7's E0002 row covers all three lexer emissions (unterminated string, expression in interpolation, unterminated interpolation); the spec banner reads **Version 1.0** for the frozen spec (#224)
+- Runtime docs show the real API shapes: `get_state` starts `%{}`, events are keyed `:event`, `Store`/`StoreEcto.query` take filter maps and return bare lists (#223)
+- README's flagship capability block compiles (unimplemented `methods:` removed) and the demo transcript uses `claude-opus-4-8` (#225)
+- Compiler pages document the real generated surface (`__handler_N__` + `__handlers__/0` shape, queue namespace, actual parser messages, five analyzer passes) without the NimbleParsec myth (#226, #228)
+- Language pages match the implementation: `Skein.CLI.compile/1`'s 3-tuple, test blocks live in modules, the W0004 value-level exhaustiveness warning, supervisor metadata semantics, float/int division dispatch, and a diagnostic-clean pubsub example (#227)
+- Meta-docs caught up with the release: roadmap pages regenerated from `docs/ROADMAP.md`, the installer and auto-tagging marked shipped, ARCHITECTURE gains the Bedrock backend and the Linux aarch64 target, CONTRIBUTING/CLAUDE.md milestone lists synced, and the v1.0.0-rc milestone closed in `milestones.json` (#200)
+- STABILITY's trace-export sentence reads as English again, in both copies (#229)
+
+### Testing
+
+- New guard: every example must compile with zero errors **and zero warnings**
+- Example handler tests resolve handlers by route from `__handlers__/0` metadata instead of brittle positional `__handler_N__` names
+
 ## v1.0.0-rc.1 (2026-06-12)
 
 The **first 1.0 release candidate**. The `/release-readiness` audit adversarially swept every docs page, spec section, and example against the implementation; both resulting milestones of findings — the readiness pass (#182–#195) and the v1.0.0-rc burndown (#205–#220) — are fixed. The language surface, the frozen spec, and the documentation now describe the same system.

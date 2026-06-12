@@ -277,7 +277,7 @@ Elixir install required.
 chmod +x skein-*
 mv skein-* /usr/local/bin/skein
 
-skein version             # → skein 1.0.0-rc.1
+skein version             # → skein 1.0.0-rc.2
 
 # Compile a file
 skein compile hello.skein

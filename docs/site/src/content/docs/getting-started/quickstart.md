@@ -11,10 +11,10 @@ release checksums, and installs to `~/.local/bin` (no root):
 ```bash
 curl -fsSL https://kormie.github.io/Skein/install.sh | sh
 
-skein version  # → skein 1.0.0-rc.1
+skein version  # → skein 1.0.0-rc.2
 ```
 
-Pin a version with `SKEIN_VERSION=1.0.0-rc.1`, or change the destination with
+Pin a version with `SKEIN_VERSION=1.0.0-rc.2`, or change the destination with
 `SKEIN_BIN_DIR=/usr/local/bin`. The script is
 [`install.sh`](https://github.com/kormie/Skein/blob/main/install.sh) if you
 want to read it first.
@@ -154,7 +154,7 @@ skein help
 ```
 
 ```
-Skein 1.0.0-rc.1 — AI-native language for the BEAM
+Skein 1.0.0-rc.2 — AI-native language for the BEAM
 
 Usage: skein <command> [options]
 
