@@ -635,8 +635,8 @@ assembled response text once the stream completes.
 ```
 -- Requires: capability tool.use(ToolNames)
 tool.call(name: ToolName, args: Map) -> Result[Map, ToolError]
-tool.list() -> List[ToolInfo]
-tool.schema(name: ToolName) -> Map
+tool.list() -> Result[List[ToolInfo], ToolError]
+tool.schema(name: ToolName) -> Result[Map, ToolError]
 ```
 
 **Input validation:** `tool.call` validates input arguments against the tool's declared input schema before execution. Two schema formats are supported:
