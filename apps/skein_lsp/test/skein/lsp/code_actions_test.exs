@@ -144,4 +144,104 @@ defmodule Skein.Lsp.CodeActionsTest do
       assert actions_for(source) == []
     end
   end
+
+  describe "generic span + edit_kind application" do
+    test "replace: float underscore literal is replaced with the cleaned literal (E0003)" do
+      source = """
+      module M {
+        fn f() -> Float { 1_000.5 }
+      }
+      """
+
+      [action] = actions_for(source)
+
+      edit = single_edit(action)
+      assert edit.new_text == "1000.5"
+      assert edit.range.start == %Position{line: 1, character: 20}
+      assert edit.range.end == %Position{line: 1, character: 27}
+    end
+
+    test "replace: unknown identifier with a close binding is renamed (E0010)" do
+      source = """
+      module M {
+        fn f(amount: Int) -> Int {
+          amout
+        }
+      }
+      """
+
+      actions = actions_for(source)
+      assert [action] = Enum.filter(actions, &(&1.title =~ "amount"))
+
+      edit = single_edit(action)
+      assert edit.new_text == "amount"
+      assert edit.range.start == %Position{line: 2, character: 4}
+      assert edit.range.end == %Position{line: 2, character: 9}
+    end
+
+    test "insert_before: expected token inserts ahead of the unexpected one (E0001)" do
+      source = """
+      module M {
+        fn f() -> Int 42 }
+      }
+      """
+
+      actions = actions_for(source)
+      assert [action | _] = actions
+
+      edit = single_edit(action)
+      assert edit.new_text == "{"
+      assert edit.range.start == %Position{line: 1, character: 16}
+      assert edit.range.end == edit.range.start
+    end
+
+    test "insert_after: unterminated interpolation closes the brace (E0002)" do
+      source = ~S"""
+      module M {
+        fn f(name: String) -> String { "${name" }
+      }
+      """
+
+      [action] = actions_for(source)
+
+      edit = single_edit(action)
+      assert edit.new_text == "}"
+      assert edit.range.start == edit.range.end
+    end
+  end
+
+  describe "per-code fallback for span-less diagnostics" do
+    test "W0001 diagnostic without span data still maps via the message" do
+      source = """
+      module M {
+        fn f() -> String {
+          let unused = 1
+          "ok"
+        }
+      }
+      """
+
+      # Simulates a client (or an error path) that ships no span data —
+      # only the phase-1 fields.
+      diagnostic = %{
+        "code" => "W0001",
+        "message" => "Unused binding 'unused'",
+        "range" => %{
+          "start" => %{"line" => 2, "character" => 2},
+          "end" => %{"line" => 2, "character" => 3}
+        },
+        "data" => %{
+          "code" => "W0001",
+          "fix_hint" => "Remove this binding or prefix with _",
+          "fix_code" => "_unused"
+        }
+      }
+
+      [action] = CodeActions.actions(@uri, source, [diagnostic])
+
+      edit = single_edit(action)
+      assert edit.new_text == "_unused"
+      assert edit.range.start.line == 2
+    end
+  end
 end

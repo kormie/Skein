@@ -2289,14 +2289,17 @@ defmodule Skein.CodeGen.CoreErlang do
   end
 
   defp generate_expr(%AST.StringLit{segments: segments}, scope) do
-    # String with interpolation: build iolist and call erlang:iolist_to_binary/1
+    # String with interpolation: build iolist and call erlang:iolist_to_binary/1.
+    # Interpolation segments are ordinary AST nodes (Identifier/FieldAccess),
+    # so the regular expression generator handles them — including agent
+    # state access via the __state_var__ scope.
     parts =
       Enum.map(segments, fn
         {:literal, text} ->
           :cerl.abstract(text)
 
-        {:interpolation, interp_token} ->
-          interpolation_to_binary(generate_interpolation(interp_token, scope))
+        {:interpolation, expr} ->
+          interpolation_to_binary(generate_expr(expr, scope))
       end)
 
     iolist = :cerl.make_list(parts)
@@ -2553,23 +2556,6 @@ defmodule Skein.CodeGen.CoreErlang do
       end)
 
     :cerl.c_let([var], value_expr, coerced)
-  end
-
-  defp generate_interpolation({:ident, _, name}, scope) do
-    case Map.get(scope, name) do
-      nil -> :cerl.c_var(var_name(name))
-      var -> :cerl.c_var(var)
-    end
-  end
-
-  defp generate_interpolation({:field_access, subject, field}, scope) do
-    subj = generate_interpolation(subject, scope)
-
-    :cerl.c_call(
-      :cerl.c_atom(:erlang),
-      :cerl.c_atom(:map_get),
-      [:cerl.c_atom(String.to_atom(field)), subj]
-    )
   end
 
   # ------------------------------------------------------------------

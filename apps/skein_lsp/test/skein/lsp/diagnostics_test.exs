@@ -158,8 +158,39 @@ defmodule Skein.Lsp.DiagnosticsTest do
       assert diag.data == %{
                "code" => "E0001",
                "fix_hint" => "Add ':' after 'description'",
-               "fix_code" => ":"
+               "fix_code" => ":",
+               "span" => nil,
+               "edit_kind" => nil
              }
+    end
+
+    test "ships span and edit_kind in diagnostic data and uses the span for the range" do
+      errors = [
+        %Skein.Error{
+          code: "W0001",
+          severity: :warning,
+          message: "Unused binding 'order'",
+          location: %{file: "test.skein", line: 3, col: 3},
+          fix_hint: "Remove this binding or prefix with _",
+          fix_code: "_order",
+          span: Skein.Error.span(3, 7, 5),
+          edit_kind: :replace
+        }
+      ]
+
+      [diag] = Diagnostics.errors_to_diagnostics(errors)
+
+      assert diag.data["span"] == %{
+               "start" => %{"line" => 3, "col" => 7},
+               "end" => %{"line" => 3, "col" => 12}
+             }
+
+      assert diag.data["edit_kind"] == "replace"
+
+      # The diagnostic range is the span (0-based)
+      assert diag.range.start.line == 2
+      assert diag.range.start.character == 6
+      assert diag.range.end.character == 11
     end
   end
 end

@@ -1606,6 +1606,15 @@ defmodule Skein.Parser do
   # ------------------------------------------------------------------
 
   defp parse_let([{:let, {line, col}} | rest], file) do
+    name_meta =
+      case rest do
+        [{:ident, {name_line, name_col}, _} | _] ->
+          %{line: name_line, col: name_col, file: file}
+
+        _ ->
+          nil
+      end
+
     with {:ok, name, rest} <- expect_lower_ident(rest, file),
          {:ok, _eq, rest} <- expect(:eq, rest, file),
          {:ok, value, rest} <- parse_expression(rest, file) do
@@ -1613,7 +1622,8 @@ defmodule Skein.Parser do
         name: name,
         type: nil,
         value: value,
-        meta: %{line: line, col: col, file: file}
+        meta: %{line: line, col: col, file: file},
+        name_meta: name_meta
       }
 
       {:ok, let_node, rest}
@@ -1735,7 +1745,11 @@ defmodule Skein.Parser do
   end
 
   defp parse_pattern([{:string, {line, col}, segments} | rest], file) do
-    {:ok, %AST.StringLit{segments: segments, meta: %{line: line, col: col, file: file}}, rest}
+    {:ok,
+     %AST.StringLit{
+       segments: normalize_string_segments(segments, file),
+       meta: %{line: line, col: col, file: file}
+     }, rest}
   end
 
   defp parse_pattern(tokens, file) do
@@ -2313,7 +2327,11 @@ defmodule Skein.Parser do
   end
 
   defp parse_primary([{:string, {line, col}, segments} | rest], file) do
-    {:ok, %AST.StringLit{segments: segments, meta: %{line: line, col: col, file: file}}, rest}
+    {:ok,
+     %AST.StringLit{
+       segments: normalize_string_segments(segments, file),
+       meta: %{line: line, col: col, file: file}
+     }, rest}
   end
 
   defp parse_primary([{:ident, {line, col}, name} | rest], file) do
@@ -2500,6 +2518,31 @@ defmodule Skein.Parser do
   end
 
   # ------------------------------------------------------------------
+  # String interpolation segments
+  # ------------------------------------------------------------------
+
+  # The lexer represents interpolation segments as raw tokens
+  # ({:ident, ...}, {:upper_ident, ...}, {:field_access, ...}). Normalize
+  # them into AST nodes here so every downstream walker (analyzer passes,
+  # codegen, source rendering) handles them like any other expression.
+  defp normalize_string_segments(segments, file) do
+    Enum.map(segments, fn
+      {:interpolation, token} -> {:interpolation, interpolation_expr_to_ast(token, file)}
+      literal -> literal
+    end)
+  end
+
+  defp interpolation_expr_to_ast({kind, {line, col}, name}, file)
+       when kind in [:ident, :upper_ident] do
+    %AST.Identifier{name: name, meta: %{line: line, col: col, file: file}}
+  end
+
+  defp interpolation_expr_to_ast({:field_access, subject, field}, file) do
+    subject_ast = interpolation_expr_to_ast(subject, file)
+    %AST.FieldAccess{subject: subject_ast, field: field, meta: subject_ast.meta}
+  end
+
+  # ------------------------------------------------------------------
   # Helpers
   # ------------------------------------------------------------------
 
@@ -2519,7 +2562,9 @@ defmodule Skein.Parser do
          message: "Expected '#{expected_text}', got #{describe_token(tokens)}",
          location: %{file: file, line: line, col: col},
          fix_hint: "Add '#{expected_text}' here",
-         fix_code: expected_text
+         fix_code: expected_text,
+         span: token_span(tokens),
+         edit_kind: :insert_before
        }
      ]}
   end
@@ -2539,7 +2584,8 @@ defmodule Skein.Parser do
          message: "Expected an identifier, got #{describe_token(tokens)}",
          location: %{file: file, line: line, col: col},
          fix_hint: "Add an identifier here",
-         fix_code: "name"
+         fix_code: "name",
+         span: token_span(tokens)
        }
      ]}
   end
@@ -2559,7 +2605,8 @@ defmodule Skein.Parser do
          message: "Expected a type/module name (uppercase), got #{describe_token(tokens)}",
          location: %{file: file, line: line, col: col},
          fix_hint: "Add a capitalized name here",
-         fix_code: "TypeName"
+         fix_code: "TypeName",
+         span: token_span(tokens)
        }
      ]}
   end
@@ -2567,6 +2614,24 @@ defmodule Skein.Parser do
   defp token_location([{_, {line, col}} | _]), do: {line, col}
   defp token_location([{_, {line, col}, _} | _]), do: {line, col}
   defp token_location(_), do: {0, 0}
+
+  # Span covering the offending token's source text, where its length is
+  # knowable (identifiers and fixed-text tokens). Number and string
+  # literals lose their source length in lexing, so they get a point span.
+  defp token_span([{kind, {line, col}, name} | _])
+       when kind in [:ident, :upper_ident] and is_binary(name) do
+    Error.span(line, col, String.length(name))
+  end
+
+  defp token_span([{_, {line, col}, _} | _]), do: Error.point(line, col)
+
+  defp token_span([{:eof, {line, col}} | _]), do: Error.point(line, col)
+
+  defp token_span([{type, {line, col}} | _]) do
+    Error.span(line, col, String.length(token_text(type)))
+  end
+
+  defp token_span(_), do: nil
 
   defp describe_token([{:eof, _} | _]), do: "end of file"
   defp describe_token([{type, _} | _]), do: "'#{type}'"
@@ -2589,11 +2654,13 @@ defmodule Skein.Parser do
   defp token_text(other), do: to_string(other)
 
   # Derives an insertable code snippet from an expected-token description
-  # for unexpected_token_error/3.
+  # for unexpected_token_error/3. A quoted description names the literal
+  # token itself — an exact insertion; anything else gets an illustrative
+  # template (no edit_kind).
   defp default_fix_code(expected) do
     case Regex.run(~r/^'([^']*)'$/, expected) do
-      [_, literal] -> literal
-      nil -> example_fix_code(expected)
+      [_, literal] -> {literal, :insert_before}
+      nil -> {example_fix_code(expected), nil}
     end
   end
 
@@ -2636,10 +2703,11 @@ defmodule Skein.Parser do
   defp meta_from_tokens(_, file), do: %{line: 0, col: 0, file: file}
 
   defp unexpected_token_error(tokens, file, expected) do
-    unexpected_token_error(tokens, file, expected, default_fix_code(expected))
+    {fix_code, edit_kind} = default_fix_code(expected)
+    unexpected_token_error(tokens, file, expected, fix_code, edit_kind)
   end
 
-  defp unexpected_token_error(tokens, file, expected, fix_code) do
+  defp unexpected_token_error(tokens, file, expected, fix_code, edit_kind \\ nil) do
     {line, col} = token_location(tokens)
 
     {:error,
@@ -2650,13 +2718,17 @@ defmodule Skein.Parser do
          message: "Expected #{expected}, got #{describe_token(tokens)}",
          location: %{file: file, line: line, col: col},
          fix_hint: "Expected #{expected}",
-         fix_code: fix_code
+         fix_code: fix_code,
+         span: token_span(tokens),
+         edit_kind: edit_kind
        }
      ]}
   end
 
   # Targeted error for a known section/entry name followed by the wrong
   # token (issue #83): names the missing token so the fix is mechanical.
+  # The location is the keyword's start, so the span covers the keyword
+  # and the fix inserts immediately after it.
   defp missing_token_after_error(keyword, token, {line, col}, file) do
     {:error,
      [
@@ -2666,7 +2738,9 @@ defmodule Skein.Parser do
          message: "Missing '#{token}' after '#{keyword}'",
          location: %{file: file, line: line, col: col},
          fix_hint: "Add '#{token}' after '#{keyword}'",
-         fix_code: token
+         fix_code: token,
+         span: Error.span(line, col, String.length(keyword)),
+         edit_kind: :insert_after
        }
      ]}
   end

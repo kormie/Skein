@@ -341,6 +341,11 @@ defmodule Skein.Analyzer do
     # Pass 2b: Type-check handler bodies
     errors = errors ++ check_handlers(ast.declarations, env)
 
+    # Pass 2c: Scope-independent interpolation rules — uppercase
+    # interpolation roots and interpolated string patterns. One generic
+    # walk covers bodies the type-inference passes skip (test blocks).
+    errors = errors ++ check_interpolation_shapes(ast.declarations ++ test_views, env)
+
     # Pass 3: Capability checking — verify effect calls have covering
     # capabilities (test/scenario/golden bodies included)
     errors = errors ++ check_capabilities(ast.declarations ++ test_views, env)
@@ -412,6 +417,11 @@ defmodule Skein.Analyzer do
     errors = errors ++ check_handler_effect_arity(ast.handlers, env)
 
     all_decls = agent_decl_views(ast)
+
+    # Pass 5c: Scope-independent interpolation rules (uppercase roots,
+    # interpolated string patterns) — handler bodies skip infer_type, so
+    # this walk is what rejects "${Foo}" inside them.
+    errors = errors ++ check_interpolation_shapes(all_decls, env)
 
     # Pass 6: Unreachable code after stop() warnings
     errors = errors ++ check_unreachable_after_stop(all_decls)
@@ -851,6 +861,109 @@ defmodule Skein.Analyzer do
     end)
   end
 
+  # ------------------------------------------------------------------
+  # Interpolation shape checking
+  # ------------------------------------------------------------------
+
+  # Structural interpolation rules that hold regardless of scope, checked
+  # by one generic walk over every declaration body (module fns, handlers,
+  # tools, test blocks, agent fns, agent handlers):
+  #
+  #   * interpolation roots must be lowercase references — "${Foo}" would
+  #     otherwise compile to a bare variant atom (or crash codegen)
+  #   * string patterns must be literal — an interpolated pattern has no
+  #     match-time value (codegen lowers string patterns byte-by-byte)
+  #
+  # Scope checking of lowercase references stays in check_interpolation
+  # (it needs the binding environment that only type inference tracks).
+  defp check_interpolation_shapes(declarations, env) do
+    declarations
+    |> Enum.flat_map(&interpolation_shape_errors(&1, env))
+  end
+
+  defp interpolation_shape_errors(%AST.StringLit{segments: segments}, env) do
+    segments
+    |> Enum.flat_map(fn
+      {:interpolation, expr} -> uppercase_interpolation_errors(expr, env)
+      _literal -> []
+    end)
+  end
+
+  defp interpolation_shape_errors(
+         %AST.MatchArm{pattern: pattern, guard: guard, body: body},
+         env
+       ) do
+    pattern_interpolation_errors(pattern, env) ++
+      interpolation_shape_errors(guard, env) ++ interpolation_shape_errors(body, env)
+  end
+
+  # Nested agents run the full agent pass suite (which includes this
+  # check), so the module-level walk must not descend into them.
+  defp interpolation_shape_errors(%AST.Agent{}, _env), do: []
+
+  defp interpolation_shape_errors(%_{} = node, env) do
+    node
+    |> Map.from_struct()
+    |> Enum.flat_map(fn
+      {:meta, _} -> []
+      {_key, value} -> interpolation_shape_errors(value, env)
+    end)
+  end
+
+  defp interpolation_shape_errors(nodes, env) when is_list(nodes),
+    do: Enum.flat_map(nodes, &interpolation_shape_errors(&1, env))
+
+  defp interpolation_shape_errors({_tag, value}, env), do: interpolation_shape_errors(value, env)
+  defp interpolation_shape_errors(_other, _env), do: []
+
+  defp uppercase_interpolation_errors(%AST.Identifier{name: name, meta: meta}, env) do
+    if String.match?(name, ~r/^[A-Z]/) do
+      [
+        %Error{
+          code: "E0010",
+          severity: :error,
+          message:
+            "Cannot interpolate '#{name}': string interpolation accepts let bindings, parameters, and field access on them",
+          location: location_from_meta(meta, env.file),
+          fix_hint: "Bind the value to a lowercase name first, then interpolate that binding",
+          fix_code: "let value = #{name}"
+        }
+      ]
+    else
+      []
+    end
+  end
+
+  defp uppercase_interpolation_errors(%AST.FieldAccess{subject: subject}, env),
+    do: uppercase_interpolation_errors(subject, env)
+
+  defp uppercase_interpolation_errors(_other, _env), do: []
+
+  # Patterns reject ALL interpolation (uppercase or not), so the walk above
+  # skips MatchArm patterns and this check reports them once.
+  defp pattern_interpolation_errors(%AST.StringLit{segments: segments, meta: meta}, env) do
+    if Enum.all?(segments, &match?({:literal, _}, &1)) do
+      []
+    else
+      [
+        %Error{
+          code: "E0020",
+          severity: :error,
+          message: "String patterns cannot contain interpolation",
+          location: location_from_meta(meta, env.file),
+          fix_hint:
+            "Match on a binding instead, or compare against the interpolated string with == in a guard",
+          fix_code: nil
+        }
+      ]
+    end
+  end
+
+  defp pattern_interpolation_errors(%AST.Call{args: args}, env),
+    do: Enum.flat_map(args, &pattern_interpolation_errors(&1, env))
+
+  defp pattern_interpolation_errors(_other, _env), do: []
+
   # Generic expression walker collecting every Call node (including calls
   # nested in arguments, match arms, interpolations, and map literals).
   defp collect_calls(%AST.Call{target: target, args: args} = call) do
@@ -954,7 +1067,8 @@ defmodule Skein.Analyzer do
       capabilities: capabilities,
       tool_error_names: tool_error_names,
       current_fn_return_type: nil,
-      file: file
+      file: file,
+      decl_meta: meta
     }
   end
 
@@ -1067,6 +1181,8 @@ defmodule Skein.Analyzer do
             "#{source_label} handlers require this capability."
         end
 
+      span = capability_insertion_span(env)
+
       [
         %Error{
           code: "E0012",
@@ -1075,7 +1191,9 @@ defmodule Skein.Analyzer do
           location: location_from_meta(meta, env.file),
           fix_hint:
             "Add a capability declaration to the module: capability #{required_capability}",
-          fix_code: "capability #{required_capability}"
+          fix_code: "capability #{required_capability}",
+          span: span,
+          edit_kind: if(span, do: :insert_line)
         }
       ]
     end
@@ -1198,6 +1316,10 @@ defmodule Skein.Analyzer do
       if Map.has_key?(env.types, name) do
         []
       else
+        # Only a real suggestion is an exact replacement for the type
+        # name; the "TypeName" fallback is a template.
+        span = if suggest_types(name, env) != "", do: span_from_meta(meta, name)
+
         [
           %Error{
             code: "E0024",
@@ -1205,7 +1327,9 @@ defmodule Skein.Analyzer do
             message: "Unknown type '#{name}'",
             location: location_from_meta(meta, env.file),
             fix_hint: "Did you mean one of: #{suggest_types(name, env)}?",
-            fix_code: first_type_suggestion(name, env)
+            fix_code: first_type_suggestion(name, env),
+            span: span,
+            edit_kind: if(span, do: :replace)
           }
         ]
       end
@@ -1393,7 +1517,7 @@ defmodule Skein.Analyzer do
             if name in ["Ok", "Err"] do
               {:unknown, []}
             else
-              {:unknown, [unknown_constructor_error(name, meta, env)]}
+              {:unknown, [unknown_constructor_error(name, meta, meta, env)]}
             end
         end
 
@@ -1423,6 +1547,10 @@ defmodule Skein.Analyzer do
 
         fix_code = suggestion || "let #{name} = value"
 
+        # A real suggestion is an exact replacement for the identifier;
+        # the let-skeleton fallback is only a template.
+        span = if suggestion, do: span_from_meta(meta, name)
+
         {:unknown,
          [
            %Error{
@@ -1431,7 +1559,9 @@ defmodule Skein.Analyzer do
              message: "Unknown identifier '#{name}'",
              location: location_from_meta(meta, env.file),
              fix_hint: fix_hint,
-             fix_code: fix_code
+             fix_code: fix_code,
+             span: span,
+             edit_kind: if(span, do: :replace)
            }
          ]}
     end
@@ -1855,7 +1985,7 @@ defmodule Skein.Analyzer do
         end
 
       # Bare constructor call: Ok(x), Err(e), or Variant(args)
-      %AST.Identifier{name: <<c, _::binary>> = name} when c in ?A..?Z ->
+      %AST.Identifier{name: <<c, _::binary>> = name, meta: target_meta} when c in ?A..?Z ->
         cond do
           name in ["Ok", "Err"] ->
             arity_errors =
@@ -1885,7 +2015,8 @@ defmodule Skein.Analyzer do
                 {type, args_errors ++ ctor_errors}
 
               :error ->
-                {:unknown, args_errors ++ [unknown_constructor_error(name, meta, env)]}
+                {:unknown,
+                 args_errors ++ [unknown_constructor_error(name, meta, target_meta, env)]}
             end
         end
 
@@ -2116,12 +2247,16 @@ defmodule Skein.Analyzer do
     }
   end
 
-  defp unknown_constructor_error(name, meta, env) do
+  # `meta` locates the error; `name_meta` locates the constructor name
+  # itself (a Call's meta points at the lparen, its target's at the name).
+  defp unknown_constructor_error(name, meta, name_meta, env) do
     candidates =
       env.enums
       |> Enum.flat_map(fn {_enum, %AST.EnumDecl{variants: variants}} ->
         Enum.map(variants, & &1.name)
       end)
+
+    span = span_from_meta(name_meta, name)
 
     %Error{
       code: "E0010",
@@ -2133,7 +2268,9 @@ defmodule Skein.Analyzer do
           [] -> "Declare an enum with this variant, or use Ok(value)/Err(reason)"
           names -> "Declared variants: #{Enum.join(Enum.uniq(names), ", ")}"
         end,
-      fix_code: closest_name(name, candidates ++ ["Ok", "Err"])
+      fix_code: closest_name(name, candidates ++ ["Ok", "Err"]),
+      span: span,
+      edit_kind: if(span, do: :replace)
     }
   end
 
@@ -2611,42 +2748,36 @@ defmodule Skein.Analyzer do
   # Interpolation checking
   # ------------------------------------------------------------------
 
-  defp check_interpolation({:ident, _, name}, env) do
-    if Map.has_key?(env.variables, name) or Map.has_key?(env.functions, name) do
-      []
-    else
-      [
-        %Error{
-          code: "E0010",
-          severity: :error,
-          message: "Unknown identifier '#{name}' in string interpolation",
-          location: %{file: env.file, line: 0, col: 0},
-          fix_hint: "Did you mean to declare this variable?",
-          fix_code: "let #{name} = value"
-        }
-      ]
+  # Scope check for interpolation references (segments are AST nodes,
+  # normalized by the parser). Uppercase roots are skipped here: the
+  # check_interpolation_shapes pass owns that rejection, so it fires
+  # uniformly for bodies this type-inference pass never visits (agent
+  # handlers, test blocks).
+  defp check_interpolation(%AST.Identifier{name: name, meta: meta}, env) do
+    cond do
+      String.match?(name, ~r/^[A-Z]/) ->
+        []
+
+      Map.has_key?(env.variables, name) or Map.has_key?(env.functions, name) ->
+        []
+
+      true ->
+        [
+          %Error{
+            code: "E0010",
+            severity: :error,
+            message: "Unknown identifier '#{name}' in string interpolation",
+            location: location_from_meta(meta, env.file),
+            fix_hint: "Did you mean to declare this variable?",
+            fix_code: "let #{name} = value"
+          }
+        ]
     end
   end
 
-  defp check_interpolation({:field_access, subject, _field}, env) do
+  defp check_interpolation(%AST.FieldAccess{subject: subject}, env) do
     check_interpolation(subject, env)
   end
-
-  defp check_interpolation({:upper_ident, {line, col}, name}, env) do
-    [
-      %Error{
-        code: "E0010",
-        severity: :error,
-        message:
-          "Cannot interpolate '#{name}': string interpolation accepts let bindings, parameters, and field access on them",
-        location: %{file: env.file, line: line, col: col},
-        fix_hint: "Bind the value to a lowercase name first, then interpolate that binding",
-        fix_code: "let value = #{name}"
-      }
-    ]
-  end
-
-  defp check_interpolation(_, _env), do: []
 
   # ------------------------------------------------------------------
   # Type compatibility
@@ -2830,6 +2961,8 @@ defmodule Skein.Analyzer do
     if has_capability do
       []
     else
+      span = capability_insertion_span(env)
+
       [
         %Error{
           code: "E0012",
@@ -2840,7 +2973,9 @@ defmodule Skein.Analyzer do
           location: location_from_meta(meta, env.file),
           fix_hint:
             "Add a capability declaration to the module: capability #{required_capability}",
-          fix_code: "capability #{required_capability}"
+          fix_code: "capability #{required_capability}",
+          span: span,
+          edit_kind: if(span, do: :insert_line)
         }
       ]
     end
@@ -2863,6 +2998,8 @@ defmodule Skein.Analyzer do
     if has_capability do
       []
     else
+      span = capability_insertion_span(env)
+
       [
         %Error{
           code: "E0012",
@@ -2873,7 +3010,9 @@ defmodule Skein.Analyzer do
           location: location_from_meta(meta, env.file),
           fix_hint:
             "Add a capability declaration to the module: capability store.table(\"#{table_name}\")",
-          fix_code: "capability store.table(\"#{table_name}\")"
+          fix_code: "capability store.table(\"#{table_name}\")",
+          span: span,
+          edit_kind: if(span, do: :insert_line)
         }
       ]
     end
@@ -2920,6 +3059,8 @@ defmodule Skein.Analyzer do
   defp check_tool_capability(tool_name, _method, meta, env) do
     declared_names = collect_declared_tool_names(env)
 
+    span = capability_insertion_span(env)
+
     cond do
       declared_names == [] ->
         # No tool.use capability at all — produce E0012
@@ -2933,7 +3074,9 @@ defmodule Skein.Analyzer do
             location: location_from_meta(meta, env.file),
             fix_hint:
               "Add a capability declaration to the module: capability tool.use(#{tool_name})",
-            fix_code: "capability tool.use(#{tool_name})"
+            fix_code: "capability tool.use(#{tool_name})",
+            span: span,
+            edit_kind: if(span, do: :insert_line)
           }
         ]
 
@@ -2953,7 +3096,9 @@ defmodule Skein.Analyzer do
             location: location_from_meta(meta, env.file),
             fix_hint:
               "Add '#{tool_name}' to your capability declaration: capability tool.use(#{tool_name})",
-            fix_code: "capability tool.use(#{tool_name})"
+            fix_code: "capability tool.use(#{tool_name})",
+            span: span,
+            edit_kind: if(span, do: :insert_line)
           }
         ]
     end
@@ -3109,7 +3254,8 @@ defmodule Skein.Analyzer do
       capabilities: capabilities,
       tool_error_names: [],
       current_fn_return_type: nil,
-      file: file
+      file: file,
+      decl_meta: meta
     }
   end
 
@@ -3144,8 +3290,15 @@ defmodule Skein.Analyzer do
     {kind, Enum.map(params, &capability_param_fingerprint/1)}
   end
 
-  defp capability_param_fingerprint(%AST.StringLit{segments: segments}),
-    do: {:string, segments}
+  # Fingerprints must be position-independent: interpolation segments are
+  # AST nodes carrying meta, so strip down to the referenced names.
+  defp capability_param_fingerprint(%AST.StringLit{segments: segments}) do
+    {:string,
+     Enum.map(segments, fn
+       {:literal, text} -> {:literal, text}
+       {:interpolation, expr} -> {:interpolation, capability_param_fingerprint(expr)}
+     end)}
+  end
 
   defp capability_param_fingerprint(%AST.Identifier{name: name}), do: {:ident, name}
   defp capability_param_fingerprint(%AST.ToolRef{name: name}), do: {:tool, name}
@@ -3427,6 +3580,42 @@ defmodule Skein.Analyzer do
     %{file: default_file, line: 0, col: 0}
   end
 
+  # Span covering `text` at the position `meta` points to. Only safe when
+  # meta locates the exact start of `text` in the source (identifier and
+  # type-name metas do; call metas point at the lparen and do not).
+  defp span_from_meta(%{line: line, col: col}, text)
+       when is_integer(line) and line > 0 and is_integer(col) and col > 0 do
+    Error.span(line, col, String.length(text))
+  end
+
+  defp span_from_meta(_, _), do: nil
+
+  # Insertion point for a new `capability` line: directly under the last
+  # declaration the module/agent already has (matching its indentation),
+  # or as the first body line after the opening declaration.
+  defp capability_insertion_span(env) do
+    own_capabilities = Map.get(env, :own_capabilities, env.capabilities)
+
+    positions =
+      for %AST.Capability{meta: %{line: line, col: col}} <- own_capabilities,
+          is_integer(line) and is_integer(col),
+          do: {line, col}
+
+    case Enum.max(positions, fn -> nil end) do
+      {line, col} ->
+        Error.point(line + 1, col)
+
+      nil ->
+        case Map.get(env, :decl_meta) do
+          %{line: line, col: col} when is_integer(line) and is_integer(col) and line > 0 ->
+            Error.point(line + 1, col + 2)
+
+          _ ->
+            nil
+        end
+    end
+  end
+
   defp suggest_types(name, env) do
     known =
       env.types
@@ -3500,10 +3689,12 @@ defmodule Skein.Analyzer do
     referenced = collect_referenced_identifiers(body)
 
     # Find unused bindings (ignore _ prefixed names)
-    Enum.flat_map(let_bindings, fn {name, meta} ->
+    Enum.flat_map(let_bindings, fn {name, meta, name_meta} ->
       if name in referenced or String.starts_with?(name, "_") do
         []
       else
+        span = span_from_meta(name_meta, name)
+
         [
           %Error{
             code: "W0001",
@@ -3512,7 +3703,9 @@ defmodule Skein.Analyzer do
             location: location_from_meta(meta, Map.get(fn_meta, :file, "unknown")),
             fix_hint:
               "Remove this binding or prefix with _ to indicate it is intentionally unused",
-            fix_code: "_#{name}"
+            fix_code: "_#{name}",
+            span: span,
+            edit_kind: if(span, do: :replace)
           }
         ]
       end
@@ -3523,8 +3716,8 @@ defmodule Skein.Analyzer do
     Enum.flat_map(exprs, &collect_let_bindings/1)
   end
 
-  defp collect_let_bindings(%AST.Let{name: name, meta: meta, value: value}) do
-    [{name, meta} | collect_let_bindings(value)]
+  defp collect_let_bindings(%AST.Let{name: name, meta: meta, name_meta: name_meta, value: value}) do
+    [{name, meta, name_meta} | collect_let_bindings(value)]
   end
 
   defp collect_let_bindings(%AST.Match{arms: arms}) do
@@ -3591,16 +3784,6 @@ defmodule Skein.Analyzer do
     end)
   end
 
-  # Interpolation segments carry raw lexer tokens, not AST nodes:
-  # {:ident, {line, col}, name} and {:field_access, subject, field}.
-  defp collect_referenced_identifiers({:ident, _, name}) when is_binary(name) do
-    [name]
-  end
-
-  defp collect_referenced_identifiers({:field_access, subject, _field}) do
-    collect_referenced_identifiers(subject)
-  end
-
   defp collect_referenced_identifiers(_), do: []
 
   # ------------------------------------------------------------------
@@ -3616,6 +3799,8 @@ defmodule Skein.Analyzer do
       if kind in used_capabilities do
         []
       else
+        span = span_from_meta(meta, "capability")
+
         [
           %Error{
             code: "W0002",
@@ -3623,7 +3808,9 @@ defmodule Skein.Analyzer do
             message: "Unused capability '#{kind}' — declared but never exercised",
             location: location_from_meta(meta, env.file),
             fix_hint: "Remove this capability declaration if it is no longer needed",
-            fix_code: ""
+            fix_code: "",
+            span: span,
+            edit_kind: if(span, do: :delete_line)
           }
         ]
       end

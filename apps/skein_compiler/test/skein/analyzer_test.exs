@@ -3282,6 +3282,135 @@ defmodule Skein.AnalyzerTest do
       assert {:error, errors} = Analyzer.analyze(ast)
       assert Enum.any?(errors, fn e -> e.code == "E0010" and e.message =~ "Config" end)
     end
+
+    test "${Upper} in an agent handler body is a structured E0010, not a codegen crash" do
+      errors =
+        analyze_errors("""
+        agent A {
+          enum Phase {
+            Working -> []
+          }
+
+          on start(id: String) -> {
+            transition(Phase.Working)
+          }
+
+          on phase(Phase.Working) -> {
+            let msg = "x: ${Foo}"
+            trace.annotate("m", msg)
+            stop()
+          }
+        }
+        """)
+
+      assert Enum.any?(errors, fn e ->
+               e.code == "E0010" and e.message =~ "Cannot interpolate 'Foo'"
+             end)
+    end
+
+    test "${Upper} in a test block body is a structured E0010, not a codegen crash" do
+      errors =
+        analyze_errors("""
+        module M {
+          fn f() -> Int { 1 }
+
+          test "t" {
+            let x = "${Foo}"
+            assert f() == 1
+          }
+        }
+        """)
+
+      assert Enum.any?(errors, fn e ->
+               e.code == "E0010" and e.message =~ "Cannot interpolate 'Foo'"
+             end)
+    end
+
+    test "uppercase rejection reports a single error per segment" do
+      errors =
+        analyze_errors("""
+        module M {
+          fn f() -> String { "phase: ${Foo}" }
+        }
+        """)
+
+      assert Enum.count(errors, &(&1.code == "E0010")) == 1
+    end
+  end
+
+  describe "interpolation locations" do
+    test "E0010 for an unknown interpolation identifier carries the source location" do
+      errors =
+        analyze_errors("""
+        module M {
+          fn f() -> String { "value: ${missing}" }
+        }
+        """)
+
+      error = Enum.find(errors, &(&1.code == "E0010"))
+      assert error.location.line == 2
+      assert error.location.col > 0
+    end
+  end
+
+  describe "interpolation in string patterns" do
+    test "interpolated pattern in a module fn match is a structured E0020, not a codegen crash" do
+      errors =
+        analyze_errors("""
+        module M {
+          fn f(s: String, y: String) -> Int {
+            match s {
+              "x${y}" -> 1
+              _ -> 0
+            }
+          }
+        }
+        """)
+
+      assert Enum.any?(errors, fn e ->
+               e.code == "E0020" and e.message =~ "String patterns cannot contain interpolation"
+             end)
+    end
+
+    test "interpolated pattern in an agent handler match is a structured E0020" do
+      errors =
+        analyze_errors("""
+        agent C {
+          enum Phase {
+            Working -> []
+          }
+
+          on start(id: String) -> {
+            transition(Phase.Working)
+          }
+
+          on phase(Phase.Working) -> {
+            match "a" {
+              "x${id}" -> stop()
+              _ -> stop()
+            }
+          }
+        }
+        """)
+
+      assert Enum.any?(errors, fn e ->
+               e.code == "E0020" and e.message =~ "String patterns cannot contain interpolation"
+             end)
+    end
+
+    test "literal string patterns remain valid" do
+      assert {:ok, _} =
+               analyze("""
+               module M {
+                 fn f(s: String) -> Int {
+                   match s {
+                     "go" -> 1
+                     _ -> 0
+                   }
+                 }
+               }
+               """)
+    end
   end
 
   # ------------------------------------------------------------------

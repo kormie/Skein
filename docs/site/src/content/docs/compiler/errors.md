@@ -23,7 +23,9 @@ This is a core feature of the language -- when an AI agent generates Skein code 
   },
   context: nil,                    # Optional surrounding code context
   fix_hint: "Expected expression after 'let x ='",  # What to do about it
-  fix_code: nil                    # Optional suggested code fix
+  fix_code: nil,                   # Optional suggested code fix
+  span: nil,                       # Exact extent of the problem (1-based, end-exclusive)
+  edit_kind: nil                   # How to apply fix_code mechanically (nil = template)
 }
 ```
 
@@ -38,6 +40,26 @@ This is a core feature of the language -- when an AI agent generates Skein code 
 | `context` | String or nil | The code around the error for display |
 | `fix_hint` | String or nil | Suggestion for how to fix the issue |
 | `fix_code` | String or nil | Exact code that would fix the issue |
+| `span` | Map or nil | `%{start: %{line, col}, end: %{line, col}}` — the exact source extent (1-based; `end.col` exclusive) |
+| `edit_kind` | Atom or nil | How to apply `fix_code` as a mechanical edit (see below) |
+
+## Machine-Applicable Fixes
+
+When `fix_code` is an exact edit (not an illustrative template), the error
+also carries `span` and `edit_kind`, so any consumer — the LSP, `skein mcp`
+clients, agents — can apply the fix without per-error-code logic:
+
+| `edit_kind` | Application |
+|-------------|-------------|
+| `:replace` | Replace the spanned text with `fix_code` (empty `fix_code` deletes it) |
+| `:insert_before` | Insert `fix_code` immediately before `span.start` |
+| `:insert_after` | Insert `fix_code` immediately after `span.end` |
+| `:insert_line` | Insert `fix_code` as a new line at `span.start.line`, indented to `span.start.col` |
+| `:delete_line` | Delete the line(s) from `span.start.line` through `span.end.line` |
+
+`Skein.Error.Edit.apply_fix/2` is the reference implementation of these
+semantics. A `nil` `edit_kind` means the `fix_code` (if any) is a template
+like `"fn name() -> Type { ... }"` — useful as a hint, not a verbatim edit.
 
 ## JSON Serialization
 
@@ -45,15 +67,18 @@ Errors serialize to JSON for tool integration:
 
 ```json
 {
-  "code": "E0001",
-  "severity": "error",
-  "message": "Unexpected token '}'",
+  "code": "W0001",
+  "severity": "warning",
+  "message": "Unused binding 'order'",
   "location": {
     "file": "hello.skein",
     "line": 5,
-    "col": 12
+    "col": 3
   },
-  "fix_hint": "Expected expression after 'let x ='"
+  "fix_hint": "Remove this binding or prefix with _ to indicate it is intentionally unused",
+  "fix_code": "_order",
+  "span": { "start": { "line": 5, "col": 7 }, "end": { "line": 5, "col": 12 } },
+  "edit_kind": "replace"
 }
 ```
 
@@ -83,7 +108,7 @@ All error codes are aligned with the language specification. Agents can rely on 
 | Code | Severity | Description |
 |------|----------|-------------|
 | E0001 | error | Unexpected token |
-| E0002 | error | Invalid string: unterminated literal, expression inside `${...}` interpolation, or unterminated interpolation |
+| E0002 | error | Invalid string: unterminated literal, expression inside `${...}` interpolation, empty interpolation (`${}`), or unterminated interpolation |
 | E0003 | error | Invalid number literal (e.g. underscore grouping in a float: `1_000.5`) |
 
 ### Name Resolution Errors
@@ -123,7 +148,7 @@ The `fix_code` field is especially useful for LLM agents -- it provides the exac
 
 | Code | Severity | Description |
 |------|----------|-------------|
-| E0020 | error | Type mismatch (including wrong argument counts for fn, stdlib, and effect calls) |
+| E0020 | error | Type mismatch (including wrong argument counts for fn, stdlib, and effect calls, and interpolation in string patterns) |
 | E0021 | warning | Non-exhaustive match |
 | E0022 | error | Invalid `!` on non-Result |
 | E0023 | error | Invalid `?` on non-Result (or enclosing fn doesn't return Result) |

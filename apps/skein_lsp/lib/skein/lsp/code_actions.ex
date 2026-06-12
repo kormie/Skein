@@ -1,24 +1,27 @@
 defmodule Skein.Lsp.CodeActions do
   @moduledoc """
-  Quickfix code actions derived from the `fix_hint`/`fix_code` that every
+  Quickfix code actions derived from the structured fix data every
   `Skein.Error` carries.
 
-  Phase 1 of issue #108: a per-code edit mapping for the mechanical wins.
-  The handler answers from the diagnostic's `data` payload alone (shipped
-  by `Skein.Lsp.Diagnostics`) plus the document source — no recompile.
+  Phase 2 of the code-actions plan (issue #150): errors that ship a
+  `span` + `edit_kind` (the machine-applicable discriminator on
+  `Skein.Error`) are applied generically — no per-error-code logic.
+  The edit kinds mirror `Skein.Error.Edit`:
 
-  Mapped codes:
+    * `replace` — replace the spanned text with `fix_code`
+    * `insert_before` / `insert_after` — insert `fix_code` at the span's
+      start / end
+    * `insert_line` — insert `fix_code` as a new line at the span's
+      start line, indented to the span's start column
+    * `delete_line` — delete the line(s) the span covers
 
-    * `E0001` missing-token errors — `fix_code` is the literal token,
-      inserted immediately after the keyword the message names
-    * `E0012` missing capability — `fix_code` is the full declaration
-      line, inserted after the last existing `capability` line (or the
-      module/agent opening line)
-    * `W0002` unused capability — the declaration's line is deleted
-    * `W0001` unused binding — the binding name is replaced with the
-      underscore-prefixed `fix_code`
+  Diagnostics without span data fall back to the phase-1 per-code
+  mapping (issue #108): E0001 missing-token, E0012 missing capability,
+  W0002 unused capability, and W0001 unused binding. The handler answers
+  from the diagnostic's `data` payload alone (shipped by
+  `Skein.Lsp.Diagnostics`) plus the document source — no recompile.
 
-  Diagnostics whose code has no mapping produce no action.
+  Diagnostics with neither produce no action.
   """
 
   alias GenLSP.Structures.{CodeAction, Position, Range, TextEdit, WorkspaceEdit}
@@ -51,7 +54,11 @@ defmodule Skein.Lsp.CodeActions do
     line = field(start, :line) || 0
     character = field(start, :character) || 0
 
-    case build_edits(code, fix_code, message, line, character, source) do
+    edits =
+      generic_edits(Map.get(data, "edit_kind"), Map.get(data, "span"), fix_code) ||
+        build_edits(code, fix_code, message, line, character, source)
+
+    case edits do
       nil ->
         nil
 
@@ -62,6 +69,76 @@ defmodule Skein.Lsp.CodeActions do
           diagnostics: [diagnostic],
           edit: %WorkspaceEdit{changes: %{uri => edits}}
         }
+    end
+  end
+
+  # ------------------------------------------------------------------
+  # Generic span + edit_kind application (phase 2)
+  # ------------------------------------------------------------------
+
+  defp generic_edits(kind, span, fix_code) when is_binary(kind) and is_map(span) do
+    with %Position{} = start <- span_position(span, :start),
+         %Position{} = stop <- span_position(span, :end) do
+      build_generic_edit(kind, start, stop, fix_code)
+    else
+      _ -> nil
+    end
+  end
+
+  defp generic_edits(_kind, _span, _fix_code), do: nil
+
+  defp build_generic_edit("replace", start, stop, fix_code) when is_binary(fix_code) do
+    [%TextEdit{range: %Range{start: start, end: stop}, new_text: fix_code}]
+  end
+
+  defp build_generic_edit("insert_before", start, _stop, fix_code) when is_binary(fix_code) do
+    [%TextEdit{range: %Range{start: start, end: start}, new_text: fix_code}]
+  end
+
+  defp build_generic_edit("insert_after", _start, stop, fix_code) when is_binary(fix_code) do
+    [%TextEdit{range: %Range{start: stop, end: stop}, new_text: fix_code}]
+  end
+
+  defp build_generic_edit("insert_line", start, _stop, fix_code) when is_binary(fix_code) do
+    position = %Position{line: start.line, character: 0}
+    indent = String.duplicate(" ", start.character)
+
+    [
+      %TextEdit{
+        range: %Range{start: position, end: position},
+        new_text: indent <> fix_code <> "\n"
+      }
+    ]
+  end
+
+  defp build_generic_edit("delete_line", start, stop, _fix_code) do
+    [
+      %TextEdit{
+        range: %Range{
+          start: %Position{line: start.line, character: 0},
+          end: %Position{line: stop.line + 1, character: 0}
+        },
+        new_text: ""
+      }
+    ]
+  end
+
+  defp build_generic_edit(_kind, _start, _stop, _fix_code), do: nil
+
+  # Span positions are 1-based {line, col} maps (string keys after the
+  # JSON round-trip); LSP positions are 0-based.
+  defp span_position(span, key) do
+    case field(span, key) do
+      %{} = position ->
+        line = field(position, :line)
+        col = field(position, :col)
+
+        if is_integer(line) and line > 0 and is_integer(col) and col > 0 do
+          %Position{line: line - 1, character: col - 1}
+        end
+
+      _ ->
+        nil
     end
   end
 

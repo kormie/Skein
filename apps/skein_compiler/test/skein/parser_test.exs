@@ -388,6 +388,49 @@ defmodule Skein.ParserTest do
       assert %AST.Block{expressions: [%AST.StringLit{segments: segments}]} = fn_decl.body
       assert [{:literal, "Hello, "}, {:interpolation, _}, {:literal, "!"}] = segments
     end
+
+    test "interpolation segments are Identifier nodes with source positions" do
+      source = "module M { fn f(name: String) -> String { \"Hello, \${name}!\" } }"
+
+      assert {:ok, %AST.Module{declarations: [fn_decl]}} = parse(source)
+      assert %AST.Block{expressions: [%AST.StringLit{segments: segments}]} = fn_decl.body
+
+      assert [
+               {:literal, "Hello, "},
+               {:interpolation, %AST.Identifier{name: "name", meta: meta}},
+               {:literal, "!"}
+             ] = segments
+
+      assert meta.line == 1
+      assert meta.col > 0
+    end
+
+    test "dotted interpolation segments are FieldAccess nodes" do
+      source = "module M { fn f() -> String { \"id: \${req.params.id}\" } }"
+
+      assert {:ok, %AST.Module{declarations: [fn_decl]}} = parse(source)
+      assert %AST.Block{expressions: [%AST.StringLit{segments: segments}]} = fn_decl.body
+
+      assert [
+               {:literal, "id: "},
+               {:interpolation,
+                %AST.FieldAccess{
+                  subject: %AST.FieldAccess{
+                    subject: %AST.Identifier{name: "req"},
+                    field: "params"
+                  },
+                  field: "id"
+                }}
+             ] = segments
+    end
+
+    test "uppercase interpolation segments are Identifier nodes" do
+      source = "module M { fn f() -> String { \"\${Foo}\" } }"
+
+      assert {:ok, %AST.Module{declarations: [fn_decl]}} = parse(source)
+      assert %AST.Block{expressions: [%AST.StringLit{segments: segments}]} = fn_decl.body
+      assert [{:interpolation, %AST.Identifier{name: "Foo"}}] = segments
+    end
   end
 
   describe "parse/1 - literals" do

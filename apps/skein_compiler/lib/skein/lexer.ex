@@ -248,7 +248,9 @@ defmodule Skein.Lexer do
          message: "Unexpected character: ;",
          location: %{file: "unknown", line: line, col: col},
          fix_hint: "Skein does not use semicolons; a statement ends at the end of the line",
-         fix_code: ""
+         fix_code: "",
+         span: Skein.Error.span(line, col, 1),
+         edit_kind: :replace
        }
      ]}
   end
@@ -263,7 +265,9 @@ defmodule Skein.Lexer do
          message: "Unexpected character: #{<<c::utf8>>}",
          location: %{file: "unknown", line: line, col: col},
          fix_hint: "Remove or replace this character",
-         fix_code: ""
+         fix_code: "",
+         span: Skein.Error.span(line, col, String.length(<<c::utf8>>)),
+         edit_kind: :replace
        }
      ]}
   end
@@ -278,7 +282,9 @@ defmodule Skein.Lexer do
        message: "Unterminated string literal",
        location: %{file: "unknown", line: line, col: col},
        fix_hint: "Add a closing double quote",
-       fix_code: "\""
+       fix_code: "\"",
+       span: Skein.Error.point(line, col),
+       edit_kind: :insert_after
      }}
   end
 
@@ -336,6 +342,19 @@ defmodule Skein.Lexer do
   # For Phase 1, supports simple identifiers and dotted access (e.g., name, req.params.id)
   defp lex_interpolation(source, line, col) do
     case lex_interpolation_expr(source, line, col) do
+      {:ok, nil, <<"}", _::binary>>, end_line, end_col} ->
+        {:error,
+         %Skein.Error{
+           code: "E0002",
+           severity: :error,
+           message: "Empty string interpolation: '${}' must name a value to interpolate",
+           location: %{file: "unknown", line: end_line, col: end_col},
+           fix_hint:
+             "Interpolate a binding (e.g. ${name}), or escape the dollar sign as \\${ for literal text",
+           fix_code: nil,
+           span: Skein.Error.point(end_line, end_col)
+         }}
+
       {:ok, tokens, <<"}", rest::binary>>, end_line, end_col} ->
         {:ok, tokens, rest, end_line, end_col + 1}
 
@@ -353,7 +372,8 @@ defmodule Skein.Lexer do
              fix_hint:
                "Bind the expression to a variable with 'let' first, " <>
                  "then interpolate the variable",
-             fix_code: nil
+             fix_code: nil,
+             span: Skein.Error.point(end_line, end_col)
            }}
         else
           {:error,
@@ -363,7 +383,9 @@ defmodule Skein.Lexer do
              message: "Unterminated string interpolation, expected '}'",
              location: %{file: "unknown", line: end_line, col: end_col},
              fix_hint: "Add a closing '}' after the interpolation expression",
-             fix_code: "}"
+             fix_code: "}",
+             span: Skein.Error.point(end_line, end_col),
+             edit_kind: :insert_after
            }}
         end
 
@@ -439,7 +461,9 @@ defmodule Skein.Lexer do
                "Invalid number literal: underscores are not allowed in float literals (got '#{text}')",
              location: %{file: "unknown", line: line, col: col},
              fix_hint: "Remove the underscores from the float literal",
-             fix_code: String.replace(text, "_", "")
+             fix_code: String.replace(text, "_", ""),
+             span: Skein.Error.span(line, col, String.length(text)),
+             edit_kind: :replace
            }}
         else
           value = String.to_float(text)

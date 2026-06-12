@@ -3206,6 +3206,42 @@ defmodule Skein.CodeGen.CoreErlangTest do
     end
   end
 
+  describe "agent codegen - state interpolation" do
+    test "phase handler interpolates agent state fields" do
+      mod =
+        compile!("""
+        agent StateInterpAgent {
+          state {
+            order_id: String
+          }
+
+          enum Phase {
+            Working -> [Done]
+            Done -> []
+          }
+
+          on start(order_id: String) -> {
+            transition(Phase.Working)
+          }
+
+          on phase(Phase.Working) -> {
+            emit Labeled { msg: "id: ${state.order_id}" }
+            transition(Phase.Done)
+          }
+
+          on phase(Phase.Done) -> {
+            stop()
+          }
+        }
+        """)
+
+      assert {:transition, :done, _state, events} =
+               mod.__phase_handler__(:working, %{order_id: "ord-42"}, [])
+
+      assert Enum.any?(events, fn event -> Map.get(event, :msg) == "id: ord-42" end)
+    end
+  end
+
   describe "agent codegen - suspend" do
     test "agent with suspend compiles successfully" do
       mod =

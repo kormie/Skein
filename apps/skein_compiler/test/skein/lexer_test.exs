@@ -187,6 +187,13 @@ defmodule Skein.LexerTest do
       assert error.message =~ "Unterminated string interpolation"
     end
 
+    test "reports a clear error for an empty interpolation" do
+      assert {:error, [error]} = Lexer.tokenize(~s("x: ${}"))
+      assert error.code == "E0002"
+      assert error.message =~ "Empty string interpolation"
+      assert error.fix_hint =~ "${name}"
+    end
+
     test "tokenizes string with escaped dollar sign" do
       assert {:ok, [{:string, {1, 1}, [{:literal, "$100"}]}, {:eof, _}]} =
                Lexer.tokenize(~s("\\$100"))
