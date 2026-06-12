@@ -227,12 +227,12 @@ Parse errors produce structured `%Skein.Error{}` values:
 
 ```elixir
 Skein.Parser.parse([{:ident, {1, 1}, "x"}, {:eof, {1, 2}}])
-#=> {:error, [%Skein.Error{message: "Expected 'module' keyword", ...}]}
+#=> {:error, [%Skein.Error{message: "Expected 'module', got 'ident'", ...}]}
 ```
 
 ## Property-Tested Invariants
 
-The parser has 8 property-based tests verifying:
+The parser's property-based tests verify invariants such as:
 
 - Any generated module source lexes and parses successfully
 - Parsed module name matches the generated name

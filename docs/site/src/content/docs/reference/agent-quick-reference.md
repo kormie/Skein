@@ -60,7 +60,7 @@ Source (.skein) → Lexer → Parser → Analyzer → CodeGen → BEAM bytecode
 
 1. **Lexer** (`Skein.Lexer`) — source text to token stream
 2. **Parser** (`Skein.Parser`) — token stream to AST
-3. **Analyzer** (`Skein.Analyzer`) — AST to annotated AST (4 passes: name resolution, type checking, capability checking, transition checking)
+3. **Analyzer** (`Skein.Analyzer`) — AST to annotated AST (multi-pass: name resolution, type checking, capability checking, transition checking, plus lint passes for unused bindings/capabilities and unreachable code)
 4. **CodeGen** (`Skein.CodeGen.CoreErlang`) — AST to Core Erlang to BEAM bytecode
 
 ## Key Modules

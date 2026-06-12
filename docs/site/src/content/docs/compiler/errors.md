@@ -66,7 +66,7 @@ Errors are returned as lists throughout the pipeline:
 {:error, [%Skein.Error{code: "E0001", message: "Unexpected character: #"}]}
 
 # Parser error
-{:error, [%Skein.Error{code: "E0001", message: "Expected 'module' keyword"}]}
+{:error, [%Skein.Error{code: "E0001", message: "Expected 'module', got 'ident'"}]}
 
 # Code generator error
 {:error, [%Skein.Error{message: "Core Erlang compilation failed: ..."}]}
@@ -83,7 +83,7 @@ All error codes are aligned with the language specification. Agents can rely on 
 | Code | Severity | Description |
 |------|----------|-------------|
 | E0001 | error | Unexpected token |
-| E0002 | error | Unterminated string |
+| E0002 | error | Invalid string: unterminated literal, expression inside `${...}` interpolation, or unterminated interpolation |
 | E0003 | error | Invalid number literal (e.g. underscore grouping in a float: `1_000.5`) |
 
 ### Name Resolution Errors

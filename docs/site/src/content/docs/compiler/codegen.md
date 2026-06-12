@@ -390,6 +390,7 @@ call 'Elixir.Skein.Runtime.Http':'get'(
 | `llm` | `Skein.Runtime.Llm` | `chat`, `json`, `stream`, `embed` |
 | `tool` | `Skein.Runtime.Tool` | `call`, `list`, `schema` |
 | `topic` | `Skein.Runtime.Topic` | `publish` |
+| `queue` | `Skein.Runtime.Queue` | `publish` |
 | `trace` | `Skein.Runtime.Trace` | `annotate` |
 | `event` | `Skein.Runtime.EventStore` | `log` |
 | `process` | `Skein.Runtime.Process` | `spawn` |
@@ -510,14 +511,14 @@ namespace.method(arg1, arg2)
 call 'Elixir.Skein.Runtime.<Module>':'method'(Arg1, Arg2, Capabilities)
 ```
 
-This covers `process.spawn`, `timer.after`, `timer.interval`, `timer.cancel`, `trace.annotate`, `event.log`, and `topic.publish`.
+This covers `process.spawn`, `timer.after`, `timer.interval`, `timer.cancel`, `trace.annotate`, `event.log`, `queue.publish`, and `topic.publish`.
 
 ## Handler Generation
 
 Handler declarations compile to regular functions with metadata. Each handler produces:
 
-1. A handler function that takes a request map and returns a response
-2. An entry in `__handlers__/0` with the method, route pattern, and parameter names
+1. An index-based handler function (`__handler_0__/1`, `__handler_1__/1`, ...) that takes a request map and returns a response
+2. An entry in `__handlers__/0` naming the source, method, route pattern, and handler function
 
 ```skein
 -- Skein source:
@@ -526,9 +527,12 @@ handler http GET "/users/:id" (req) -> {
 }
 
 -- Generates:
--- 1. A function '__handler_GET_/users/:id'/1
--- 2. Metadata in __handlers__/0: [%{method: "GET", route: "/users/:id", params: ["id"]}]
+-- 1. A function __handler_0__/1
+-- 2. Metadata in __handlers__/0:
+--    [%{source: :http, method: :get, route: "/users/:id", handler: :__handler_0__}]
 ```
+
+Route parameters are not listed in the metadata — the router extracts them from the route pattern at dispatch time. `method` is a lowercase atom (`nil` for queue/topic/schedule handlers).
 
 ## `__capabilities__/0` Function
 
