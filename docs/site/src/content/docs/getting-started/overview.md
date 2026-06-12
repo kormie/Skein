@@ -20,7 +20,7 @@ Skein is designed around six ranked principles:
 
 ## What Works Today
 
-The compilation pipeline is fully operational. You can write `.skein` files with modules, functions, types, HTTP/queue/schedule handlers, store operations, and agents — compile them to BEAM bytecode, and run them on a Bandit + Plug HTTP server. Store operations can be backed by ETS (default) or Ecto/SQLite for real database persistence. The CLI tooling provides project scaffolding, building, testing, running, and trace inspection. Test constructs include `test`, `scenario` (with `given`/`expect`), and `golden` trace tests with a deterministic replay engine.
+The compilation pipeline is fully operational. You can write `.skein` files with modules, functions, types, tools, supervisors, HTTP/queue/schedule handlers, store operations, and agents — compile them to BEAM bytecode, and run them on a Bandit + Plug HTTP server. Store operations can be backed by ETS (default) or Ecto/SQLite for real database persistence. The CLI tooling provides project scaffolding, building, testing, running, and trace inspection. Test constructs include `test`, `scenario` (with `given`/`expect`), and `golden` trace tests with a deterministic replay engine.
 
 **Language constructs:**
 
@@ -40,6 +40,8 @@ The compilation pipeline is fully operational. You can write `.skein` files with
 - `scenario "description" { given { ... } expect { ... } }` -- scenario tests
 - `golden "description" from trace "file" { ... }` -- golden trace tests
 - `agent Name { ... }` -- agent state machines with phases and handlers
+- `tool Name.Action { ... }` -- typed tool declarations with `input`/`output` schemas, the cross-module call seam
+- `supervisor Name { ... }` -- supervision trees with `child` entries, restart policies, strategy, and `max_restarts`
 - All arithmetic operators: `+`, `-`, `*`, `/`
 - All comparison operators: `==`, `!=`, `<`, `>`, `<=`, `>=`
 - Logical operators: `&&`, `||`
@@ -93,11 +95,17 @@ The compilation pipeline is fully operational. You can write `.skein` files with
 
 **CLI tooling:**
 
-- `skein new <dir>` -- scaffold a new project with `skein.toml`, `src/`, `test/`, and example files
-- `skein build <dir>` -- compile all `.skein` files in a project's `src/` tree
-- `skein test <dir>` -- discover and run all tests across `src/` and `test/` directories
-- `skein run <dir>` -- compile and start an HTTP server for handler modules
+- `skein new <dir>` -- scaffold a new project with `skein.toml`, `src/`, `test/`, `AGENTS.md`, `CLAUDE.md`, `README.md`, and `.gitignore` (git-inits by default)
+- `skein compile <file.skein>` -- compile a single `.skein` file
+- `skein build [dir]` -- compile all `.skein` files in a project's `src/` tree
+- `skein test [dir]` -- discover and run all tests across `src/` and `test/` directories
+- `skein run [dir]` -- compile and start an HTTP server for handler modules
 - `skein trace` -- view recent trace spans with `--last` and `--kind` filters
+- `skein agents [dir]` -- create or refresh `AGENTS.md` in an existing project
+- `skein mcp` -- MCP server over stdio, so coding agents can compile, test, and trace Skein projects
+- `skein lsp` -- language server over stdio, for editor integrations
+- `skein completions zsh` -- print the zsh shell completion script
+- `skein version` / `skein help` -- version and usage info
 
 **Editor tooling:**
 
@@ -112,7 +120,7 @@ See the [Editor Support](/Skein/editor/vscode/) docs for setup instructions.
 - Agent pool supervision (`AgentPool` with max concurrency)
 - Tool policies (rate limits, approval workflows)
 
-See the [Roadmap](/Skein/roadmap/phase-2/) for the full plan.
+See the [Roadmap](/Skein/roadmap/overview/) for the full plan.
 
 ## Technology Stack
 

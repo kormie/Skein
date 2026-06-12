@@ -28,16 +28,16 @@ The full compilation pipeline is operational. You can write `.skein` files, comp
 
 **What works today:**
 
-- **12 language constructs** — modules, functions, types, enums, agents, handlers (HTTP/queue/schedule), tests, pattern matching, pipes, capabilities
+- **A compact construct set** — modules, functions, types, enums, agents, tools, supervisors, handlers (HTTP/queue/schedule), tests (plus `scenario` and `golden` trace tests), pattern matching, pipes, capabilities
 - **Full type system** — type checking, type inference (field access resolves types), JSON schema derivation, constraint annotations
 - **Capability enforcement** — compile-time and runtime checking for both modules and agents across all subsystems (HTTP, store, memory, LLM, tools)
 - **Production LLM backend** — Anthropic integration with `llm.chat`, `llm.json`, and `llm.stream`, with token-level usage tracking
 - **Rich traces** — every effect call produces structured trace spans with timing, outcome, and token usage
 - **Agent state machines** — `gen_statem`-based agents with compile-time phase transition verification
-- **CLI tooling** — `skein new`, `skein build`, `skein test`, `skein run`, `skein trace`
+- **CLI tooling** — `skein new`, `compile`, `build`, `test`, `run`, and `trace`, plus `agents` (AGENTS.md scaffolding), `mcp` (MCP server for coding agents), `lsp`, `completions`, `version`, and `help`
 - **Editor support** — VS Code extension with syntax highlighting, snippets, and full LSP (diagnostics, hover, go-to-definition, completions)
 
-The test suite has **1,413 tests + 189 property-based tests** with 0 failures.
+An extensive suite of unit, integration, and property-based tests passes clean across all four apps (compiler, runtime, CLI, LSP).
 
 ## Quick Example
 
@@ -83,29 +83,28 @@ Skein modules can declare LLM capabilities and make type-checked, traced calls t
 
 ```skein
 module Demo {
-  capability model("anthropic", "claude-sonnet-4-20250514")
+  capability model("anthropic", "claude-opus-4-8")
 
   fn greet(name: String) -> String {
-    llm.chat("Say hello to ${name} in one sentence.")
+    llm.chat("claude-opus-4-8", "You are friendly.", "Say hello to ${name} in one sentence.")!
   }
 
   fn classify(text: String) -> String {
-    llm.chat("Classify this as positive or negative (one word): ${text}")
+    llm.chat("claude-opus-4-8", "Answer with one word.", "Classify this as positive or negative: ${text}")!
   }
 }
 ```
 
 ```bash
 skein compile demo.skein
-skein trace --last 2
+# ...exercise the module (e.g. via skein test or a running service), then:
+skein trace --last 2 --kind llm
 ```
 
 ```
-📊 Trace spans:
-   • llm:chat claude-sonnet-4-20250514 (1.2s) ✅
-     tokens: 28 in → 15 out
-   • llm:chat claude-sonnet-4-20250514 (0.4s) ✅
-     tokens: 31 in → 3 out
+Traces (2):
+  [llm] chat (1244ms)
+  [llm] chat (387ms)
 ```
 
 Every LLM call is capability-gated (the module must declare `capability model(...)`), type-checked, and automatically traced with token usage.
