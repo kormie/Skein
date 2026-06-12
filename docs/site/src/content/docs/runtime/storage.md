@@ -5,7 +5,7 @@ description: How Skein's store.table operations map to Ecto and SQLite at runtim
 
 ## Overview
 
-Skein provides typed database storage through the `store.table` capability. At compile time, type declarations generate database schemas. At runtime, `store.*` operations execute real database queries via Ecto against SQLite (local dev) or Postgres (production).
+Skein provides typed database storage through the `store.table` capability. At compile time, type declarations generate database schemas. At runtime, `store.*` operations execute real database queries via Ecto against SQLite3.
 
 ## Architecture
 
@@ -136,7 +136,7 @@ For testing and simple use cases, `Skein.Runtime.Store` provides an ETS-backed i
 
 ## Configuration
 
-The Ecto backend uses SQLite3 for local development:
+The Ecto backend uses SQLite3 -- the `ecto_sqlite3` adapter is hardcoded in `Skein.Runtime.Repo` at compile time, and `postgrex` is not a dependency. Connection options (database path, pool size) come from standard Ecto config:
 
 ```elixir
 # Skein.Runtime.Repo configuration
@@ -145,4 +145,4 @@ config :skein_runtime, Skein.Runtime.Repo,
   pool_size: 5
 ```
 
-For production deployments, configure Postgres via `postgrex`.
+Other database adapters (e.g. Postgres) are a possible future direction; today, SQLite3 is the storage backend.
