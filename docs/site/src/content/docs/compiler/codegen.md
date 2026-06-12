@@ -7,7 +7,7 @@ description: How the Skein code generator produces BEAM bytecode via Core Erlang
 
 The code generator (`Skein.CodeGen.CoreErlang`) translates the Skein AST into Core Erlang using Erlang's `:cerl` module, then compiles to BEAM bytecode via `:compile.forms/2`.
 
-**Location:** `apps/skein_compiler/lib/skein/codegen/core_erlang.ex` (~1700 lines)
+**Location:** `apps/skein_compiler/lib/skein/codegen/core_erlang.ex` — the largest compiler stage alongside the parser
 
 ## What is Core Erlang?
 
@@ -167,7 +167,7 @@ This approach was chosen over binary construction (`<<>>`) because:
 
 ### Binary Operations
 
-All binary ops compile to `erlang` BIF calls:
+Binary ops compile to `erlang` BIF calls (division is special-cased; see the footnote below):
 
 ```elixir
 # a + b
@@ -181,7 +181,7 @@ Operator mapping:
 | `+` | `:+` |
 | `-` | `:-` |
 | `*` | `:*` |
-| `/` | `:div` |
+| `/` | `:div` / `:/` (runtime dispatch)* |
 | `==` | `:==` |
 | `!=` | `:"/="` |
 | `<` | `:<` |
@@ -190,6 +190,8 @@ Operator mapping:
 | `>=` | `:>=` |
 | `&&` | `:and` |
 | `\|\|` | `:or` |
+
+\* Division does not compile to a single BIF call. The generator binds both operands, then emits a `case` on `erlang:is_float/1` of either operand: if either is a float, it calls `erlang:'/'` (float division); otherwise it calls `erlang:div` (integer division). So `7 / 2` is `3` while `7.0 / 2` is `3.5`.
 
 ### Let Bindings
 

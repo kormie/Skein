@@ -92,6 +92,7 @@ Well-scoped gaps with no design unknowns (the bugs and guard/embeddings work ori
 - [#150](https://github.com/kormie/Skein/issues/150) — Code-action phase 2: `Skein.Error` span + `edit_kind` so any exact fix applies generically (phase 1 per-code mapping shipped with #108) — L
 - [#178](https://github.com/kormie/Skein/issues/178) — Bedrock real token streaming via `converse-stream` (AWS event-stream frame parser; full text as a single chunk today) — L
 - [#180](https://github.com/kormie/Skein/issues/180) — Bedrock ARN-form model IDs (path encoding vs SigV4 canonicalization) — support them or reject early with a structured error — S–M
+- [#202](https://github.com/kormie/Skein/issues/202) — Docs/spec drift guard: compile every docs/spec code block in CI, registry drift tests (error codes, keywords, stdlib signatures), generate tables from source — turns the rc readiness sweep (#182–#195) into automated gates — L
 
 ### Milestone: v1.2 — Interop & Agent Workflows
 

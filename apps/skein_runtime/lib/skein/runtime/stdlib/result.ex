@@ -9,15 +9,15 @@ defmodule Skein.Runtime.Stdlib.Result do
   ## Examples (Skein)
 
       let r = Ok(42)
-      Result.unwrap(r)                    -- 42
+      Result.unwrap(r, 0)                 -- 42
       Result.map(r, fn(n) { n + 1 })     -- Ok(43)
       Result.is_ok(r)                     -- true
   """
 
-  @doc "Extracts the value from `Ok`. Raises if called on `Err`."
-  @spec unwrap({:ok, any()} | {:error, any()}) :: any()
-  def unwrap({:ok, value}), do: value
-  def unwrap({:error, reason}), do: raise("unwrap called on Err: #{inspect(reason)}")
+  @doc "Extracts the value from `Ok`, or returns `default` for `Err`."
+  @spec unwrap({:ok, any()} | {:error, any()}, any()) :: any()
+  def unwrap({:ok, value}, _default), do: value
+  def unwrap({:error, _reason}, default), do: default
 
   @doc "Applies `func` to the success value. Passes `Err` through unchanged."
   @spec map({:ok, any()} | {:error, any()}, (any() -> any())) ::

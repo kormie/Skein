@@ -14,31 +14,38 @@ skein/
 ├── docs/
 │   ├── SKEIN_SPEC.md                # Complete language specification
 │   ├── ARCHITECTURE.md              # Compiler and runtime architecture
-│   ├── ROADMAP.md                      # Development roadmap
-│   └── skein_first_principles.md    # Language design philosophy
-├── examples/                        # Canonical .skein programs
+│   ├── ROADMAP.md                   # Canonical prioritized work list
+│   ├── STABILITY.md                 # Versioning and stability policy
+│   ├── skein_first_principles.md    # Language design philosophy
+│   └── site/                        # This documentation site (Astro + Starlight)
+├── examples/                        # Canonical .skein programs (all compile-tested)
 │   ├── hello.skein
 │   ├── hello_http.skein
+│   ├── hello_llm.skein
 │   ├── refund_agent.skein
 │   ├── incident_triage.skein
-│   └── queue_worker.skein
+│   ├── queue_worker.skein
+│   ├── supervisor_pool.skein
+│   ├── pubsub_notifications.skein
+│   ├── semantic_search.skein
+│   ├── ...
+│   └── market_research/             # Multi-file example (agent + service)
 ├── editors/
 │   └── vscode/                      # VS Code extension
 │       ├── package.json             # Extension manifest
 │       ├── skein.tmLanguage.json    # TextMate grammar
 │       ├── snippets/skein.json      # 30+ snippets
 │       └── src/extension.ts         # LSP client (TypeScript)
-├── apps/
-│   ├── skein_compiler/              # Lexer, parser, analyzer, code generator
-│   ├── skein_runtime/               # OTP behaviours and runtime support
-│   ├── skein_cli/                   # CLI tooling
-│   └── skein_lsp/                   # Language Server Protocol implementation
-└── spec/                            # Language test suite (future)
+└── apps/
+    ├── skein_compiler/              # Lexer, parser, analyzer, code generator
+    ├── skein_runtime/               # OTP behaviours and runtime support
+    ├── skein_cli/                   # CLI tooling (skein new, build, test, run, ...)
+    └── skein_lsp/                   # Language Server Protocol implementation
 ```
 
 ## Compiler App (`apps/skein_compiler/`)
 
-This is where all current implementation lives:
+The full pipeline: source text → tokens → AST → annotated AST → Core Erlang → BEAM bytecode.
 
 ```
 skein_compiler/
@@ -46,23 +53,44 @@ skein_compiler/
 ├── lib/
 │   ├── skein_compiler.ex                # Entry point: compile_string/1, compile_file/1
 │   └── skein/
-│       ├── lexer.ex                     # Tokenizer (~441 lines)
-│       ├── parser.ex                    # Recursive descent parser (~1200 lines)
-│       ├── ast.ex                       # AST node struct definitions (~52 lines)
-│       ├── analyzer.ex                  # Pass-through stub (~17 lines)
-│       ├── error.ex                     # Structured error type (~31 lines)
+│       ├── lexer.ex                     # Tokenizer (NimbleParsec-based)
+│       ├── parser.ex                    # Hand-written recursive descent parser
+│       ├── ast.ex                       # AST node struct definitions
+│       ├── analyzer.ex                  # Type, capability, transition, and guard checking
+│       ├── error.ex                     # Structured, JSON-serializable error type
 │       └── codegen/
-│           └── core_erlang.ex           # Core Erlang code generator (~480 lines)
-└── test/
-    └── skein/
-        ├── lexer_test.exs               # 69 unit tests
-        ├── lexer_property_test.exs      # 11 property tests
-        ├── parser_test.exs              # 47 unit tests
-        ├── parser_property_test.exs     # 8 property tests
-        └── codegen/
-            ├── core_erlang_test.exs     # 18 integration tests
-            └── core_erlang_property_test.exs  # 9 property tests
+│           ├── core_erlang.ex           # AST -> Core Erlang -> BEAM bytecode
+│           └── schema_gen.ex            # Type declarations -> JSON Schema
+└── test/                                # Unit, integration, and property-based tests
 ```
+
+The analyzer is the largest stage of the pipeline and one of Skein's headline
+features: it performs type checking and inference, capability checking
+(every effect call must be covered by a declared capability), agent phase
+transition validation, and match/guard analysis — all before any code is
+generated.
+
+## Runtime App (`apps/skein_runtime/`)
+
+OTP behaviours and libraries that compiled Skein programs link against:
+the `gen_statem`-based agent runtime, handler dispatch (HTTP/queue/schedule),
+the tool registry, runtime capability enforcement, scoped KV memory, the
+store (ETS or Ecto/SQLite-backed), the LLM client with pluggable backends,
+the trace/event store with replay, and the Bandit + Plug HTTP server.
+
+## CLI App (`apps/skein_cli/`)
+
+The `skein` command-line tool: project scaffolding (`new`, `agents`),
+compiling (`compile`, `build`), testing (`test`), running (`run`), trace
+inspection (`trace`), shell `completions`, and stdio servers for editors
+and coding agents (`lsp`, `mcp`). Packaged as a standalone binary with
+Burrito.
+
+## LSP App (`apps/skein_lsp/`)
+
+The language server behind the VS Code extension — diagnostics, hover,
+go-to-definition, completions, document symbols, and semantic tokens,
+built on GenLSP and reusing the compiler for analysis.
 
 ## Dependencies
 
@@ -103,24 +131,23 @@ The main entry point orchestrating the pipeline:
 def compile_string(source) do
   with {:ok, tokens} <- Lexer.tokenize(source),
        {:ok, ast} <- Parser.parse(tokens),
-       {:ok, annotated_ast} <- Analyzer.analyze(ast),
-       {:ok, beam_binary} <- CoreErlang.generate(annotated_ast) do
-    module_name = module_name_from_ast(annotated_ast)
-    :code.load_binary(module_name, ~c"nofile", beam_binary)
+       {:ok, annotated_ast} <- Analyzer.analyze(ast, source_text: source),
+       {:ok, modules} <- CoreErlang.generate(annotated_ast) do
+    load_modules(modules, ~c"nofile")
   end
 end
 ```
 
-Returns `{:module, module()}` on success or `{:error, [Skein.Error.t()]}` on failure.
+Returns `{:module, module()}` on success or `{:error, [Skein.Error.t()]}` on failure. Code generation can produce multiple BEAM modules from one source file (agents nested in a module compile to their own modules).
 
 ### `lib/skein/ast.ex`
 
 All AST node types as Elixir structs. Every node has a `meta` field carrying `%{line: int, col: int, file: string}` for source location tracking. Key nodes:
 
-- **Top-level:** `Module`, `Fn`, `TypeDecl`, `EnumDecl`, `Capability`
+- **Top-level:** `Module`, `Fn`, `TypeDecl`, `EnumDecl`, `Capability`, `Agent`, `ToolDecl`, `Supervisor`, `Handler`, `Test`, `Scenario`, `Golden`
 - **Expressions:** `BinaryOp`, `UnaryOp`, `Call`, `Pipe`, `FieldAccess`, `Let`, `Match`, `Block`
-- **Literals:** `IntLit`, `FloatLit`, `BoolLit`, `StringLit`, `Identifier`
-- **Types:** `TypeRef`, `Field`
+- **Literals:** `IntLit`, `FloatLit`, `BoolLit`, `StringLit`, `ListLit`, `MapLit`, `Identifier`
+- **Types:** `TypeRef`, `Field`, `Variant`, `Annotation`
 
 ### `lib/skein/error.ex`
 
@@ -128,11 +155,11 @@ Structured errors designed for both human and LLM consumption:
 
 ```elixir
 %Skein.Error{
-  code: "E001",
+  code: "E0001",
   severity: :error,
-  message: "Unexpected token",
+  message: "Unexpected character: ;",
   location: %{file: "hello.skein", line: 5, col: 12},
-  fix_hint: "Expected '}' to close module block",
-  fix_code: "}"
+  fix_hint: "Skein does not use semicolons; a statement ends at the end of the line",
+  fix_code: ""
 }
 ```

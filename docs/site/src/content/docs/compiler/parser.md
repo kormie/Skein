@@ -7,7 +7,7 @@ description: How the Skein parser builds ASTs from token streams.
 
 The parser (`Skein.Parser`) is a hand-written recursive descent parser that converts a token stream into an Abstract Syntax Tree (AST). It uses Pratt-style precedence climbing for expression parsing.
 
-**Location:** `apps/skein_compiler/lib/skein/parser.ex` (~1200 lines)
+**Location:** `apps/skein_compiler/lib/skein/parser.ex` — the largest compiler stage alongside the code generator
 
 ## Entry Point
 
@@ -195,6 +195,21 @@ Match arm patterns support:
 | String literal | `"active"` | `%AST.StringLit{}` |
 | Variable binding | `x`, `name` | `%AST.Identifier{}` |
 | Wildcard | `_` | `%AST.Identifier{name: "_"}` |
+| Enum variant (bare) | `Active`, `Status.Active` | `%AST.Identifier{}` |
+| Enum variant (with fields) | `Banned(reason)`, `Status.Banned(reason)` | `%AST.Call{target: %AST.Identifier{}, args: [...]}` |
+
+Variant field arguments are themselves patterns, so they nest (bindings, literals, wildcards).
+
+### Match Guards
+
+A match arm pattern may carry a guard: `pattern if expr ->`. The contextual keyword `if` between the pattern and the arrow introduces a guard expression, stored on the arm's `guard` field (`nil` when absent):
+
+```skein
+match amount {
+  n if n > 100 -> "large"
+  n -> "small"
+}
+```
 
 ## Source Location Tracking
 

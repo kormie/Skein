@@ -86,30 +86,32 @@ See [Parser](/Skein/compiler/parser/) for details.
 
 The analyzer performs four passes over the AST:
 
-1. **Pass 1: Name resolution** -- builds a symbol table of all declarations (functions, types, enums), resolves identifier references, and reports unknown identifiers (E0010) and unknown types (E0011)
-2. **Pass 2: Type checking** -- validates function return types, operator types, match arm consistency, function call arity (E0012), type mismatches (E0020), operator type errors (E0021), and match exhaustiveness (E0024)
+1. **Pass 1: Name resolution** -- builds a symbol table of all declarations (functions, types, enums), resolves identifier references, and reports unknown identifiers (E0010) and unknown types (E0024)
+2. **Pass 2: Type checking** -- validates function return types, operator types, match arm consistency, and function call arity, reporting type mismatches (E0020) and match exhaustiveness warnings (E0021; E0024 for enums)
 3. **Pass 3: Capability checking** -- walks function bodies to find effect calls (`http.*`, `store.*`, `memory.*`, `llm.*`, `topic.*`), verifies each has a covering capability declaration, and reports missing capabilities (E0012) with `fix_code` for agent auto-fix
-4. **Pass 4: Transition checking** -- validates agent `Phase` enum transitions, ensuring `transition(Phase)` calls reference valid target phases reachable from the current phase (E0040)
+4. **Pass 4: Transition checking** -- validates agent `Phase` enum transitions, ensuring `transition(Phase)` calls reference valid target phases reachable from the current phase (E0030)
 
 ### Stage 4: Code Generator
 
 **Input:** AST
-**Output:** `{:ok, beam_binary}` or `{:error, [Error.t()]}`
+**Output:** `{:ok, [{module_atom, beam_binary}]}` or `{:error, [Error.t()]}`
 
-Translates the AST to Core Erlang using the `:cerl` module, then compiles to BEAM bytecode via `:compile.forms/2`.
+Translates the AST to Core Erlang using the `:cerl` module, then compiles to BEAM bytecode via `:compile.forms/2`. The result is a list of named binaries because one source file can produce several BEAM modules: the primary module comes first, followed by one entry per nested agent.
 
 See [Code Generator](/Skein/compiler/codegen/) for details.
 
 ### Stage 5: Module Loading
 
-The final step uses `:code.load_binary/3` to load the BEAM bytecode into the running VM:
+The final step uses `:code.load_binary/3` to load each generated binary into the running VM:
 
 ```elixir
-:code.load_binary(module_name, ~c"nofile", beam_binary)
-# Returns {:module, module_atom}
+Enum.each(modules, fn {module_name, beam_binary} ->
+  :code.load_binary(module_name, ~c"nofile", beam_binary)
+end)
+# The compiler returns {:module, primary_module_atom}
 ```
 
-The module is immediately available for function calls.
+Every module (the primary first, then nested agents) is loaded and immediately available for function calls.
 
 ## Error Handling
 
@@ -120,9 +122,8 @@ def compile_string(source) do
   with {:ok, tokens} <- Lexer.tokenize(source),
        {:ok, ast} <- Parser.parse(tokens),
        {:ok, annotated_ast} <- Analyzer.analyze(ast),
-       {:ok, beam_binary} <- CoreErlang.generate(annotated_ast) do
-    module_name = module_name_from_ast(annotated_ast)
-    :code.load_binary(module_name, ~c"nofile", beam_binary)
+       {:ok, modules} <- CoreErlang.generate(annotated_ast) do
+    load_modules(modules, ~c"nofile")
   end
 end
 ```

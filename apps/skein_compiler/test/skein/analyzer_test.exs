@@ -3392,6 +3392,299 @@ defmodule Skein.AnalyzerTest do
   end
 
   # ------------------------------------------------------------------
+  # queue.publish effect (documented counterpart of topic.publish)
+  # ------------------------------------------------------------------
+
+  describe "queue.publish effect" do
+    test "requires the queue.publish capability" do
+      errors =
+        analyze_errors("""
+        module M {
+          fn enqueue() -> String {
+            queue.publish("jobs", "data")
+          }
+        }
+        """)
+
+      assert Enum.any?(errors, fn e ->
+               e.code == "E0012" and e.severity == :error and e.message =~ "queue.publish"
+             end)
+    end
+
+    test "analyzes clean (and counts as usage) with the capability declared" do
+      assert {:ok, _} =
+               analyze("""
+               module M {
+                 capability queue.publish("jobs")
+
+                 fn enqueue() -> String {
+                   queue.publish("jobs", "data")
+                 }
+               }
+               """)
+    end
+
+    test "named arguments resolve for queue.publish" do
+      assert {:ok, _} =
+               analyze("""
+               module M {
+                 capability queue.publish("jobs")
+
+                 fn enqueue() -> String {
+                   queue.publish(name: "jobs", data: "data")
+                 }
+               }
+               """)
+    end
+  end
+
+  # ------------------------------------------------------------------
+  # Effect call arity (documented effect signatures)
+  # ------------------------------------------------------------------
+
+  describe "effect call arity validation" do
+    test "llm.stream accepts the documented 3-arg form" do
+      assert {:ok, _} =
+               analyze("""
+               module M {
+                 capability model("anthropic", "claude-sonnet-4-5")
+
+                 fn f(data: String) -> String {
+                   llm.stream("claude-sonnet-4-5", "system", data)
+                 }
+               }
+               """)
+    end
+
+    test "llm.stream accepts a fourth on_chunk callback argument" do
+      assert {:ok, _} =
+               analyze("""
+               module M {
+                 capability model("anthropic", "claude-sonnet-4-5")
+
+                 fn on_piece(chunk: String) -> String {
+                   chunk
+                 }
+
+                 fn f(data: String) -> String {
+                   llm.stream("claude-sonnet-4-5", "system", data, &on_piece)
+                 }
+               }
+               """)
+    end
+
+    test "llm.stream accepts on_chunk as a named argument" do
+      assert {:ok, _} =
+               analyze("""
+               module M {
+                 capability model("anthropic", "claude-sonnet-4-5")
+
+                 fn on_piece(chunk: String) -> String {
+                   chunk
+                 }
+
+                 fn f(data: String) -> String {
+                   llm.stream("claude-sonnet-4-5", "system", data, on_chunk: &on_piece)
+                 }
+               }
+               """)
+    end
+
+    test "reports E0020 when llm.stream gets too many arguments" do
+      errors =
+        analyze_errors("""
+        module M {
+          capability model("anthropic", "claude-sonnet-4-5")
+
+          fn on_piece(chunk: String) -> String {
+            chunk
+          }
+
+          fn f(data: String) -> String {
+            llm.stream("claude-sonnet-4-5", "system", data, &on_piece, &on_piece)
+          }
+        }
+        """)
+
+      assert Enum.any?(errors, fn e ->
+               e.code == "E0020" and e.severity == :error and e.message =~ "llm.stream"
+             end)
+    end
+
+    test "reports E0020 when llm.chat gets too few arguments" do
+      errors =
+        analyze_errors("""
+        module M {
+          capability model("anthropic", "claude-sonnet-4-5")
+
+          fn f() -> String {
+            llm.chat("claude-sonnet-4-5")
+          }
+        }
+        """)
+
+      assert Enum.any?(errors, fn e ->
+               e.code == "E0020" and e.severity == :error and e.message =~ "llm.chat"
+             end)
+    end
+
+    test "process.spawn still accepts both 1-arg and 2-arg forms" do
+      assert {:ok, _} =
+               analyze("""
+               module M {
+                 capability process.spawn("workers")
+
+                 fn work() -> Int {
+                   1
+                 }
+
+                 fn f() -> String {
+                   process.spawn("named-task")
+                   process.spawn("with-body", &work)
+                   "ok"
+                 }
+               }
+               """)
+    end
+
+    test "reports E0020 for wrong effect arity inside agent phase handlers" do
+      errors =
+        analyze_errors("""
+        agent A {
+          capability memory.kv("ns")
+
+          enum Phase {
+            Active -> []
+          }
+
+          on start() -> {
+            transition(Phase.Active)
+          }
+
+          on phase(Phase.Active) -> {
+            memory.put("ns", "key", "value")
+            stop()
+          }
+        }
+        """)
+
+      assert Enum.any?(errors, fn e ->
+               e.code == "E0020" and e.severity == :error and e.message =~ "memory.put"
+             end)
+    end
+
+    test "correct effect arity inside agent handlers analyzes clean" do
+      assert {:ok, _} =
+               analyze("""
+               agent A {
+                 capability memory.kv("ns")
+
+                 enum Phase {
+                   Active -> []
+                 }
+
+                 on start() -> {
+                   transition(Phase.Active)
+                 }
+
+                 on phase(Phase.Active) -> {
+                   memory.put("key", "value")
+                   stop()
+                 }
+               }
+               """)
+    end
+  end
+
+  # ------------------------------------------------------------------
+  # E0033/E0036: transition()/stop() outside agent
+  # ------------------------------------------------------------------
+
+  describe "transition/stop outside agent validation" do
+    test "reports E0033 for transition in module function" do
+      errors =
+        analyze_errors("""
+        module M {
+          fn f() -> String {
+            transition(Phase.Done)
+            "x"
+          }
+        }
+        """)
+
+      assert Enum.any?(errors, fn e ->
+               e.code == "E0033" and e.severity == :error and
+                 e.message =~ "transition()" and is_binary(e.fix_hint) and
+                 is_binary(e.fix_code)
+             end)
+    end
+
+    test "reports E0033 for transition in module handler" do
+      errors =
+        analyze_errors("""
+        module M {
+          capability http.in
+
+          handler http GET "/test" (req) -> {
+            transition(Phase.Done)
+          }
+        }
+        """)
+
+      assert Enum.any?(errors, fn e -> e.code == "E0033" and e.severity == :error end)
+    end
+
+    test "reports E0033 for transition in a test block" do
+      errors =
+        analyze_errors("""
+        module M {
+          fn f() -> Int { 1 }
+
+          test "lifecycle calls are rejected" {
+            transition(Phase.Done)
+          }
+        }
+        """)
+
+      assert Enum.any?(errors, fn e -> e.code == "E0033" and e.severity == :error end)
+    end
+
+    test "reports E0036 for stop in module function" do
+      errors =
+        analyze_errors("""
+        module M {
+          fn f() -> String {
+            stop()
+            "x"
+          }
+        }
+        """)
+
+      assert Enum.any?(errors, fn e ->
+               e.code == "E0036" and e.severity == :error and
+                 e.message =~ "stop()" and is_binary(e.fix_hint) and
+                 is_binary(e.fix_code)
+             end)
+    end
+
+    test "reports E0036 for stop in a match arm of a module function" do
+      errors =
+        analyze_errors("""
+        module M {
+          fn f(n: Int) -> Int {
+            match n {
+              1 -> stop()
+              _ -> n
+            }
+          }
+        }
+        """)
+
+      assert Enum.any?(errors, fn e -> e.code == "E0036" and e.severity == :error end)
+    end
+  end
+
+  # ------------------------------------------------------------------
   # E0035: idempotent() outside handler
   # ------------------------------------------------------------------
 

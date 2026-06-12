@@ -41,9 +41,10 @@ defmodule Skein.Analyzer do
   - E0030: Invalid phase transition
   - E0031: Unreachable phase (warning)
   - E0032: Phase handler missing
-  - E0033: `transition()` outside agent
+  - E0033: `transition()` outside agent (also: `transition()` in an agent with no Phase enum)
   - E0034: `suspend()` outside agent
   - E0035: `idempotent()` outside handler
+  - E0036: `stop()` outside agent
 
   ### Supervisor (E004x)
   - E0040: Invalid supervisor strategy
@@ -88,6 +89,7 @@ defmodule Skein.Analyzer do
     "llm" => "model",
     "tool" => "tool.use",
     "topic" => "topic.publish",
+    "queue" => "queue.publish",
     "trace" => nil,
     "process" => "process.spawn",
     "timer" => "timer",
@@ -101,6 +103,7 @@ defmodule Skein.Analyzer do
     "llm" => ["chat", "json", "stream", "embed"],
     "tool" => ["call", "list", "schema"],
     "topic" => ["publish"],
+    "queue" => ["publish"],
     "trace" => ["annotate"],
     "process" => ["spawn"],
     "timer" => ["after", "interval", "cancel"],
@@ -218,14 +221,14 @@ defmodule Skein.Analyzer do
       "to_list" => %{params: [{:set, :unknown}], return_type: {:list, :unknown}}
     },
     "Option" => %{
-      "unwrap" => %{params: [{:option, :unknown}], return_type: :unknown},
+      "unwrap" => %{params: [{:option, :unknown}, :unknown], return_type: :unknown},
       "map" => %{params: [{:option, :unknown}, :unknown], return_type: {:option, :unknown}},
       "flat_map" => %{params: [{:option, :unknown}, :unknown], return_type: {:option, :unknown}},
       "is_some" => %{params: [{:option, :unknown}], return_type: :bool},
       "is_none" => %{params: [{:option, :unknown}], return_type: :bool}
     },
     "Result" => %{
-      "unwrap" => %{params: [{:result, :unknown, :unknown}], return_type: :unknown},
+      "unwrap" => %{params: [{:result, :unknown, :unknown}, :unknown], return_type: :unknown},
       "map" => %{
         params: [{:result, :unknown, :unknown}, :unknown],
         return_type: {:result, :unknown, :unknown}
@@ -254,7 +257,7 @@ defmodule Skein.Analyzer do
       "to_string" => %{params: [:instant], return_type: :string},
       "add" => %{params: [:instant, :duration], return_type: :instant},
       "subtract" => %{params: [:instant, :duration], return_type: :instant},
-      "diff" => %{params: [:instant, :instant], return_type: :int},
+      "diff" => %{params: [:instant, :instant], return_type: :duration},
       "is_before" => %{params: [:instant, :instant], return_type: :bool},
       "is_after" => %{params: [:instant, :instant], return_type: :bool}
     },
@@ -355,8 +358,10 @@ defmodule Skein.Analyzer do
     # Pass 6: Unreachable code after stop() warnings
     errors = errors ++ check_unreachable_after_stop(ast.declarations)
 
-    # Pass 7: suspend() outside agent check
-    errors = errors ++ check_suspend_outside_agent(ast.declarations, env)
+    # Pass 7: agent-only lifecycle calls (transition/suspend/stop) outside
+    # agent handlers — test/scenario/golden bodies included, so codegen
+    # never sees these nodes on the module path
+    errors = errors ++ check_agent_only_calls(ast.declarations ++ test_views, env)
 
     # Pass 8: idempotent() outside handler check
     errors = errors ++ check_idempotent_outside_handler(ast.declarations, env)
@@ -400,6 +405,12 @@ defmodule Skein.Analyzer do
 
     # Pass 5: Type-check agent function bodies
     errors = errors ++ check_functions(ast.fns, env)
+
+    # Pass 5b: Effect-call arity in handler bodies. Handler bodies don't
+    # run the full infer_type pass, so without this walk an
+    # over/under-applied effect call would silently compile to a call on
+    # a nonexistent runtime arity (codegen appends labels/callbacks/caps).
+    errors = errors ++ check_handler_effect_arity(ast.handlers, env)
 
     all_decls = agent_decl_views(ast)
 
@@ -533,11 +544,12 @@ defmodule Skein.Analyzer do
     {"memory", "list"} => ["prefix"],
     {"llm", "chat"} => ["model", "system", "input"],
     {"llm", "json"} => ["model", "system", "input"],
-    {"llm", "stream"} => ["model", "system", "input"],
+    {"llm", "stream"} => ["model", "system", "input", "on_chunk"],
     {"llm", "embed"} => ["model", "input"],
     {"topic", "publish"} => ["name", "data"],
+    {"queue", "publish"} => ["name", "data"],
     {"trace", "annotate"} => ["key", "value"],
-    {"process", "spawn"} => ["name", "work"],
+    {"process", "spawn"} => ["task", "work"],
     {"event", "log"} => ["name", "data"],
     {"timer", "after"} => ["delay_ms", "task", "work"],
     {"timer", "interval"} => ["every_ms", "task", "work"],
@@ -549,6 +561,7 @@ defmodule Skein.Analyzer do
   # body (spec §6.11). Only trailing parameters can be optional — omitting
   # a middle parameter would shift the positional order.
   @effect_optional_params %{
+    {"llm", "stream"} => ["on_chunk"],
     {"process", "spawn"} => ["work"],
     {"timer", "after"} => ["work"],
     {"timer", "interval"} => ["work"]
@@ -776,6 +789,87 @@ defmodule Skein.Analyzer do
   end
 
   defp callee_param_names(_call, _env), do: :unsupported
+
+  # Positional-arity bounds for documented effect signatures. Codegen
+  # appends trailing runtime arguments (callbacks, scope labels, the
+  # capability list) to effect calls, so over- or under-application in
+  # source would otherwise silently compile to a call on a nonexistent
+  # runtime arity. Effects without a param-table entry (tool.*, store.*)
+  # have their own checks and are skipped here.
+  defp effect_call_arity_errors(namespace, method, args, meta, env) do
+    case Map.fetch(@effect_param_names, {namespace, method}) do
+      {:ok, names} ->
+        optional = Map.get(@effect_optional_params, {namespace, method}, [])
+        min_arity = length(names) - length(optional)
+        max_arity = length(names)
+        actual = length(args)
+
+        if actual < min_arity or actual > max_arity do
+          expected =
+            if min_arity == max_arity,
+              do: "#{max_arity}",
+              else: "#{min_arity} to #{max_arity}"
+
+          [
+            %Error{
+              code: "E0020",
+              severity: :error,
+              message:
+                "Effect '#{namespace}.#{method}' expects #{expected} argument(s) (#{Enum.join(names, ", ")}), got #{actual}",
+              location: location_from_meta(meta, env.file),
+              fix_hint: "Pass #{expected} argument(s) to '#{namespace}.#{method}'",
+              fix_code: call_skeleton("#{namespace}.#{method}", max_arity)
+            }
+          ]
+        else
+          []
+        end
+
+      :error ->
+        []
+    end
+  end
+
+  # Agent handler bodies skip infer_type, so the arity bounds are applied
+  # by a dedicated walk over every Call node in each handler body.
+  defp check_handler_effect_arity(handlers, env) do
+    handlers
+    |> Enum.flat_map(fn %AST.AgentHandler{body: body} -> collect_calls(body) end)
+    |> Enum.flat_map(fn
+      %AST.Call{
+        target: %AST.FieldAccess{subject: %AST.Identifier{name: namespace}, field: method},
+        args: args,
+        meta: meta
+      } ->
+        if effect_namespace?(namespace) and effect_method?(namespace, method) do
+          effect_call_arity_errors(namespace, method, args, meta, env)
+        else
+          []
+        end
+
+      _other ->
+        []
+    end)
+  end
+
+  # Generic expression walker collecting every Call node (including calls
+  # nested in arguments, match arms, interpolations, and map literals).
+  defp collect_calls(%AST.Call{target: target, args: args} = call) do
+    [call | Enum.flat_map([target | args], &collect_calls/1)]
+  end
+
+  defp collect_calls(%_{} = node) do
+    node
+    |> Map.from_struct()
+    |> Enum.flat_map(fn
+      {:meta, _} -> []
+      {_key, value} -> collect_calls(value)
+    end)
+  end
+
+  defp collect_calls(nodes) when is_list(nodes), do: Enum.flat_map(nodes, &collect_calls/1)
+  defp collect_calls({_tag, value}), do: collect_calls(value)
+  defp collect_calls(_other), do: []
 
   defp describe_callee(%AST.Identifier{name: name}), do: "'#{name}'"
 
@@ -1752,6 +1846,10 @@ defmodule Skein.Analyzer do
           cross_module_call_head?(mod_name, env) ->
             {:unknown,
              args_errors ++ [cross_module_call_error(mod_name, fn_name, length(args), meta, env)]}
+
+          effect_namespace?(mod_name) and effect_method?(mod_name, fn_name) ->
+            {:unknown,
+             args_errors ++ effect_call_arity_errors(mod_name, fn_name, args, meta, env)}
 
           true ->
             {:unknown, args_errors}
@@ -3648,49 +3746,68 @@ defmodule Skein.Analyzer do
   defp extract_meta(_), do: %{line: 0, col: 0}
 
   # ------------------------------------------------------------------
-  # E0034: suspend() outside agent
+  # Agent-only lifecycle calls outside agent handlers:
+  # E0033 transition(), E0034 suspend(), E0036 stop()
   # ------------------------------------------------------------------
 
-  defp check_suspend_outside_agent(declarations, env) do
-    fn_suspends =
-      declarations
-      |> Enum.filter(&match?(%AST.Fn{}, &1))
-      |> Enum.flat_map(fn %AST.Fn{body: body} ->
-        collect_suspends(body)
-      end)
-
-    handler_suspends =
-      declarations
-      |> Enum.filter(&match?(%AST.Handler{}, &1))
-      |> Enum.flat_map(fn %AST.Handler{body: body} ->
-        collect_suspends(body)
-      end)
-
-    (fn_suspends ++ handler_suspends)
-    |> Enum.map(fn meta ->
-      %Error{
-        code: "E0034",
-        severity: :error,
-        message:
-          "suspend() can only be used in agent handlers, not in module functions or handlers",
-        location: location_from_meta(meta, env.file),
-        fix_hint: "Move this to an agent handler (on start/on phase)",
-        fix_code: "on phase(Phase.Name) -> { suspend(\"reason\") }"
-      }
+  defp check_agent_only_calls(declarations, env) do
+    declarations
+    |> Enum.flat_map(fn
+      %AST.Fn{body: body} -> collect_agent_only_calls(body)
+      %AST.Handler{body: body} -> collect_agent_only_calls(body)
+      _ -> []
     end)
+    |> Enum.map(fn {kind, meta} -> agent_only_call_error(kind, meta, env) end)
   end
 
-  defp collect_suspends(%AST.Suspend{meta: meta}), do: [meta]
-
-  defp collect_suspends(%AST.Block{expressions: exprs}),
-    do: Enum.flat_map(exprs, &collect_suspends/1)
-
-  defp collect_suspends(%AST.Match{arms: arms}) do
-    Enum.flat_map(arms, fn %AST.MatchArm{body: body} -> collect_suspends(body) end)
+  defp agent_only_call_error(:transition, meta, env) do
+    %Error{
+      code: "E0033",
+      severity: :error,
+      message:
+        "transition() can only be used in agent handlers, not in module functions or handlers",
+      location: location_from_meta(meta, env.file),
+      fix_hint: "Move this to an agent handler (on start/on phase) — phases only exist in agents",
+      fix_code: "on phase(Phase.Name) -> { transition(Phase.Next) }"
+    }
   end
 
-  defp collect_suspends(%AST.Let{value: value}), do: collect_suspends(value)
-  defp collect_suspends(_), do: []
+  defp agent_only_call_error(:suspend, meta, env) do
+    %Error{
+      code: "E0034",
+      severity: :error,
+      message:
+        "suspend() can only be used in agent handlers, not in module functions or handlers",
+      location: location_from_meta(meta, env.file),
+      fix_hint: "Move this to an agent handler (on start/on phase)",
+      fix_code: "on phase(Phase.Name) -> { suspend(\"reason\") }"
+    }
+  end
+
+  defp agent_only_call_error(:stop, meta, env) do
+    %Error{
+      code: "E0036",
+      severity: :error,
+      message: "stop() can only be used in agent handlers, not in module functions or handlers",
+      location: location_from_meta(meta, env.file),
+      fix_hint: "Move this to an agent handler (on start/on phase)",
+      fix_code: "on phase(Phase.Name) -> { stop() }"
+    }
+  end
+
+  defp collect_agent_only_calls(%AST.Transition{meta: meta}), do: [{:transition, meta}]
+  defp collect_agent_only_calls(%AST.Suspend{meta: meta}), do: [{:suspend, meta}]
+  defp collect_agent_only_calls(%AST.Stop{meta: meta}), do: [{:stop, meta}]
+
+  defp collect_agent_only_calls(%AST.Block{expressions: exprs}),
+    do: Enum.flat_map(exprs, &collect_agent_only_calls/1)
+
+  defp collect_agent_only_calls(%AST.Match{arms: arms}) do
+    Enum.flat_map(arms, fn %AST.MatchArm{body: body} -> collect_agent_only_calls(body) end)
+  end
+
+  defp collect_agent_only_calls(%AST.Let{value: value}), do: collect_agent_only_calls(value)
+  defp collect_agent_only_calls(_), do: []
 
   # ------------------------------------------------------------------
   # E0035: idempotent() outside handler

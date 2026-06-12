@@ -19,7 +19,7 @@ skein/
 ├── docs/
 │   ├── SKEIN_SPEC.md            # Complete language specification
 │   ├── ARCHITECTURE.md          # Compiler and runtime architecture
-│   ├── ROADMAP.md             # Development roadmap
+│   ├── ROADMAP.md               # Development roadmap
 │   └── site/                    # Astro + Starlight documentation site
 ├── editors/
 │   └── vscode/                  # VS Code extension (grammar, snippets, LSP client)
@@ -28,8 +28,7 @@ skein/
 │   ├── skein_runtime/           # OTP behaviours and runtime support
 │   ├── skein_cli/               # CLI tooling
 │   └── skein_lsp/               # Language Server Protocol implementation
-├── examples/                    # Canonical .skein programs
-└── spec/                        # Language test suite
+└── examples/                    # Canonical .skein programs
 ```
 
 ## Technology Stack
@@ -40,7 +39,7 @@ skein/
 | Lexer | NimbleParsec |
 | Parser | Hand-written recursive descent |
 | IR target | Core Erlang |
-| Agent runtime | gen_statem (GenStateMachine) |
+| Agent runtime | OTP's `:gen_statem` (used directly) |
 | HTTP server | Bandit + Plug |
 | Storage | Ecto + SQLite3 |
 | Language server | GenLSP |
@@ -62,7 +61,7 @@ Source (.skein) → Lexer → Parser → Analyzer → CodeGen → BEAM bytecode
 1. **Lexer** (`Skein.Lexer`) — source text to token stream
 2. **Parser** (`Skein.Parser`) — token stream to AST
 3. **Analyzer** (`Skein.Analyzer`) — AST to annotated AST (4 passes: name resolution, type checking, capability checking, transition checking)
-4. **CodeGen** (`Skein.Codegen.CoreErlang`) — AST to Core Erlang to BEAM bytecode
+4. **CodeGen** (`Skein.CodeGen.CoreErlang`) — AST to Core Erlang to BEAM bytecode
 
 ## Key Modules
 
@@ -74,8 +73,8 @@ Source (.skein) → Lexer → Parser → Analyzer → CodeGen → BEAM bytecode
 | `Skein.Parser` | `apps/skein_compiler/lib/skein/parser.ex` | AST construction |
 | `Skein.AST` | `apps/skein_compiler/lib/skein/ast.ex` | AST node definitions |
 | `Skein.Analyzer` | `apps/skein_compiler/lib/skein/analyzer.ex` | Type + capability checking |
-| `Skein.Codegen.CoreErlang` | `apps/skein_compiler/lib/skein/codegen/core_erlang.ex` | Code generation |
-| `Skein.Codegen.SchemaGen` | `apps/skein_compiler/lib/skein/codegen/schema_gen.ex` | JSON Schema derivation |
+| `Skein.CodeGen.CoreErlang` | `apps/skein_compiler/lib/skein/codegen/core_erlang.ex` | Code generation |
+| `Skein.CodeGen.SchemaGen` | `apps/skein_compiler/lib/skein/codegen/schema_gen.ex` | JSON Schema derivation |
 | `Skein.Error` | `apps/skein_compiler/lib/skein/error.ex` | Structured error types |
 | `Skein.Compiler` | `apps/skein_compiler/lib/skein_compiler.ex` | Pipeline entry point |
 
@@ -83,7 +82,7 @@ Source (.skein) → Lexer → Parser → Analyzer → CodeGen → BEAM bytecode
 
 | Module | Location | Purpose |
 |--------|----------|---------|
-| `Skein.Runtime.Agent` | `apps/skein_runtime/lib/skein/runtime/agent.ex` | GenStateMachine agent lifecycle |
+| `Skein.Runtime.Agent` | `apps/skein_runtime/lib/skein/runtime/agent.ex` | `:gen_statem`-based agent lifecycle |
 | `Skein.Runtime.Http` | `apps/skein_runtime/lib/skein/runtime/http.ex` | HTTP client with capability enforcement |
 | `Skein.Runtime.Capability` | `apps/skein_runtime/lib/skein/runtime/capability.ex` | Runtime capability validation |
 | `Skein.Runtime.Handler` | `apps/skein_runtime/lib/skein/runtime/handler.ex` | HTTP request dispatch |
@@ -147,4 +146,4 @@ All phases complete — MVP reached. The full compilation pipeline supports:
 - Full CLI tooling (new, build, test, run, trace)
 - VS Code extension with LSP (diagnostics, symbols, hover, completions, go-to-definition)
 
-**Test suite:** 81 properties, 812 tests, 0 failures
+**Test suite:** the full umbrella unit and property suites run green — see CI for current counts

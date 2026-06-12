@@ -7,7 +7,7 @@ description: How the Skein lexer tokenizes source code.
 
 The lexer (`Skein.Lexer`) converts UTF-8 source text into a flat list of tokens. It's implemented as a hand-written recursive descent tokenizer using NimbleParsec for some low-level parsing.
 
-**Location:** `apps/skein_compiler/lib/skein/lexer.ex` (~441 lines)
+**Location:** `apps/skein_compiler/lib/skein/lexer.ex`
 
 ## Token Format
 
@@ -43,15 +43,15 @@ Skein.Lexer.tokenize("let x = 42")
 Reserved words that cannot be used as identifiers:
 
 ```skein
-module  fn       let      match    type     enum
+module  fn       let      match    type       enum
 handler agent    tool     capability supervisor test
 scenario golden  on       emit     transition stop
-suspend resume   true     false    implement  input
-output  errors   policy   description state  strategy
-child   replay   given    expect   assert
+suspend resume   true     false    implement  idempotent
 ```
 
 Each keyword tokenizes to its corresponding atom: `"module"` becomes `{:module, {line, col}}`.
+
+**Contextual keywords** are not reserved. The words `input`, `output`, `errors`, `policy`, `description`, `state`, `strategy`, `child`, `replay`, `given`, `expect`, and `assert` have meaning only inside their construct and tokenize as ordinary `:ident` tokens — `let input = 1` is valid Skein. The parser recognizes them contextually. `if` is likewise contextual: it introduces a guard in match arms and is an ordinary identifier elsewhere.
 
 ### Identifiers
 
@@ -145,7 +145,12 @@ Strings are tokenized with interpolation support. The lexer produces a list of s
 {:string, {1, 1}, []}
 ```
 
-Interpolation uses `${}` syntax. Inside the braces, the lexer produces a nested token for the expression (currently only identifiers are supported in interpolation).
+Interpolation uses `${}` syntax. Inside the braces, the lexer produces a nested token for the expression. Identifiers and dotted field access are supported — `${name}` and `${req.params.id}` both work. A dotted expression nests as `{:field_access, ...}` segments:
+
+```elixir
+# "${req.params.id}"
+{:interpolation, {:field_access, {:field_access, {:ident, {_line, _col}, "req"}, "params"}, "id"}}
+```
 
 ## Comments
 
@@ -168,7 +173,7 @@ The lexer returns `{:error, [%Skein.Error{}]}` for unrecognized characters:
 
 ```elixir
 Skein.Lexer.tokenize("let x = @#$")
-#=> {:error, [%Skein.Error{code: "E001", message: "Unexpected character: #", ...}]}
+#=> {:error, [%Skein.Error{code: "E0001", message: "Unexpected character: #", ...}]}
 ```
 
 ## Property-Tested Invariants

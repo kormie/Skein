@@ -213,48 +213,55 @@ Agents are state machines with phases, transitions, and event-driven handlers:
 ```skein
 agent RefundBot {
   capability memory.kv("sessions")
-  capability model("claude-opus-4-8")
-
-  enum Phase {
-    Review -> Approved, Denied
-    Approved -> Done
-    Denied -> Done
-    Done
-  }
+  capability model("anthropic", "claude-opus-4-8")
 
   state {
     request_id: String
     amount: Int
   }
 
-  on start(params) {
-    state.request_id = params.id
-    state.amount = params.amount
-    transition(Review)
+  enum Phase {
+    Review -> [Approved, Denied]
+    Approved -> [Done]
+    Denied -> [Done]
+    Done -> []
   }
 
-  on phase(Review) {
-    let decision = llm.chat("claude-opus-4-8", "Evaluate this refund", state.amount)
+  on start(request_id: String, amount: Int) -> {
+    memory.put("request_id", request_id)
+    transition(Phase.Review)
+  }
+
+  on phase(Phase.Review) -> {
+    let decision = llm.chat("claude-opus-4-8", "Evaluate this refund", state.request_id)!
     match decision {
-      "approve" -> transition(Approved)
-      "deny" -> transition(Denied)
+      "approve" -> transition(Phase.Approved)
+      _ -> transition(Phase.Denied)
     }
   }
 
-  on phase(Approved) {
-    emit({ type: "refund_approved", amount: state.amount })
-    transition(Done)
+  on phase(Phase.Approved) -> {
+    emit RefundApproved { amount: state.amount }
+    transition(Phase.Done)
+  }
+
+  on phase(Phase.Denied) -> {
+    transition(Phase.Done)
+  }
+
+  on phase(Phase.Done) -> {
+    stop()
   }
 }
 ```
 
 Key features:
-- `Phase` enum with `->` transition declarations -- validated at compile time
-- `on start(params)` handler runs when the agent starts
-- `on phase(Phase)` handlers run when entering each phase
-- `transition(Phase)` moves to a new phase (invalid transitions are compiler errors)
-- `state.field` for reading/writing agent state
-- `emit(event)` for domain events
+- `Phase` enum with `-> [Target, ...]` transition declarations -- validated at compile time; every phase needs a handler
+- `on start(name: Type, ...) -> { ... }` handler with typed parameters runs when the agent starts
+- `on phase(Phase.X) -> { ... }` handlers run when entering each phase
+- `transition(Phase.X)` moves to a new phase (invalid transitions are compiler errors)
+- `state.field` for reading agent state (state is initialized from the start parameters; there is no assignment)
+- `emit EventName { field: value }` for domain events
 - `stop()` to terminate the agent
 
 ## Implementation Status

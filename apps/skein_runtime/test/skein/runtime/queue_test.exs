@@ -59,6 +59,33 @@ defmodule Skein.Runtime.QueueTest do
     end
   end
 
+  describe "publish/3 capability checking" do
+    test "publishes when the queue name is declared" do
+      test_pid = self()
+      Queue.subscribe_fn("caps-jobs", fn msg -> send(test_pid, {:got, msg}) end)
+
+      caps = [%{kind: "queue.publish", params: ["caps-jobs"]}]
+      assert :ok = Queue.publish("caps-jobs", %{body: "x"}, caps)
+      assert_receive {:got, %{body: "x"}}, 1000
+    end
+
+    test "parameterless capability permits any queue name" do
+      caps = [%{kind: "queue.publish", params: []}]
+      assert :ok = Queue.publish("any-queue", %{body: "x"}, caps)
+    end
+
+    test "rejects publish without a queue.publish capability" do
+      assert {:error, message} = Queue.publish("caps-jobs", %{body: "x"}, [])
+      assert message =~ "queue.publish"
+    end
+
+    test "rejects publish to an undeclared queue name" do
+      caps = [%{kind: "queue.publish", params: ["other-queue"]}]
+      assert {:error, message} = Queue.publish("caps-jobs", %{body: "x"}, caps)
+      assert message =~ "caps-jobs"
+    end
+  end
+
   describe "list_queues/0" do
     test "returns empty list when no queues" do
       assert Queue.list_queues() == []

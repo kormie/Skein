@@ -41,7 +41,7 @@ BURRITO_TARGET=macos MIX_ENV=prod mix release skein
 BURRITO_TARGET=macos_arm MIX_ENV=prod mix release skein
 ```
 
-Binaries are written to `burrito_out/`. The entry point is `Skein.CLI.Main`, which dispatches subcommands (`compile`, `new`, `build`, `test`, `run`, `trace`).
+Binaries are written to `burrito_out/`. The entry point is `Skein.CLI.Main`, which dispatches subcommands (`compile`, `new`, `build`, `test`, `run`, `agents`, `mcp`, `lsp`, `trace`, `completions`, `version`, `help`).
 
 ## Project Layout
 
@@ -66,7 +66,7 @@ skein/
 ### Running Tests
 
 ```bash
-# All tests (812 checks: 731 unit + 81 property)
+# All tests (unit + property; see CI for current counts)
 mix test
 
 # Verbose output
@@ -150,9 +150,9 @@ mod.hello()
 - Property tests go alongside unit tests in separate `*_property_test.exs` files
 
 ### Git Conventions
-- Branch naming: `phase-N/description` (e.g., `phase-1/lexer-core-tokens`)
-- Commit messages: `[phase-N] component: description`
-- Each phase is a PR
+- Branch naming: `<topic>/<short-description>` (e.g., `compiler/named-args`)
+- Commit messages: `[component] description` (e.g., `[parser] accept named arguments in calls`)
+- One roadmap item / issue per PR; reference it with `Closes #NN`
 
 ## Architecture Decisions
 
@@ -217,6 +217,7 @@ mix skein.lsp
 | `Skein.Lsp.Symbols` | Extracts document symbols from AST |
 | `Skein.Lsp.HoverProvider` | Hover info and go-to-definition |
 | `Skein.Lsp.Completions` | Context-aware code completion |
+| `Skein.Lsp.CodeActions` | Quickfix code actions from each error's `fix_hint`/`fix_code` |
 | `Skein.Lsp.SemanticTokens` | Lexer-based semantic token encoding |
 
 ### Adding LSP Features
@@ -231,7 +232,7 @@ When adding a new compiler feature, also consider:
 
 The VS Code extension at `editors/vscode/` has two parts:
 - **Static**: TextMate grammar (`skein.tmLanguage.json`), snippets (`snippets/skein.json`), language config
-- **Dynamic**: TypeScript LSP client (`src/extension.ts`) that launches `mix skein.lsp`
+- **Dynamic**: TypeScript LSP client (`src/extension.ts`) that launches `skein lsp` by default (`mix skein.lsp` inside a compiler checkout)
 
 To build the extension:
 ```bash

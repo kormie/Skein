@@ -124,7 +124,7 @@ The server communicates over stdio using JSON-RPC as specified by the LSP protoc
 
 ## Testing
 
-The language server has 33 tests covering all features:
+The language server has a test suite covering all features (see CI for current counts):
 
 ```bash
 mix test apps/skein_lsp/test/
@@ -135,5 +135,6 @@ Tests exercise each module directly without needing a running LSP process:
 - **Diagnostics tests** — Valid source produces no diagnostics; invalid source produces correct error codes, locations, and severities
 - **Symbols tests** — Modules produce correct symbol hierarchies; agents include state fields, phases, and handlers
 - **Completion tests** — Keywords, types, effect namespaces, and method completions after `.`
+- **Code action tests** — Quickfix edits for missing tokens (`E0001`), missing capabilities (`E0012`), unused capabilities (`W0002`), and unused bindings (`W0001`)
 - **Hover tests** — Function signatures, built-in type descriptions
 - **Semantic token tests** — Valid source encodes to groups-of-5 integers; invalid source returns empty

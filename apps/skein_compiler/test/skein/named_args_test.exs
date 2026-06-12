@@ -255,7 +255,7 @@ defmodule Skein.NamedArgsTest do
         analyze("""
         module M {
           capability process.spawn("workers")
-          fn g() -> String { process.spawn(name: "job") }
+          fn g() -> String { process.spawn(task: "job") }
         }
         """)
 
@@ -269,7 +269,7 @@ defmodule Skein.NamedArgsTest do
         module M {
           capability process.spawn("workers")
           fn do_work() -> String { "done" }
-          fn g() -> String { process.spawn(name: "job", work: &do_work) }
+          fn g() -> String { process.spawn(task: "job", work: &do_work) }
         }
         """)
 
@@ -277,7 +277,7 @@ defmodule Skein.NamedArgsTest do
       assert [%AST.StringLit{}, %AST.FnRef{name: "do_work"}] = call.args
     end
 
-    test "process.spawn with only work named is missing the required name" do
+    test "process.spawn with only work named is missing the required task" do
       errors =
         analyze_errors("""
         module M {
@@ -287,7 +287,19 @@ defmodule Skein.NamedArgsTest do
         }
         """)
 
-      assert Enum.any?(errors, &(&1.code == "E0026" and &1.message =~ "name"))
+      assert Enum.any?(errors, &(&1.code == "E0026" and &1.message =~ "task"))
+    end
+
+    test "process.spawn(name:) is unknown — the spec §6.11 parameter is 'task'" do
+      errors =
+        analyze_errors("""
+        module M {
+          capability process.spawn("workers")
+          fn g() -> String { process.spawn(name: "job") }
+        }
+        """)
+
+      assert Enum.any?(errors, &(&1.code == "E0026" and &1.fix_code =~ "task"))
     end
   end
 

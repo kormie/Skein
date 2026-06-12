@@ -37,15 +37,23 @@ This gives you:
 
 ```
 hello_world/
-  skein.toml
+  skein.toml            # project config (incl. LLM backend)
   src/main.skein        # module + tool + co-located test
   test/main_test.skein  # integration test through the module's tool
+  AGENTS.md             # Skein primer for coding agents
+  CLAUDE.md             # one-line pointer to AGENTS.md
+  README.md
+  .gitignore
 ```
 
 The scaffold already runs: `src/main.skein` declares a function, a `test`
 block next to it, and a tool — the one cross-module seam in Skein — and
 `test/main_test.skein` exercises that tool the way another service or
 agent would.
+
+The project is also `git init`-ed for you (skip with `--no-git`), and
+`AGENTS.md` / `CLAUDE.md` can be skipped with `--no-agents` or regenerated
+later in any project with `skein agents`.
 
 ## Write Your First Program
 
@@ -97,7 +105,7 @@ module HelloWorld {
 
 ```bash
 skein compile src/main.skein
-# → Compiled: Skein.User.Hello
+# → Compiled: Skein.User.HelloWorld
 ```
 
 ## Build the Whole Project
@@ -125,8 +133,10 @@ If your project has HTTP, queue, or schedule handlers:
 
 ```bash
 skein run
-# → Server running on port 4000
 ```
+
+The command compiles the project, starts the service on port 4000 by
+default (change with `--port`), and stays in the foreground while it runs.
 
 ## Inspect Traces
 
@@ -146,15 +156,31 @@ skein help
 ```
 Skein 0.3.0 — AI-native language for the BEAM
 
+Usage: skein <command> [options]
+
 Commands:
   compile <file.skein>       Compile a single .skein file
   new <project-dir>          Scaffold a new Skein project
-  build <project-dir>        Compile all .skein files in a project
-  test <project-dir>         Run all tests in a project
-  run <project-dir>          Start the Skein service
+  build [project-dir]        Compile all .skein files in a project (default: .)
+  test [project-dir]         Run all tests in a project (default: .)
+  run [project-dir]          Start the Skein service (default: .)
+  agents [project-dir]       Create or refresh AGENTS.md (default: .)
+  mcp                        Start the MCP server (stdio, for coding agents)
+  lsp                        Start the language server (stdio, for editors)
   trace [options]            View recent trace spans
+  completions zsh            Print the zsh completion script
   version                    Print version
   help                       Show this help
+
+Options:
+  new --backend <name>       LLM backend in skein.toml: anthropic (default),
+                             bedrock, openai_compatible, test
+  new --no-agents            Skip generating AGENTS.md / CLAUDE.md
+  new --no-git               Skip git init (a .gitignore is always written)
+  build --output <dir>       Write .beam files to directory
+  run --port <port>          Server port (default: 4000)
+  trace --last <n>           Number of traces (default: 10)
+  trace --kind <kind>        Filter by span kind
 ```
 
 ## Building from Source
@@ -179,12 +205,12 @@ The project is an Elixir umbrella with four apps:
 apps/
   skein_compiler/    # Lexer, parser, analyzer, code generator
   skein_runtime/     # Agents, HTTP, store, memory, LLM, tracing
-  skein_cli/         # CLI tooling (new, build, test, run, trace)
+  skein_cli/         # CLI tooling (new, build, test, run, trace, agents, mcp, ...)
   skein_lsp/         # Language Server Protocol implementation
 ```
 
 ## Next Steps
 
-- [Language Guide](/Skein/language/syntax/) — all 12 constructs explained
+- [Language Guide](/Skein/language/syntax/) — every construct explained
 - [Overview](/Skein/getting-started/overview/) — full feature inventory
 - [Editor Support](/Skein/editor/vscode/) — VS Code extension with LSP

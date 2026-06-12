@@ -65,6 +65,22 @@ defmodule Skein.Runtime.Queue do
   end
 
   @doc """
+  Publishes a message to a named queue, checking the `queue.publish`
+  capability first. This is the entry point for compiled Skein code
+  (`queue.publish(name, data)`), mirroring `Skein.Runtime.Topic.publish/3`.
+  """
+  @spec publish(String.t(), term(), list()) :: :ok | {:error, String.t()}
+  def publish(queue_name, message, capabilities) do
+    case Skein.Runtime.Capability.check_scoped("queue.publish", queue_name, capabilities) do
+      :ok ->
+        publish(queue_name, message)
+
+      {:error, _reason} = error ->
+        error
+    end
+  end
+
+  @doc """
   Returns a list of all subscribed queue names.
   """
   @spec list_queues() :: [String.t()]

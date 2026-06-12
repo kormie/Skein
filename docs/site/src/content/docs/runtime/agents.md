@@ -19,46 +19,49 @@ At runtime, agents compile to `:gen_statem` processes managed by `Skein.Runtime.
 
 ```skein
 agent RefundBot {
+  capability model("anthropic", "claude-opus-4-8")
   capability memory.kv("sessions")
-  capability model("claude-opus-4-8")
-
-  enum Phase {
-    Review -> Approved, Denied
-    Approved -> Done
-    Denied -> Done
-    Done
-  }
 
   state {
     request_id: String
     amount: Int
   }
 
-  on start(params) {
-    state.request_id = params.id
-    state.amount = params.amount
-    transition(Review)
+  enum Phase {
+    Review -> [Approved, Denied]
+    Approved -> [Done]
+    Denied -> [Done]
+    Done -> []
   }
 
-  on phase(Review) {
-    let decision = llm.chat("claude-opus-4-8", "Evaluate refund", state.amount)
+  on start(request_id: String, amount: Int) -> {
+    memory.put("request_id", request_id)
+    memory.put("amount", amount)
+    transition(Phase.Review)
+  }
+
+  on phase(Phase.Review) -> {
+    let amount = memory.get!("amount")
+    let decision = llm.chat("claude-opus-4-8", "Evaluate refund. Reply approve or deny.", amount)
     match decision {
-      "approve" -> transition(Approved)
-      "deny" -> transition(Denied)
+      Ok("approve") -> transition(Phase.Approved)
+      _ -> transition(Phase.Denied)
     }
   }
 
-  on phase(Approved) {
-    emit({ type: "refund_approved", amount: state.amount })
-    transition(Done)
+  on phase(Phase.Approved) -> {
+    let amount = memory.get!("amount")
+    emit RefundApproved { amount: amount }
+    transition(Phase.Done)
   }
 
-  on phase(Denied) {
-    emit({ type: "refund_denied", amount: state.amount })
-    transition(Done)
+  on phase(Phase.Denied) -> {
+    let amount = memory.get!("amount")
+    emit RefundDenied { amount: amount }
+    transition(Phase.Done)
   }
 
-  on phase(Done) {
+  on phase(Phase.Done) -> {
     stop()
   }
 }
@@ -71,7 +74,7 @@ The compiler processes agents through all four analyzer passes:
 1. **Name resolution** -- registers the agent, its Phase enum variants, state fields, and handlers
 2. **Type checking** -- validates state field types and handler expressions
 3. **Capability checking** -- verifies `memory.kv`, `model`, `http.out`, `store.table` capabilities against effect calls in handlers
-4. **Transition checking** -- validates that every `transition(Phase)` call targets a phase reachable from the current handler's phase via the `->` declarations
+4. **Transition checking** -- validates that every `transition(Phase.X)` call targets a phase reachable from the current handler's phase via the `->` declarations
 
 ### Generated Module
 
@@ -82,7 +85,7 @@ An agent named `RefundBot` compiles to `Elixir.Skein.Agent.RefundBot` with these
 | `start_link/1` | Start the agent with initial params |
 | `__phases__/0` | Return phase metadata (variants and valid transitions) |
 | `__capabilities__/0` | Return declared capabilities as a list of maps |
-| `__start_handler__/2` | Execute the `on start(params)` handler |
+| `__start_handler__/2` | Execute the `on start(...)` handler |
 | `__phase_handler__/3` | Execute phase-specific handlers, dispatched by phase atom |
 
 ### Nesting Inside Modules
@@ -119,14 +122,14 @@ The analyzer checks transition validity at compile time. Given the Phase enum:
 
 ```skein
 enum Phase {
-  Review -> Approved, Denied
-  Approved -> Done
-  Denied -> Done
-  Done
+  Review -> [Approved, Denied]
+  Approved -> [Done]
+  Denied -> [Done]
+  Done -> []
 }
 ```
 
-A `transition(Done)` call inside `on phase(Review)` would be a compile error -- `Review` can only transition to `Approved` or `Denied`.
+A `transition(Phase.Done)` call inside `on phase(Phase.Review)` would be a compile error -- `Review` can only transition to `Approved` or `Denied`.
 
 ## Runtime
 
@@ -171,17 +174,19 @@ call __phase_handler__(phase, state, events)
 ### Querying Agent State
 
 ```elixir
-{:ok, pid} = Skein.Agent.RefundBot.start_link(%{id: "abc", amount: 100})
+{:ok, pid} = Skein.Agent.RefundBot.start_link(%{request_id: "abc", amount: 100})
 
 Skein.Runtime.Agent.get_phase(pid)
 #=> :done
 
 Skein.Runtime.Agent.get_state(pid)
-#=> %{request_id: "abc", amount: 100}
+#=> %{}  (RefundBot persists its data via memory.kv, not state fields)
 
 Skein.Runtime.Agent.get_events(pid)
-#=> [%{type: "refund_approved", amount: 100}]
+#=> [%{event: "RefundApproved", amount: 100}]
 ```
+
+`start_link/1` takes a map keyed by the `on start(...)` parameter names.
 
 ### Handler Return Values
 
@@ -195,11 +200,10 @@ Agent handlers communicate via tagged tuples:
 | `{:keep, state, events}` | Stay in current phase, merge state and events |
 
 The code generator maps Skein constructs to these tuples:
-- `transition(Phase)` → `{:transition, :phase, state_updates, new_events}`
+- `transition(Phase.Review)` → `{:transition, :review, state_updates, new_events}`
 - `suspend(reason)` → `{:suspend, reason_string, state_updates, new_events}`
 - `stop()` → `{:stop, state_updates, new_events}`
-- `emit(event)` → appends to the events list **and** flushes to the EventStore as a `:user_event` (tagged with agent name, instance id, and phase) after the handler completes — events emitted before a crash survive, and `EventStore.query(kind: :user_event)` sees them
-- `state.field = value` → adds to state updates map
+- `emit EventName { field: value }` → appends `%{event: "EventName", field: value}` to the events list **and** flushes to the EventStore as a `:user_event` (tagged with agent name, instance id, and phase) after the handler completes — events emitted before a crash survive, and `EventStore.query(kind: :user_event)` sees them
 
 ### Suspending and Resuming
 
@@ -231,36 +235,70 @@ Agents use `memory.kv` for scoped key-value storage that persists across phase t
 agent SessionTracker {
   capability memory.kv("sessions")
 
-  on start(params) {
-    memory.put("sessions", params.id, params.data)
-    transition(Active)
+  enum Phase {
+    Active -> []
   }
 
-  on phase(Active) {
-    let data = memory.get("sessions", state.session_id)
-    -- process data...
+  on start(session_id: String, data: String) -> {
+    memory.put(session_id, data)
+    memory.put("current", session_id)
+    transition(Phase.Active)
+  }
+
+  on phase(Phase.Active) -> {
+    let session_id = memory.get!("current")
+    let data = memory.get!(session_id)
+    trace.annotate("session_data", data)
+    stop()
   }
 }
 ```
 
-Memory is backed by ETS with per-namespace tables. Each namespace requires a `memory.kv` capability declaration.
+The namespace comes from the scoped `capability memory.kv(namespace)` declaration (at most one per agent) -- call sites pass only the key, and the compiler threads the namespace into every generated runtime call. Memory is backed by a single shared ETS table (`:skein_memory`) keyed by `{namespace, key}` -- namespaces are never separate tables. Inside agents, keys are additionally prefixed with the agent name and instance id, so concurrent instances never collide.
 
 ## LLM Integration
 
-Agents can call LLM models for decision-making:
+Agents can call LLM models for decision-making. Schema-constrained `llm.json[T]` needs a named type, and agents never declare `type` blocks of their own -- so an agent that wants structured output is nested inside the module that declares the type (see [Nesting Inside Modules](#nesting-inside-modules) above):
 
 ```skein
-agent Classifier {
-  capability model("claude-opus-4-8")
+module ClassifyService {
+  capability model("anthropic", "claude-opus-4-8")
 
-  on phase(Classify) {
-    -- Unstructured text response
-    let analysis = llm.chat("claude-opus-4-8", "Classify this input", state.input)
+  type Decision {
+    action: String
+  }
 
-    -- Schema-constrained JSON response
-    let decision = llm.json("claude-opus-4-8", "Decide action", state.input, schema)
+  agent Classifier {
+    capability memory.kv("classifier")
+
+    enum Phase {
+      Classify -> []
+    }
+
+    on start(text: String) -> {
+      memory.put("text", text)
+      transition(Phase.Classify)
+    }
+
+    on phase(Phase.Classify) -> {
+      let text = memory.get!("text")
+
+      -- Unstructured text response
+      let analysis = llm.chat("claude-opus-4-8", "Classify this input", text)
+      trace.annotate("analysis", analysis)
+
+      -- Schema-constrained JSON response (uses the module's Decision type)
+      let decision = llm.json[Decision](
+        model: "claude-opus-4-8",
+        system: "Decide the action. Return JSON.",
+        input: text
+      )
+      memory.put("decision", decision)
+
+      stop()
+    }
   }
 }
 ```
 
-The LLM client uses a pluggable backend system. In tests, `Skein.Runtime.Llm.TestBackend` returns deterministic responses. In production, custom backends implement the `Skein.Runtime.Llm.Backend` behaviour.
+The LLM client uses a pluggable backend system. In tests, `Skein.Runtime.Llm.TestBackend` returns deterministic responses. In production, calls are served by the shipped `AnthropicBackend`, `OpenAiCompatibleBackend`, or `BedrockBackend` (selected via the `[llm]` profile in skein.toml); custom backends implement the `Skein.Runtime.Llm.Backend` behaviour.

@@ -246,7 +246,8 @@ defmodule Skein.SpecExamplesTest do
          }
 
          expect {
-           assert 1 == 1
+           -- `given` bindings are in scope in the expect block.
+           assert ticket_id == "abc-123"
          }
        }
      }

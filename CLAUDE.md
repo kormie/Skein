@@ -20,6 +20,8 @@ skein/
 │   ├── SKEIN_SPEC.md            # Complete language specification
 │   ├── ARCHITECTURE.md          # Compiler and runtime architecture
 │   ├── ROADMAP.md               # Canonical prioritized work list
+│   ├── STABILITY.md             # Versioning and stability policy (what's frozen post-1.0)
+│   ├── diagrams/                # Architecture diagrams (mermaid/DOT sources)
 │   └── site/                    # Astro + Starlight documentation site
 ├── apps/
 │   ├── skein_compiler/          # Lexer, parser, analyzer, code generator
@@ -40,6 +42,8 @@ skein/
 │   │   │   ├── skein/
 │   │   │   │   └── runtime/
 │   │   │   │       ├── agent.ex         # Agent behaviour (gen_statem-based)
+│   │   │   │       ├── assertion_error.ex # Structured test-assertion failures
+│   │   │   │       ├── ets_tables.ex    # Supervised owner of ALL named runtime ETS tables
 │   │   │   │       ├── handler.ex       # Handler dispatch
 │   │   │   │       ├── tool.ex          # Tool registry and execution
 │   │   │   │       ├── capability.ex    # Runtime capability enforcement
@@ -47,9 +51,8 @@ skein/
 │   │   │   │       ├── trace.ex         # Trace facade over EventStore
 │   │   │   │       ├── event_store.ex   # Unified append-only event log (size-bounded)
 │   │   │   │       ├── event_store/     # SQLite persistence backend
-│   │   │   │       ├── event_log.ex     # Deprecated facade -> EventStore
 │   │   │   │       ├── llm.ex           # LLM client, JSON decoding, streaming
-│   │   │   │       ├── llm/             # Anthropic backend, response parsing
+│   │   │   │       ├── llm/             # Anthropic/OpenAI-compatible/Bedrock backends, response parsing
 │   │   │   │       ├── store.ex         # Storage abstraction (single :skein_store ETS table)
 │   │   │   │       ├── store_ecto.ex    # Ecto-backed storage implementation
 │   │   │   │       ├── ecto_schema.ex   # Dynamic Ecto schema creation
@@ -78,6 +81,7 @@ skein/
 │   │   │       └── cli/
 │   │   │           ├── main.ex
 │   │   │           ├── agents_md.ex     # AGENTS.md scaffolding/regen (skein new / skein agents)
+│   │   │           ├── config.ex        # skein.toml parsing + [env.<name>.llm] profiles
 │   │   │           └── mcp.ex           # MCP stdio server (skein mcp)
 │   │   └── test/
 │   └── skein_lsp/               # Language Server Protocol implementation
@@ -204,7 +208,7 @@ end
 **TDD is mandatory.** Write tests before or alongside implementation — never after. Every public function must have tests covering its happy path and error cases before the implementation is considered done.
 
 - Tests live under each app's `test/` directory (`apps/skein_compiler/test/skein/`, etc.)
-- Spec alignment is enforced by `spec_examples_test.exs` — section 8 examples compile or carry a "Planned" annotation
+- Spec alignment is enforced by `spec_examples_test.exs` — ALL section 8 examples must compile with zero diagnostics (the spec freeze removed the "Planned" annotation escape hatch; never reintroduce it)
 - Runtime tests use ExUnit with Skein-specific helpers
 - Integration tests compile `.skein` source to BEAM and call the resulting functions (`compile_string/1` for inline source, `compile_file/1` for `examples/`)
 
@@ -380,6 +384,9 @@ mix test
 mix format
 
 # CLI via Mix aliases: skein.compile / skein.new / skein.build / skein.test / skein.run / skein.trace
+# CAUTION: mix skein.compile and mix skein.test currently print nothing and
+# exit 0 on failure (issue #198) — do NOT use them as pass/fail gates until
+# that lands; use `mix test` (umbrella) as the gate instead.
 mix skein.compile path/to/file.skein
 mix skein.test path/to/project
 

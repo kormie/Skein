@@ -26,6 +26,7 @@ defmodule Skein.CodeGen.CoreErlang do
   @effect_runtime_modules %{
     "http" => :"Elixir.Skein.Runtime.Http",
     "topic" => :"Elixir.Skein.Runtime.Topic",
+    "queue" => :"Elixir.Skein.Runtime.Queue",
     "trace" => :"Elixir.Skein.Runtime.Trace",
     "process" => :"Elixir.Skein.Runtime.Process",
     "timer" => :"Elixir.Skein.Runtime.Timer",
@@ -1893,7 +1894,9 @@ defmodule Skein.CodeGen.CoreErlang do
     )
   end
 
-  # LLM effect: llm.stream(model, system, input) — streaming with no-op callback from compiled code
+  # LLM effect: llm.stream(model, system, input[, on_chunk]) — the optional
+  # fourth argument fills the runtime callback slot; without it a no-op
+  # callback keeps the stream/5 arity.
   defp generate_expr(
          %AST.Call{
            target: %AST.FieldAccess{
@@ -1909,15 +1912,20 @@ defmodule Skein.CodeGen.CoreErlang do
     capabilities = Map.get(scope, :__capabilities__, [])
     caps_expr = generate_capabilities_literal(capabilities)
 
-    # Build a no-op callback: fun (Chunk) -> Chunk
-    chunk_var = :cerl.c_var(:_StreamChunk)
-    noop_callback = :cerl.c_fun([chunk_var], :cerl.c_atom(:ok))
+    callback_exprs =
+      if length(args) >= 4 do
+        []
+      else
+        # Build a no-op callback: fun (Chunk) -> ok
+        chunk_var = :cerl.c_var(:_StreamChunk)
+        [:cerl.c_fun([chunk_var], :cerl.c_atom(:ok))]
+      end
 
     # Call: Skein.Runtime.Llm.stream(model, system, input, on_chunk, capabilities)
     :cerl.c_call(
       :cerl.c_atom(:"Elixir.Skein.Runtime.Llm"),
       :cerl.c_atom(:stream),
-      args_exprs ++ [noop_callback, caps_expr]
+      args_exprs ++ callback_exprs ++ [caps_expr]
     )
   end
 

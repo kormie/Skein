@@ -44,6 +44,7 @@ capability <namespace>.<kind>(<params>)
 | `memory.kv` | Scoped KV memory | Namespace name |
 | `model` | LLM model access | Provider, model identifier |
 | `tool.use` | Tool execution | Tool name |
+| `queue.publish` | Publish to a named queue | Queue name |
 | `queue.consume` | Inbound queue handlers | Queue name (optional) |
 | `topic.publish` | Publish to a named topic | Topic name |
 | `topic.consume` | Subscribe to a named topic | Topic name |
@@ -94,13 +95,13 @@ store.users.query(filter)
 ### Memory Effects
 
 ```skein
-memory.put("sessions", key, value)
-memory.get("sessions", key)
-memory.delete("sessions", key)
-memory.list("sessions", prefix)
+memory.put(key, value)
+memory.get(key)
+memory.delete(key)
+memory.list(prefix)
 ```
 
-Memory is scoped by namespace. Each namespace requires a `capability memory.kv("namespace")` declaration.
+Memory is scoped by namespace, but the namespace never appears at the call site: the `capability memory.kv("namespace")` declaration names it, and the compiler threads it into every memory call.
 
 ### LLM Effects
 
@@ -238,6 +239,16 @@ agent RefundAgent {
   capability model("claude-opus-4-8")
   capability memory.kv
 
+  enum Phase {
+    Review -> [Approved]
+    Approved -> []
+  }
+
+  on start(order_id: String) -> {
+    memory.put("order_id", order_id)
+    transition(Phase.Review)
+  }
+
   on phase(Phase.Review) -> {
     let order = memory.get("order_id")
     trace.annotate("ticket_id", order)
@@ -245,6 +256,10 @@ agent RefundAgent {
     trace.annotate("decision", decision)
     memory.put("decision", decision)
     transition(Phase.Approved)
+  }
+
+  on phase(Phase.Approved) -> {
+    stop()
   }
 }
 ```
@@ -293,6 +308,7 @@ All three require a `capability timer(...)` declaration.
 
 ```skein
 module AuditService {
+  capability http.in
   capability event.log("audit")
 
   handler http POST "/login" (req) -> {
@@ -460,4 +476,4 @@ handler queue "events" (msg) -> {
 }
 ```
 
-The idempotency guard is backed by `Skein.Runtime.Idempotent`, which tracks processed keys in an ETS table with a configurable TTL (default: 1 hour). See the [Handlers](/language/handlers/#idempotent-handlers) page for full details.
+The idempotency guard is backed by `Skein.Runtime.Idempotent`, which tracks processed keys in an ETS table with a configurable TTL (default: 1 hour). See the [Handlers](/Skein/language/handlers/#idempotent-handlers) page for full details.

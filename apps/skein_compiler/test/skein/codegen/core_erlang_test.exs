@@ -2703,6 +2703,45 @@ defmodule Skein.CodeGen.CoreErlangTest do
       assert function_exported?(mod, :notify, 0)
     end
 
+    test "queue.publish generates runtime call and delivers to subscribers" do
+      mod =
+        compile!("""
+        module QueuePublisher {
+          capability queue.publish("codegen-jobs")
+
+          fn enqueue() -> String {
+            queue.publish("codegen-jobs", "hello")
+          }
+        }
+        """)
+
+      on_exit(fn -> Skein.Runtime.Queue.reset_all() end)
+      test_pid = self()
+
+      Skein.Runtime.Queue.subscribe_fn("codegen-jobs", fn msg ->
+        send(test_pid, {:queued, msg})
+      end)
+
+      assert :ok = mod.enqueue()
+      assert_receive {:queued, "hello"}, 1000
+    end
+
+    test "queue.publish outside the declared queue label is denied at runtime" do
+      mod =
+        compile!("""
+        module QueueScoped {
+          capability queue.publish("codegen-jobs")
+
+          fn rogue() -> String {
+            queue.publish("other-queue", "hello")
+          }
+        }
+        """)
+
+      assert {:error, message} = mod.rogue()
+      assert message =~ "other-queue"
+    end
+
     test "mixed handlers including topic" do
       mod =
         compile!("""

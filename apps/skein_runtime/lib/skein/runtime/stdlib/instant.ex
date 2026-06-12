@@ -52,7 +52,7 @@ defmodule Skein.Runtime.Stdlib.Instant do
     DateTime.add(dt, -seconds, :second) |> DateTime.to_iso8601()
   end
 
-  @doc "Returns the difference between two instants in seconds."
+  @doc "Returns the difference between two instants as a Duration (integer seconds)."
   @spec diff(binary(), binary()) :: integer()
   def diff(a, b) when is_binary(a) and is_binary(b) do
     {:ok, dt_a, _} = DateTime.from_iso8601(a)

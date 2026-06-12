@@ -206,7 +206,7 @@ Every operation:
 
 ### `Skein.Runtime.StoreEcto`
 
-Ecto-backed storage backend that performs real database operations against SQLite (local dev) or Postgres (production). Uses dynamically-generated Ecto schema modules mapped to Skein type declarations.
+Ecto-backed storage backend that performs real database operations against SQLite3 (the `ecto_sqlite3` adapter is hardcoded in `Skein.Runtime.Repo`). Uses dynamically-generated Ecto schema modules mapped to Skein type declarations.
 
 **API:** Same as `Skein.Runtime.Store` (get, put, delete, query) with identical capability enforcement and tracing.
 
@@ -228,7 +228,7 @@ StoreEcto.put("users", %{id: "u1", email: "alice@test.com", name: "Alice"}, caps
 
 ### `Skein.Runtime.Memory`
 
-Scoped key-value memory for Skein agents and modules. Each namespace gets a separate ETS table. Called by compiled `memory.put`, `memory.get`, `memory.delete`, and `memory.list` effect calls.
+Scoped key-value memory for Skein agents and modules. All namespaces share a single ETS table (`:skein_memory`) keyed by `{namespace, key}` -- namespaces are never separate tables. Called by compiled `memory.put`, `memory.get`, `memory.delete`, and `memory.list` effect calls.
 
 **API:**
 
@@ -276,6 +276,9 @@ Skein.Runtime.Llm.json("claude-opus-4-8", "Evaluate refund", input, schema, capa
 
 Skein.Runtime.Llm.stream("claude-opus-4-8", "Be helpful", "Hello", on_chunk_fn, capabilities)
 #=> {:ok, "Hello, world!"}  (chunks delivered to on_chunk_fn as they arrive)
+
+Skein.Runtime.Llm.embed("voyage-3-large", "some text", capabilities)
+#=> {:ok, [0.013, -0.027, ...]}  (vector dimensionality depends on the model)
 ```
 
 Every operation:
@@ -286,14 +289,20 @@ Every operation:
 5. Records a trace span with model, timing, and outcome
 6. Returns `{:ok, _}` or `{:error, %Llm.Error{}}`
 
-**Backends:**
+**Production backends** (selected via the `[llm]` profile in skein.toml):
+- `Skein.Runtime.Llm.AnthropicBackend` -- Anthropic Messages API (the production default)
+- `Skein.Runtime.Llm.OpenAiCompatibleBackend` -- any OpenAI-compatible `/chat/completions` server (local model servers, Voyage AI embeddings)
+- `Skein.Runtime.Llm.BedrockBackend` -- Amazon Bedrock Converse API (SigV4-signed, with `model_map` remapping to Bedrock model IDs)
+
+**Test backends:**
 - `Skein.Runtime.Llm.TestBackend` -- deterministic responses for testing
 - `Skein.Runtime.Llm.StreamingTestBackend` -- deterministic streaming chunks for testing
 - `Skein.Runtime.Llm.FailingBackend` -- always returns errors (for error-path testing)
 - `Skein.Runtime.Llm.FailingStreamBackend` -- always returns errors during streaming
 - `Skein.Runtime.Llm.InvalidJsonBackend` -- returns invalid JSON (for parse-error testing)
 - `Skein.Runtime.Llm.DynamicStreamBackend` -- configurable chunks via `{module, chunks}` tuple
-- Custom backends implement the `Skein.Runtime.Llm.Backend` behaviour
+
+Custom backends implement the `Skein.Runtime.Llm.Backend` behaviour.
 
 **Error types (`Skein.Runtime.Llm.Error`):**
 
@@ -357,8 +366,11 @@ The in-memory log is size-bounded: once it grows past the configured maximum (`c
 Skein.Runtime.EventStore.append(%{kind: :http, method: :get, url: "/api"})
 #=> :ok (auto-assigns id, timestamp, _key)
 
-# Log a user event (compiled event.log() calls target this)
-Skein.Runtime.EventStore.log("user.login", %{user: "alice"}, capabilities)
+# Log a user event (compiled event.log() calls target this).
+# The first argument is the stream label, threaded in by the compiler
+# from the module's scoped capability event.log(stream) declaration
+# (nil when the declaration is parameterless).
+Skein.Runtime.EventStore.log(nil, "user.login", %{user: "alice"}, capabilities)
 #=> :ok
 
 # Query by kind or any field
@@ -474,6 +486,6 @@ The runtime manages its external dependencies carefully:
 ## Test Coverage
 
 The runtime has comprehensive test coverage:
-- **57 property tests** (StreamData) covering capability host matching, wildcard behavior, URL extraction, store operations (ETS and Ecto), request validation, tool operations, LLM streaming, memory KV operations, queue dispatch, schedule cron parsing, and trace recording
-- **4 stateful property tests** (PropCheck) modeling memory, queue, schedule, and agent lifecycle as abstract state machines with random command sequences
-- **555 unit tests** covering agents, HTTP client, capability enforcement, handler dispatch, router, store operations (ETS and Ecto), Ecto schema generation, migration generation, memory, LLM client, Bandit HTTP server, queue dispatch, schedule dispatch, trace recording, and replay engine
+- **Property tests** (StreamData) covering capability host matching, wildcard behavior, URL extraction, store operations (ETS and Ecto), request validation, tool operations, LLM streaming, memory KV operations, queue dispatch, schedule cron parsing, and trace recording
+- **Stateful property tests** (PropCheck) modeling memory, queue, schedule, and agent lifecycle as abstract state machines with random command sequences
+- **Unit tests** covering agents, HTTP client, capability enforcement, handler dispatch, router, store operations (ETS and Ecto), Ecto schema generation, migration generation, memory, LLM client, Bandit HTTP server, queue dispatch, schedule dispatch, trace recording, and replay engine

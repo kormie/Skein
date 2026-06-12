@@ -29,18 +29,36 @@ No block comments.
 ### 2.2 Identifiers
 
 ```
-lower_ident  = [a-z][a-z0-9_]*      -- variables, functions, fields
-UpperIdent   = [A-Z][A-Za-z0-9]*     -- types, modules, agents, enum variants
+lower_ident  = [a-z_][a-zA-Z0-9_]*   -- variables, functions, fields
+UpperIdent   = [A-Z][a-zA-Z0-9_]*    -- types, modules, agents, enum variants
 ```
 
+Snake_case is the convention for `lower_ident` (the formatter and all
+documentation use it), but the lexer accepts any continuation characters
+from the set above, including a leading underscore (used for
+deliberately-unused bindings, §7 W0001).
+
 ### 2.3 Keywords
+
+Reserved words — these cannot be used as identifiers:
 
 ```
 module  fn  let  match  type  enum  handler  agent  tool  capability
 supervisor  test  scenario  golden  on  emit  transition  stop  suspend
-resume  true  false  implement  input  output  errors  policy  description
-state  strategy  child  replay  given  expect  assert
+resume  true  false  implement  idempotent
 ```
+
+**Contextual keywords.** The following words have meaning only inside their
+construct and are ordinary identifiers everywhere else (`let input = 1` is
+valid Skein):
+
+```
+input  output  errors  policy  description  state  strategy  child
+replay  given  expect  assert
+```
+
+`if` is likewise contextual: it introduces a guard in match arms (§3.11) and
+is an ordinary identifier elsewhere.
 
 ### 2.4 Operators
 
@@ -267,7 +285,7 @@ assertion    = "assert" expr
 
 ```
 expr        = let_expr | match_expr | pipe_expr | emit_expr
-            | transition_expr | respond_expr | call_expr
+            | transition_expr | lifecycle_expr | respond_expr | call_expr
             | binary_op | unary_op | field_access | literal
             | ident | fn_ref | block
 
@@ -277,6 +295,8 @@ match_arm     = pattern [ "if" expr ] "->" expr
 pipe_expr     = expr "|>" call_expr
 emit_expr     = "emit" UpperIdent "{" (lower_ident ":" expr)* "}"
 transition_expr = "transition" "(" expr ")"
+lifecycle_expr  = "stop" "(" ")" | "suspend" "(" expr ")"
+              | "idempotent" "(" expr ")"      -- handlers only (§6.9)
 respond_expr  = "respond" "." lower_ident "(" expr* ")"
 call_expr     = (ident | field_access) "(" args ")"
 binary_op     = expr op expr
@@ -287,9 +307,15 @@ block         = "{" expr* "}"
 
 args          = (arg ("," arg)*)?               -- positional args first, then named
 arg           = named_arg | expr
-pattern       = ident | literal | UpperIdent ["(" pattern* ")"]
+pattern       = ident | pattern_literal | UpperIdent ["(" pattern* ")"]
              | "_"                               -- wildcard
+pattern_literal = int_literal | string_literal | "true" | "false"
 ```
+
+Float literals are deliberately **not** patterns: matching on exact float
+equality is a reliability trap (computed floats rarely equal a literal
+bit-for-bit), so `match x { 3.14 -> ... }` is a parse error. Bind and guard
+instead: `t if t == 3.14 -> ...`.
 
 Prefix operators bind tighter than binary operators: `-2 + 3` is `(-2) + 3`,
 and `-(2 + 3)` negates the sum. There is no negative-literal token; negative
@@ -439,7 +465,7 @@ List.contains(l: List[T], item: T) -> Bool
 List.any(l: List[T], f: &(T -> Bool)) -> Bool
 List.all(l: List[T], f: &(T -> Bool)) -> Bool
 List.none(l: List[T], f: &(T -> Bool)) -> Bool
-List.zip(a: List[T], b: List[U]) -> List[(T, U)]
+List.zip(a: List[T], b: List[U]) -> List[List[_]]   -- pairs are two-element lists [a_i, b_i]
 List.uniq(l: List[T]) -> List[T]
 List.count(l: List[T], f: &(T -> Bool)) -> Int
 List.group_by(l: List[T], f: &(T -> K)) -> Map[K, List[T]]
@@ -454,7 +480,7 @@ Map.put(m: Map[K, V], key: K, value: V) -> Map[K, V]
 Map.delete(m: Map[K, V], key: K) -> Map[K, V]
 Map.keys(m: Map[K, V]) -> List[K]
 Map.values(m: Map[K, V]) -> List[V]
-Map.entries(m: Map[K, V]) -> List[(K, V)]
+Map.entries(m: Map[K, V]) -> List[List[_]]   -- entries are two-element lists [key, value]
 Map.size(m: Map[K, V]) -> Int
 Map.has(m: Map[K, V], key: K) -> Bool
 Map.merge(a: Map[K, V], b: Map[K, V]) -> Map[K, V]
@@ -544,6 +570,7 @@ All effect functions require a matching capability declaration.
 http.get(url: String) -> Result[HttpResponse, HttpError]
 http.post(url: String, json: Map) -> Result[HttpResponse, HttpError]
 http.put(url: String, json: Map) -> Result[HttpResponse, HttpError]
+http.patch(url: String, json: Map) -> Result[HttpResponse, HttpError]
 http.delete(url: String) -> Result[HttpResponse, HttpError]
 
 type HttpResponse { status: Int, body: Map, headers: Map[String, String] }
@@ -555,7 +582,9 @@ enum HttpError { Timeout, ConnectionFailed, Status(code: Int, body: String) }
 ```
 -- Requires: capability store.table(name)
 store.<table>.get(id: Uuid) -> Result[T, NotFound]
+store.<table>.get!(id: Uuid) -> T                  -- raises on miss
 store.<table>.put(record: T) -> Result[T, StoreError]
+store.<table>.put!(record: T) -> T                 -- raises on failure
 store.<table>.delete(id: Uuid) -> Result[Uuid, StoreError]
 store.<table>.query(filters: Map) -> List[T]
 ```
@@ -581,7 +610,8 @@ memory.list(prefix: String) -> List[String]
 -- Requires: capability model(provider, model_name)
 llm.chat(model: String, system: String, input: T) -> Result[String, LlmError]
 llm.json[T](model: String, system: String, input: U) -> Result[T, LlmError]
-llm.stream[T](model: String, system: String, input: U, on_chunk: &(Chunk -> ())) -> Result[T, LlmError]
+llm.stream(model: String, system: String, input: T) -> Result[String, LlmError]
+llm.stream(model: String, system: String, input: T, on_chunk) -> Result[String, LlmError]
 llm.embed(model: String, input: String) -> Result[List[Float], LlmError]
 
 enum LlmError {
@@ -594,6 +624,11 @@ enum LlmError {
   ProviderError(code: String, message: String)
 }
 ```
+
+The optional `on_chunk` argument to `llm.stream` is a `&fn` reference to a
+one-parameter local function; it is invoked with each text chunk (a `String`)
+as it arrives. With or without `on_chunk`, the call returns the full
+assembled response text once the stream completes.
 
 ### 6.5 Tools
 
@@ -632,8 +667,12 @@ emit <EventName> { field: value, ... }
 transition(phase: Phase) -> ()
 stop() -> ()
 suspend(reason: String) -> ()
-resume(input: Map) -> ()
 ```
+
+There is no in-agent `resume` call. `suspend` hands control back to the
+host, and a suspended agent is resumed *from outside* by the host-side
+runtime API — `Skein.Runtime.Agent.resume(pid, next_phase)` — which
+moves the agent into the given phase.
 
 ### 6.9 Idempotency
 
@@ -704,35 +743,45 @@ All errors are JSON-serializable with this structure:
 
 ### Error Codes
 
-| Code | Category | Example |
-|------|----------|---------|
-| E0001 | Syntax | Unexpected token |
-| E0002 | Syntax | Unterminated string |
-| E0003 | Syntax | Invalid number literal |
-| E0010 | Name | Undefined identifier |
-| E0011 | Name | Duplicate definition |
-| E0012 | Capability | Missing capability declaration |
-| E0013 | Capability | Capability parameter mismatch |
-| E0014 | Tool | Tool name not declared in `capability tool.use` params |
-| E0015 | Tool | Duplicate short tool name in `capability tool.use` params |
-| E0016 | Name | Cross-module function call (functions are module-private; expose a tool instead) |
-| E0017 | Capability | Duplicate scoped capability declaration (`memory.kv`, `event.log`, `process.spawn`, `timer` allow one per module or agent) |
-| E0020 | Type | Type mismatch |
-| E0021 | Type | Non-exhaustive match |
-| E0022 | Type | Invalid `!` on non-Result |
-| E0023 | Type | Invalid `?` on non-Result (or enclosing fn doesn't return Result) |
-| E0024 | Type | Unknown type name |
-| E0025 | Type | Constraint annotation on wrong type |
-| E0026 | Type | Invalid named argument (unknown/duplicate name, positional after named, callee without named-argument support) |
-| E0027 | Type | Invalid guard expression (guards allow literals, bindings, field access, comparisons, boolean operators, and `+`/`-`/`*` arithmetic) |
-| E0030 | Agent | Invalid phase transition |
-| E0031 | Agent | Unreachable phase |
-| E0032 | Agent | Phase handler missing |
-| E0033 | Agent | `transition()` outside agent |
-| W0001 | Warning | Unused binding |
-| W0002 | Warning | Unused capability |
-| W0003 | Warning | Unreachable code after `stop()` |
-| W0004 | Warning | Enum match covers only specific values of a variant (add a binding arm or wildcard) |
+| Code | Category | Severity | Meaning |
+|------|----------|----------|---------|
+| E0001 | Syntax | error | Unexpected token |
+| E0002 | Syntax | error | Unterminated string |
+| E0003 | Syntax | — | Reserved: invalid number literal (not yet emitted) |
+| E0010 | Name | error | Undefined identifier |
+| E0011 | Name | error | Duplicate definition |
+| E0012 | Capability | error | Missing capability declaration |
+| E0013 | Capability | — | Reserved: capability parameter mismatch (not yet emitted) |
+| E0014 | Tool | error | Tool name not declared in `capability tool.use` params |
+| E0015 | Tool | error | Duplicate short tool name in `capability tool.use` params |
+| E0016 | Name | error | Cross-module function call (functions are module-private; expose a tool instead) |
+| E0017 | Capability | error | Duplicate scoped capability declaration (`memory.kv`, `event.log`, `process.spawn`, `timer` allow one per module or agent) |
+| E0020 | Type | error | Type mismatch (including wrong argument counts for fn, stdlib, and effect calls) |
+| E0021 | Type | warning | Non-exhaustive match |
+| E0022 | Type | error | Invalid `!` on non-Result |
+| E0023 | Type | error | Invalid `?` on non-Result (or enclosing fn doesn't return Result) |
+| E0024 | Type | error / warning | Unknown type name (error); non-exhaustive match on an enum, missing variant patterns (warning, §3.11) |
+| E0025 | Type | error | Constraint annotation on wrong type |
+| E0026 | Type | error | Invalid named argument (unknown/duplicate name, positional after named, callee without named-argument support) |
+| E0027 | Type | error | Invalid guard expression (guards allow literals, bindings, field access, comparisons, boolean operators, and `+`/`-`/`*` arithmetic) |
+| E0030 | Agent | error | Invalid phase transition |
+| E0031 | Agent | warning | Unreachable phase |
+| E0032 | Agent | error | Phase handler missing |
+| E0033 | Agent | error | `transition()` outside an agent, or in an agent that declares no `Phase` enum |
+| E0034 | Agent | error | `suspend()` outside agent handlers |
+| E0035 | Agent | error | `idempotent()` outside handler bodies |
+| E0036 | Agent | error | `stop()` outside agent handlers |
+| E0040 | Supervisor | error | Invalid supervisor strategy |
+| E0041 | Supervisor | error | Invalid `max_restarts` value |
+| E0042 | Supervisor | warning | Supervisor has no children |
+| W0001 | Warning | warning | Unused binding |
+| W0002 | Warning | warning | Unused capability |
+| W0003 | Warning | warning | Unreachable code after `stop()` |
+| W0004 | Warning | warning | Enum match covers only specific values of a variant (add a binding arm or wildcard) |
+
+E0003 and E0013 are reserved: the codes are allocated and documented here, but
+no compiler path constructs them yet. They keep their meaning when first
+emitted (error codes are append-only — see `docs/STABILITY.md`).
 
 ---
 

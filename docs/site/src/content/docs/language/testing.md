@@ -41,12 +41,14 @@ The body can contain any expression, including `let` bindings, `match` expressio
 
 ## Assert
 
-The `assert` keyword evaluates an expression and raises a `RuntimeError` if the result is not `true`:
+The `assert` keyword evaluates an expression and raises a structured `Skein.Runtime.AssertionError` if the result is not `true`:
 
 ```skein
 assert add(2, 3) == 5     -- passes: 2 + 3 == 5 is true
-assert add(2, 3) == 99    -- fails: raises RuntimeError("Assertion failed")
+assert add(2, 3) == 99    -- fails: raises Skein.Runtime.AssertionError
 ```
+
+The error carries the comparison operator and both operand values (`op`, `left`, `right`), the rendered source expression (`expr`), and the assert's source location (`file`, `line`) — so failures report expected vs actual instead of a bare "Assertion failed".
 
 Assert works with any expression that returns a boolean:
 
@@ -73,24 +75,22 @@ mod.__tests__()
 # ]
 
 mod.__test_0__()
-#=> :ok  (or raises RuntimeError)
+#=> :ok  (or raises Skein.Runtime.AssertionError)
 ```
 
 ## Running Tests
-
-### Single File
-
-```bash
-# Compile and run tests in one .skein file
-mix skein.compile path/to/module.skein
-```
 
 ### Project-Wide
 
 ```bash
 # Discover and run all tests across src/ and test/ directories
+skein test my_project
+
+# Or via Mix:
 mix skein.test my_project
 ```
+
+(`mix skein.compile` only compiles a file — it never runs tests.)
 
 The test runner:
 1. Walks `test/` and `src/` directories for `.skein` files
@@ -136,8 +136,6 @@ Tests are regular module declarations. They can be mixed freely with functions, 
 
 ```skein
 module UserService {
-  capability http.out("api.example.com")
-
   type User {
     name: String
     email: Email
@@ -233,15 +231,18 @@ Golden tests appear in `__tests__/0` with `kind: :golden`.
 
 ### Trace File Format
 
+Trace files contain event objects from the unified event store (`Skein.Runtime.EventStore`). Each event has at minimum a `kind` field:
+
 ```json
 [
-  {"kind": "handler", "method": "get", "path": "/refund", "status": 200},
-  {"kind": "llm", "model": "claude-opus-4-8", "tokens": 150},
-  {"kind": "memory", "operation": "put", "key": "decision"}
+  {"kind": "effect", "method": "get", "url": "https://api.example.com/refund", "status": 200},
+  {"kind": "annotation", "key": "decision", "value": "approved"},
+  {"kind": "state_change", "namespace": "sessions", "operation": "put", "key": "decision", "value": "approved"},
+  {"kind": "user_event", "event": "refund.approved", "data": {"amount": 100}}
 ]
 ```
 
-Supported span kinds: `handler`, `llm`, `memory`, `http`.
+Supported event kinds: `effect`, `state_change`, `user_event`, `annotation`. Legacy span kinds (`handler`, `llm`, `memory`, `http`) are still accepted for traces recorded before the unified event store.
 
 ## Test Kind Field
 

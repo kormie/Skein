@@ -94,6 +94,7 @@ spans, and a server that is down is a structured `LlmError`.
 | `backend` | Serves calls via |
 |-----------|------------------|
 | `anthropic` | Anthropic Messages API (production default) |
+| `bedrock` | Amazon Bedrock Converse API — SigV4-signed with AWS env credentials; set `region` (or `AWS_REGION`) and `model_map` to remap declared models to Bedrock model IDs (e.g. `"global.anthropic.claude-sonnet-4-6"`) |
 | `openai_compatible` | `POST {base_url}/chat/completions` on a local/self-hosted server |
 | `test` | Deterministic in-process responses (CI without inference) |
 
