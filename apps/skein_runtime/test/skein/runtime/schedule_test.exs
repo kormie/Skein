@@ -36,6 +36,32 @@ defmodule Skein.Runtime.ScheduleTest do
     test "trigger with unregistered cron expression does nothing" do
       assert :ok = Schedule.trigger("0 0 1 1 *")
     end
+
+    test "duplicate idempotent key skips silently and keeps registrations" do
+      Skein.Runtime.Idempotent.reset_all()
+      on_exit(fn -> Skein.Runtime.Idempotent.reset_all() end)
+
+      test_pid = self()
+
+      handler_fn = fn _ctx ->
+        Skein.Runtime.Idempotent.check!("schedule-dup-key")
+        send(test_pid, :ran)
+        {:respond_json, 200, "tick"}
+      end
+
+      Schedule.register_fn("*/5 * * * *", handler_fn)
+      server = Process.whereis(Schedule)
+
+      Schedule.trigger("*/5 * * * *")
+      assert_receive :ran, 1000
+
+      # The duplicate key must be skipped, not crash the GenServer
+      Schedule.trigger("*/5 * * * *")
+      refute_receive :ran, 200
+
+      assert Process.whereis(Schedule) == server
+      assert "*/5 * * * *" in Schedule.list_schedules()
+    end
   end
 
   describe "list_schedules/0" do
