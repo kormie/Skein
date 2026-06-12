@@ -99,6 +99,29 @@ jobs:
       - name: List build artifacts
         run: ls -lah burrito_out/
 
+      # The TUI must never change plain output: piped invocations (with or
+      # without --interactive) fall back to line output (issue #171).
+      - name: Verify plain output is TUI-free
+        run: |
+          set -euo pipefail
+          test "$(./burrito_out/skein_linux trace)" = "Traces (0):"
+          test "$(./burrito_out/skein_linux trace --interactive)" = "Traces (0):"
+          test "$(./burrito_out/skein_linux trace --no-tui)" = "Traces (0):"
+
+      # --- TEMPORARY #171 spike diagnostics (revert before merge) ---
+      - name: Spike diagnostics (sizes, cold start, app isolation)
+        run: |
+          set -euo pipefail
+          stat -c "%n %s bytes" burrito_out/*
+          ./burrito_out/skein_linux version
+          for i in 1 2 3 4 5; do
+            start=$(date +%s%N)
+            ./burrito_out/skein_linux version > /dev/null
+            end=$(date +%s%N)
+            echo "warm version run: $(((end - start) / 1000000))ms"
+          done
+          ./burrito_out/skein_linux __diag
+
       - name: Upload Linux x86_64 binary
         if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@v7

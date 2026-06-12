@@ -140,6 +140,21 @@ defmodule Skein.CLI.Main do
     end
   end
 
+  # TEMPORARY #171 spike diagnostics (revert before merge): evidence that
+  # plain CLI paths start none of the raxol/phoenix closure and which
+  # terminal driver backend the wrapped binary selected.
+  def dispatch(["__diag" | _]) do
+    started = Application.started_applications() |> Enum.map(&elem(&1, 0)) |> Enum.sort()
+
+    IO.puts(
+      "started_applications (#{length(started)}): #{Enum.map_join(started, ",", &Atom.to_string/1)}"
+    )
+
+    IO.puts("raxol_started: #{:raxol in started}")
+    IO.puts("driver_backend: #{inspect(Raxol.Terminal.Driver.backend())}")
+    System.halt(0)
+  end
+
   def dispatch(["trace" | rest]) do
     {interactive, rest} = Skein.CLI.Tui.interactive?(rest)
 
