@@ -4034,4 +4034,83 @@ defmodule Skein.CodeGen.CoreErlangTest do
       end
     end
   end
+
+  describe "pipe expression codegen" do
+    test "pipes into a one-argument local function" do
+      mod =
+        compile!("""
+          module PipeLocalTest {
+            fn double(x: Int) -> Int {
+              x * 2
+            }
+
+            fn run(x: Int) -> Int {
+              x |> double()
+            }
+          }
+        """)
+
+      assert mod.run(21) == 42
+    end
+
+    test "pipes into a stdlib call" do
+      mod =
+        compile!("""
+          module PipeStdlibTest {
+            fn shout(s: String) -> String {
+              s |> String.upcase()
+            }
+          }
+        """)
+
+      assert mod.shout("hi") == "HI"
+    end
+
+    test "pipes into a multi-argument call with remaining args" do
+      mod =
+        compile!("""
+          module PipeArgsTest {
+            fn add(a: Int, b: Int) -> Int {
+              a + b
+            }
+
+            fn run(x: Int) -> Int {
+              x |> add(1)
+            }
+          }
+        """)
+
+      assert mod.run(41) == 42
+    end
+
+    test "chains multiple pipes" do
+      mod =
+        compile!("""
+          module PipeChainTest {
+            fn double(x: Int) -> Int {
+              x * 2
+            }
+
+            fn run(x: Int) -> Int {
+              x |> double() |> double()
+            }
+          }
+        """)
+
+      assert mod.run(10) == 40
+    end
+
+    test "pipes into a stdlib call with remaining args" do
+      mod =
+        compile!("""
+          module PipeStdlibArgsTest {
+            fn run(s: String) -> Bool {
+              s |> String.contains("ell")
+            }
+          }
+        """)
+
+      assert mod.run("hello") == true
+    end
+  end
 end

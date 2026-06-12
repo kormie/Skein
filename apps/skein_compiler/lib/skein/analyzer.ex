@@ -1896,19 +1896,16 @@ defmodule Skein.Analyzer do
     end
   end
 
-  # Pipe expression
+  # Pipe expression: the piped value becomes the first argument of the
+  # right-hand call (spec section 4 rule 8), so check the desugared call.
+  defp infer_type(%AST.Pipe{left: left, right: %AST.Call{args: args} = call}, env) do
+    infer_type(%{call | args: [left | args]}, env)
+  end
+
   defp infer_type(%AST.Pipe{left: left, right: right}, env) do
     {_left_type, left_errors} = infer_type(left, env)
-
-    case right do
-      %AST.Call{} ->
-        {right_type, right_errors} = infer_type(right, env)
-        {right_type, left_errors ++ right_errors}
-
-      _ ->
-        {right_type, right_errors} = infer_type(right, env)
-        {right_type, left_errors ++ right_errors}
-    end
+    {right_type, right_errors} = infer_type(right, env)
+    {right_type, left_errors ++ right_errors}
   end
 
   # Enum variant reference: Status.Active — zero-field construction.
