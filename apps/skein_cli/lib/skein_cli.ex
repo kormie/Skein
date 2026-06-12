@@ -300,7 +300,9 @@ defmodule Skein.CLI do
         trace)
           _arguments \\
             '--last[Number of traces (default 10)]:count:' \\
-            '--kind[Filter by span kind]:kind:(http llm tool memory store queue topic schedule handler)'
+            '--kind[Filter by span kind]:kind:(http llm tool memory store queue topic schedule handler)' \\
+            '--interactive[Explore spans in a TUI (TTY only)]' \\
+            '--no-tui[Force plain output]'
           ;;
         completions)
           compadd zsh

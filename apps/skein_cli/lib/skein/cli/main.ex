@@ -141,9 +141,16 @@ defmodule Skein.CLI.Main do
   end
 
   def dispatch(["trace" | rest]) do
+    {interactive, rest} = Skein.CLI.Tui.interactive?(rest)
+
     case Skein.CLI.trace(rest) do
       {:ok, result} ->
-        IO.puts(Skein.CLI.Render.trace_plain(result))
+        if interactive do
+          Skein.CLI.Tui.run_trace(result)
+        else
+          IO.puts(Skein.CLI.Render.trace_plain(result))
+        end
+
         System.halt(0)
 
       {:error, reason} ->
@@ -267,6 +274,8 @@ defmodule Skein.CLI.Main do
       run --port <port>          Server port (default: 4000)
       trace --last <n>           Number of traces (default: 10)
       trace --kind <kind>        Filter by span kind
+      trace --interactive        Explore spans in a TUI (TTY only; experimental)
+      trace --no-tui             Force plain output (also: SKEIN_NO_TUI=1)
     """
   end
 
