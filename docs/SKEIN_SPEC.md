@@ -739,9 +739,21 @@ All errors are JSON-serializable with this structure:
   "location": { "file": "service.skein", "line": 12, "col": 5 },
   "context": "The source line or expression in question",
   "fix_hint": "Explanation of how to fix",
-  "fix_code": "Exact code to add or change"
+  "fix_code": "Exact code to add or change",
+  "span": { "start": { "line": 2, "col": 3 }, "end": { "line": 2, "col": 3 } },
+  "edit_kind": "insert_line"
 }
 ```
+
+`span` and `edit_kind` are present when the `fix_code` is an exact,
+machine-applicable edit (they are `null` when `fix_code` is an
+illustrative template). `span` is 1-based with an exclusive end column;
+`edit_kind` is one of `replace` (swap the spanned text for `fix_code`;
+empty `fix_code` deletes it), `insert_before` / `insert_after` (insert
+`fix_code` at the span's start/end), `insert_line` (insert `fix_code` as
+a new line at the span's start line, indented to its start column), or
+`delete_line` (remove the spanned lines). Consumers can apply these
+edits generically — no per-error-code logic.
 
 ### Error Codes
 

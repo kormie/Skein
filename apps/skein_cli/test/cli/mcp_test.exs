@@ -173,6 +173,32 @@ defmodule Skein.CLI.McpTest do
       assert is_binary(error["fix_code"])
     end
 
+    test "machine-applicable errors surface span and edit_kind", %{tmp_dir: tmp} do
+      path = Path.join(tmp, "fixable.skein")
+
+      # http.get without the http.out capability -> E0012 with an
+      # insert_line edit at the module body's first line
+      File.write!(path, """
+      module Fixable {
+        fn fetch() -> String {
+          let r = http.get("https://example.com/data")
+          r
+        }
+      }
+      """)
+
+      {is_error, text} = call_tool("skein_compile_check", %{"path" => path})
+
+      assert is_error == false
+      assert {:ok, result} = Jason.decode(text)
+      assert [error | _] = result["errors"]
+      assert error["code"] == "E0012"
+      assert error["edit_kind"] == "insert_line"
+
+      assert %{"start" => %{"line" => 2, "col" => 3}, "end" => %{"line" => 2, "col" => 3}} =
+               error["span"]
+    end
+
     test "compiles a project directory's src tree", %{tmp_dir: tmp} do
       project = Path.join(tmp, "proj")
       File.mkdir_p!(Path.join(project, "src"))

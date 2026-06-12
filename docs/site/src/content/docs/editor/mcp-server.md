@@ -101,7 +101,9 @@ directly. Warnings are included; `ok` reflects errors only:
       "message": "Missing capability declaration for http.out",
       "location": { "file": "src/main.skein", "line": 3, "col": 13 },
       "fix_hint": "Add the capability declaration to the module",
-      "fix_code": "capability http.out(\"example.com\")"
+      "fix_code": "capability http.out(\"example.com\")",
+      "span": { "start": { "line": 2, "col": 3 }, "end": { "line": 2, "col": 3 } },
+      "edit_kind": "insert_line"
     }
   ],
   "warnings": [
@@ -119,7 +121,13 @@ directly. Warnings are included; `ok` reflects errors only:
 
 Skein's compiler errors carry `fix_hint` and `fix_code` precisely so agents
 can apply fixes mechanically — MCP delivers them without shelling out and
-parsing CLI output.
+parsing CLI output. When the fix is an exact edit, `span` (1-based,
+end-exclusive) and `edit_kind` say where and how to apply it without any
+per-error-code logic: `replace` the spanned text with `fix_code`,
+`insert_before`/`insert_after` it at the span's edges, `insert_line` it as
+a new line indented to the span's start column, or `delete_line` the
+spanned lines. A `null` `edit_kind` marks `fix_code` as an illustrative
+template rather than a verbatim edit.
 
 ## Related
 

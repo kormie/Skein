@@ -16,7 +16,7 @@ The server advertises these LSP capabilities:
 | `textDocument/hover` | Type information on hover |
 | `textDocument/definition` | Go-to-definition for functions and types |
 | `textDocument/completion` | Context-aware code completion |
-| `textDocument/codeAction` | Quickfixes from each error's `fix_hint`/`fix_code` (missing tokens, missing capability lines, unused declarations) |
+| `textDocument/codeAction` | Quickfixes applied generically from each error's `span`/`edit_kind`/`fix_code` (with a per-code fallback for span-less diagnostics) |
 | `textDocument/semanticTokens/full` | Semantic highlighting |
 | `textDocument/didOpen` | Document tracking |
 | `textDocument/didChange` | Full document sync |
@@ -135,6 +135,6 @@ Tests exercise each module directly without needing a running LSP process:
 - **Diagnostics tests** — Valid source produces no diagnostics; invalid source produces correct error codes, locations, and severities
 - **Symbols tests** — Modules produce correct symbol hierarchies; agents include state fields, phases, and handlers
 - **Completion tests** — Keywords, types, effect namespaces, and method completions after `.`
-- **Code action tests** — Quickfix edits for missing tokens (`E0001`), missing capabilities (`E0012`), unused capabilities (`W0002`), and unused bindings (`W0001`)
+- **Code action tests** — Generic span/edit_kind quickfixes (replace, insert, line insert/delete) pinned against real compiler output, plus the per-code fallback for missing tokens (`E0001`), missing capabilities (`E0012`), unused capabilities (`W0002`), and unused bindings (`W0001`)
 - **Hover tests** — Function signatures, built-in type descriptions
 - **Semantic token tests** — Valid source encodes to groups-of-5 integers; invalid source returns empty

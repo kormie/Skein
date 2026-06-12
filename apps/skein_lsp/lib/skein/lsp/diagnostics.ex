@@ -75,17 +75,11 @@ defmodule Skein.Lsp.Diagnostics do
   end
 
   defp error_to_diagnostic(%Skein.Error{} = error) do
-    line = max((error.location[:line] || 1) - 1, 0)
-    col = max((error.location[:col] || 1) - 1, 0)
-
     message =
       build_message(error.code, error.message, error.fix_hint)
 
     %Diagnostic{
-      range: %Range{
-        start: %Position{line: line, character: col},
-        end: %Position{line: line, character: col + diagnostic_length(error)}
-      },
+      range: diagnostic_range(error),
       severity: severity(error.severity),
       code: error.code,
       source: "skein",
@@ -95,10 +89,42 @@ defmodule Skein.Lsp.Diagnostics do
       data: %{
         "code" => error.code,
         "fix_hint" => error.fix_hint,
-        "fix_code" => error.fix_code
+        "fix_code" => error.fix_code,
+        "span" => encode_span(error.span),
+        "edit_kind" => error.edit_kind && to_string(error.edit_kind)
       }
     }
   end
+
+  # A non-empty span gives the diagnostic its exact extent; otherwise fall
+  # back to the point location (widened by the context line when known).
+  defp diagnostic_range(%Skein.Error{span: %{start: start, end: stop}})
+       when start != stop do
+    %Range{
+      start: %Position{line: start.line - 1, character: start.col - 1},
+      end: %Position{line: stop.line - 1, character: stop.col - 1}
+    }
+  end
+
+  defp diagnostic_range(%Skein.Error{} = error) do
+    line = max((error.location[:line] || 1) - 1, 0)
+    col = max((error.location[:col] || 1) - 1, 0)
+
+    %Range{
+      start: %Position{line: line, character: col},
+      end: %Position{line: line, character: col + diagnostic_length(error)}
+    }
+  end
+
+  # String-keyed so server-side reads and client JSON round-trips agree.
+  defp encode_span(%{start: start, end: stop}) do
+    %{
+      "start" => %{"line" => start.line, "col" => start.col},
+      "end" => %{"line" => stop.line, "col" => stop.col}
+    }
+  end
+
+  defp encode_span(nil), do: nil
 
   defp build_message(code, message, nil), do: "[#{code}] #{message}"
 

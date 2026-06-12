@@ -267,10 +267,13 @@ defmodule Skein.AST do
             name: String.t(),
             type: Skein.AST.TypeRef.t() | nil,
             value: Skein.AST.expr(),
-            meta: Skein.AST.meta()
+            meta: Skein.AST.meta(),
+            name_meta: Skein.AST.meta() | nil
           }
 
-    defstruct [:name, :type, :value, :meta]
+    # name_meta locates the binding name itself (meta points at `let`),
+    # so diagnostics can span the exact identifier.
+    defstruct [:name, :type, :value, :meta, :name_meta]
   end
 
   defmodule Match do

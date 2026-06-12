@@ -40,6 +40,26 @@ defmodule Skein.ErrorTest do
       assert error.context == nil
       assert error.fix_hint == nil
       assert error.fix_code == nil
+      assert error.span == nil
+      assert error.edit_kind == nil
+    end
+  end
+
+  describe "span helpers" do
+    test "span/3 builds a 1-based, end-exclusive single-line span" do
+      assert Error.span(3, 7, 5) == %{
+               start: %{line: 3, col: 7},
+               end: %{line: 3, col: 12}
+             }
+    end
+
+    test "point/2 builds a zero-width span" do
+      assert Error.point(2, 4) == %{start: %{line: 2, col: 4}, end: %{line: 2, col: 4}}
+    end
+
+    test "edit_kinds/0 lists the machine-applicable kinds" do
+      assert :replace in Error.edit_kinds()
+      assert :delete_line in Error.edit_kinds()
     end
   end
 
@@ -83,6 +103,29 @@ defmodule Skein.ErrorTest do
       assert decoded["context"] == nil
       assert decoded["fix_hint"] == nil
       assert decoded["fix_code"] == nil
+      assert decoded["span"] == nil
+      assert decoded["edit_kind"] == nil
+    end
+
+    test "serializes span and edit_kind additively" do
+      error = %Error{
+        code: "W0001",
+        severity: :warning,
+        message: "Unused binding 'x'",
+        location: %{file: "main.skein", line: 5, col: 9},
+        fix_code: "_x",
+        span: Error.span(5, 9, 1),
+        edit_kind: :replace
+      }
+
+      decoded = error |> Error.to_json() |> Jason.decode!()
+
+      assert decoded["span"] == %{
+               "start" => %{"line" => 5, "col" => 9},
+               "end" => %{"line" => 5, "col" => 10}
+             }
+
+      assert decoded["edit_kind"] == "replace"
     end
 
     test "produces valid JSON string" do
