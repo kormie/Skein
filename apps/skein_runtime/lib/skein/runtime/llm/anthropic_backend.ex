@@ -22,12 +22,14 @@ defmodule Skein.Runtime.Llm.AnthropicBackend do
 
   @behaviour Skein.Runtime.Llm.Backend
 
+  alias Skein.Runtime.Llm.AsyncBody
   alias Skein.Runtime.Llm.Error
   alias Skein.Runtime.Llm.Response
 
   @api_url "https://api.anthropic.com/v1/messages"
   @anthropic_version "2023-06-01"
   @default_max_tokens 4096
+  @receive_timeout 120_000
 
   # -- Public API ----------------------------------------------------------
 
@@ -144,6 +146,12 @@ defmodule Skein.Runtime.Llm.AnthropicBackend do
       System.get_env("ANTHROPIC_API_KEY")
   end
 
+  # The endpoint override exists for stub-server tests; production
+  # always talks to @api_url.
+  defp api_url do
+    Application.get_env(:skein_runtime, :anthropic_api_url, @api_url)
+  end
+
   defp headers do
     [
       {"x-api-key", get_api_key() || ""},
@@ -162,7 +170,7 @@ defmodule Skein.Runtime.Llm.AnthropicBackend do
   end
 
   defp post(body) do
-    case Req.post(@api_url, json: body, headers: headers(), receive_timeout: 120_000) do
+    case Req.post(api_url(), json: body, headers: headers(), receive_timeout: @receive_timeout) do
       {:ok, %Req.Response{status: 200, body: response_body}} ->
         {:ok, response_body}
 
@@ -170,7 +178,7 @@ defmodule Skein.Runtime.Llm.AnthropicBackend do
         {:error, map_http_error(status, response_body)}
 
       {:error, %Req.TransportError{reason: :timeout}} ->
-        {:error, Error.timeout(120_000)}
+        {:error, Error.timeout(@receive_timeout)}
 
       {:error, exception} ->
         {:error, Error.provider_error("transport", redact_api_key(Exception.message(exception)))}
@@ -178,53 +186,62 @@ defmodule Skein.Runtime.Llm.AnthropicBackend do
   end
 
   defp post_stream(body) do
-    case Req.post(@api_url,
+    case Req.post(api_url(),
            json: body,
            headers: headers(),
-           receive_timeout: 120_000,
+           receive_timeout: @receive_timeout,
            into: :self
          ) do
-      {:ok, %Req.Response{status: 200} = resp} ->
-        collect_sse_chunks(resp)
+      {:ok, %Req.Response{status: 200, body: %Req.Response.Async{} = async}} ->
+        collect_sse_chunks(async)
 
-      {:ok, %Req.Response{status: status, body: response_body}} ->
-        {:error, map_http_error(status, response_body)}
+      {:ok, %Req.Response{status: status} = resp} ->
+        {:error, map_http_error(status, drained_body(resp))}
 
       {:error, %Req.TransportError{reason: :timeout}} ->
-        {:error, Error.timeout(120_000)}
+        {:error, Error.timeout(@receive_timeout)}
 
       {:error, exception} ->
         {:error, Error.provider_error("transport", redact_api_key(Exception.message(exception)))}
     end
   end
 
-  defp collect_sse_chunks(resp) do
-    collect_sse_chunks(resp, [], "")
-  end
+  defp collect_sse_chunks(async) do
+    result =
+      AsyncBody.collect(async, {[], ""}, @receive_timeout, fn data, {chunks, buffer} ->
+        {events, remaining} = parse_sse_buffer(buffer <> data)
+        # Each batch pushes onto the reversed accumulator, so the batch
+        # itself must be pushed reversed to keep delta order.
+        {:cont, {Enum.reverse(extract_text_deltas(events), chunks), remaining}}
+      end)
 
-  defp collect_sse_chunks(resp, chunks, buffer) do
-    ref = resp.body
-
-    receive do
-      {^ref, {:data, data}} ->
-        new_buffer = buffer <> data
-        {events, remaining} = parse_sse_buffer(new_buffer)
-        new_chunks = extract_text_deltas(events) ++ chunks
-        collect_sse_chunks(resp, new_chunks, remaining)
-
-      {^ref, :done} ->
+    case result do
+      {:done, {chunks, buffer}} ->
         # Process any remaining buffer
         {events, _} = parse_sse_buffer(buffer)
-        final_chunks = extract_text_deltas(events) ++ chunks
-        {:ok, Enum.reverse(final_chunks)}
+        {:ok, Enum.reverse(Enum.reverse(extract_text_deltas(events), chunks))}
 
-      {^ref, {:error, reason}} ->
+      {:stream_error, reason} ->
         {:error, Error.provider_error("stream", "Stream error: #{inspect(reason)}")}
-    after
-      120_000 ->
-        {:error, Error.timeout(120_000)}
+
+      :timeout ->
+        {:error, Error.timeout(@receive_timeout)}
     end
   end
+
+  # Non-200 answers to a streaming request still deliver their (JSON)
+  # error body through the async mailbox — drain it so the structured
+  # error carries the real message instead of an opaque struct.
+  defp drained_body(%Req.Response{body: %Req.Response.Async{} = async}) do
+    raw = AsyncBody.drain(async, 5_000)
+
+    case Jason.decode(raw) do
+      {:ok, decoded} -> decoded
+      _ -> raw
+    end
+  end
+
+  defp drained_body(%Req.Response{body: body}), do: body
 
   # -- SSE Parsing ---------------------------------------------------------
 

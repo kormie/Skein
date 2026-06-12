@@ -45,6 +45,11 @@ defmodule SkeinRuntime.MixProject do
       {:stream_data, "~> 1.1", only: [:test, :dev]},
       {:propcheck, "~> 1.4", only: [:test, :dev]},
       {:req, "~> 0.5"},
+      # runtime: false — started on demand by the Bedrock backend's
+      # credential-chain resolution; with no credentials found the app
+      # re-probes every 5s, a cost non-AWS deployments must never pay.
+      # Included :load in the release (root mix.exs).
+      {:aws_credentials, "~> 0.3", runtime: false},
       {:skein_compiler, in_umbrella: true}
     ]
   end

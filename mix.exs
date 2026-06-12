@@ -72,7 +72,13 @@ defmodule Skein.MixProject do
           skein_cli: :permanent,
           skein_compiler: :permanent,
           skein_runtime: :permanent,
-          skein_lsp: :permanent
+          skein_lsp: :permanent,
+          # runtime: false deps are excluded from releases unless listed;
+          # :load ships them started-on-demand (Bedrock credential chain).
+          aws_credentials: :load,
+          jsx: :load,
+          eini: :load,
+          iso8601: :load
         ],
         steps: [:assemble, &Burrito.wrap/1],
         burrito: [
