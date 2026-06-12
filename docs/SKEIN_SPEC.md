@@ -80,7 +80,8 @@ is an ordinary identifier elsewhere.
 ```
 integer     = [0-9][0-9_]*                        -- 42, 1_000_000
 float       = [0-9]+\.[0-9]+                      -- 3.14
-string      = "..." with ${expr} interpolation     -- "hello ${name}"
+string      = "..." with ${ident} interpolation    -- "hello ${name}", "${user.id}"
+              (an identifier with optional dot access; not arbitrary expressions)
 boolean     = true | false
 ```
 

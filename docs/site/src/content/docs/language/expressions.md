@@ -50,7 +50,16 @@ Strings with interpolation:
 
 ```skein
 "Hello, ${name}!"
-"Result: ${a + b}"
+"id: ${user.id}"
+```
+
+Interpolation accepts an identifier with optional dot access (`${name}`,
+`${user.id}`) — not arbitrary expressions. To interpolate a computed value,
+bind it first:
+
+```skein
+let result = a + b
+"Result: ${result}"
 ```
 
 String interpolation compiles to `erlang:iolist_to_binary/1` over an iolist. For example, `"Hello, ${name}!"` compiles to:

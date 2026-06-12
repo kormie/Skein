@@ -156,6 +156,25 @@ defmodule Skein.LexerTest do
       assert error.message =~ "Unterminated string"
     end
 
+    test "reports a clear error for expressions in interpolation" do
+      assert {:error, [error]} = Lexer.tokenize(~s("Result: ${a + b}"))
+      assert error.code == "E0002"
+      assert error.message =~ "Expressions are not allowed in string interpolation"
+      assert error.fix_hint =~ "let"
+    end
+
+    test "reports a clear error for call expressions in interpolation" do
+      assert {:error, [error]} = Lexer.tokenize(~s|"${String.upcase(name)}"|)
+      assert error.code == "E0002"
+      assert error.message =~ "Expressions are not allowed in string interpolation"
+    end
+
+    test "still reports unterminated interpolation when the brace is missing" do
+      assert {:error, [error]} = Lexer.tokenize(~s("Hello, ${name"))
+      assert error.code == "E0002"
+      assert error.message =~ "Unterminated string interpolation"
+    end
+
     test "tokenizes string with escaped dollar sign" do
       assert {:ok, [{:string, {1, 1}, [{:literal, "$100"}]}, {:eof, _}]} =
                Lexer.tokenize(~s("\\$100"))
