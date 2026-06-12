@@ -38,11 +38,43 @@ defmodule Skein.CLI.Tui do
   @doc """
   Runs the interactive trace explorer for an already-fetched trace result.
 
-  Falls back to the plain rendering until the TUI application lands.
+  Starts the raxol application closure on demand (it ships `:load`-only in
+  the release so plain CLI paths never boot it), runs the TEA app, and
+  blocks until the user quits. Any failure to start the TUI falls back to
+  the plain rendering — the user is never stranded without output.
   """
   @spec run_trace(%{spans: [map()], count: non_neg_integer()}) :: :ok
   def run_trace(result) do
-    IO.puts(Skein.CLI.Render.trace_plain(result))
+    with {:ok, _apps} <- start_tui_runtime(),
+         {:ok, pid} when is_pid(pid) <-
+           Raxol.run(Skein.CLI.Tui.TraceApp, trace_result: result, title: "skein trace") do
+      await(pid)
+    else
+      _ -> IO.puts(Skein.CLI.Render.trace_plain(result))
+    end
+
+    :ok
+  end
+
+  defp start_tui_runtime do
+    # Raxol logs through Logger; the alternate screen owns stdout, so
+    # route the default handler to stderr (same idiom as mcp/lsp).
+    :logger.remove_handler(:default)
+
+    :logger.add_handler(:default, :logger_std_h, %{
+      config: %{type: :standard_error},
+      formatter: Logger.default_formatter()
+    })
+
+    Application.ensure_all_started(:raxol)
+  end
+
+  defp await(pid) do
+    ref = Process.monitor(pid)
+
+    receive do
+      {:DOWN, ^ref, :process, ^pid, _reason} -> :ok
+    end
   end
 
   @doc """

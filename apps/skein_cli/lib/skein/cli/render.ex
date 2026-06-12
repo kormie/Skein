@@ -19,10 +19,17 @@ defmodule Skein.CLI.Render do
   """
   @spec trace_plain(%{spans: [map()], count: non_neg_integer()}) :: String.t()
   def trace_plain(%{spans: spans, count: count}) do
-    Enum.join(["Traces (#{count}):" | Enum.map(spans, &span_line/1)], "\n")
+    Enum.join(["Traces (#{count}):" | Enum.map(spans, &("  " <> span_line(&1)))], "\n")
   end
 
-  defp span_line(span) do
+  @doc """
+  Renders one span as a single ASCII line (without indentation).
+
+  Shared by the plain listing and the interactive TUI so both surfaces
+  describe spans identically.
+  """
+  @spec span_line(map()) :: String.t()
+  def span_line(span) do
     kind = Map.get(span, :kind, :span)
 
     parts =
@@ -30,7 +37,7 @@ defmodule Skein.CLI.Render do
       |> List.flatten()
       |> Enum.reject(&is_nil/1)
 
-    Enum.join(["  [#{kind}]" | parts], " ")
+    Enum.join(["[#{kind}]" | parts], " ")
   end
 
   defp kind_summary(:annotation, span) do
