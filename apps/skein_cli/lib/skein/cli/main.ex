@@ -143,12 +143,7 @@ defmodule Skein.CLI.Main do
   def dispatch(["trace" | rest]) do
     case Skein.CLI.trace(rest) do
       {:ok, result} ->
-        IO.puts("Traces (#{result.count}):")
-
-        for span <- result.spans do
-          IO.puts("  [#{span.kind}] #{span.name} (#{span.duration_ms}ms)")
-        end
-
+        IO.puts(Skein.CLI.Render.trace_plain(result))
         System.halt(0)
 
       {:error, reason} ->
