@@ -63,8 +63,8 @@ Floating-point operations.
 ```skein
 Float.parse("3.14")     -- Ok(3.14)
 Float.round(3.456, 2)   -- 3.46
-Float.ceil(2.1)          -- 3.0
-Float.floor(2.9)         -- 2.0
+Float.ceil(2.1)          -- 3
+Float.floor(2.9)         -- 2
 ```
 
 | Function | Signature | Description |
@@ -72,20 +72,24 @@ Float.floor(2.9)         -- 2.0
 | `parse` | `(String) -> Result[Float, String]` | Parse string to float |
 | `to_string` | `(Float) -> String` | Convert to string |
 | `round` | `(Float, Int) -> Float` | Round to N decimal places |
-| `ceil` | `(Float) -> Float` | Round up |
-| `floor` | `(Float) -> Float` | Round down |
+| `ceil` | `(Float) -> Int` | Round up to the nearest integer |
+| `floor` | `(Float) -> Int` | Round down to the nearest integer |
 
 ## List
 
 Collection operations. Lists are ordered, heterogeneous sequences.
 
 ```skein
+fn double(x: Int) -> Int { x * 2 }
+fn over_three(x: Int) -> Bool { x > 3 }
+fn add(acc: Int, x: Int) -> Int { acc + x }
+
 let nums = [1, 2, 3, 4, 5]
-List.map(nums, fn(x) { x * 2 })       -- [2, 4, 6, 8, 10]
-List.filter(nums, fn(x) { x > 3 })    -- [4, 5]
-List.reduce(nums, 0, fn(acc, x) { acc + x }) -- 15
-List.first(nums)                       -- Some(1)
-List.reverse(nums)                     -- [5, 4, 3, 2, 1]
+List.map(nums, &double)        -- [2, 4, 6, 8, 10]
+List.filter(nums, &over_three) -- [4, 5]
+List.reduce(nums, 0, &add)     -- 15
+List.first(nums)               -- Some(1)
+List.reverse(nums)             -- [5, 4, 3, 2, 1]
 ```
 
 | Function | Signature | Description |
@@ -172,10 +176,12 @@ Optional values. Used when a value may or may not exist.
 Values are `Some(value)` or `None`. Functions like `List.find` and `Map.get` return `Option`.
 
 ```skein
+fn increment(n: Int) -> Int { n + 1 }
+
 let x = Some(42)
-Option.unwrap(x, 0)   -- 42 (returns 0 on None)
-Option.map(x, fn(n) { n + 1 })  -- Some(43)
-Option.is_some(x)     -- true
+Option.unwrap(x, 0)        -- 42 (returns 0 on None)
+Option.map(x, &increment)  -- Some(43)
+Option.is_some(x)          -- true
 ```
 
 | Function | Signature | Description |
@@ -193,10 +199,12 @@ Error handling. Used for operations that can succeed or fail.
 Values are `Ok(value)` or `Err(error)`. Effect calls and parsing functions return `Result`.
 
 ```skein
+fn increment(n: Int) -> Int { n + 1 }
+
 let r = Ok(42)
-Result.unwrap(r, 0)       -- 42 (returns 0 on Err)
-Result.map(r, fn(n) { n + 1 })  -- Ok(43)
-Result.is_ok(r)           -- true
+Result.unwrap(r, 0)        -- 42 (returns 0 on Err)
+Result.map(r, &increment)  -- Ok(43)
+Result.is_ok(r)            -- true
 ```
 
 | Function | Signature | Description |
@@ -278,4 +286,4 @@ String.upcase("hello")
 call 'Elixir.Skein.Runtime.Stdlib.String':'upcase'("hello")
 ```
 
-The code generator recognizes stdlib calls by matching the module name against `@stdlib_modules` in the code generator. No capabilities are required for stdlib calls since they are pure functions with no side effects.
+The code generator recognizes stdlib calls by matching the module name against `@stdlib_modules` in the code generator. No capabilities are required for stdlib calls since they perform no I/O effects — though note that `Uuid.new()` and `Instant.now()` are nondeterministic and return different values on each call.
