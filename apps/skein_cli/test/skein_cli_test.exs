@@ -44,8 +44,37 @@ defmodule Skein.CLITest do
 
   describe "compile/1" do
     test "compiles a valid .skein file", %{hello_path: path} do
-      assert {:ok, mod} = CLI.compile([path])
+      assert {:ok, mod, []} = CLI.compile([path])
       assert mod.greet("Skein") == "Hello, Skein!"
+    end
+
+    test "surfaces analyzer warnings alongside the compiled module" do
+      path = Path.join(@fixtures_dir, "warned.skein")
+
+      File.write!(path, """
+      module Warned {
+        capability http.out("api.example.com")
+
+        fn greet(name: String) -> String {
+          "Hello, ${name}!"
+        }
+      }
+      """)
+
+      assert {:ok, mod, [warning]} = CLI.compile([path])
+      assert mod.greet("Skein") == "Hello, Skein!"
+      assert warning.code == "W0002"
+    end
+
+    test "returns structured errors for a file that fails to compile" do
+      path = Path.join(@fixtures_dir, "broken.skein")
+
+      File.write!(path, """
+      module Broken {
+        fn greet(name: String) -> String {
+      """)
+
+      assert {:error, [%Skein.Error{} | _]} = CLI.compile([path])
     end
 
     test "returns error for nonexistent file" do

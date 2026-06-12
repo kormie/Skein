@@ -87,14 +87,18 @@ defmodule Skein.MixProject do
     ]
   end
 
+  # The aliases route through Skein.CLI.Main.dispatch/1 — the same
+  # printing and exit-code path as the standalone binary — so failures
+  # are reported and exit non-zero instead of being silently discarded
+  # (issue #198).
   defp aliases do
     [
-      "skein.compile": ["run -e 'Skein.CLI.compile(System.argv())'"],
-      "skein.new": ["run -e 'Skein.CLI.new(System.argv())'"],
-      "skein.build": ["run -e 'Skein.CLI.build(System.argv())'"],
-      "skein.test": ["run -e 'Skein.CLI.test_all(System.argv())'"],
-      "skein.run": ["run -e 'Skein.CLI.run(System.argv())'"],
-      "skein.trace": ["run -e 'Skein.CLI.trace(System.argv())'"],
+      "skein.compile": ["run -e 'Skein.CLI.Main.dispatch([\"compile\" | System.argv()])'"],
+      "skein.new": ["run -e 'Skein.CLI.Main.dispatch([\"new\" | System.argv()])'"],
+      "skein.build": ["run -e 'Skein.CLI.Main.dispatch([\"build\" | System.argv()])'"],
+      "skein.test": ["run -e 'Skein.CLI.Main.dispatch([\"test\" | System.argv()])'"],
+      "skein.run": ["run -e 'Skein.CLI.Main.dispatch([\"run\" | System.argv()])'"],
+      "skein.trace": ["run -e 'Skein.CLI.Main.dispatch([\"trace\" | System.argv()])'"],
       docs: ["docs"]
     ]
   end

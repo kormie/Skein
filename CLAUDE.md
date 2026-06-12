@@ -384,9 +384,8 @@ mix test
 mix format
 
 # CLI via Mix aliases: skein.compile / skein.new / skein.build / skein.test / skein.run / skein.trace
-# CAUTION: mix skein.compile and mix skein.test currently print nothing and
-# exit 0 on failure (issue #198) — do NOT use them as pass/fail gates until
-# that lands; use `mix test` (umbrella) as the gate instead.
+# These route through Skein.CLI.Main.dispatch — same output and exit codes
+# as the standalone binary (errors/warnings printed, non-zero on failure).
 mix skein.compile path/to/file.skein
 mix skein.test path/to/project
 
