@@ -22,12 +22,6 @@ defmodule Skein.Runtime.Stdlib.Map do
     end
   end
 
-  @doc "Returns the value for `key`, raising if the key is missing."
-  @spec get!(map(), any()) :: any()
-  def get!(map, key) when is_map(map) do
-    Map.fetch!(map, key)
-  end
-
   @doc "Inserts or updates `key` with `value` in `map`."
   @spec put(map(), any(), any()) :: map()
   def put(map, key, value) when is_map(map) do

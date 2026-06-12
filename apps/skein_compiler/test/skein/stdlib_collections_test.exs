@@ -256,6 +256,20 @@ defmodule Skein.StdlibCollectionsTest do
       assert mod.lookup(%{"a" => 1}, "b") == :none
       assert mod.insert(%{}, "x", 42) == %{"x" => 42}
     end
+
+    test "the documented fallback lookup pattern compiles and runs" do
+      mod =
+        compile!("""
+        module MapGetFallback {
+          fn lookup_or(m: Map[String, Int], k: String, default: Int) -> Int {
+            Option.unwrap(Map.get(m, k), default)
+          }
+        }
+        """)
+
+      assert mod.lookup_or(%{"a" => 1}, "a", 0) == 1
+      assert mod.lookup_or(%{"a" => 1}, "b", 0) == 0
+    end
   end
 
   describe "Map.keys, Map.values, Map.size" do

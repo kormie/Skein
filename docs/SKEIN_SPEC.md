@@ -475,7 +475,6 @@ List.group_by(l: List[T], f: &(T -> K)) -> Map[K, List[T]]
 
 ```
 Map.get(m: Map[K, V], key: K) -> Option[V]
-Map.get!(m: Map[K, V], key: K) -> V
 Map.put(m: Map[K, V], key: K, value: V) -> Map[K, V]
 Map.delete(m: Map[K, V], key: K) -> Map[K, V]
 Map.keys(m: Map[K, V]) -> List[K]

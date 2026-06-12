@@ -126,7 +126,6 @@ Key-value operations. Maps are unordered collections of unique keys to values.
 ```skein
 let m = { name: "Alice", age: 30 }
 Map.get(m, "name")        -- Some("Alice")
-Map.get!(m, "name")       -- "Alice" (raises on missing)
 Map.keys(m)               -- ["name", "age"]
 Map.has(m, "email")       -- false
 ```
@@ -134,7 +133,6 @@ Map.has(m, "email")       -- false
 | Function | Signature | Description |
 |----------|-----------|-------------|
 | `get` | `(Map[K,V], K) -> Option[V]` | Lookup by key |
-| `get!` | `(Map[K,V], K) -> V` | Lookup by key, raises on missing |
 | `put` | `(Map[K,V], K, V) -> Map[K,V]` | Insert or update key |
 | `delete` | `(Map[K,V], K) -> Map[K,V]` | Remove key |
 | `keys` | `(Map[K,V]) -> List[K]` | All keys |
@@ -145,6 +143,9 @@ Map.has(m, "email")       -- false
 | `merge` | `(Map[K,V], Map[K,V]) -> Map[K,V]` | Merge maps (second wins on conflicts) |
 | `map_values` | `(Map[K,V], (V) -> U) -> Map[K,U]` | Transform all values |
 | `filter` | `(Map[K,V], (K,V) -> Bool) -> Map[K,V]` | Keep matching entries |
+
+There is no raising Map lookup. To read a key with a fallback, unwrap the
+Option: `Option.unwrap(Map.get(m, key), default)`.
 
 ## Set
 

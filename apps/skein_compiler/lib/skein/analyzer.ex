@@ -176,7 +176,6 @@ defmodule Skein.Analyzer do
     },
     "Map" => %{
       "get" => %{params: [{:map, :unknown, :unknown}, :unknown], return_type: {:option, :unknown}},
-      "get!" => %{params: [{:map, :unknown, :unknown}, :unknown], return_type: :unknown},
       "put" => %{
         params: [{:map, :unknown, :unknown}, :unknown, :unknown],
         return_type: {:map, :unknown, :unknown}
