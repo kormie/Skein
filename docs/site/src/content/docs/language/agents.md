@@ -486,7 +486,7 @@ module Refunds {
 
 ## Compilation
 
-An agent named `RefundAgent` compiles to `Elixir.Skein.Agent.RefundAgent` with these generated functions:
+A top-level agent named `RefundAgent` compiles to `Elixir.Skein.Agent.RefundAgent`; nested inside `module Refunds` (as above) it compiles to `Elixir.Skein.Agent.Refunds.RefundAgent`. Either way the module carries these generated functions:
 
 | Function | Purpose |
 |----------|---------|
@@ -536,21 +536,23 @@ See [Supervisors](/Skein/language/supervisors/) for details.
 
 ## Testing Agents
 
-Agents are tested using Skein's built-in test constructs:
+Agents are tested using Skein's built-in test constructs. Test blocks are module-level declarations, so they live inside a module:
 
 ```skein
-test "refund agent approves valid refund" {
-  -- Unit tests can compile and start agents
-  assert true == true
-}
-
-scenario "refund flow" {
-  given {
-    ticket_id: "t-123"
-    customer_id: "c-456"
+module RefundAgentTests {
+  test "refund agent approves valid refund" {
+    -- Unit tests can compile and start agents
+    assert true == true
   }
-  expect {
-    assert ticket_id == "t-123"
+
+  scenario "refund flow" {
+    given {
+      ticket_id: "t-123"
+      customer_id: "c-456"
+    }
+    expect {
+      assert ticket_id == "t-123"
+    }
   }
 }
 ```

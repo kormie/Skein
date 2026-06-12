@@ -79,7 +79,7 @@ All binary operations compile to Core Erlang calls to the corresponding Erlang B
 | `a + b` | `call 'erlang':'+'(A, B)` |
 | `a - b` | `call 'erlang':'-'(A, B)` |
 | `a * b` | `call 'erlang':'*'(A, B)` |
-| `a / b` | `call 'erlang':'div'(A, B)` |
+| `a / b` | runtime dispatch: `'erlang':'/'` if either operand is a float, else `'erlang':'div'` |
 | `a == b` | `call 'erlang':'=='(A, B)` |
 | `a != b` | `call 'erlang':'/='(A, B)` |
 | `a < b` | `call 'erlang':'<'(A, B)` |
@@ -89,7 +89,7 @@ All binary operations compile to Core Erlang calls to the corresponding Erlang B
 | `a && b` | `call 'erlang':'and'(A, B)` |
 | `a \|\| b` | `call 'erlang':'or'(A, B)` |
 
-Note the Erlang-specific mappings: `!=` becomes `'/='`, `<=` becomes `'=<'`, `/` becomes `'div'`.
+Note the Erlang-specific mappings: `!=` becomes `'/='` and `<=` becomes `'=<'`. Division compiles to a runtime dispatch — float operands use Erlang `'/'` (float division), integer operands use `'div'` (integer division).
 
 ## Let Bindings
 
