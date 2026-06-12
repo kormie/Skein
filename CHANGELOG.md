@@ -1,5 +1,42 @@
 # Changelog
 
+## v1.0.0-rc.1 (2026-06-12)
+
+The **first 1.0 release candidate**. The `/release-readiness` audit adversarially swept every docs page, spec section, and example against the implementation; both resulting milestones of findings — the readiness pass (#182–#195) and the v1.0.0-rc burndown (#205–#220) — are fixed. The language surface, the frozen spec, and the documentation now describe the same system.
+
+### Language & Compiler
+
+- List literal expressions compile: `[1, 2]`, `[]`, nested lists, and literals as call arguments — previously every list literal crashed codegen with a raw `FunctionClauseError` that escaped into the MCP/LSP diagnostic paths (#205)
+- Pipe expressions compile per spec §4 rule 8: the analyzer and codegen both desugar `x |> f(args)` into `f(x, args)`, so pipes into local functions, stdlib calls, and chains all work end-to-end (#206)
+- `queue.publish` is wired end-to-end (analyzer, codegen, scoped runtime capability checks)
+- `llm.stream` accepts an optional `on_chunk` function-reference callback receiving `String` chunks
+- Effect calls are arity-checked against their documented parameter lists (E0020), including inside agent handler bodies, which previously skipped inference entirely
+- `transition()` and `stop()` outside agent handlers are structured compile errors (E0033, new E0036)
+- String interpolation rejects `${expr}` with a clear structured error and a bind-it-first fix hint — the supported surface is `${ident}` with optional dot access (#209)
+- Removed the uncallable `Map.get!` from the spec and stdlib reference; the fallback-lookup pattern is `Option.unwrap(Map.get(m, key), default)` (#208)
+- Stdlib/spec alignment: `Instant.diff` returns a `Duration`, `Option.unwrap`/`Result.unwrap` are the non-raising two-arity forms, `process.spawn`'s named parameter is `task:`
+
+### Runtime
+
+- A duplicate `idempotent()` key in a schedule handler now skips silently as documented, instead of crashing the Schedule GenServer and dropping every schedule registration in the node (#207)
+
+### CLI
+
+- `skein.toml` parsing tolerates unknown keys, value forms, and table forms wherever they appear — the STABILITY.md forward-compatibility promise ("unknown keys are never errors") now holds, so config written for future 1.x versions parses on 1.0; parse errors remain for the known `[llm]` profile keys only (#220)
+- `mix skein.*` aliases route through the CLI dispatcher: real error/warning output and non-zero exit codes on failure (#198)
+
+### Spec & Docs
+
+- Spec corrections to match the implementation: §6.5 `tool.list`/`tool.schema` and §6.11 `timer.*`/`process.spawn` return Result-wrapped values (#216, #217); the four `*.parse` signatures use `String` error sides instead of the never-defined `ParseError` (#218); §2.3's keyword list, the §7 error-code registry (now with a severity column), and §2.6's interpolation grammar are accurate; in-agent `resume()` removed (resume is the host-side `Agent.resume/2`)
+- Every docs-site page audited and corrected against the implementation: agents.md documents the real state semantics (agent data flows through `memory.kv`; all examples compile-verified) (#210); supervisors are compile-time declarations emitting `__supervisors__/0` metadata for the host (#211); the stdlib reference's examples compile and their shown outputs are true (#212); compiler pages use the real APIs and call forms (#213, #214); ARCHITECTURE.md shows the actual supervision tree and drops the unimplemented checkpointing claim (#219)
+- The stability policy no longer designates the unshipped `trace export` command as the trace interchange form (#215)
+
+### CI & Tooling
+
+- On-demand **Release Readiness** workflow plus the `/release-readiness` Claude Code dynamic workflow: the full pre-release pass (gates, toolchain e2e, adversarially verified docs/spec/example sweep) without tagging or publishing
+- Release gates are prerelease-safe, so `-rc.N` versions flow through the same tag-and-build automation
+- New **v1.0.0-rc Release** milestone (this candidate); the **v1.0.0 Release** milestone is re-pointed at the GA gate
+
 ## v0.3.0 (2026-06-11)
 
 The **v1.0.0 Release milestone is complete** — this release packages every item that gated 1.0: the spec freeze, match guards, a production embeddings path, runtime reliability fixes, and the written stability policy — plus an Amazon Bedrock LLM backend. The release train continues to a 1.0 release candidate from here.
