@@ -28,36 +28,50 @@ agent IncidentTriage {
   }
 
   on phase(Phase.Classify) -> {
-    let data = memory.get("alert_id")
-    let severity = llm.chat("claude-opus-4-8", "Classify incident severity", data)
+    let data = memory.get!("alert_id")
+    let severity = llm.chat(
+      "claude-opus-4-8",
+      "Classify this incident severity. Answer only 'critical', 'normal', or 'noise'.",
+      data
+    )!
     memory.put("severity", severity)
-    transition(Phase.Investigate)
+
+    let noise = String.contains(severity, "noise")
+    match noise {
+      true -> transition(Phase.Ignore)
+      false -> transition(Phase.Investigate)
+    }
   }
 
   on phase(Phase.Investigate) -> {
-    let severity = memory.get("severity")
-    let data = memory.get("alert_id")
-    let analysis = llm.chat("claude-opus-4-8", "Investigate root cause", data)
+    let severity = memory.get!("severity")
+    let data = memory.get!("alert_id")
+    let analysis = llm.chat("claude-opus-4-8", "Investigate root cause", data)!
     memory.put("analysis", analysis)
-    transition(Phase.Resolve)
+
+    let critical = String.contains(severity, "critical")
+    match critical {
+      true -> transition(Phase.Escalate)
+      false -> transition(Phase.Resolve)
+    }
   }
 
   on phase(Phase.Escalate) -> {
-    let alert = memory.get("alert_id")
+    let alert = memory.get!("alert_id")
     emit IncidentEscalated { alert_id: alert }
     suspend("Awaiting on-call engineer")
   }
 
   on phase(Phase.Ignore) -> {
-    let alert = memory.get("alert_id")
+    let alert = memory.get!("alert_id")
     emit IncidentIgnored { alert_id: alert }
     transition(Phase.Complete)
   }
 
   on phase(Phase.Resolve) -> {
-    let alert = memory.get("alert_id")
-    let analysis = memory.get("analysis")
-    emit IncidentResolved { alert_id: alert }
+    let alert = memory.get!("alert_id")
+    let analysis = memory.get!("analysis")
+    emit IncidentResolved { alert_id: alert, analysis: analysis }
     transition(Phase.Complete)
   }
 

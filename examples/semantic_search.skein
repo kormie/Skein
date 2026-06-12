@@ -17,18 +17,26 @@ module SemanticSearch {
   capability memory.kv
   capability http.in
 
-  -- Embed text and store the vector in memory under the given key
+  -- Embed text, then store both the vector and the original text
   fn index(key: String, text: String) -> String {
-    let vector = llm.embed("voyage-3-large", text)
+    let vector = llm.embed("voyage-3-large", text)!
+    memory.put("${key}.vector", vector)
     memory.put(key, text)
     "indexed"
   }
 
-  -- Embed a query and generate an answer using the LLM
+  -- Embed a query and generate an answer grounded in retrieved context.
+  -- memory.kv has no nearest-neighbor search, so after embedding the query
+  -- (the shape a real vector store would consume) we fetch the known
+  -- document directly and interpolate it into the prompt.
   fn search(query: String) -> String {
-    let query_vector = llm.embed("voyage-3-large", query)
-    let context = memory.get("doc_1")
-    let answer = llm.chat("claude-opus-4-8", "Answer using the provided context.", query)
+    let _query_vector = llm.embed("voyage-3-large", query)!
+    let context = memory.get!("doc_1")
+    let answer = llm.chat(
+      "claude-opus-4-8",
+      "Answer using the provided context.",
+      "Context: ${context} Question: ${query}"
+    )!
     answer
   }
 

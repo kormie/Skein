@@ -4,9 +4,6 @@
 
 module MarketResearchService {
   capability http.in
-  capability tool.use(Research.SearchMarket)
-  capability tool.use(Research.AnalyzeCompetitor)
-  capability tool.use(Research.GenerateSwot)
 
   type ResearchRequest {
     topic: String

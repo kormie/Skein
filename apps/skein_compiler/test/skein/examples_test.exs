@@ -19,6 +19,31 @@ defmodule Skein.ExamplesTest do
   end
 
   # ------------------------------------------------------------------
+  # All examples are diagnostic-clean
+  # ------------------------------------------------------------------
+
+  describe "examples are warning-free" do
+    test "every example checks with zero errors and zero warnings" do
+      examples =
+        [
+          Path.wildcard(Path.join(project_root(), "examples/*.skein")),
+          Path.wildcard(Path.join(project_root(), "examples/market_research/*.skein"))
+        ]
+        |> List.flatten()
+
+      refute examples == []
+
+      for path <- examples do
+        assert {:ok, %{errors: [], warnings: warnings}} = Compiler.check_file(path)
+
+        assert warnings == [],
+               "#{Path.relative_to(path, project_root())} has warnings: " <>
+                 inspect(Enum.map(warnings, &{&1.code, &1.message}))
+      end
+    end
+  end
+
+  # ------------------------------------------------------------------
   # hello.skein
   # ------------------------------------------------------------------
 
@@ -505,11 +530,13 @@ defmodule Skein.ExamplesTest do
       {:module, mod} =
         Compiler.compile_file(Path.join(project_root(), "examples/semantic_search.skein"))
 
-      # Index a document first so memory.get works
+      # Index a document first so memory.get! works
       mod.index("doc_1", "The sky is blue")
 
-      assert {:ok, response} = mod.search("What color is the sky?")
+      response = mod.search("What color is the sky?")
       assert is_binary(response)
+      # The answer is grounded in the retrieved document text
+      assert response =~ "The sky is blue"
     end
 
     test "has HTTP handler metadata" do

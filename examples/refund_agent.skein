@@ -27,22 +27,37 @@ agent RefundAgent {
   }
 
   on phase(Phase.Review) -> {
-    let order = memory.get("order_id")
+    let order = memory.get!("order_id")
     trace.annotate("ticket_id", order)
-    let decision = llm.chat("claude-opus-4-8", "Evaluate refund", order)
+    let decision = llm.chat(
+      "claude-opus-4-8",
+      "Evaluate this refund request. Answer only 'approve' or 'deny'.",
+      order
+    )!
     trace.annotate("decision", decision)
     memory.put("decision", decision)
-    transition(Phase.Approved)
+
+    let approved = String.contains(decision, "approve")
+    match approved {
+      true -> transition(Phase.Approved)
+      false -> {
+        let denied = String.contains(decision, "deny")
+        match denied {
+          true -> transition(Phase.Denied)
+          false -> transition(Phase.Failed)
+        }
+      }
+    }
   }
 
   on phase(Phase.Approved) -> {
-    let order = memory.get("order_id")
+    let order = memory.get!("order_id")
     emit RefundApproved { order_id: order }
     transition(Phase.Complete)
   }
 
   on phase(Phase.Denied) -> {
-    let order = memory.get("order_id")
+    let order = memory.get!("order_id")
     emit RefundDenied { order_id: order }
     transition(Phase.Complete)
   }
