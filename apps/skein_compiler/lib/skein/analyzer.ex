@@ -3569,6 +3569,16 @@ defmodule Skein.Analyzer do
     end)
   end
 
+  # Interpolation segments carry raw lexer tokens, not AST nodes:
+  # {:ident, {line, col}, name} and {:field_access, subject, field}.
+  defp collect_referenced_identifiers({:ident, _, name}) when is_binary(name) do
+    [name]
+  end
+
+  defp collect_referenced_identifiers({:field_access, subject, _field}) do
+    collect_referenced_identifiers(subject)
+  end
+
   defp collect_referenced_identifiers(_), do: []
 
   # ------------------------------------------------------------------

@@ -3180,6 +3180,38 @@ defmodule Skein.AnalyzerTest do
           refute Enum.any?(errors, &(&1.code == "W0001"))
       end
     end
+
+    test "binding referenced only via string interpolation does not produce W0001" do
+      errors =
+        analyze_errors("""
+        module M {
+          fn good(name: String) -> String {
+            let trimmed = String.trim(name)
+            "Hello, ${trimmed}!"
+          }
+        }
+        """)
+
+      refute Enum.any?(errors, &(&1.code == "W0001"))
+    end
+
+    test "binding referenced only via dotted interpolation does not produce W0001" do
+      errors =
+        analyze_errors("""
+        module M {
+          type User {
+            id: String
+          }
+
+          fn good(u: User) -> String {
+            let copy = u
+            "id: ${copy.id}"
+          }
+        }
+        """)
+
+      refute Enum.any?(errors, &(&1.code == "W0001"))
+    end
   end
 
   # ------------------------------------------------------------------
