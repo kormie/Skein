@@ -278,7 +278,7 @@ fn handle(a: Action) -> String {
 }
 ```
 
-The analyzer considers `GetUser` covered because an arm exists for it. However, at runtime, `Action.GetUser(10)` would cause a `case_clause` error because the literal `5` does not match `10`. To avoid this, use a variable pattern or add a wildcard arm:
+Variant-level coverage is satisfied because an arm exists for `GetUser` — but at runtime, `Action.GetUser(10)` would raise `case_clause` because the literal `5` does not match `10`. The analyzer warns about exactly this (W0004): "Match on Action covers only specific values of GetUser: other GetUser(...) values raise case_clause at runtime". To clear the warning, use a variable pattern or add a wildcard arm:
 
 ```skein
 fn handle(a: Action) -> String {
@@ -289,4 +289,4 @@ fn handle(a: Action) -> String {
 }
 ```
 
-This is consistent with most typed languages — variant-level coverage is checked, but the full domain of contained values is not.
+Variant-level coverage is an error-grade check (a missing variant is E0024); value-level coverage inside a variant is warning-grade (W0004) — the match still compiles, but the warning tells you a runtime `case_clause` is possible.

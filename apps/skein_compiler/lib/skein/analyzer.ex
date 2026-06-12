@@ -2632,6 +2632,20 @@ defmodule Skein.Analyzer do
     check_interpolation(subject, env)
   end
 
+  defp check_interpolation({:upper_ident, {line, col}, name}, env) do
+    [
+      %Error{
+        code: "E0010",
+        severity: :error,
+        message:
+          "Cannot interpolate '#{name}': string interpolation accepts let bindings, parameters, and field access on them",
+        location: %{file: env.file, line: line, col: col},
+        fix_hint: "Bind the value to a lowercase name first, then interpolate that binding",
+        fix_code: "let value = #{name}"
+      }
+    ]
+  end
+
   defp check_interpolation(_, _env), do: []
 
   # ------------------------------------------------------------------
@@ -3522,7 +3536,7 @@ defmodule Skein.Analyzer do
   defp collect_let_bindings(_), do: []
 
   defp collect_referenced_identifiers(%AST.Block{expressions: exprs}) do
-    exprs |> Enum.flat_map(&collect_referenced_identifiers/1) |> MapSet.new()
+    Enum.flat_map(exprs, &collect_referenced_identifiers/1)
   end
 
   defp collect_referenced_identifiers(%AST.Identifier{name: name}) do
@@ -3562,11 +3576,29 @@ defmodule Skein.Analyzer do
     collect_referenced_identifiers(subject)
   end
 
+  defp collect_referenced_identifiers(%AST.ListLit{elements: elements}) do
+    Enum.flat_map(elements, &collect_referenced_identifiers/1)
+  end
+
+  defp collect_referenced_identifiers(%AST.MapLit{entries: entries}) do
+    Enum.flat_map(entries, fn {_key, value} -> collect_referenced_identifiers(value) end)
+  end
+
   defp collect_referenced_identifiers(%AST.StringLit{segments: segments}) do
     Enum.flat_map(segments, fn
       {:interpolation, expr} -> collect_referenced_identifiers(expr)
       _ -> []
     end)
+  end
+
+  # Interpolation segments carry raw lexer tokens, not AST nodes:
+  # {:ident, {line, col}, name} and {:field_access, subject, field}.
+  defp collect_referenced_identifiers({:ident, _, name}) when is_binary(name) do
+    [name]
+  end
+
+  defp collect_referenced_identifiers({:field_access, subject, _field}) do
+    collect_referenced_identifiers(subject)
   end
 
   defp collect_referenced_identifiers(_), do: []

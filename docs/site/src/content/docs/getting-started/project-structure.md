@@ -53,7 +53,7 @@ skein_compiler/
 ├── lib/
 │   ├── skein_compiler.ex                # Entry point: compile_string/1, compile_file/1
 │   └── skein/
-│       ├── lexer.ex                     # Tokenizer (NimbleParsec-based)
+│       ├── lexer.ex                     # Tokenizer (hand-written binary matching)
 │       ├── parser.ex                    # Hand-written recursive descent parser
 │       ├── ast.ex                       # AST node struct definitions
 │       ├── analyzer.ex                  # Type, capability, transition, and guard checking
@@ -100,7 +100,6 @@ All dependencies are sourced from [hex.pm](https://hex.pm):
 
 | Dependency | Version | Purpose |
 |-----------|---------|---------|
-| `nimble_parsec` | ~> 1.4 | PEG parser combinator (used by lexer) |
 | `jason` | ~> 1.4 | JSON encoding for structured errors and schema gen |
 | `stream_data` | ~> 1.1 | Property-based testing generators (test/dev only) |
 | `propcheck` | ~> 1.4 | Stateful property testing via PropEr (test/dev only) |

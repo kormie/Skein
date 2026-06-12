@@ -16,7 +16,7 @@ module SupervisorPool {
     match e {
       Event.OrderPlaced(id, amt) -> "Order ${id}"
       Event.OrderCancelled(id, reason) -> "Cancelled ${id}"
-      HealthCheck -> "ping"
+      Event.HealthCheck -> "ping"
     }
   }
 

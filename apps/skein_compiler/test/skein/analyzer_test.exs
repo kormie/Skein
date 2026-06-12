@@ -3180,6 +3180,108 @@ defmodule Skein.AnalyzerTest do
           refute Enum.any?(errors, &(&1.code == "W0001"))
       end
     end
+
+    test "binding referenced only via string interpolation does not produce W0001" do
+      errors =
+        analyze_errors("""
+        module M {
+          fn good(name: String) -> String {
+            let trimmed = String.trim(name)
+            "Hello, ${trimmed}!"
+          }
+        }
+        """)
+
+      refute Enum.any?(errors, &(&1.code == "W0001"))
+    end
+
+    test "binding referenced only via dotted interpolation does not produce W0001" do
+      errors =
+        analyze_errors("""
+        module M {
+          type User {
+            id: String
+          }
+
+          fn good(u: User) -> String {
+            let copy = u
+            "id: ${copy.id}"
+          }
+        }
+        """)
+
+      refute Enum.any?(errors, &(&1.code == "W0001"))
+    end
+
+    test "guarded match arm with a block body analyzes without raising" do
+      errors =
+        analyze_errors("""
+        module M {
+          fn f(x: Int) -> Int {
+            let limit = 10
+            match x {
+              n if n > limit -> {
+                let y = n
+                y
+              }
+              n -> n
+            }
+          }
+        }
+        """)
+
+      refute Enum.any?(errors, &(&1.code == "W0001"))
+    end
+
+    test "binding referenced only inside a list literal does not produce W0001" do
+      errors =
+        analyze_errors("""
+        module M {
+          fn f(x: Int) -> List[Int] {
+            let y = x
+            [y]
+          }
+        }
+        """)
+
+      refute Enum.any?(errors, &(&1.code == "W0001"))
+    end
+
+    test "binding referenced only inside a map literal does not produce W0001" do
+      errors =
+        analyze_errors("""
+        module M {
+          fn f(x: String) -> Map[String, String] {
+            let y = x
+            { key: y }
+          }
+        }
+        """)
+
+      refute Enum.any?(errors, &(&1.code == "W0001"))
+    end
+  end
+
+  describe "interpolation of uppercase identifiers" do
+    test "${Upper} is a structured E0010, not a codegen crash" do
+      {:ok, tokens} =
+        Lexer.tokenize("module M {\n  fn f() -> String {\n    \"phase: ${Foo}\"\n  }\n}")
+
+      {:ok, ast} = Parser.parse(tokens)
+
+      assert {:error, errors} = Analyzer.analyze(ast)
+      assert Enum.any?(errors, fn e -> e.code == "E0010" and e.message =~ "Foo" end)
+    end
+
+    test "${Upper.field} is rejected the same way" do
+      {:ok, tokens} =
+        Lexer.tokenize("module M {\n  fn f() -> String {\n    \"url: ${Config.url}\"\n  }\n}")
+
+      {:ok, ast} = Parser.parse(tokens)
+
+      assert {:error, errors} = Analyzer.analyze(ast)
+      assert Enum.any?(errors, fn e -> e.code == "E0010" and e.message =~ "Config" end)
+    end
   end
 
   # ------------------------------------------------------------------

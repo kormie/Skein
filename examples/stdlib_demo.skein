@@ -7,7 +7,21 @@ module StdlibDemo {
 
   fn word_count(text: String) -> Int {
     let words = String.split(text, " ")
-    String.length(text)
+    List.length(words)
+  }
+
+  fn top_scores(scores: List[Int]) -> List[Int] {
+    let sorted = List.sort(scores)
+    let highest = List.reverse(sorted)
+    List.take(highest, 3)
+  }
+
+  fn lookup_label(labels: Map[String, String], key: String) -> String {
+    Option.unwrap(Map.get(labels, key), "unknown")
+  }
+
+  fn parse_or_zero(text: String) -> Int {
+    Result.unwrap(Int.parse(text), 0)
   }
 
   fn classify_number(n: Int) -> String {

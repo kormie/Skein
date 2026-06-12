@@ -5,7 +5,7 @@ description: How the Skein lexer tokenizes source code.
 
 ## Overview
 
-The lexer (`Skein.Lexer`) converts UTF-8 source text into a flat list of tokens. It's implemented as a hand-written recursive descent tokenizer using NimbleParsec for some low-level parsing.
+The lexer (`Skein.Lexer`) converts UTF-8 source text into a flat list of tokens. It's implemented as a hand-written tokenizer using binary pattern matching.
 
 **Location:** `apps/skein_compiler/lib/skein/lexer.ex`
 

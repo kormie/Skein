@@ -36,11 +36,14 @@ Skein.Runtime.Agent.start_link(module, args)
 Skein.Runtime.Agent.get_phase(pid)
 #=> :review
 
+# State always starts empty — start params are passed to the on start
+# handler but never copied into state; handlers populate memory instead.
 Skein.Runtime.Agent.get_state(pid)
-#=> %{request_id: "abc", amount: 100}
+#=> %{}
 
+# Events are keyed :event with the PascalCase event name from `emit`.
 Skein.Runtime.Agent.get_events(pid)
-#=> [%{type: "refund_approved", amount: 100}]
+#=> [%{event: "RefundApproved", amount: 100}]
 ```
 
 **How it works:**
@@ -194,15 +197,16 @@ Skein.Runtime.Store.put(table, record, capabilities)
 Skein.Runtime.Store.delete(table, id, capabilities)
 #=> {:ok, id}
 
-Skein.Runtime.Store.query(table, filter_fn, capabilities)
-#=> {:ok, [records]}
+# Filters are an equality map; the matching records come back as a list
+Skein.Runtime.Store.query(table, %{status: "active"}, capabilities)
+#=> [record, ...]
 ```
 
 Every operation:
 1. Validates `store.table` capability for the target table
 2. Performs the ETS operation
 3. Records a trace span with timing and outcome
-4. Returns the result as an `{:ok, _}` or `{:error, _}` tuple
+4. Returns `{:ok, _}` / `{:error, _}` (get/put/delete) or the bare record list (query)
 
 ### `Skein.Runtime.StoreEcto`
 

@@ -1,19 +1,24 @@
 [
   {
     "title": "v0.1 Alpha Release",
-    "previous_titles": ["Alpha Release"],
+    "previous_titles": [
+      "Alpha Release"
+    ],
     "state": "closed",
     "description": "Shipped across the v0.1.x releases. Gate for making the repo public and sharing with coworkers. Language surface is honest — named arguments (#56), agents nest in modules (#63), types usable from agents (#70), enum variant construction completeness (#96), capability checks cover test blocks (#104) — schedule handlers fire on their own (#71), agent events survive crashes (#72), every spec example compiles or is marked Planned (#77), the first-five-minutes DX holds up (assertion failures say why #105, skein new git-inits #106, zsh completion #101, MCP compile_check tells the truth #109), and releases/badges/versioned docs are automated for public consumption (#100)."
   },
   {
     "title": "v0.2 Beta Release",
-    "previous_titles": ["Beta Release"],
+    "previous_titles": [
+      "Beta Release"
+    ],
     "state": "closed",
     "description": "Shipped as v0.2.0. Post-alpha hardening, informed by alpha feedback: replay backend injection (#73), the capability-parameter surface decision (#69) and parameter-scoped enforcement for process/timer/event.log (#57), process.spawn task bodies (#74), enum value-level exhaustiveness warnings (#76), local LLM backends for dev via OpenAI-compatible servers + skein.toml profiles (#107), LSP code actions from fix_hint/fix_code (#108), and the Int string-interpolation fix (#114)."
   },
   {
     "title": "v1.0.0-rc Release",
-    "description": "The gate for tagging v1.0.0-rc — the output of the 2026-06-11 release-readiness full pass (/release-readiness; every blocker confirmed by two independent adversarial verifiers). Three fronts: the frozen spec promises surface the compiler rejects (queue.publish, resume(), llm.stream on_chunk, stdlib signature drift, the keyword list, an incomplete error-code registry); two unstructured compiler crashes (transition() outside agents, underscored float literals is tracked for GA); and the docs site's canonical examples don't compile (language/runtime/reference/getting-started pages, plus a landing-page model id that retires 2026-06-15). The rc tags when this milestone is empty."
+    "description": "The gate for tagging v1.0.0-rc — the output of the 2026-06-11 release-readiness full pass (/release-readiness; every blocker confirmed by two independent adversarial verifiers). Three fronts: the frozen spec promises surface the compiler rejects (queue.publish, resume(), llm.stream on_chunk, stdlib signature drift, the keyword list, an incomplete error-code registry); two unstructured compiler crashes (transition() outside agents, underscored float literals is tracked for GA); and the docs site's canonical examples don't compile (language/runtime/reference/getting-started pages, plus a landing-page model id that retires 2026-06-15). Shipped: every item fixed and v1.0.0-rc.1 tagged 2026-06-12.",
+    "state": "closed"
   },
   {
     "title": "v1.0.0 Release",
@@ -21,12 +26,16 @@
   },
   {
     "title": "v1.1: Hardening & Language",
-    "previous_titles": ["Post-MVP 1: Hardening & Language"],
+    "previous_titles": [
+      "Post-MVP 1: Hardening & Language"
+    ],
     "description": "Post-1.0 hardening continues: llm.rerank for RAG (#145, unblocked by the embeddings backend #146), code-action phase 2 spans + edit_kind on Skein.Error (#150), and the Bedrock backend follow-ups from #173 — AWS credential-chain resolution (#179), real converse-stream token streaming (#178), and ARN-form model IDs (#180). The bugs and the guard/embeddings work originally scoped here moved into the v1.0.0 Release milestone."
   },
   {
     "title": "v1.2: Interop & Agent Workflows",
-    "previous_titles": ["Post-MVP 2: Interop & Agent Workflows"],
+    "previous_titles": [
+      "Post-MVP 2: Interop & Agent Workflows"
+    ],
     "description": "Bigger design efforts after the hardening wave: Erlang/Elixir FFI via extern (#141), human-in-the-loop approval workflows with suspend before sensitive tool calls (#144), the browser-based trace viewer (#143), and a terminal UI framework for an interactive CLI (#171)."
   },
   {

@@ -113,7 +113,7 @@ Running 5 tests across 3 files...
 
 ```elixir
 # Single file
-{:ok, mod} = Skein.CLI.compile(["path/to/module.skein"])
+{:ok, mod, _warnings} = Skein.CLI.compile(["path/to/module.skein"])
 {:ok, results} = Skein.CLI.test(["path/to/module.skein"])
 
 results.total   #=> 2

@@ -22,7 +22,7 @@
 **Input:** UTF-8 source text
 **Output:** List of `{token_type, location, value?}` tuples
 
-Built with NimbleParsec for performance and composability.
+Hand-written tokenizer using binary pattern matching — dependency-free, with precise error positions.
 
 Token categories:
 
@@ -30,7 +30,8 @@ Token categories:
 # Keywords (reserved, cannot be used as identifiers)
 :module, :fn, :let, :match, :type, :enum, :handler, :agent, :tool,
 :capability, :supervisor, :test, :scenario, :golden, :on, :emit,
-:transition, :stop, :suspend, :resume, :true, :false
+:transition, :stop, :suspend, :resume, :implement, :idempotent,
+:true, :false
 
 # Operators and punctuation
 :eq,          # =
@@ -381,7 +382,7 @@ Two modules provide domain-specific APIs on top of this store:
 
 Provider-agnostic LLM client with schema-constrained decoding.
 
-Backends are pluggable: a module implementing `Skein.Runtime.Llm.Backend`, or a `{module, config}` tuple for parameterized backends. `AnthropicBackend` is the production backend; `OpenAiCompatibleBackend` serves dev traffic from any local server speaking `POST {base_url}/chat/completions` (oMLX, Ollama, LM Studio, llama.cpp, vLLM), with a `model_map` remapping capability model names to locally hosted ones so source never changes between environments. The active backend comes from the project's `skein.toml` `[llm]` / `[env.<name>.llm]` profile, resolved by `skein run`/`skein test` via `--env` or `SKEIN_ENV` (`Skein.CLI.Config`). Every llm trace span records the `backend` (and `base_url` for local servers) that served the call.
+Backends are pluggable: a module implementing `Skein.Runtime.Llm.Backend`, or a `{module, config}` tuple for parameterized backends. `AnthropicBackend` is the production backend; `BedrockBackend` serves AWS Bedrock (Converse API with SigV4 request signing, `region`/`base_url` config, and a `model_map` for inference-profile IDs); `OpenAiCompatibleBackend` serves dev traffic from any local server speaking `POST {base_url}/chat/completions` (oMLX, Ollama, LM Studio, llama.cpp, vLLM), with a `model_map` remapping capability model names to locally hosted ones so source never changes between environments. The active backend comes from the project's `skein.toml` `[llm]` / `[env.<name>.llm]` profile, resolved by `skein run`/`skein test` via `--env` or `SKEIN_ENV` (`Skein.CLI.Config`). Every llm trace span records the `backend` (and `base_url` for local servers) that served the call.
 
 ```elixir
 defmodule Skein.Runtime.LLM do
@@ -700,6 +701,7 @@ The CLI (`skein_cli`) supports building standalone binaries via Burrito, a cross
 
 **Supported targets:**
 - Linux x86_64
+- Linux aarch64
 - macOS x86_64
 - macOS aarch64 (Apple Silicon)
 

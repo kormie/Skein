@@ -182,8 +182,15 @@ handler topic "topic-name" (param) -> {
 
 ```skein
 module PubsubNotifications {
+  capability http.in
   capability topic.consume("order.events")
   capability topic.publish("order.events")
+
+  -- Publish side: an HTTP endpoint fans an event out to every consumer
+  handler http POST "/orders" (req) -> {
+    topic.publish("order.events", { order_id: "o-1" })
+    respond.json(202, "queued")
+  }
 
   -- Email notification: receives every order event
   handler topic "order.events" (msg) -> {

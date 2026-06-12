@@ -84,6 +84,18 @@ defmodule Skein.LexerTest do
     test "tokenizes float with leading zero" do
       assert {:ok, [{:float, {1, 1}, 0.5}, {:eof, _}]} = Lexer.tokenize("0.5")
     end
+
+    test "float with underscore grouping is a structured E0003, not a raise" do
+      assert {:error, [error]} = Lexer.tokenize("let x = 1_000.5")
+      assert %Skein.Error{code: "E0003", severity: :error} = error
+      assert error.message =~ "underscores"
+      assert error.fix_code == "1000.5"
+    end
+
+    test "underscore in the fractional part is a structured E0003" do
+      assert {:error, [error]} = Lexer.tokenize("1.5_0")
+      assert error.code == "E0003"
+    end
   end
 
   describe "tokenize/1 - string literals" do

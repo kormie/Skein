@@ -45,7 +45,7 @@ ANTHROPIC_API_KEY=sk-ant-... mise exec -- mix run examples/demo.exs
 | [`background_tasks.skein`](background_tasks.skein) | `process.spawn` for supervised background tasks and `timer.after` / `timer.interval` / `timer.cancel`. |
 | [`audit_log.skein`](audit_log.skein) | Structured event logging with the `event.log` capability. |
 | [`supervisor_pool.skein`](supervisor_pool.skein) | `supervisor` declarations: restart strategies and a worker pool next to an HTTP server. |
-| [`stdlib_demo.skein`](stdlib_demo.skein) | A tour of the standard library (String, List, Map, Option, Result, ...). |
+| [`stdlib_demo.skein`](stdlib_demo.skein) | A tour of the standard library (String, Int, Float, List, Map, Option, Result). |
 
 ## Agents
 
@@ -53,7 +53,7 @@ ANTHROPIC_API_KEY=sk-ant-... mise exec -- mix run examples/demo.exs
 |---|---|
 | [`refund_agent.skein`](refund_agent.skein) | The canonical agent: a compile-time-checked phase machine, instance-scoped memory, an LLM decision step, and `suspend()` for human review. |
 | [`incident_triage.skein`](incident_triage.skein) | A multi-phase triage workflow: classify, investigate, escalate-or-resolve, with `emit` events at each outcome. |
-| [`skein_assistant.skein`](skein_assistant.skein) | A stateful conversational agent behind an HTTP endpoint, with per-session memory. |
+| [`skein_assistant.skein`](skein_assistant.skein) | A stateful conversational service behind an HTTP endpoint; per-session history is stored in memory and fed back into each prompt. |
 | [`semantic_search.skein`](semantic_search.skein) | RAG-style search with `llm.embed` + `llm.chat`. Note: embeddings need a backend that implements `embed/2` (Anthropic has no embeddings API — see the file header). |
 
 ## Multi-file project

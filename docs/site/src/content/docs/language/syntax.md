@@ -275,5 +275,5 @@ Most Skein constructs are fully compiled end-to-end. The following notes clarify
 
 ### Also Compiled
 
-- `supervisor` declarations -- agent pool management with child processes, restart strategies, and crash recovery. See [Supervisors](/Skein/language/supervisors/) for details.
+- `supervisor` declarations -- compile-time validated supervision trees (children, restart policies, strategy, restart limits) emitted as `__supervisors__/0` metadata for a host to materialize. See [Supervisors](/Skein/language/supervisors/) for details.
 - Enum variant pattern matching -- `match` on enum variants with field destructuring compiles to BEAM tuple patterns. See [Types > Enum Variant Matching](/Skein/language/types/#enum-variant-matching).

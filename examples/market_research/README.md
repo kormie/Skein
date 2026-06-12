@@ -90,4 +90,5 @@ that phase is not executed in CI; the suite drives Gathering directly.
 
 - `service.skein` — Module: tools, HTTP endpoints, supervisor, types
 - `agent.skein` — Agent: pure workflow with tool.call and phase transitions
+- `single_file.skein` — One-file variant with the agent nested inside the module
 - `README.md` — This file
