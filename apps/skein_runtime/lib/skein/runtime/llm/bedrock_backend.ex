@@ -33,13 +33,14 @@ defmodule Skein.Runtime.Llm.BedrockBackend do
   `AWS_SESSION_TOKEN`), then the AWS credential chain via the
   `:aws_credentials` OTP app: shared config/credentials profiles
   (`AWS_PROFILE`), EKS IRSA web-identity tokens
-  (`Skein.Runtime.Llm.AwsWebIdentityProvider`), ECS task roles, EC2
-  instance metadata (IMDSv2), and EKS Pod Identity. Chain credentials
-  are cached and refreshed before they expire, and the chain only
-  starts the first time it is consulted — deployments that pass
-  explicit or env credentials never probe it. SSO / Identity Center
-  profiles are the one source not resolved in-process — export them
-  first: `aws configure export-credentials --format env --profile
+  (`Skein.Runtime.Llm.AwsWebIdentityProvider`), IAM Identity Center /
+  SSO profiles via the `aws sso login` token cache
+  (`Skein.Runtime.Llm.AwsSsoProvider`), ECS task roles, EC2 instance
+  metadata (IMDSv2), and EKS Pod Identity. Chain credentials are
+  cached and refreshed before they expire, and the chain only starts
+  the first time it is consulted — deployments that pass explicit or
+  env credentials never probe it. An expired SSO session is a
+  structured error telling you to run `aws sso login --profile
   <name>`.
 
   `json` requests inject the schema into the system prompt (Converse has
@@ -58,6 +59,7 @@ defmodule Skein.Runtime.Llm.BedrockBackend do
   """
 
   alias Skein.Runtime.Llm.AsyncBody
+  alias Skein.Runtime.Llm.AwsSsoProvider
   alias Skein.Runtime.Llm.AwsWebIdentityProvider
   alias Skein.Runtime.Llm.Error
   alias Skein.Runtime.Llm.EventStream
@@ -67,13 +69,15 @@ defmodule Skein.Runtime.Llm.BedrockBackend do
   @default_max_tokens 4096
 
   # The :aws_credentials chain in AWS-SDK resolution order: env vars,
-  # web identity (EKS IRSA — our provider; the library has none), shared
-  # config/credentials profiles (AWS_PROFILE), ECS task roles, EC2
-  # instance metadata (IMDSv2), EKS Pod Identity.
+  # web identity (EKS IRSA), static profile keys (AWS_PROFILE), IAM
+  # Identity Center profiles (`aws sso login` token cache), ECS task
+  # roles, EC2 instance metadata (IMDSv2), EKS Pod Identity. The IRSA
+  # and SSO providers are ours — the library has neither.
   @chain_providers [
     :aws_credentials_env,
     AwsWebIdentityProvider,
     :aws_credentials_file,
+    AwsSsoProvider,
     :aws_credentials_ecs,
     :aws_credentials_ec2,
     :aws_credentials_eks
@@ -487,16 +491,25 @@ defmodule Skein.Runtime.Llm.BedrockBackend do
           ok
 
         :unavailable ->
-          {:error,
-           Error.provider_error(
-             "missing_credentials",
-             "AWS credentials not found in the backend config, the AWS env vars " <>
-               "(AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY), or the credential chain " <>
-               "(AWS_PROFILE files, EKS IRSA web identity, ECS task roles, EC2 instance " <>
-               "metadata). For SSO setups, run: " <>
-               "aws configure export-credentials --format env --profile <name>"
-           )}
+          {:error, Error.provider_error("missing_credentials", missing_credentials_message())}
       end
+    end
+  end
+
+  defp missing_credentials_message do
+    base =
+      "AWS credentials not found in the backend config, the AWS env vars " <>
+        "(AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY), or the credential chain " <>
+        "(AWS_PROFILE files, IAM Identity Center / SSO, EKS IRSA web identity, " <>
+        "ECS task roles, EC2 instance metadata)."
+
+    case AwsSsoProvider.sso_login_hint() do
+      nil ->
+        base <>
+          " As a fallback, run: aws configure export-credentials --format env --profile <name>"
+
+      hint ->
+        base <> " " <> hint
     end
   end
 

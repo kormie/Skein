@@ -368,10 +368,9 @@ defmodule Skein.CLI do
     """
     # Amazon Bedrock (Converse API). Requests are SigV4-signed with
     # credentials from the AWS env vars (AWS_ACCESS_KEY_ID, ...) or the
-    # AWS credential chain: AWS_PROFILE files, EKS IRSA, ECS task roles,
-    # EC2 instance metadata — cached and refreshed automatically.
-    # SSO setups still export first:
-    #   aws configure export-credentials --format env --profile <name>
+    # AWS credential chain: AWS_PROFILE files, IAM Identity Center /
+    # SSO (aws sso login), EKS IRSA, ECS task roles, EC2 instance
+    # metadata — cached and refreshed automatically.
     [llm]
     backend = "bedrock"
     region = "us-east-1"

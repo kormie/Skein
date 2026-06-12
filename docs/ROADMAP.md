@@ -39,8 +39,8 @@ The release train (each step rides the auto-tag flow — a green version-bump me
 
 GA tags when this is empty. The compiler/examples items shipped on the rc-soak audit PR; the
 documentation-accuracy wave (#223–#229, filed by the 2026-06-12 rc-soak readiness pass) rides
-the same PR. The Bedrock production-hardening follow-ups (#178 #179 #180) were pulled into
-scope from v1.1 on 2026-06-12:
+the same PR. The Bedrock production-hardening follow-ups (#178 #179 #180, plus the #236 SSO
+work #179 split out) were pulled into scope from v1.1 on 2026-06-12:
 
 - ~~[#196](https://github.com/kormie/Skein/issues/196) — **bug, p2:** W0001 misses string-interpolation usage (false positive with a program-breaking fix_code)~~ — fixed (interpolation tokens counted as references)
 - ~~[#197](https://github.com/kormie/Skein/issues/197) — **bug, p2:** lexer crashes on float literals with underscore grouping (`1_000.5`)~~ — fixed (structured E0003 with fix_code)
@@ -48,7 +48,8 @@ scope from v1.1 on 2026-06-12:
 - ~~[#199](https://github.com/kormie/Skein/issues/199) — **chore, p2:** ship the canonical examples warning-free and honest~~ — fixed (zero-warning guard in examples_test)
 - ~~[#200](https://github.com/kormie/Skein/issues/200) — **chore, p2:** meta-docs a release behind (roadmap pages, ARCHITECTURE, README, CONTRIBUTING)~~ — fixed
 - ~~[#223](https://github.com/kormie/Skein/issues/223)–[#229](https://github.com/kormie/Skein/issues/229) — **chore:** docs-accuracy findings from the rc-soak pass (runtime API examples, spec §7 E0002 row + banner, README flagship block, compiler/language/getting-started pages, STABILITY wording)~~ — fixed
-- ~~[#179](https://github.com/kormie/Skein/issues/179) — **p1:** Bedrock AWS credential-chain resolution — M~~ — shipped (`:aws_credentials` integration behind `resolve_credentials/1`, started on demand: `AWS_PROFILE` files, EKS IRSA via the new `Skein.Runtime.Llm.AwsWebIdentityProvider`, ECS task roles, EC2 IMDSv2, EKS Pod Identity, with caching + refresh; chain region fills in when config/`AWS_REGION` miss; SSO remains on the export-credentials workaround → [#236](https://github.com/kormie/Skein/issues/236))
+- ~~[#179](https://github.com/kormie/Skein/issues/179) — **p1:** Bedrock AWS credential-chain resolution — M~~ — shipped (`:aws_credentials` integration behind `resolve_credentials/1`, started on demand: `AWS_PROFILE` files, EKS IRSA via the new `Skein.Runtime.Llm.AwsWebIdentityProvider`, ECS task roles, EC2 IMDSv2, EKS Pod Identity, with caching + refresh; chain region fills in when config/`AWS_REGION` miss)
+- ~~[#236](https://github.com/kormie/Skein/issues/236) — Bedrock SSO / Identity Center credential resolution — M~~ — shipped (`Skein.Runtime.Llm.AwsSsoProvider`: modern `sso-session` + legacy inline profiles, the `aws sso login` token cache, portal `GetRoleCredentials`, profile `region` passthrough; an expired/missing session makes the missing-credentials error say `aws sso login --profile <name>`)
 - ~~[#180](https://github.com/kormie/Skein/issues/180) — Bedrock ARN-form model IDs — S–M~~ — shipped (rejected before any request with a structured error naming the model-ID/inference-profile alternatives; inference-profile ARNs name the exact profile ID to use)
 - ~~[#178](https://github.com/kormie/Skein/issues/178) — Bedrock real token streaming via `converse-stream` — L~~ — shipped (`Skein.Runtime.Llm.EventStream`: pure incremental AWS event-stream frame parser with CRC validation, property-tested against split frames and corruption; mid-stream exception events map to `Llm.Error` kinds; the shared `AsyncBody` receive loop also fixed the Anthropic SSE loop, which matched the wrong ref and could deliver out-of-order chunks)
 
@@ -83,7 +84,6 @@ Well-scoped gaps with no design unknowns (the bugs and guard/embeddings work ori
 
 - [#145](https://github.com/kormie/Skein/issues/145) — `llm.rerank` for RAG pipelines — M, depends on #146
 - [#150](https://github.com/kormie/Skein/issues/150) — Code-action phase 2: `Skein.Error` span + `edit_kind` so any exact fix applies generically (phase 1 per-code mapping shipped with #108) — L
-- [#236](https://github.com/kormie/Skein/issues/236) — Bedrock SSO / Identity Center credential resolution (token cache + `GetRoleCredentials`); the one chain source #179 left on the `export-credentials` workaround — M
 - [#202](https://github.com/kormie/Skein/issues/202) — Docs/spec drift guard: compile every docs/spec code block in CI, registry drift tests (error codes, keywords, stdlib signatures), generate tables from source — turns the rc readiness sweep (#182–#195) into automated gates — L
 
 ### Milestone: v1.2 — Interop & Agent Workflows
