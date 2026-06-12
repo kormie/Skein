@@ -86,6 +86,7 @@ Well-scoped gaps with no design unknowns (the bugs and guard/embeddings work ori
 
 - [#145](https://github.com/kormie/Skein/issues/145) — `llm.rerank` for RAG pipelines — M, depends on #146
 - [#202](https://github.com/kormie/Skein/issues/202) — Docs/spec drift guard: compile every docs/spec code block in CI, registry drift tests (error codes, keywords, stdlib signatures), generate tables from source — turns the rc readiness sweep (#182–#195) into automated gates — L
+- [#240](https://github.com/kormie/Skein/issues/240) — LSP rename + find-references + workspace symbol search — structural navigation built on `Skein.AST` (complements the shipped go-to-definition) — L
 
 ### Milestone: v1.2 — Interop & Agent Workflows
 
@@ -95,6 +96,7 @@ Bigger design efforts, after the hardening wave:
 - [#144](https://github.com/kormie/Skein/issues/144) — Human-in-the-loop approval workflows — `suspend` before sensitive tool calls — XL
 - [#143](https://github.com/kormie/Skein/issues/143) — Web trace viewer — browser-based exploration of trace data — L–XL
 - [#171](https://github.com/kormie/Skein/issues/171) — CLI TUI — adopt a terminal UI framework for interactive trace/test/run (options researched in the issue; TermUI leading, Burrito compatibility is the gating spike) — XL
+- [#241](https://github.com/kormie/Skein/issues/241) — Native structural search + codemod for `.skein` (CLI + MCP) — AST-pattern match/rewrite for agent refactors; built on the canonical parser rather than ast-grep/tree-sitter (one source of truth) — XL
 
 ### Milestone: Future — Platform
 
