@@ -27,7 +27,13 @@ defmodule SkeinCli.MixProject do
       {:skein_compiler, in_umbrella: true},
       {:skein_runtime, in_umbrella: true},
       {:skein_lsp, in_umbrella: true},
-      {:burrito, "~> 1.5"}
+      {:burrito, "~> 1.5"},
+      # TUI framework spike (issue #171). Pinned to patch level: young
+      # upstream with monthly releases — widen deliberately, not by accident.
+      # runtime: false keeps plain CLI paths from auto-starting the raxol
+      # closure; the release ships it :load (see root mix.exs) and the TUI
+      # entry point starts it on demand.
+      {:raxol, "~> 2.4.0", runtime: false}
     ]
   end
 end

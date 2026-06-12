@@ -8,6 +8,6 @@
 erlang = "28.1"
 elixir = "1.19.5-otp-28"
 
-[env]
-# Ensure hex and rebar are available for mix deps
-MIX_ENV = "dev"
+# No [env] section: a forced MIX_ENV here overrides the caller's value
+# for every shimmed command, silently turning MIX_ENV=prod release
+# builds into dev builds. Mix already defaults MIX_ENV to dev.

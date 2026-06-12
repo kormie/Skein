@@ -140,13 +140,30 @@ defmodule Skein.CLI.Main do
     end
   end
 
+  # TEMPORARY #171 spike diagnostics (revert before merge): evidence that
+  # plain CLI paths start none of the raxol/phoenix closure and which
+  # terminal driver backend the wrapped binary selected.
+  def dispatch(["__diag" | _]) do
+    started = Application.started_applications() |> Enum.map(&elem(&1, 0)) |> Enum.sort()
+
+    IO.puts(
+      "started_applications (#{length(started)}): #{Enum.map_join(started, ",", &Atom.to_string/1)}"
+    )
+
+    IO.puts("raxol_started: #{:raxol in started}")
+    IO.puts("driver_backend: #{inspect(Raxol.Terminal.Driver.backend())}")
+    System.halt(0)
+  end
+
   def dispatch(["trace" | rest]) do
+    {interactive, rest} = Skein.CLI.Tui.interactive?(rest)
+
     case Skein.CLI.trace(rest) do
       {:ok, result} ->
-        IO.puts("Traces (#{result.count}):")
-
-        for span <- result.spans do
-          IO.puts("  [#{span.kind}] #{span.name} (#{span.duration_ms}ms)")
+        if interactive do
+          Skein.CLI.Tui.run_trace(result)
+        else
+          IO.puts(Skein.CLI.Render.trace_plain(result))
         end
 
         System.halt(0)
@@ -272,6 +289,8 @@ defmodule Skein.CLI.Main do
       run --port <port>          Server port (default: 4000)
       trace --last <n>           Number of traces (default: 10)
       trace --kind <kind>        Filter by span kind
+      trace --interactive        Explore spans in a TUI (TTY only; experimental)
+      trace --no-tui             Force plain output (also: SKEIN_NO_TUI=1)
     """
   end
 
