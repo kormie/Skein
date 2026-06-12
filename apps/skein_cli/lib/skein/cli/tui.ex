@@ -66,6 +66,12 @@ defmodule Skein.CLI.Tui do
       formatter: Logger.default_formatter()
     })
 
+    # raxol requires os_mon, whose cpu/memory port daemons print shutdown
+    # noise after the TUI exits; the explorer uses neither.
+    Application.put_env(:os_mon, :start_cpu_sup, false)
+    Application.put_env(:os_mon, :start_memsup, false)
+    Application.put_env(:os_mon, :start_disksup, false)
+
     Application.ensure_all_started(:raxol)
   end
 
