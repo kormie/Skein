@@ -141,7 +141,7 @@ Annotations like `@min`, `@max`, and `@one_of` flow through to JSON Schema, vali
 ```rust
 module PaymentService {
   capability http.in
-  capability http.out("api.stripe.com", methods: [POST])
+  capability http.out("api.stripe.com")
   capability store.table("transactions")
   capability model("anthropic", "claude-opus-4-8")
 
@@ -340,9 +340,9 @@ ANTHROPIC_API_KEY=sk-ant-... mise exec -- mix run examples/demo.exs
    → positive
 
 📊 Trace spans:
-   • llm:chat claude-sonnet-4-20250514 (1.2s) ✅
+   • llm:chat claude-opus-4-8 (1.2s) ✅
      tokens: 28 in → 15 out
-   • llm:chat claude-sonnet-4-20250514 (0.4s) ✅
+   • llm:chat claude-opus-4-8 (0.4s) ✅
      tokens: 31 in → 3 out
 ```
 
