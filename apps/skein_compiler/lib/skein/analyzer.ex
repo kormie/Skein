@@ -341,6 +341,11 @@ defmodule Skein.Analyzer do
     # Pass 2b: Type-check handler bodies
     errors = errors ++ check_handlers(ast.declarations, env)
 
+    # Pass 2c: Scope-independent interpolation rules — uppercase
+    # interpolation roots and interpolated string patterns. One generic
+    # walk covers bodies the type-inference passes skip (test blocks).
+    errors = errors ++ check_interpolation_shapes(ast.declarations ++ test_views, env)
+
     # Pass 3: Capability checking — verify effect calls have covering
     # capabilities (test/scenario/golden bodies included)
     errors = errors ++ check_capabilities(ast.declarations ++ test_views, env)
@@ -412,6 +417,11 @@ defmodule Skein.Analyzer do
     errors = errors ++ check_handler_effect_arity(ast.handlers, env)
 
     all_decls = agent_decl_views(ast)
+
+    # Pass 5c: Scope-independent interpolation rules (uppercase roots,
+    # interpolated string patterns) — handler bodies skip infer_type, so
+    # this walk is what rejects "${Foo}" inside them.
+    errors = errors ++ check_interpolation_shapes(all_decls, env)
 
     # Pass 6: Unreachable code after stop() warnings
     errors = errors ++ check_unreachable_after_stop(all_decls)
@@ -850,6 +860,109 @@ defmodule Skein.Analyzer do
         []
     end)
   end
+
+  # ------------------------------------------------------------------
+  # Interpolation shape checking
+  # ------------------------------------------------------------------
+
+  # Structural interpolation rules that hold regardless of scope, checked
+  # by one generic walk over every declaration body (module fns, handlers,
+  # tools, test blocks, agent fns, agent handlers):
+  #
+  #   * interpolation roots must be lowercase references — "${Foo}" would
+  #     otherwise compile to a bare variant atom (or crash codegen)
+  #   * string patterns must be literal — an interpolated pattern has no
+  #     match-time value (codegen lowers string patterns byte-by-byte)
+  #
+  # Scope checking of lowercase references stays in check_interpolation
+  # (it needs the binding environment that only type inference tracks).
+  defp check_interpolation_shapes(declarations, env) do
+    declarations
+    |> Enum.flat_map(&interpolation_shape_errors(&1, env))
+  end
+
+  defp interpolation_shape_errors(%AST.StringLit{segments: segments}, env) do
+    segments
+    |> Enum.flat_map(fn
+      {:interpolation, expr} -> uppercase_interpolation_errors(expr, env)
+      _literal -> []
+    end)
+  end
+
+  defp interpolation_shape_errors(
+         %AST.MatchArm{pattern: pattern, guard: guard, body: body},
+         env
+       ) do
+    pattern_interpolation_errors(pattern, env) ++
+      interpolation_shape_errors(guard, env) ++ interpolation_shape_errors(body, env)
+  end
+
+  # Nested agents run the full agent pass suite (which includes this
+  # check), so the module-level walk must not descend into them.
+  defp interpolation_shape_errors(%AST.Agent{}, _env), do: []
+
+  defp interpolation_shape_errors(%_{} = node, env) do
+    node
+    |> Map.from_struct()
+    |> Enum.flat_map(fn
+      {:meta, _} -> []
+      {_key, value} -> interpolation_shape_errors(value, env)
+    end)
+  end
+
+  defp interpolation_shape_errors(nodes, env) when is_list(nodes),
+    do: Enum.flat_map(nodes, &interpolation_shape_errors(&1, env))
+
+  defp interpolation_shape_errors({_tag, value}, env), do: interpolation_shape_errors(value, env)
+  defp interpolation_shape_errors(_other, _env), do: []
+
+  defp uppercase_interpolation_errors(%AST.Identifier{name: name, meta: meta}, env) do
+    if String.match?(name, ~r/^[A-Z]/) do
+      [
+        %Error{
+          code: "E0010",
+          severity: :error,
+          message:
+            "Cannot interpolate '#{name}': string interpolation accepts let bindings, parameters, and field access on them",
+          location: location_from_meta(meta, env.file),
+          fix_hint: "Bind the value to a lowercase name first, then interpolate that binding",
+          fix_code: "let value = #{name}"
+        }
+      ]
+    else
+      []
+    end
+  end
+
+  defp uppercase_interpolation_errors(%AST.FieldAccess{subject: subject}, env),
+    do: uppercase_interpolation_errors(subject, env)
+
+  defp uppercase_interpolation_errors(_other, _env), do: []
+
+  # Patterns reject ALL interpolation (uppercase or not), so the walk above
+  # skips MatchArm patterns and this check reports them once.
+  defp pattern_interpolation_errors(%AST.StringLit{segments: segments, meta: meta}, env) do
+    if Enum.all?(segments, &match?({:literal, _}, &1)) do
+      []
+    else
+      [
+        %Error{
+          code: "E0020",
+          severity: :error,
+          message: "String patterns cannot contain interpolation",
+          location: location_from_meta(meta, env.file),
+          fix_hint:
+            "Match on a binding instead, or compare against the interpolated string with == in a guard",
+          fix_code: nil
+        }
+      ]
+    end
+  end
+
+  defp pattern_interpolation_errors(%AST.Call{args: args}, env),
+    do: Enum.flat_map(args, &pattern_interpolation_errors(&1, env))
+
+  defp pattern_interpolation_errors(_other, _env), do: []
 
   # Generic expression walker collecting every Call node (including calls
   # nested in arguments, match arms, interpolations, and map literals).
@@ -2611,42 +2724,36 @@ defmodule Skein.Analyzer do
   # Interpolation checking
   # ------------------------------------------------------------------
 
-  defp check_interpolation({:ident, _, name}, env) do
-    if Map.has_key?(env.variables, name) or Map.has_key?(env.functions, name) do
-      []
-    else
-      [
-        %Error{
-          code: "E0010",
-          severity: :error,
-          message: "Unknown identifier '#{name}' in string interpolation",
-          location: %{file: env.file, line: 0, col: 0},
-          fix_hint: "Did you mean to declare this variable?",
-          fix_code: "let #{name} = value"
-        }
-      ]
+  # Scope check for interpolation references (segments are AST nodes,
+  # normalized by the parser). Uppercase roots are skipped here: the
+  # check_interpolation_shapes pass owns that rejection, so it fires
+  # uniformly for bodies this type-inference pass never visits (agent
+  # handlers, test blocks).
+  defp check_interpolation(%AST.Identifier{name: name, meta: meta}, env) do
+    cond do
+      String.match?(name, ~r/^[A-Z]/) ->
+        []
+
+      Map.has_key?(env.variables, name) or Map.has_key?(env.functions, name) ->
+        []
+
+      true ->
+        [
+          %Error{
+            code: "E0010",
+            severity: :error,
+            message: "Unknown identifier '#{name}' in string interpolation",
+            location: location_from_meta(meta, env.file),
+            fix_hint: "Did you mean to declare this variable?",
+            fix_code: "let #{name} = value"
+          }
+        ]
     end
   end
 
-  defp check_interpolation({:field_access, subject, _field}, env) do
+  defp check_interpolation(%AST.FieldAccess{subject: subject}, env) do
     check_interpolation(subject, env)
   end
-
-  defp check_interpolation({:upper_ident, {line, col}, name}, env) do
-    [
-      %Error{
-        code: "E0010",
-        severity: :error,
-        message:
-          "Cannot interpolate '#{name}': string interpolation accepts let bindings, parameters, and field access on them",
-        location: %{file: env.file, line: line, col: col},
-        fix_hint: "Bind the value to a lowercase name first, then interpolate that binding",
-        fix_code: "let value = #{name}"
-      }
-    ]
-  end
-
-  defp check_interpolation(_, _env), do: []
 
   # ------------------------------------------------------------------
   # Type compatibility
@@ -3144,8 +3251,15 @@ defmodule Skein.Analyzer do
     {kind, Enum.map(params, &capability_param_fingerprint/1)}
   end
 
-  defp capability_param_fingerprint(%AST.StringLit{segments: segments}),
-    do: {:string, segments}
+  # Fingerprints must be position-independent: interpolation segments are
+  # AST nodes carrying meta, so strip down to the referenced names.
+  defp capability_param_fingerprint(%AST.StringLit{segments: segments}) do
+    {:string,
+     Enum.map(segments, fn
+       {:literal, text} -> {:literal, text}
+       {:interpolation, expr} -> {:interpolation, capability_param_fingerprint(expr)}
+     end)}
+  end
 
   defp capability_param_fingerprint(%AST.Identifier{name: name}), do: {:ident, name}
   defp capability_param_fingerprint(%AST.ToolRef{name: name}), do: {:tool, name}
@@ -3589,16 +3703,6 @@ defmodule Skein.Analyzer do
       {:interpolation, expr} -> collect_referenced_identifiers(expr)
       _ -> []
     end)
-  end
-
-  # Interpolation segments carry raw lexer tokens, not AST nodes:
-  # {:ident, {line, col}, name} and {:field_access, subject, field}.
-  defp collect_referenced_identifiers({:ident, _, name}) when is_binary(name) do
-    [name]
-  end
-
-  defp collect_referenced_identifiers({:field_access, subject, _field}) do
-    collect_referenced_identifiers(subject)
   end
 
   defp collect_referenced_identifiers(_), do: []

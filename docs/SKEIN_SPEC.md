@@ -748,7 +748,7 @@ All errors are JSON-serializable with this structure:
 | Code | Category | Severity | Meaning |
 |------|----------|----------|---------|
 | E0001 | Syntax | error | Unexpected token |
-| E0002 | Syntax | error | Invalid string: unterminated string literal, an expression inside `${...}` interpolation (only an identifier with optional dot access is allowed), or an unterminated interpolation |
+| E0002 | Syntax | error | Invalid string: unterminated string literal, an expression inside `${...}` interpolation (only an identifier with optional dot access is allowed), an empty interpolation (`${}`), or an unterminated interpolation |
 | E0003 | Syntax | error | Invalid number literal (e.g. underscore grouping in a float: `1_000.5`) |
 | E0010 | Name | error | Undefined identifier |
 | E0011 | Name | error | Duplicate definition |
@@ -758,7 +758,7 @@ All errors are JSON-serializable with this structure:
 | E0015 | Tool | error | Duplicate short tool name in `capability tool.use` params |
 | E0016 | Name | error | Cross-module function call (functions are module-private; expose a tool instead) |
 | E0017 | Capability | error | Duplicate scoped capability declaration (`memory.kv`, `event.log`, `process.spawn`, `timer` allow one per module or agent) |
-| E0020 | Type | error | Type mismatch (including wrong argument counts for fn, stdlib, and effect calls) |
+| E0020 | Type | error | Type mismatch (including wrong argument counts for fn, stdlib, and effect calls, and interpolation in string patterns) |
 | E0021 | Type | warning | Non-exhaustive match |
 | E0022 | Type | error | Invalid `!` on non-Result |
 | E0023 | Type | error | Invalid `?` on non-Result (or enclosing fn doesn't return Result) |

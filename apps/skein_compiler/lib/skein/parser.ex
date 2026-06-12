@@ -1735,7 +1735,11 @@ defmodule Skein.Parser do
   end
 
   defp parse_pattern([{:string, {line, col}, segments} | rest], file) do
-    {:ok, %AST.StringLit{segments: segments, meta: %{line: line, col: col, file: file}}, rest}
+    {:ok,
+     %AST.StringLit{
+       segments: normalize_string_segments(segments, file),
+       meta: %{line: line, col: col, file: file}
+     }, rest}
   end
 
   defp parse_pattern(tokens, file) do
@@ -2313,7 +2317,11 @@ defmodule Skein.Parser do
   end
 
   defp parse_primary([{:string, {line, col}, segments} | rest], file) do
-    {:ok, %AST.StringLit{segments: segments, meta: %{line: line, col: col, file: file}}, rest}
+    {:ok,
+     %AST.StringLit{
+       segments: normalize_string_segments(segments, file),
+       meta: %{line: line, col: col, file: file}
+     }, rest}
   end
 
   defp parse_primary([{:ident, {line, col}, name} | rest], file) do
@@ -2497,6 +2505,31 @@ defmodule Skein.Parser do
          {:ok, value, rest} <- parse_expression(rest, file) do
       parse_emit_fields(rest, file, [{name, value} | acc])
     end
+  end
+
+  # ------------------------------------------------------------------
+  # String interpolation segments
+  # ------------------------------------------------------------------
+
+  # The lexer represents interpolation segments as raw tokens
+  # ({:ident, ...}, {:upper_ident, ...}, {:field_access, ...}). Normalize
+  # them into AST nodes here so every downstream walker (analyzer passes,
+  # codegen, source rendering) handles them like any other expression.
+  defp normalize_string_segments(segments, file) do
+    Enum.map(segments, fn
+      {:interpolation, token} -> {:interpolation, interpolation_expr_to_ast(token, file)}
+      literal -> literal
+    end)
+  end
+
+  defp interpolation_expr_to_ast({kind, {line, col}, name}, file)
+       when kind in [:ident, :upper_ident] do
+    %AST.Identifier{name: name, meta: %{line: line, col: col, file: file}}
+  end
+
+  defp interpolation_expr_to_ast({:field_access, subject, field}, file) do
+    subject_ast = interpolation_expr_to_ast(subject, file)
+    %AST.FieldAccess{subject: subject_ast, field: field, meta: subject_ast.meta}
   end
 
   # ------------------------------------------------------------------

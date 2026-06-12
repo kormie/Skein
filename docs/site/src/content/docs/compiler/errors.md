@@ -83,7 +83,7 @@ All error codes are aligned with the language specification. Agents can rely on 
 | Code | Severity | Description |
 |------|----------|-------------|
 | E0001 | error | Unexpected token |
-| E0002 | error | Invalid string: unterminated literal, expression inside `${...}` interpolation, or unterminated interpolation |
+| E0002 | error | Invalid string: unterminated literal, expression inside `${...}` interpolation, empty interpolation (`${}`), or unterminated interpolation |
 | E0003 | error | Invalid number literal (e.g. underscore grouping in a float: `1_000.5`) |
 
 ### Name Resolution Errors
@@ -123,7 +123,7 @@ The `fix_code` field is especially useful for LLM agents -- it provides the exac
 
 | Code | Severity | Description |
 |------|----------|-------------|
-| E0020 | error | Type mismatch (including wrong argument counts for fn, stdlib, and effect calls) |
+| E0020 | error | Type mismatch (including wrong argument counts for fn, stdlib, and effect calls, and interpolation in string patterns) |
 | E0021 | warning | Non-exhaustive match |
 | E0022 | error | Invalid `!` on non-Result |
 | E0023 | error | Invalid `?` on non-Result (or enclosing fn doesn't return Result) |

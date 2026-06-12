@@ -336,6 +336,18 @@ defmodule Skein.Lexer do
   # For Phase 1, supports simple identifiers and dotted access (e.g., name, req.params.id)
   defp lex_interpolation(source, line, col) do
     case lex_interpolation_expr(source, line, col) do
+      {:ok, nil, <<"}", _::binary>>, end_line, end_col} ->
+        {:error,
+         %Skein.Error{
+           code: "E0002",
+           severity: :error,
+           message: "Empty string interpolation: '${}' must name a value to interpolate",
+           location: %{file: "unknown", line: end_line, col: end_col},
+           fix_hint:
+             "Interpolate a binding (e.g. ${name}), or escape the dollar sign as \\${ for literal text",
+           fix_code: nil
+         }}
+
       {:ok, tokens, <<"}", rest::binary>>, end_line, end_col} ->
         {:ok, tokens, rest, end_line, end_col + 1}
 
