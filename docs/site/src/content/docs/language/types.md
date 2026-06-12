@@ -162,13 +162,16 @@ type Config {
 | `@max(n)` | Int, Float | `"maximum": n` |
 | `@one_of([...])` | String | `"enum": [...]` |
 | `@default(v)` | Any | `"default": v` |
+| `@primary` | Field | — (storage: primary key) |
+| `@unique` | Field | — (storage: unique index) |
+| `@description(s)` | Field, Type | `"description": s` |
 
 ## JSON Schema Derivation
 
 Type declarations automatically generate JSON schemas via `Skein.CodeGen.SchemaGen`:
 
 ```elixir
-Skein.CodeGen.SchemaGen.generate(%AST.TypeDecl{
+Skein.CodeGen.SchemaGen.to_json_schema(%AST.TypeDecl{
   name: "User",
   fields: [
     %AST.Field{name: "id", type: %AST.TypeRef{name: "Uuid"}, annotations: []},
@@ -188,7 +191,7 @@ Produces:
     "email": {"type": "string"},
     "name": {"type": "string"}
   },
-  "required": ["id", "email", "name"]
+  "required": ["email", "id", "name"]
 }
 ```
 
@@ -207,6 +210,7 @@ Produces:
 | `Duration` | `{"type": "string"}` |
 | `Option[T]` | Schema for T (not required) |
 | `List[T]` | `{"type": "array", "items": <T>}` |
+| `Set[T]` | `{"type": "array", "uniqueItems": true, "items": <T>}` |
 | `Map[K, V]` | `{"type": "object", "additionalProperties": <V>}` |
 
 ## How Types Are Represented in the AST
