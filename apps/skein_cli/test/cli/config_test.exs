@@ -65,6 +65,73 @@ defmodule Skein.CLI.ConfigTest do
 
       assert message =~ "line 2"
     end
+
+    test "unknown keys with values outside the parsed subset are ignored" do
+      assert {:ok, parsed} =
+               Config.parse("""
+               name = "proj"
+               future_key = 1.5
+               tags = ["a", "b"]
+               when = 2026-06-12
+
+               [llm]
+               backend = "test"
+               """)
+
+      assert parsed["name"] == "proj"
+      assert parsed["llm"]["backend"] == "test"
+      refute Map.has_key?(parsed, "future_key")
+    end
+
+    test "multi-line values under unknown keys are ignored" do
+      assert {:ok, parsed} =
+               Config.parse("""
+               items = [
+                 "a",
+                 "b"
+               ]
+
+               [llm]
+               backend = "test"
+               """)
+
+      assert parsed["llm"]["backend"] == "test"
+    end
+
+    test "unknown keys inside [llm] with non-subset values are ignored" do
+      assert {:ok, parsed} =
+               Config.parse("""
+               [llm]
+               backend = "test"
+               temperature = 1.5
+               """)
+
+      assert parsed["llm"]["backend"] == "test"
+      refute Map.has_key?(parsed["llm"], "temperature")
+    end
+
+    test "unknown table forms are ignored along with their pairs" do
+      assert {:ok, parsed} =
+               Config.parse("""
+               [[tasks]]
+               weight = 0.5
+
+               [llm]
+               backend = "test"
+               """)
+
+      assert parsed["llm"]["backend"] == "test"
+    end
+
+    test "known llm profile keys with bad values still error" do
+      assert {:error, message} =
+               Config.parse("""
+               [env.dev.llm]
+               base_url = not-a-string
+               """)
+
+      assert message =~ "line 2"
+    end
   end
 
   describe "llm_profile/2" do
@@ -109,6 +176,13 @@ defmodule Skein.CLI.ConfigTest do
 
       assert {:ok, _desc} = Config.apply_llm_profile(tmp, nil)
       assert Llm.get_backend() == Skein.Runtime.Llm.AnthropicBackend
+    end
+
+    test "unknown future keys never block profile application", %{tmp_dir: tmp} do
+      write_toml(tmp, "future_key = 1.5\n\n[llm]\nbackend = \"test\"\n")
+
+      assert {:ok, _desc} = Config.apply_llm_profile(tmp, nil)
+      assert Llm.get_backend() == Skein.Runtime.Llm.TestBackend
     end
 
     test "test backend selects TestBackend", %{tmp_dir: tmp} do

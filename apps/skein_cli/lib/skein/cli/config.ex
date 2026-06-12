@@ -26,7 +26,16 @@ defmodule Skein.CLI.Config do
   The parser covers the TOML subset skein.toml uses: `[table]` headers
   (dotted), `key = "string"` / `key = 123` pairs, inline string tables,
   comments, and blank lines.
+
+  Anything outside that subset is tolerated, not fatal: unknown keys with
+  unparseable values (floats, arrays, dates, multi-line forms) and unknown
+  table forms are skipped, so a skein.toml written for a future Skein
+  version still parses on 1.0. Parse errors are reported only for the
+  known `[llm]` profile keys, where a bad value means a misconfigured
+  backend rather than a key from the future.
   """
+
+  @llm_profile_keys ~w(backend base_url api_key_env model_map region)
 
   alias Skein.Runtime.Llm
 
@@ -41,18 +50,35 @@ defmodule Skein.CLI.Config do
     |> String.split("\n")
     |> Enum.with_index(1)
     |> Enum.reduce_while({%{}, []}, fn {line, number}, {acc, table_path} ->
-      case parse_line(String.trim(line)) do
+      trimmed = String.trim(line)
+
+      case parse_line(trimmed) do
         :skip ->
           {:cont, {acc, table_path}}
 
         {:table, path} ->
           {:cont, {acc, path}}
 
+        {:pair, _key, _value} when table_path == :unknown ->
+          {:cont, {acc, table_path}}
+
         {:pair, key, value} ->
           {:cont, {put_nested(acc, table_path ++ [key], value), table_path}}
 
         :error ->
-          {:halt, {:error, "Cannot parse skein.toml line #{number}: #{String.trim(line)}"}}
+          cond do
+            String.starts_with?(trimmed, "[") ->
+              # Unknown table form (e.g. [[array.of.tables]]): skip the
+              # table and everything in it
+              {:cont, {acc, :unknown}}
+
+            known_llm_key_failure?(table_path, trimmed) ->
+              {:halt, {:error, "Cannot parse skein.toml line #{number}: #{trimmed}"}}
+
+            true ->
+              # Unknown key or value form from a future version — ignored
+              {:cont, {acc, table_path}}
+          end
       end
     end)
     |> case do
@@ -60,6 +86,19 @@ defmodule Skein.CLI.Config do
       {parsed, _path} -> {:ok, parsed}
     end
   end
+
+  # A parse failure is fatal only for the known [llm] profile keys, where
+  # a bad value is a misconfiguration the user must hear about.
+  defp known_llm_key_failure?(table_path, line) do
+    in_llm_section?(table_path) and
+      Enum.any?(@llm_profile_keys, fn key ->
+        Regex.match?(~r/^#{key}\s*=/, line)
+      end)
+  end
+
+  defp in_llm_section?(["llm"]), do: true
+  defp in_llm_section?(["env", _name, "llm"]), do: true
+  defp in_llm_section?(_), do: false
 
   @doc """
   Resolves the active LLM profile from a parsed skein.toml.
