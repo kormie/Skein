@@ -706,3 +706,20 @@ The CLI (`skein_cli`) supports building standalone binaries via Burrito, a cross
 - macOS aarch64 (Apple Silicon)
 
 Build workflow: `mix release` + Burrito wrapping → single binary per platform. CI (GitHub Actions) automates this on version tags.
+
+## 8. CLI Terminal UI
+
+Interactive CLI surfaces ([#171](https://github.com/kormie/Skein/issues/171)) are built on [Raxol](https://github.com/DROOdotFOO/raxol), a TEA (The Elm Architecture) terminal UI framework for the BEAM. Raxol was chosen over TermUI/Ratatouille/Owl for its widget set, its multi-surface runtime (terminal today; MCP agent surface as a future fit for Skein's agent-first thesis), and an architecture that matches the codebase's OTP idioms. TermUI remains the named fallback: both are TEA, so application logic ports across with only the view layer rewritten.
+
+**Output modes** — the plain line-oriented output is the contract; the TUI is strictly opt-in:
+
+| Invocation | stdout | Result |
+|---|---|---|
+| `skein trace` | any | Plain lines (`Skein.CLI.Render.trace_plain/1`) |
+| `skein trace --interactive` | TTY | Full-screen TEA app (`Skein.CLI.Tui.TraceApp`) |
+| `skein trace --interactive` | pipe/file | Plain lines, byte-identical to `skein trace` |
+| `--no-tui` or `SKEIN_NO_TUI=1` | any | Plain lines, always |
+
+`skein mcp` and `skein lsp` own stdout for their wire protocols and never route through the TUI gate (`Skein.CLI.Tui.interactive?/2`).
+
+**Release packaging:** the raxol dependency closure ships in the binary but is `:load`-only (root `mix.exs`) — plain CLI commands never start it; the TUI entry point boots it on demand via `Application.ensure_all_started(:raxol)` and falls back to plain output on any failure. The terminal driver is Raxol's pure-Elixir `IOTerminal` (OTP 28+ raw mode) on every target: the optional termbox2 NIF is never built into `priv/`, so no native code is added to the four Burrito targets. Two raxol 2.4.0 packaging defects are worked around in a pre-assemble release step in the root `mix.exs` (`prune_vendored_raxol_tooling/1`); both are candidates for upstream fixes.
