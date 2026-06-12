@@ -367,9 +367,10 @@ defmodule Skein.CLI do
   defp llm_profile_toml("bedrock") do
     """
     # Amazon Bedrock (Converse API). Requests are SigV4-signed with
-    # credentials from the standard AWS environment variables
-    # (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_SESSION_TOKEN) —
-    # for profile/SSO setups, export them first:
+    # credentials from the AWS env vars (AWS_ACCESS_KEY_ID, ...) or the
+    # AWS credential chain: AWS_PROFILE files, EKS IRSA, ECS task roles,
+    # EC2 instance metadata — cached and refreshed automatically.
+    # SSO setups still export first:
     #   aws configure export-credentials --format env --profile <name>
     [llm]
     backend = "bedrock"

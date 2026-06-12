@@ -6,6 +6,10 @@ defmodule Skein.Runtime.Llm.BedrockBackendTest do
   use ExUnit.Case, async: false
   use ExUnitProperties
 
+  # The credential-chain tests start/stop :aws_credentials, which logs
+  # lifecycle notices; keep them out of the suite output.
+  @moduletag capture_log: true
+
   alias Skein.Runtime.Llm
   alias Skein.Runtime.Llm.BedrockBackend
   alias Skein.Runtime.Llm.Error
@@ -65,6 +69,47 @@ defmodule Skein.Runtime.Llm.BedrockBackendTest do
     end)
 
     "http://127.0.0.1:#{port}"
+  end
+
+  # A canned :aws_credentials chain provider: returns whatever the
+  # provider_options carry under :chain_stub, so each test controls the
+  # chain's outcome through the library's own configuration surface.
+  defmodule ChainStubProvider do
+    @behaviour :aws_credentials_provider
+
+    @impl true
+    def fetch(%{chain_stub: result}), do: result
+    def fetch(_options), do: {:error, :no_chain_stub}
+  end
+
+  @aws_env ~w(AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN AWS_REGION)
+
+  defp clear_aws_env do
+    previous = Enum.map(@aws_env, &{&1, System.get_env(&1)})
+
+    on_exit(fn ->
+      for {name, value} <- previous do
+        if value, do: System.put_env(name, value), else: System.delete_env(name)
+      end
+    end)
+
+    Enum.each(@aws_env, &System.delete_env/1)
+  end
+
+  # Pins the :aws_credentials chain to the given providers for one test.
+  # The app restarts on the next chain consult (resolve_credentials
+  # starts it on demand) and is stopped again on exit so no cached
+  # credentials leak across tests.
+  defp configure_chain(providers, provider_options) do
+    Application.stop(:aws_credentials)
+    Application.put_env(:aws_credentials, :credential_providers, providers, persistent: true)
+    Application.put_env(:aws_credentials, :provider_options, provider_options, persistent: true)
+
+    on_exit(fn ->
+      Application.stop(:aws_credentials)
+      Application.delete_env(:aws_credentials, :credential_providers, persistent: true)
+      Application.delete_env(:aws_credentials, :provider_options, persistent: true)
+    end)
   end
 
   defp config(base_url, overrides \\ %{}) do
@@ -172,18 +217,10 @@ defmodule Skein.Runtime.Llm.BedrockBackendTest do
     end
 
     test "missing credentials are a structured error before any request is made" do
-      previous =
-        for name <- ~w(AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN) do
-          {name, System.get_env(name)}
-        end
-
-      on_exit(fn ->
-        for {name, value} <- previous do
-          if value, do: System.put_env(name, value), else: System.delete_env(name)
-        end
-      end)
-
-      for {name, _} <- previous, do: System.delete_env(name)
+      clear_aws_env()
+      # Pin the credential chain empty so the test cannot pick up real
+      # credentials from ~/.aws or instance metadata on a dev machine.
+      configure_chain([], %{})
 
       base_url = start_stub(fn _path, _body -> converse_response("never reached") end)
 
@@ -191,6 +228,7 @@ defmodule Skein.Runtime.Llm.BedrockBackendTest do
                BedrockBackend.chat("m", "s", "i", %{base_url: base_url, region: "us-west-2"})
 
       assert detail.message =~ "AWS_ACCESS_KEY_ID"
+      assert detail.message =~ "credential chain"
       refute_receive {:stub_request, _, _, _}
     end
 
@@ -263,6 +301,85 @@ defmodule Skein.Runtime.Llm.BedrockBackendTest do
     test "an explicit base_url (VPC endpoint) wins" do
       assert BedrockBackend.endpoint_url(%{base_url: "https://vpce.example.com/"}, "us-west-2") ==
                "https://vpce.example.com"
+    end
+  end
+
+  describe "credential chain" do
+    test "chain credentials serve requests when config and env vars miss" do
+      clear_aws_env()
+      base_url = start_stub(fn _path, _body -> converse_response("chained") end)
+
+      creds =
+        :aws_credentials.make_map(ChainStubProvider, "AKIACHAIN", "chain-secret", "chain-token")
+
+      configure_chain([ChainStubProvider], %{chain_stub: {:ok, creds, :infinity}})
+
+      assert {:ok, %Response{text: "chained"}} =
+               BedrockBackend.chat("m", "s", "i", %{base_url: base_url, region: "us-west-2"})
+
+      assert_receive {:stub_request, _, _, headers}
+      headers = Map.new(headers)
+      assert headers["authorization"] =~ "Credential=AKIACHAIN/"
+      assert headers["x-amz-security-token"] == "chain-token"
+    end
+
+    test "explicit config credentials win over the chain" do
+      clear_aws_env()
+      base_url = start_stub(fn _path, _body -> converse_response("ok") end)
+      creds = :aws_credentials.make_map(ChainStubProvider, "AKIACHAIN", "chain-secret")
+      configure_chain([ChainStubProvider], %{chain_stub: {:ok, creds, :infinity}})
+
+      assert {:ok, _} = BedrockBackend.chat("m", "s", "i", config(base_url))
+
+      assert_receive {:stub_request, _, _, headers}
+      assert Map.new(headers)["authorization"] =~ "Credential=AKIATESTKEY/"
+    end
+
+    test "chain credentials without a session token omit the security-token header" do
+      clear_aws_env()
+      base_url = start_stub(fn _path, _body -> converse_response("ok") end)
+      creds = :aws_credentials.make_map(ChainStubProvider, "AKIACHAIN", "chain-secret")
+      configure_chain([ChainStubProvider], %{chain_stub: {:ok, creds, :infinity}})
+
+      assert {:ok, _} =
+               BedrockBackend.chat("m", "s", "i", %{base_url: base_url, region: "us-west-2"})
+
+      assert_receive {:stub_request, _, _, headers}
+      refute Map.new(headers) |> Map.has_key?("x-amz-security-token")
+    end
+
+    test "the chain's region fills in when config and AWS_REGION are absent" do
+      clear_aws_env()
+      base_url = start_stub(fn _path, _body -> converse_response("ok") end)
+
+      creds =
+        :aws_credentials.make_map(
+          ChainStubProvider,
+          "AKIACHAIN",
+          "chain-secret",
+          "chain-token",
+          "eu-central-1"
+        )
+
+      configure_chain([ChainStubProvider], %{chain_stub: {:ok, creds, :infinity}})
+
+      assert {:ok, _} = BedrockBackend.chat("m", "s", "i", %{base_url: base_url})
+
+      assert_receive {:stub_request, _, _, headers}
+      assert Map.new(headers)["authorization"] =~ "/eu-central-1/bedrock/aws4_request"
+    end
+
+    test "a chain provider error falls through to the structured error" do
+      clear_aws_env()
+      configure_chain([ChainStubProvider], %{chain_stub: {:error, :boom}})
+
+      assert {:error, %Error{kind: :provider_error, detail: detail}} =
+               BedrockBackend.chat("m", "s", "i", %{
+                 base_url: "http://unused",
+                 region: "us-east-1"
+               })
+
+      assert detail.code == "missing_credentials"
     end
   end
 

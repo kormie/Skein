@@ -30,9 +30,16 @@ defmodule Skein.Runtime.Llm.BedrockBackend do
 
   Credentials resolve from the config map, then the standard AWS
   environment variables (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`,
-  `AWS_SESSION_TOKEN`). Credential-chain sources (shared-config
-  profiles, SSO, IMDS/IRSA) are not resolved in-process — export them
-  first, e.g. `aws configure export-credentials --format env --profile
+  `AWS_SESSION_TOKEN`), then the AWS credential chain via the
+  `:aws_credentials` OTP app: shared config/credentials profiles
+  (`AWS_PROFILE`), EKS IRSA web-identity tokens
+  (`Skein.Runtime.Llm.AwsWebIdentityProvider`), ECS task roles, EC2
+  instance metadata (IMDSv2), and EKS Pod Identity. Chain credentials
+  are cached and refreshed before they expire, and the chain only
+  starts the first time it is consulted — deployments that pass
+  explicit or env credentials never probe it. SSO / Identity Center
+  profiles are the one source not resolved in-process — export them
+  first: `aws configure export-credentials --format env --profile
   <name>`.
 
   `json` requests inject the schema into the system prompt (Converse has
@@ -49,11 +56,25 @@ defmodule Skein.Runtime.Llm.BedrockBackend do
   supported alternatives (model ID or inference profile ID).
   """
 
+  alias Skein.Runtime.Llm.AwsWebIdentityProvider
   alias Skein.Runtime.Llm.Error
   alias Skein.Runtime.Llm.Response
 
   @receive_timeout 120_000
   @default_max_tokens 4096
+
+  # The :aws_credentials chain in AWS-SDK resolution order: env vars,
+  # web identity (EKS IRSA — our provider; the library has none), shared
+  # config/credentials profiles (AWS_PROFILE), ECS task roles, EC2
+  # instance metadata (IMDSv2), EKS Pod Identity.
+  @chain_providers [
+    :aws_credentials_env,
+    AwsWebIdentityProvider,
+    :aws_credentials_file,
+    :aws_credentials_ecs,
+    :aws_credentials_ec2,
+    :aws_credentials_eks
+  ]
 
   @typedoc """
   Backend configuration.
@@ -222,8 +243,8 @@ defmodule Skein.Runtime.Llm.BedrockBackend do
   end
 
   defp post(config, path, body) do
-    with {:ok, region} <- resolve_region(config),
-         {:ok, credentials} <- resolve_credentials(config) do
+    with {:ok, credentials} <- resolve_credentials(config),
+         {:ok, region} <- resolve_region(config, credentials) do
       url = endpoint_url(config, region) <> path
 
       case Req.post(url,
@@ -266,9 +287,10 @@ defmodule Skein.Runtime.Llm.BedrockBackend do
   end
 
   @doc false
-  @spec resolve_region(config()) :: {:ok, String.t()} | {:error, Error.t()}
-  def resolve_region(config) do
-    case presence(config[:region]) || presence(System.get_env("AWS_REGION")) do
+  @spec resolve_region(config(), map()) :: {:ok, String.t()} | {:error, Error.t()}
+  def resolve_region(config, credentials \\ %{}) do
+    case presence(config[:region]) || presence(System.get_env("AWS_REGION")) ||
+           credentials[:region] do
       nil ->
         {:error,
          Error.provider_error(
@@ -302,14 +324,56 @@ defmodule Skein.Runtime.Llm.BedrockBackend do
          session_token: session_token
        }}
     else
-      {:error,
-       Error.provider_error(
-         "missing_credentials",
-         "AWS credentials not found. Set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY " <>
-           "(plus AWS_SESSION_TOKEN for temporary credentials) — for profile or SSO " <>
-           "setups, run: aws configure export-credentials --format env --profile <name>"
-       )}
+      case chain_credentials() do
+        {:ok, _} = ok ->
+          ok
+
+        :unavailable ->
+          {:error,
+           Error.provider_error(
+             "missing_credentials",
+             "AWS credentials not found in the backend config, the AWS env vars " <>
+               "(AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY), or the credential chain " <>
+               "(AWS_PROFILE files, EKS IRSA web identity, ECS task roles, EC2 instance " <>
+               "metadata). For SSO setups, run: " <>
+               "aws configure export-credentials --format env --profile <name>"
+           )}
+      end
     end
+  end
+
+  # The chain starts on demand — only after explicit config and env vars
+  # both miss — because :aws_credentials re-probes every provider every
+  # 5 seconds while no credentials exist; deployments that never use the
+  # chain must never pay for that.
+  defp chain_credentials do
+    with {:ok, _} <- ensure_chain_started(),
+         %{access_key_id: access_key_id, secret_access_key: secret_access_key} = chain <-
+           :aws_credentials.get_credentials() do
+      {:ok,
+       %{
+         access_key_id: access_key_id,
+         secret_access_key: secret_access_key,
+         session_token: presence(chain[:token]),
+         region: presence(chain[:region])
+       }}
+    else
+      _ -> :unavailable
+    end
+  catch
+    :exit, _ -> :unavailable
+  end
+
+  defp ensure_chain_started do
+    if Application.get_env(:aws_credentials, :credential_providers) == nil do
+      # persistent: survives the application load that follows, which
+      # would otherwise reset env to the values in its .app file.
+      Application.put_env(:aws_credentials, :credential_providers, @chain_providers,
+        persistent: true
+      )
+    end
+
+    Application.ensure_all_started(:aws_credentials)
   end
 
   defp presence(value) when is_binary(value) and value != "", do: value
