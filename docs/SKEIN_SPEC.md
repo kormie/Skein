@@ -749,7 +749,7 @@ All errors are JSON-serializable with this structure:
 |------|----------|----------|---------|
 | E0001 | Syntax | error | Unexpected token |
 | E0002 | Syntax | error | Unterminated string |
-| E0003 | Syntax | — | Reserved: invalid number literal (not yet emitted) |
+| E0003 | Syntax | error | Invalid number literal (e.g. underscore grouping in a float: `1_000.5`) |
 | E0010 | Name | error | Undefined identifier |
 | E0011 | Name | error | Duplicate definition |
 | E0012 | Capability | error | Missing capability declaration |
@@ -781,9 +781,9 @@ All errors are JSON-serializable with this structure:
 | W0003 | Warning | warning | Unreachable code after `stop()` |
 | W0004 | Warning | warning | Enum match covers only specific values of a variant (add a binding arm or wildcard) |
 
-E0003 and E0013 are reserved: the codes are allocated and documented here, but
-no compiler path constructs them yet. They keep their meaning when first
-emitted (error codes are append-only — see `docs/STABILITY.md`).
+E0013 is reserved: the code is allocated and documented here, but no compiler
+path constructs it yet. It keeps its meaning when first emitted (error codes
+are append-only — see `docs/STABILITY.md`).
 
 ---
 

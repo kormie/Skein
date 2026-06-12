@@ -88,8 +88,13 @@ defmodule Skein.Lexer do
 
   # Numbers
   defp do_tokenize(<<c, _::binary>> = source, line, col, acc) when c in ?0..?9 do
-    {number_token, rest, new_col} = lex_number(source, line, col)
-    do_tokenize(rest, line, new_col, [number_token | acc])
+    case lex_number(source, line, col) do
+      {:error, error} ->
+        {:error, [error]}
+
+      {number_token, rest, new_col} ->
+        do_tokenize(rest, line, new_col, [number_token | acc])
+    end
   end
 
   # Two-character operators (must come before single-character)
@@ -423,8 +428,23 @@ defmodule Skein.Lexer do
         {frac_digits, rest2, new_col2} =
           lex_digits(<<c, binary_part(rest, 2, byte_size(rest) - 2)::binary>>, new_col + 1)
 
-        value = String.to_float("#{digits}.#{frac_digits}")
-        {{:float, {line, col}, value}, rest2, new_col2}
+        text = "#{digits}.#{frac_digits}"
+
+        if String.contains?(text, "_") do
+          {:error,
+           %Skein.Error{
+             code: "E0003",
+             severity: :error,
+             message:
+               "Invalid number literal: underscores are not allowed in float literals (got '#{text}')",
+             location: %{file: "unknown", line: line, col: col},
+             fix_hint: "Remove the underscores from the float literal",
+             fix_code: String.replace(text, "_", "")
+           }}
+        else
+          value = String.to_float(text)
+          {{:float, {line, col}, value}, rest2, new_col2}
+        end
 
       _ ->
         clean_digits = String.replace(digits, "_", "")

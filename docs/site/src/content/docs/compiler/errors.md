@@ -84,7 +84,7 @@ All error codes are aligned with the language specification. Agents can rely on 
 |------|----------|-------------|
 | E0001 | error | Unexpected token |
 | E0002 | error | Unterminated string |
-| E0003 | reserved | Invalid number literal |
+| E0003 | error | Invalid number literal (e.g. underscore grouping in a float: `1_000.5`) |
 
 ### Name Resolution Errors
 
@@ -163,4 +163,4 @@ The `fix_code` field is especially useful for LLM agents -- it provides the exac
 
 ### Reserved Codes
 
-E0003 (invalid number literal) and E0013 (capability parameter mismatch) are reserved: the codes are allocated and documented, but no compiler path constructs them yet. They keep their meaning when first emitted — error codes are append-only.
+E0013 (capability parameter mismatch) is reserved: the code is allocated and documented, but no compiler path constructs it yet. It keeps its meaning when first emitted — error codes are append-only.
