@@ -7,52 +7,31 @@ Skein's compilation pipeline, runtime, standard library, editor tooling, and dis
 
 ## Current State
 
-The end-to-end pipeline works: `.skein` source files lex, parse, analyze, generate Core Erlang, compile to BEAM bytecode, and execute on OTP. The runtime supports agents, HTTP handlers, queue/schedule/topic handlers, storage (ETS and Ecto/SQLite), LLM integration with a production Anthropic backend and streaming, tool calling, memory, tracing, and event sourcing.
+The end-to-end pipeline works: `.skein` source files lex, parse, analyze, generate Core Erlang, compile to BEAM bytecode, and execute on OTP. The runtime supports agents, HTTP handlers, queue/schedule/topic handlers, storage (ETS and Ecto/SQLite), LLM integration (production Anthropic backend with streaming, AWS Bedrock, and an OpenAI-compatible backend for local models), tool calling, memory, tracing, replayable event sourcing, and guard expressions in match arms.
 
-**Test suite:** 1,547 tests, 195 property tests, 0 failures
+The full test suite (unit, property-based, and integration) runs green in CI on every change — see the CI badge on the README for current totals; counts aren't tracked here because they grow with every change.
 
-**14 example programs** (thirteen single-file plus one multi-file project) compile and run, covering HTTP APIs, agents with LLM and tools, queue workers, pub/sub notifications, background tasks, audit logging, semantic search, and a conversational assistant. All are covered by integration tests.
+**Sixteen example programs** (thirteen single-file plus the multi-file `market_research` project and its single-file variant) compile and run warning-free, covering HTTP APIs, agents with LLM and tools, queue workers, pub/sub notifications, background tasks, audit logging, semantic search, and a conversational assistant. All are covered by integration tests.
+
+## Release Status
+
+The release train so far: **v0.2.0** and **v0.3.0** shipped 2026-06-11, and **v1.0.0-rc.1** is tagged — the spec is frozen for 1.0. The rc soaks while the remaining **v1.0.0 Release** milestone items (documentation accuracy and example polish found by the release-readiness audits) land; then the rc promotes to **v1.0.0**.
 
 ---
 
 ## What's Next
 
-### Tier 1: Language Surface
+### v1.0.0 GA
 
-### Tier 2: Runtime Completeness
+The [v1.0.0 Release milestone](https://github.com/kormie/Skein/milestone/6) gates the GA tag. Everything in it is audit-driven cleanup: compiler fixes for the W0001 interpolation false positive (#196) and the float-literal lexer crash (#197), warning-free examples (#199), and meta-doc/docs-page accuracy (#200, #223–#229).
 
-#### 1. Replay Backend Injection (#73)
+### Post-1.0 Backlog
 
-The replay engine can load traces and rebuild memory, but the LLM/HTTP/tool runtimes don't consult replay state — recorded-mode replay can't yet intercept live effects.
+Tracked in [`docs/ROADMAP.md`](https://github.com/kormie/Skein/blob/main/docs/ROADMAP.md) with linked issues:
 
-#### 2. Stream/Pool-Scoped Runtime Capability Checks (#69, #57)
-
-`process.spawn`, `timer`, and `event.log` check capability *presence* at runtime but not parameters. Full enforcement needs a surface decision first: the declared capability names a pool/stream label, while the runtime call carries a different value (the task/event name).
-
-#### 3. `process.spawn` Task Bodies (#74)
-
-`process.spawn("name")` spawns a supervised, traced no-op task. Attaching real work to the spawned process needs a call-surface decision (likely a function reference argument).
-
-#### 4. Local LLM Backends for Dev (#107)
-
-Testing agents burns real Anthropic spend. An OpenAI-compatible backend plus `[env.<name>.llm]` profiles in `skein.toml` (with `model_map`) would let `SKEIN_ENV=dev skein test` serve LLM calls from a local server (oMLX, Ollama, LM Studio, vLLM) with zero source edits — capabilities stay the code's contract.
-
-### Tier 3: Polish & Developer Experience
-
-- **Enum value-level exhaustiveness warning** (#76) — variant coverage is checked, but literal field patterns without a wildcard can still `case_clause` at runtime; the analyzer should warn.
-- **LSP code actions from `fix_hint`/`fix_code`** (#108) — every compiler error already carries fix data; surface it as editor quickfixes (and machine-applicable edits for agents).
-
-
-### Post-MVP Backlog
-
-- Erlang/Elixir FFI (`extern`)
-- Hot code upgrades
-- Web IDE (trace viewer)
-- `llm.rerank` for RAG pipelines, and an embeddings-capable backend for `llm.embed`
-- Human-in-the-loop approval workflows
-- Guard expressions in match arms
-- Managed deployment platform
-- Marketplace for tools/connectors
+- **v1.1: Hardening & Language** — `llm.rerank` (#145), LSP code actions phase 2 (#150), docs/spec drift guards in CI (#202), Bedrock follow-ups (credential chain #179, real token streaming #178, ARN model IDs #180)
+- **v1.2: Interop & Agent Workflows** — Erlang/Elixir FFI (`extern`, #141), human-in-the-loop approval workflows (#144), web trace viewer (#143), CLI TUI (#171)
+- **Future: Platform** — hot code upgrades (#142), managed deployment platform (#148), tool/connector marketplace (#149)
 
 ---
 
@@ -122,7 +101,16 @@ Everything below is implemented and tested.
 | Agent nesting inside modules | `module Foo { agent Bar }` → `Skein.Agent.Foo.Bar`; module types and capabilities apply to the nested agent |
 | Types usable from agents | Module types visible to nested agents; derived JSON Schema flows into `llm.json[T]` from agent handlers |
 | Persistent EventStore | SQLite-backed event store (opt-in, ETS default) |
-| Error system | 22 error + 3 warning codes; `context` and `fix_code` populated on all analyzer/parser/lexer errors |
+| Error system | Structured error/warning codes (spec §7); `context` and `fix_code` populated on all analyzer/parser/lexer errors |
+| Replay backend injection | Recorded traces intercept `llm`/`http`/`tool` effects on replay; exhausted or mismatched traces are structured errors, never silent live calls (#73) |
+| Scoped capability labels | `memory.kv`/`event.log`/`process.spawn`/`timer` capability params are scope labels the compiler threads into runtime calls and the runtime enforces exactly (#69, #57) |
+| Task bodies | `process.spawn("name", &fn)` and `timer.after`/`timer.interval` work arguments run in supervised tasks (#74, #155) |
+| Local LLM backends | OpenAI-compatible backend + `[env.<name>.llm]` profiles in `skein.toml` with `model_map` for Ollama/LM Studio/vLLM dev loops (#107) |
+| AWS Bedrock backend | Converse API with SigV4 signing, `region` + `model_map` config (#173) |
+| Match guards | `pattern if expr ->` with a guard-safe operator subset (#147) |
+| Value-level exhaustiveness | W0004 warns when a variant is covered only by literal field patterns (#76) |
+| LSP code actions | Editor quickfixes built from each diagnostic's `fix_hint`/`fix_code` (#108) |
+| `llm.embed` backend | Embeddings served by the OpenAI-compatible backend's `/embeddings` endpoint (#146) |
 
 ### Standard Library
 

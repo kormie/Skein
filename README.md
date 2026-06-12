@@ -352,7 +352,7 @@ Every LLM call is capability-gated, type-checked, and automatically traced with 
 
 ## Project Status
 
-Skein is in active development. The compiler and runtime are being built in phases:
+The compiler and runtime were built in phases — all complete. [docs/ROADMAP.md](docs/ROADMAP.md) tracks what's next:
 
 | Phase | Goal | Status |
 |-------|------|--------|
@@ -369,10 +369,9 @@ Skein is in active development. The compiler and runtime are being built in phas
 | **8e** | **Queue & schedule handlers** — event-driven and cron-triggered execution | Complete |
 | **8f** | **LLM streaming** — `llm.stream` with chunked responses and trace spans | Complete |
 | **8b** | **Storage backend** — Ecto/SQLite integration, schema + migration generation | Complete |
-
 | **9-10** | **Stdlib, error codes, unified event store** — 11 stdlib modules (101 functions), 24 aligned error/warning codes, single append-only event log | Complete |
 
-1,547 tests + 195 property-based tests, 0 failures. The full compilation pipeline works end-to-end — from `.skein` source to running BEAM bytecode with real LLM calls and database storage. See [`examples/`](examples/README.md) for fourteen working programs, all covered by integration tests, and [docs/ROADMAP.md](docs/ROADMAP.md) for what's next.
+The full test suite (unit, property-based, and integration) runs green in CI on every change — see the CI badge above for current totals. The compilation pipeline works end-to-end — from `.skein` source to running BEAM bytecode with real LLM calls and database storage. See [`examples/`](examples/README.md) for sixteen working programs, all covered by integration tests, and [docs/ROADMAP.md](docs/ROADMAP.md) for what's next.
 
 ---
 

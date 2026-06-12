@@ -88,6 +88,7 @@ skein/
 │       ├── lib/
 │       └── test/
 ├── examples/                    # Canonical Skein programs (all covered by examples_test.exs)
+│   ├── demo.exs                 # Live LLM demo script (mix run)
 │   ├── hello.skein
 │   ├── hello_http.skein
 │   ├── hello_llm.skein
@@ -443,7 +444,7 @@ Accumulated learnings, gotchas, and project state are stored in `.claude/memory/
 
 - GitHub issues are the unit of work; `docs/ROADMAP.md` is the prioritized index, and every active roadmap item links its tracking issue. Keep the two in sync when scope changes.
 - Labels: `type/{bug,feature,chore}`, `area/{compiler,runtime,cli,docs,ci,security}`, `priority/{p0,p1,p2}`, plus `status/triage` (auto-applied by the issue forms; remove after setting priority + milestone).
-- Milestones: **v0.1 Alpha Release** and **v0.2 Beta Release** (closed — shipped), **v1.0.0 Release** (the active gate), then **v1.1: Hardening & Language**, **v1.2: Interop & Agent Workflows**, and **Future: Platform**. Defined in `.github/milestones.json` and synced by `.github/workflows/milestones.yml` (renames via `previous_titles`, closing via `state`) — edit the JSON rather than creating milestones by hand.
+- Milestones: **v0.1 Alpha Release**, **v0.2 Beta Release**, and **v1.0.0-rc Release** (closed — shipped), **v1.0.0 Release** (the active GA gate), then **v1.1: Hardening & Language**, **v1.2: Interop & Agent Workflows**, and **Future: Platform**. Defined in `.github/milestones.json` and synced by `.github/workflows/milestones.yml` (renames via `previous_titles`, closing via `state`) — edit the JSON rather than creating milestones by hand.
 - The contributor-facing version of this workflow lives in `CONTRIBUTING.md`.
 
 ## What Not To Do

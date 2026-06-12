@@ -114,19 +114,19 @@ Publishing the Skein compiler and runtime to Hex.pm would allow Elixir developer
 
 ## 4. GitHub Releases and CI ✅
 
-Implemented: `.github/workflows/build.yml` triggers on version tags (`v*`), builds Burrito binaries for all four targets plus the VS Code `.vsix`, and publishes a GitHub Release with the artifacts, checksums, and auto-generated release notes. (Automating the *tag* step itself — tagging green merges that bump the version — is tracked in [#100](https://github.com/kormie/Skein/issues/100).)
+Implemented: `.github/workflows/build.yml` triggers on version tags (`v*`), builds Burrito binaries for all four targets plus the VS Code `.vsix`, and publishes a GitHub Release with the artifacts, checksums, and auto-generated release notes. The tag step itself is automated too ([#100](https://github.com/kormie/Skein/issues/100)): a green version-bump merge to `main` tags, builds, and publishes the release with no manual steps.
 
 ---
 
-## 5. Installer Script
+## 5. Installer Script ✅
 
-For quick onboarding, provide a curl-pipe-bash installer:
+Implemented (shipped in v0.2.0):
 
 ```bash
-curl -fsSL https://skeinlang.dev/install.sh | bash
+curl -fsSL https://kormie.github.io/Skein/install.sh | sh
 ```
 
-The installer would detect the user's OS/architecture, download the appropriate binary from the latest GitHub release, and place it on `$PATH`.
+The installer detects the user's OS/architecture, downloads the matching binary from the latest GitHub release, verifies its SHA-256 against the release's `checksums.txt`, and installs it to `~/.local/bin`. `SKEIN_VERSION` pins a version; `SKEIN_BIN_DIR` overrides the install directory.
 
 ---
 
@@ -136,10 +136,11 @@ The installer would detect the user's OS/architecture, download the appropriate 
 |----------|----------|--------|
 | 1 | `skein build` writes `.beam` to disk | ✅ Done |
 | 2 | Burrito standalone binaries | ✅ Done (Linux x86_64/ARM64, macOS x86_64/ARM64) |
-| 3 | CI release pipeline | ✅ Done (binaries + `.vsix` + checksums on every `v*` tag) |
-| 4 | OTP release generation | Enables standalone server deployment |
-| 5 | Hex.pm packages | Enables embedding Skein in Elixir projects |
-| 6 | Docker template | Enables container-based deployment |
+| 3 | CI release pipeline | ✅ Done (binaries + `.vsix` + checksums on every `v*` tag; green version-bump merges auto-tag) |
+| 4 | Installer script | ✅ Done (`install.sh` served from the docs site, sha256-verified) |
+| 5 | OTP release generation | Enables standalone server deployment |
+| 6 | Hex.pm packages | Enables embedding Skein in Elixir projects |
+| 7 | Docker template | Enables container-based deployment |
 
 ## Prerequisites
 

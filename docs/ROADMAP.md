@@ -1,11 +1,11 @@
 # Skein Roadmap
 
-**As of:** 2026-06-11
-**Based on:** `docs/AUDIT_FIRST_PRINCIPLES.md`, the 2026-06-09 codebase audit (`docs/AUDIT_2026-06-09.md`), a source-verified status pass on 2026-06-10, and the 2026-06-11 `/release-readiness` full pass.
+**As of:** 2026-06-12
+**Based on:** `docs/AUDIT_FIRST_PRINCIPLES.md`, the 2026-06-09 codebase audit (`docs/AUDIT_2026-06-09.md`), a source-verified status pass on 2026-06-10, and the 2026-06-11 + 2026-06-12 `/release-readiness` full passes.
 
 This is the forward-looking work list for Skein. Items are ordered by impact — the top items close the biggest gaps between the language's stated goals and its current reality.
 
-Every item is self-contained and links its tracking issue — keep the two in sync when scope changes. Pick the top incomplete one and work it. Milestones live in `.github/milestones.json` (synced by `.github/workflows/milestones.yml`); the active gate is **v1.0.0-rc Release**, followed by **v1.0.0 Release** during the rc soak.
+Every item is self-contained and links its tracking issue — keep the two in sync when scope changes. Pick the top incomplete one and work it. Milestones live in `.github/milestones.json` (synced by `.github/workflows/milestones.yml`); the active gate is **v1.0.0 Release** (GA); the **v1.0.0-rc Release** milestone shipped with the v1.0.0-rc.1 tag.
 
 **Every item requires:**
 - TDD — tests first, implementation second
@@ -18,11 +18,11 @@ Every item is self-contained and links its tracking issue — keep the two in sy
 
 ## Current State
 
-The compilation pipeline works end-to-end: lexer, parser, analyzer, codegen, and runtime are functional. **1,945 tests + 199 property tests pass** (full umbrella run, 2026-06-11 release-readiness pass). Sixteen example programs (thirteen single-file + the multi-file market_research pair and its single-file variant) compile, all covered by integration tests. The LSP, CLI, docs site, and binary distribution (Burrito, four targets) are operational. v0.3.0 shipped the complete original v1.0.0 milestone (spec freeze, guards, embeddings, Bedrock, the stability policy).
+The compilation pipeline works end-to-end: lexer, parser, analyzer, codegen, and runtime are functional. The full umbrella suite passes (see CI for current totals). Sixteen example programs (thirteen single-file + the multi-file market_research pair and its single-file variant) compile, all covered by integration tests. The LSP, CLI, docs site, and binary distribution (Burrito, four targets) are operational. v0.3.0 shipped the complete original v1.0.0 milestone (spec freeze, guards, embeddings, Bedrock, the stability policy).
 
 Most of the foundational gap-closing work from earlier roadmap revisions is **done**: real type inference for field access and pattern bindings, schema derivation for nested types and enum variants, the production Anthropic LLM backend, runtime capability enforcement for tool/LLM/topic (name- and model-aware), agent instance-scoped memory, error `context` + `fix_code` on all compiler errors, float-aware division, multi-`emit` accumulation, tool input validation, contextual (non-reserved) keywords, the persistent SQLite EventStore backend, string-literal match patterns, `store.<table>.get!/put!`, and the `queue.consume`/`schedule.trigger` capability naming.
 
-The open work below comes from the 2026-06-11 **release-readiness full pass** (`/release-readiness`: build/test gates, toolchain e2e, and an adversarially verified sweep of every docs page, spec section, example, and meta-doc — every blocker confirmed by two independent verifiers). The mechanical layer was green (zero test failures); the findings are spec↔compiler contract violations, two unstructured compiler crashes, and docs-site pages that teach pre-1.0 syntax.
+The open work below comes from the **release-readiness full passes** (`/release-readiness`: build/test gates, toolchain e2e, and an adversarially verified sweep of every docs page, spec section, example, and meta-doc — every blocker confirmed by two independent verifiers). The 2026-06-11 pass produced the rc milestone (shipped in v1.0.0-rc.1); the 2026-06-12 rc-soak pass produced the documentation-accuracy issues now gating GA.
 
 ---
 
@@ -32,35 +32,25 @@ The release train (each step rides the auto-tag flow — a green version-bump me
 
 1. ~~**v0.2.0**~~ — released 2026-06-11 (Beta milestone + installer + the #114 fix)
 2. ~~**v0.3.0**~~ — released 2026-06-11 (the original v1.0.0 milestone: #121 #118 #154 #147 #146 #155 #156 #157 #173 #162)
-3. **v1.0.0-rc** — gated by the **v1.0.0-rc Release** milestone below: fix what the readiness pass proved broken or false, then tag
+3. ~~**v1.0.0-rc**~~ — released 2026-06-12 as v1.0.0-rc.1 (the complete v1.0.0-rc Release milestone, #182–#195)
 4. **v1.0.0** — the rc soaks while the **v1.0.0 Release** milestone (warning-grade findings) lands, then promote
-
-### Milestone: v1.0.0-rc Release
-
-The rc tags when this is empty. Spec↔compiler contract first — each is an implement-or-respec decision; everything else is mechanical:
-
-- [#182](https://github.com/kormie/Skein/issues/182) — **bug, p1:** `transition()` outside an agent crashes codegen with a raw FunctionClauseError (also via `check_file`/MCP)
-- [#183](https://github.com/kormie/Skein/issues/183) — **bug, p1:** `llm.stream` callback arg silently miscompiles to a wrong arity; decide the `on_chunk` surface
-- [#184](https://github.com/kormie/Skein/issues/184) — **bug, p1:** `queue.publish` is documented but cannot be compiled (no queue effect namespace; runtime ready)
-- [#185](https://github.com/kormie/Skein/issues/185) — **bug, p1:** `resume()` documented as an in-agent call but does not parse
-- [#186](https://github.com/kormie/Skein/issues/186) — **bug, p1:** §5/§6 signature drift: `Instant.diff`, `Option/Result.unwrap` defaults, `process.spawn(task:)`
-- [#187](https://github.com/kormie/Skein/issues/187) — **chore, p1:** §7 error-code registry incomplete and partly wrong (five missing codes, E0033, severities, §8.5 test heredoc)
-- [#188](https://github.com/kormie/Skein/issues/188) — **chore, p1:** §2.3 keyword list wrong in both directions + lexical/grammar drift
-- [#189](https://github.com/kormie/Skein/issues/189) — **chore, p1:** docs `language/*` pages — canonical examples don't compile, wrong error-code table, draft prose
-- [#190](https://github.com/kormie/Skein/issues/190) — **chore, p1:** docs `compiler/*` pages — error-code misattributions, 3-digit codes, stale tables
-- [#191](https://github.com/kormie/Skein/issues/191) — **chore, p1:** docs `runtime/*` pages — pre-1.0 agent syntax, wrong `EventStore.log` arity, stale claims
-- [#192](https://github.com/kormie/Skein/issues/192) — **chore, p1:** getting-started + landing page — stub-era project tour, quickstart drift, **model id retiring 2026-06-15**
-- [#193](https://github.com/kormie/Skein/issues/193) — **chore, p1:** docs `reference/*` — stdlib page teaches anonymous fns, wrong Float/Instant rows
-- [#194](https://github.com/kormie/Skein/issues/194) — **chore, p1:** editor/testing/contributing pages — invented effect namespaces, stale counts, retired conventions
-- [#195](https://github.com/kormie/Skein/issues/195) — **chore, p1:** CLAUDE.md presents removed surface as current (Planned escape hatch, event_log.ex)
 
 ### Milestone: v1.0.0 Release (GA gate, lands during the rc soak)
 
-- [#196](https://github.com/kormie/Skein/issues/196) — **bug, p2:** W0001 misses string-interpolation usage (false positive with a program-breaking fix_code)
-- [#197](https://github.com/kormie/Skein/issues/197) — **bug, p2:** lexer crashes on float literals with underscore grouping (`1_000.5`)
-- [#198](https://github.com/kormie/Skein/issues/198) — **bug, p2:** `mix skein.compile`/`mix skein.test` print nothing and exit 0 on failure
-- [#199](https://github.com/kormie/Skein/issues/199) — **chore, p2:** ship the canonical examples warning-free and honest
-- [#200](https://github.com/kormie/Skein/issues/200) — **chore, p2:** meta-docs a release behind (roadmap pages, ARCHITECTURE, README, CONTRIBUTING)
+GA tags when this is empty. The compiler/examples items shipped on the rc-soak audit PR; the
+documentation-accuracy wave (#223–#229, filed by the 2026-06-12 rc-soak readiness pass) rides
+the same PR:
+
+- ~~[#196](https://github.com/kormie/Skein/issues/196) — **bug, p2:** W0001 misses string-interpolation usage (false positive with a program-breaking fix_code)~~ — fixed (interpolation tokens counted as references)
+- ~~[#197](https://github.com/kormie/Skein/issues/197) — **bug, p2:** lexer crashes on float literals with underscore grouping (`1_000.5`)~~ — fixed (structured E0003 with fix_code)
+- ~~[#198](https://github.com/kormie/Skein/issues/198) — **bug, p2:** `mix skein.compile`/`mix skein.test` print nothing and exit 0 on failure~~ — fixed (commit 76f0654, PR #204: aliases route through `Main.dispatch`)
+- ~~[#199](https://github.com/kormie/Skein/issues/199) — **chore, p2:** ship the canonical examples warning-free and honest~~ — fixed (zero-warning guard in examples_test)
+- ~~[#200](https://github.com/kormie/Skein/issues/200) — **chore, p2:** meta-docs a release behind (roadmap pages, ARCHITECTURE, README, CONTRIBUTING)~~ — fixed
+- ~~[#223](https://github.com/kormie/Skein/issues/223)–[#229](https://github.com/kormie/Skein/issues/229) — **chore:** docs-accuracy findings from the rc-soak pass (runtime API examples, spec §7 E0002 row + banner, README flagship block, compiler/language/getting-started pages, STABILITY wording)~~ — fixed
+
+### Shipped: v1.0.0-rc Release (tagged 2026-06-12 as v1.0.0-rc.1)
+
+The complete 2026-06-11 readiness-pass milestone — spec↔compiler contract, compiler crashes, and docs-site accuracy (#182 #183 #184 #185 #186 #187 #188 #189 #190 #191 #192 #193 #194 #195), fixed on PRs #203/#204 and #221/#222.
 
 ### Shipped: the original v1.0.0 gate (all in v0.3.0)
 
@@ -162,7 +152,7 @@ All of the following are done and tested:
 - Replay backend injection (#73): an active `Replay.with_replay/2` context intercepts LLM (via `Llm.ReplayBackend`), HTTP, and tool-call effects, serving recorded responses with zero real calls; recorded events are validated against the live call (model/method/url/tool name) so out-of-sequence runs produce clear errors; LLM/HTTP/tool spans now record full response payloads (`response`, `response_body`/`status`) so live traces are replayable; replay state stays process-scoped
 - Capability-parameter surface decision (#69): scoped capability labels (spec §3.2) — for `memory.kv`/`event.log`/`process.spawn`/`timer` the capability parameter names a scope label the compiler threads into runtime calls (call sites unchanged); one declaration per kind per module/agent, duplicates are E0017; spec §6.11 documents the `process.spawn`/`timer` surface
 - Stream/pool-scoped runtime capability enforcement (#57): codegen threads the declared label into `process.spawn`/`timer.*`/`event.log` runtime calls (the `memory.kv` model); the shared `Capability.check_scoped/3` blocks calls outside the declared label (parameterless declarations stay presence-only); labels land on trace spans (`pool:`/`group:`) and stored events (`stream:`); `timer.after`/`timer.interval` now accept string task names as named no-ops; property pins permit/deny on exact label match over randomized capability sets
-- `process.spawn` task bodies (#74): `process.spawn("name", &some_fn)` runs the referenced zero-parameter local fn inside the supervised task (spec §6.11); `work` is the first optional effect parameter (named-arg resolver supports trailing optionals); crashes stay isolated by the supervisor, proven from compiled Skein source; timer task bodies remain Planned
+- `process.spawn` task bodies (#74): `process.spawn("name", &some_fn)` runs the referenced zero-parameter local fn inside the supervised task (spec §6.11); `work` is the first optional effect parameter (named-arg resolver supports trailing optionals); crashes stay isolated by the supervisor, proven from compiled Skein source; timer task bodies since implemented by #155
 - Local LLM backends for dev (#107): `Skein.Runtime.Llm.OpenAiCompatibleBackend` speaks `POST {base_url}/chat/completions` (oMLX/Ollama/LM Studio/llama.cpp/vLLM); `[llm]` + `[env.<name>.llm]` profiles in skein.toml with `model_map` remapping capability model names (source and capabilities never change between environments); `skein run`/`skein test` resolve `--env`/`SKEIN_ENV`; llm spans record `backend`/`base_url`; server-down is a structured LlmError naming the base_url; stub-server tests give CI an inference-free path; docs page runtime/local-models
 - LSP code actions from `fix_hint`/`fix_code` (#108, phase 1): diagnostics ship `code`/`fix_hint`/`fix_code` in `Diagnostic.data`; `codeActionProvider` advertised and `textDocument/codeAction` answers from the diagnostic alone — missing-token inserts (E0001), missing-capability line insertion (E0012, after the last capability or the module opening), unused-capability line deletion (W0002), unused-binding underscore rename (W0001); unmapped codes produce no action; phase 2 (error spans + edit_kind) moved to the backlog
 - Enum value-level exhaustiveness warning (#76): new W0004 when a variant arm uses literal field patterns and no wildcard or all-bindings arm covers the variant; enum-typed fn params now reach exhaustiveness checking at all (previously `{:user_type, ...}` skipped it), and dotted variant patterns (`Event.Charge(n)`) count as coverage instead of false-missing

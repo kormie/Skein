@@ -1,6 +1,6 @@
 # Contributing to Skein
 
-Skein is in **alpha**. Expect rough edges — and please report them. This page covers the
+Skein is at **v1.0.0-rc** — the spec is frozen for 1.0 while the release candidate soaks. Expect a stable surface; please report anything that contradicts the spec or docs. This page covers the
 workflow; for environment setup, building, and running tests, see the
 [development guide](https://kormie.github.io/Skein/contributing/development/).
 
@@ -32,8 +32,8 @@ automatically; a maintainer then sets priority and milestone and removes the tri
 - **v1.0.0 Release** — the active gate: ship nothing broken, promise nothing unimplemented.
 - **v1.1: Hardening & Language** / **v1.2: Interop & Agent Workflows** / **Future: Platform** —
   the post-1.0 backlog, in priority order.
-- **v0.1 Alpha Release** and **v0.2 Beta Release** — closed; they gated taking the repo public
-  and the post-alpha hardening wave.
+- **v0.1 Alpha Release**, **v0.2 Beta Release**, and **v1.0.0-rc Release** — closed; they gated
+  taking the repo public, the post-alpha hardening wave, and tagging v1.0.0-rc.1.
 
 Milestones are defined in [`.github/milestones.json`](.github/milestones.json) and synced by a
 workflow — edit that file rather than creating milestones by hand.
