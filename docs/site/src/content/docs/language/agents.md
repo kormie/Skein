@@ -58,7 +58,7 @@ Every agent must declare:
 | Element | Purpose |
 |---------|---------|
 | `capability` | Declares effects the agent may use (LLM, memory, HTTP, etc.) |
-| `state { ... }` | Typed fields that persist across phase transitions |
+| `state { ... }` | Declares the agent's state field schema (see [State](#state)) |
 | `fn` | Helper functions callable from within or outside the agent |
 
 ## Phase Enum and Transitions
@@ -86,14 +86,11 @@ The Skein analyzer validates transitions at compile time:
 
 ### Starting an Agent
 
-The `on start` handler runs once when the agent is created. It receives typed parameters and must transition to an initial phase (or stop).
+The `on start` handler runs once when the agent is created. It receives typed parameters and must transition to an initial phase (or stop). Start parameters are bindings local to the `on start` body — write anything later phases need to `memory.kv`:
 
 ```skein
 agent OrderProcessor {
-  state {
-    order_id: String
-    amount: Int
-  }
+  capability memory.kv("orders")
 
   enum Phase {
     Validate -> [Process, Reject]
@@ -103,11 +100,14 @@ agent OrderProcessor {
   }
 
   on start(order_id: String, amount: Int) -> {
+    memory.put("order_id", order_id)
+    memory.put("amount", amount)
     transition(Phase.Validate)
   }
 
   on phase(Phase.Validate) -> {
-    match state.amount > 0 {
+    let amount = memory.get!("amount")
+    match amount > 0 {
       true -> transition(Phase.Process)
       false -> transition(Phase.Reject)
     }
@@ -172,15 +172,13 @@ See [Runtime > Agents: Suspending and Resuming](/Skein/runtime/agents/#suspendin
 
 ## State
 
-The `state` block declares typed fields that persist across phase transitions:
+The `state` block declares the agent's typed state field schema. In 1.0 it is a **declaration only**: start parameters are not merged into the runtime state map (`get_state/1` returns `%{}`), and `transition(Phase.X)` takes exactly one argument — the target phase — so transitions cannot carry state updates either.
+
+The supported way to carry data across phases is `memory.kv`, the same pattern the canonical `examples/refund_agent.skein` uses — write in `on start`, read in phase handlers:
 
 ```skein
 agent RefundBot {
-  state {
-    ticket_id: Uuid
-    customer_id: String
-    amount: Int
-  }
+  capability memory.kv("refunds")
 
   enum Phase {
     Analyze -> [Done]
@@ -188,12 +186,14 @@ agent RefundBot {
   }
 
   on start(ticket_id: Uuid, customer_id: String) -> {
+    memory.put("ticket_id", ticket_id)
+    memory.put("customer_id", customer_id)
     transition(Phase.Analyze)
   }
 
   on phase(Phase.Analyze) -> {
-    -- state fields are available via the state map
-    -- state.ticket_id, state.customer_id, state.amount
+    let ticket_id = memory.get!("ticket_id")
+    let customer_id = memory.get!("customer_id")
     transition(Phase.Done)
   }
 
@@ -202,8 +202,6 @@ agent RefundBot {
   }
 }
 ```
-
-State is a map that accumulates updates across transitions. Each `transition()` call can include state updates which are merged into the existing state.
 
 ## Capabilities
 
@@ -222,20 +220,18 @@ agent Classifier {
   capability model("anthropic", "claude-opus-4-8")
   capability memory.kv("classifications")
 
-  state {
-    text: String
-  }
-
   enum Phase {
     Classify -> []
   }
 
   on start(text: String) -> {
+    memory.put("text", text)
     transition(Phase.Classify)
   }
 
   on phase(Phase.Classify) -> {
-    let label = llm.chat("claude-opus-4-8", "Classify this text.", state.text)!
+    let text = memory.get!("text")
+    let label = llm.chat("claude-opus-4-8", "Classify this text.", text)!
     memory.put("latest_label", label)
     stop()
   }
@@ -250,7 +246,8 @@ Agents can call LLM models for decision-making via the `llm.*` effects:
 
 ```skein
 on phase(Phase.Analyze) -> {
-  let analysis = llm.chat("claude-opus-4-8", "Analyze this input", state.input)
+  let text = memory.get!("text")
+  let analysis = llm.chat("claude-opus-4-8", "Analyze this input", text)!
   -- analysis is a String
 }
 ```
@@ -265,11 +262,12 @@ type Decision {
 }
 
 on phase(Phase.Decide) -> {
+  let description = memory.get!("ticket_description")
   let decision = llm.json[Decision](
     "claude-opus-4-8",
     "Decide if this warrants a refund",
-    state.ticket_description
-  )
+    description
+  )!
   -- decision is validated against the Decision type's JSON Schema
 }
 ```
@@ -278,7 +276,8 @@ on phase(Phase.Decide) -> {
 
 ```skein
 on phase(Phase.Generate) -> {
-  let result = llm.stream("claude-opus-4-8", "Generate a report", state.data)
+  let data = memory.get!("data")
+  let result = llm.stream("claude-opus-4-8", "Generate a report", data)
   -- chunks are delivered to the runtime callback; result is the assembled text
 }
 ```
@@ -293,23 +292,20 @@ Agents use `memory.kv` for scoped key-value storage that persists across phase t
 agent SessionTracker {
   capability memory.kv("sessions")
 
-  state {
-    user_id: String
-  }
-
   enum Phase {
     Active -> []
   }
 
   on start(user_id: String) -> {
+    memory.put("current_user", user_id)
     transition(Phase.Active)
   }
 
   on phase(Phase.Active) -> {
-    memory.put("current_user", state.user_id)
-    let user = memory.get("current_user")
+    let user = memory.get!("current_user")
     let keys = memory.list("user:")
     memory.delete("old_key")
+    stop()
   }
 }
 ```
@@ -322,9 +318,11 @@ Use `emit` to record domain events. Events are append-only and queryable via `ge
 
 ```skein
 on phase(Phase.Approved) -> {
+  let ticket_id = memory.get!("ticket_id")
+  let amount = memory.get!("amount")
   emit RefundIssued {
-    ticket_id: state.ticket_id,
-    amount: state.amount,
+    ticket_id: ticket_id,
+    amount: amount,
     refund_id: "ref_123"
   }
   transition(Phase.Done)
@@ -340,11 +338,7 @@ Agents can invoke declared tools for external integrations:
 ```skein
 agent PaymentAgent {
   capability tool.use(Stripe.CreateRefund)
-
-  state {
-    customer_id: String
-    amount: Int
-  }
+  capability memory.kv("payments")
 
   enum Phase {
     Refund -> [Done, Failed]
@@ -353,13 +347,17 @@ agent PaymentAgent {
   }
 
   on start(customer_id: String, amount: Int) -> {
+    memory.put("customer_id", customer_id)
+    memory.put("amount", amount)
     transition(Phase.Refund)
   }
 
   on phase(Phase.Refund) -> {
+    let customer_id = memory.get!("customer_id")
+    let amount = memory.get!("amount")
     let result = tool.call(Stripe.CreateRefund, {
-      customer_id: state.customer_id,
-      amount: state.amount
+      customer_id: customer_id,
+      amount: amount
     })
     match result {
       Ok(refund) -> transition(Phase.Done)
@@ -416,64 +414,72 @@ Skein.Agent.UtilAgent.add(3, 4)
 ## Complete Example: Refund Agent
 
 ```skein
-agent RefundAgent {
-  capability model("claude-opus-4-8")
-  capability memory.kv("refund_sessions")
-  capability tool.use(Stripe.CreateRefund)
-
-  state {
-    ticket_id: Uuid
-    customer_id: String
+module Refunds {
+  type RefundDecision {
+    action: String @one_of(["approve", "deny"])
+    amount: Int @min(0)
   }
 
-  enum Phase {
-    Analyze  -> [Refund, Done]
-    Refund   -> [Done, Failed]
-    Failed   -> [Analyze]
-    Done     -> []
-  }
+  agent RefundAgent {
+    capability model("anthropic", "claude-opus-4-8")
+    capability memory.kv("refund_sessions")
+    capability tool.use(Stripe.CreateRefund)
 
-  on start(ticket_id: Uuid, customer_id: String) -> {
-    transition(Phase.Analyze)
-  }
-
-  on phase(Phase.Analyze) -> {
-    let decision = llm.json[RefundDecision](
-      "claude-opus-4-8",
-      "Decide if this ticket warrants a refund.",
-      state.ticket_id
-    )
-    memory.put("decision", decision)
-    match decision.action {
-      "approve" -> transition(Phase.Refund)
-      "deny"    -> transition(Phase.Done)
+    enum Phase {
+      Analyze  -> [Refund, Done]
+      Refund   -> [Done, Failed]
+      Failed   -> [Analyze]
+      Done     -> []
     }
-  }
 
-  on phase(Phase.Refund) -> {
-    let d = memory.get!("decision")
-    let result = tool.call(Stripe.CreateRefund, {
-      customer_id: state.customer_id,
-      amount: d.amount
-    })
-    match result {
-      Ok(refund) -> {
-        emit RefundIssued { ticket_id: state.ticket_id, refund_id: refund.id }
-        transition(Phase.Done)
-      }
-      Err(e) -> {
-        emit RefundFailed { ticket_id: state.ticket_id, error: e }
-        transition(Phase.Failed)
+    on start(ticket_id: Uuid, customer_id: String) -> {
+      memory.put("ticket_id", ticket_id)
+      memory.put("customer_id", customer_id)
+      transition(Phase.Analyze)
+    }
+
+    on phase(Phase.Analyze) -> {
+      let ticket_id = memory.get!("ticket_id")
+      let decision = llm.json[RefundDecision](
+        "claude-opus-4-8",
+        "Decide if this ticket warrants a refund.",
+        ticket_id
+      )!
+      memory.put("decision_action", decision.action)
+      memory.put("decision_amount", decision.amount)
+      match decision.action {
+        "approve" -> transition(Phase.Refund)
+        "deny"    -> transition(Phase.Done)
       }
     }
-  }
 
-  on phase(Phase.Failed) -> {
-    transition(Phase.Analyze)
-  }
+    on phase(Phase.Refund) -> {
+      let ticket_id = memory.get!("ticket_id")
+      let customer_id = memory.get!("customer_id")
+      let amount = memory.get!("decision_amount")
+      let result = tool.call(Stripe.CreateRefund, {
+        customer_id: customer_id,
+        amount: amount
+      })
+      match result {
+        Ok(refund) -> {
+          emit RefundIssued { ticket_id: ticket_id, refund_id: refund.id }
+          transition(Phase.Done)
+        }
+        Err(e) -> {
+          emit RefundFailed { ticket_id: ticket_id, error: e }
+          transition(Phase.Failed)
+        }
+      }
+    }
 
-  on phase(Phase.Done) -> {
-    stop()
+    on phase(Phase.Failed) -> {
+      transition(Phase.Analyze)
+    }
+
+    on phase(Phase.Done) -> {
+      stop()
+    }
   }
 }
 ```
@@ -494,7 +500,7 @@ An agent named `RefundAgent` compiles to `Elixir.Skein.Agent.RefundAgent` with t
 
 ```elixir
 # Start the agent
-{:ok, pid} = Skein.Agent.RefundAgent.start_link(%{
+{:ok, pid} = Skein.Agent.Refunds.RefundAgent.start_link(%{
   ticket_id: "ticket-123",
   customer_id: "cust-456"
 })
@@ -503,11 +509,13 @@ An agent named `RefundAgent` compiles to `Elixir.Skein.Agent.RefundAgent` with t
 Skein.Runtime.Agent.get_phase(pid)
 #=> :analyze
 
+# The runtime state map stays empty in 1.0 — agent data lives in memory.kv
 Skein.Runtime.Agent.get_state(pid)
-#=> %{ticket_id: "ticket-123", customer_id: "cust-456"}
+#=> %{}
 
+# Emitted events are keyed by :event
 Skein.Runtime.Agent.get_events(pid)
-#=> [%{type: "RefundIssued", ticket_id: "ticket-123", refund_id: "ref_789"}]
+#=> [%{event: "RefundIssued", ticket_id: "ticket-123", refund_id: "ref_789"}]
 ```
 
 ## Supervision
