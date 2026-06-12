@@ -11,7 +11,7 @@ release checksums, and installs to `~/.local/bin` (no root):
 ```bash
 curl -fsSL https://kormie.github.io/Skein/install.sh | sh
 
-skein version  # → skein 0.3.0
+skein version  # → skein 1.0.0-rc.1
 ```
 
 Pin a version with `SKEIN_VERSION=0.1.7`, or change the destination with
@@ -154,7 +154,7 @@ skein help
 ```
 
 ```
-Skein 0.3.0 — AI-native language for the BEAM
+Skein 1.0.0-rc.1 — AI-native language for the BEAM
 
 Usage: skein <command> [options]
 
