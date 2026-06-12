@@ -5,7 +5,7 @@
 #   curl -fsSL https://kormie.github.io/Skein/install.sh | sh
 #
 # Options (environment variables):
-#   SKEIN_VERSION      Install a specific version, e.g. "0.1.7" (default: latest)
+#   SKEIN_VERSION      Install a specific version, e.g. "1.0.0-rc.1" (default: latest)
 #   SKEIN_BIN_DIR      Install directory (default: ~/.local/bin)
 #
 # The script downloads the prebuilt binary for your platform from GitHub

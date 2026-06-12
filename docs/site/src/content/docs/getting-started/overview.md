@@ -5,7 +5,7 @@ description: What Skein is, what it can do today, and where it's headed.
 
 ## What is Skein?
 
-Skein is a new programming language that compiles to BEAM bytecode and runs on the Erlang VM. It ships as a standalone binary for Linux and macOS — no Erlang or Elixir install required. Download the latest build from [CI](https://github.com/kormie/Skein/actions/workflows/build.yml) and you're ready to go. See the [Quickstart](/Skein/getting-started/quickstart/) to get running in under 5 minutes.
+Skein is a new programming language that compiles to BEAM bytecode and runs on the Erlang VM. It ships as a standalone binary for Linux and macOS — no Erlang or Elixir install required. Install it with one command — `curl -fsSL https://kormie.github.io/Skein/install.sh | sh` — or grab a binary from the [Releases page](https://github.com/kormie/Skein/releases), and you're ready to go. See the [Quickstart](/Skein/getting-started/quickstart/) to get running in under 5 minutes.
 
 Skein is designed around six ranked principles:
 
@@ -32,7 +32,7 @@ The compilation pipeline is fully operational. You can write `.skein` files with
 - `"string ${interpolation}"` -- string interpolation
 - `type Name { fields }` -- record type declarations
 - `enum Name { variants }` -- enum type declarations with transitions
-- `capability namespace.kind(params)` -- capability declarations
+- `capability namespace.kind(params)` / `capability model(provider, model)` -- capability declarations
 - `handler http METHOD "/path" (req) -> { ... }` -- HTTP handler declarations
 - `handler queue "queue-name" (msg) -> { ... }` -- queue handler declarations
 - `handler schedule "cron-expr" () -> { ... }` -- schedule handler declarations
@@ -76,7 +76,7 @@ The compilation pipeline is fully operational. You can write `.skein` files with
 - Compile-time phase transition validation
 - `transition(Phase)`, `stop()`, `suspend(reason)`, `emit(event)`, `state.field` access
 - `suspend(reason)` / `resume(pid, phase)` for human-in-the-loop workflows
-- GenStateMachine-based runtime with automatic phase handler dispatch
+- `gen_statem`-based runtime with automatic phase handler dispatch
 
 **Runtime:**
 
@@ -127,7 +127,7 @@ See the [Roadmap](/Skein/roadmap/overview/) for the full plan.
 | Component | Choice | Rationale |
 |-----------|--------|-----------|
 | Compiler language | Elixir | Team familiarity, excellent BEAM tooling |
-| Lexer | Hand-written (NimbleParsec-based) | Fast, composable token parsing |
+| Lexer | Hand-written (binary pattern matching) | Fast, dependency-free tokenizing with precise error positions |
 | Parser | Hand-written recursive descent | Better error messages than parser generators |
 | IR target | Core Erlang | Standard BEAM compilation target (used by Elixir, Gleam, LFE) |
 | Language server | GenLSP | OTP behaviour for LSP implementations |

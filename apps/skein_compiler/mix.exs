@@ -23,7 +23,6 @@ defmodule SkeinCompiler.MixProject do
 
   defp deps do
     [
-      {:nimble_parsec, "~> 1.4"},
       {:jason, "~> 1.4"},
       {:stream_data, "~> 1.1", only: [:test, :dev]},
       {:propcheck, "~> 1.4", only: [:test, :dev]},

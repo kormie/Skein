@@ -27,7 +27,7 @@ skein/
 │   ├── skein_compiler/          # Lexer, parser, analyzer, code generator
 │   │   ├── lib/
 │   │   │   ├── skein/
-│   │   │   │   ├── lexer.ex         # Tokenizer (NimbleParsec-based)
+│   │   │   │   ├── lexer.ex         # Tokenizer (hand-written binary matching)
 │   │   │   │   ├── parser.ex        # AST construction
 │   │   │   │   ├── ast.ex           # AST node type definitions
 │   │   │   │   ├── analyzer.ex      # Type, capability, and transition checking
@@ -111,7 +111,7 @@ skein/
 | Component | Choice | Rationale |
 |-----------|--------|-----------|
 | Compiler language | Elixir | Team familiarity, excellent BEAM tooling, Mix ecosystem |
-| Lexer | NimbleParsec | Fast, composable, well-maintained PEG parser combinator |
+| Lexer | Hand-written binary matching | Dependency-free, precise error positions |
 | Parser | Hand-written recursive descent | More control over error messages than parser generators; better for structured error recovery |
 | IR target | Core Erlang | Standard BEAM compilation target; used by Elixir, LFE, Gleam |
 | Agent runtime | gen_statem (OTP built-in) | OTP's state machine behaviour; direct fit for Skein agents |
@@ -125,7 +125,6 @@ skein/
 
 ```elixir
 # skein_compiler/mix.exs
-{:nimble_parsec, "~> 1.4"},
 {:jason, "~> 1.4"},           # JSON for structured errors and schema gen
 {:stream_data, "~> 1.1", only: [:test, :dev]},   # Property-based testing
 {:propcheck, "~> 1.4", only: [:test, :dev]},      # Stateful property testing

@@ -14,7 +14,7 @@ curl -fsSL https://kormie.github.io/Skein/install.sh | sh
 skein version  # → skein 1.0.0-rc.1
 ```
 
-Pin a version with `SKEIN_VERSION=0.1.7`, or change the destination with
+Pin a version with `SKEIN_VERSION=1.0.0-rc.1`, or change the destination with
 `SKEIN_BIN_DIR=/usr/local/bin`. The script is
 [`install.sh`](https://github.com/kormie/Skein/blob/main/install.sh) if you
 want to read it first.
