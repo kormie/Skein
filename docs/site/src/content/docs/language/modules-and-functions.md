@@ -171,7 +171,7 @@ Lexer: tokens = [{:module, {1,1}}, {:upper_ident, {1,8}, "Hello"}, {:lbrace, {1,
 Parser: %AST.Module{name: "Hello", declarations: [%AST.Fn{...}], meta: %{...}}
     |
     v
-Analyzer: (pass-through, returns AST unchanged)
+Analyzer: type, capability, transition, and guard checking; rewrites named arguments to positional
     |
     v
 CodeGen: :cerl.c_module(...) -> :compile.forms(mod, [:from_core, :binary]) -> beam_binary

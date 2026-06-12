@@ -96,12 +96,12 @@ When a type mismatch is detected, the analyzer produces a structured error:
 
 | Code | Description |
 |------|-------------|
-| E0010 | Unknown identifier |
-| E0011 | Unknown type reference |
-| E0012 | Wrong function call arity |
-| E0020 | Type mismatch |
-| E0021 | Operator type error |
-| E0024 | Non-exhaustive match (warning) |
+| E0010 | Undefined identifier |
+| E0011 | Duplicate definition |
+| E0012 | Missing capability declaration |
+| E0020 | Type mismatch — including operator type errors and wrong argument counts for fn, stdlib, and effect calls |
+| E0021 | Non-exhaustive match (warning) |
+| E0024 | Unknown type name (error); non-exhaustive match on an enum (warning) |
 | E0025 | Invalid constraint annotation |
 
 ### Match Exhaustiveness
@@ -112,7 +112,7 @@ The type checker warns when a match on a boolean is not exhaustive:
 fn check(x: Bool) -> String {
   match x {
     true -> "yes"
-    -- warning E0024: missing pattern for 'false'
+    -- warning E0021: missing pattern for 'false'
   }
 }
 ```
@@ -254,7 +254,7 @@ fn area(s: Shape) -> Int {
 
 At runtime, `Shape.Circle(5)` is represented as the tuple `{:circle, 5}` and `Shape.Rect(3, 4)` as `{:rect, 3, 4}`. Simple variants without fields (like `Active`) compile to atoms (`:active`).
 
-The analyzer checks that all enum variants are covered in a match expression (error E0024). A wildcard `_` arm satisfies this check.
+The analyzer checks that all enum variants are covered in a match expression (warning E0024). A wildcard `_` arm satisfies this check.
 
 ### Exhaustiveness Caveat
 

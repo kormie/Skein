@@ -78,7 +78,7 @@ enum Phase {
 
 The Skein analyzer validates transitions at compile time:
 
-- **Invalid transition (E0030):** `transition(Phase.Done)` inside `on phase(Phase.Analyze)` is a compile error because `Analyze -> [Refund, Done]` does not include a direct path that bypasses the declared targets. Wait — `Done` *is* in the list, so that would be valid. A call to `transition(Phase.Failed)` from `on phase(Phase.Analyze)` *would* be an error since `Failed` is not in `Analyze`'s target list.
+- **Invalid transition (E0030):** Transitioning to a phase that is not in the current phase's declared target list is a compile error. With the enum above, `transition(Phase.Failed)` inside `on phase(Phase.Analyze)` is an E0030 error because `Failed` is not in `Analyze`'s target list (`Analyze -> [Refund, Done]`).
 - **Unreachable phase (E0031):** A phase that no other phase can transition to (and isn't the start target) generates a warning.
 - **Missing phase handler (E0032):** Every phase variant must have a corresponding `on phase(Phase.X)` handler.
 
@@ -90,6 +90,11 @@ The `on start` handler runs once when the agent is created. It receives typed pa
 
 ```skein
 agent OrderProcessor {
+  state {
+    order_id: String
+    amount: Int
+  }
+
   enum Phase {
     Validate -> [Process, Reject]
     Process -> [Done]
@@ -102,7 +107,7 @@ agent OrderProcessor {
   }
 
   on phase(Phase.Validate) -> {
-    match amount > 0 {
+    match state.amount > 0 {
       true -> transition(Phase.Process)
       false -> transition(Phase.Reject)
     }
@@ -177,6 +182,11 @@ agent RefundBot {
     amount: Int
   }
 
+  enum Phase {
+    Analyze -> [Done]
+    Done -> []
+  }
+
   on start(ticket_id: Uuid, customer_id: String) -> {
     transition(Phase.Analyze)
   }
@@ -185,6 +195,10 @@ agent RefundBot {
     -- state fields are available via the state map
     -- state.ticket_id, state.customer_id, state.amount
     transition(Phase.Done)
+  }
+
+  on phase(Phase.Done) -> {
+    stop()
   }
 }
 ```
@@ -205,10 +219,26 @@ Agents declare capabilities just like modules. Common agent capabilities:
 
 ```skein
 agent Classifier {
-  capability model("claude-opus-4-8")
+  capability model("anthropic", "claude-opus-4-8")
   capability memory.kv("classifications")
 
-  -- LLM and memory calls are now allowed in phase handlers
+  state {
+    text: String
+  }
+
+  enum Phase {
+    Classify -> []
+  }
+
+  on start(text: String) -> {
+    transition(Phase.Classify)
+  }
+
+  on phase(Phase.Classify) -> {
+    let label = llm.chat("claude-opus-4-8", "Classify this text.", state.text)!
+    memory.put("latest_label", label)
+    stop()
+  }
 }
 ```
 
@@ -263,16 +293,28 @@ Agents use `memory.kv` for scoped key-value storage that persists across phase t
 agent SessionTracker {
   capability memory.kv("sessions")
 
+  state {
+    user_id: String
+  }
+
+  enum Phase {
+    Active -> []
+  }
+
+  on start(user_id: String) -> {
+    transition(Phase.Active)
+  }
+
   on phase(Phase.Active) -> {
-    memory.put("sessions", "current_user", state.user_id)
-    let user = memory.get("sessions", "current_user")
-    let keys = memory.list("sessions", "user:")
-    memory.delete("sessions", "old_key")
+    memory.put("current_user", state.user_id)
+    let user = memory.get("current_user")
+    let keys = memory.list("user:")
+    memory.delete("old_key")
   }
 }
 ```
 
-Each namespace requires a `memory.kv` capability declaration. Memory is backed by ETS with per-namespace tables.
+Each namespace requires a `memory.kv` capability declaration. Memory is backed by a single ETS table (`:skein_memory`) keyed by `{namespace, key}`.
 
 ## Events
 
@@ -299,6 +341,21 @@ Agents can invoke declared tools for external integrations:
 agent PaymentAgent {
   capability tool.use(Stripe.CreateRefund)
 
+  state {
+    customer_id: String
+    amount: Int
+  }
+
+  enum Phase {
+    Refund -> [Done, Failed]
+    Done -> []
+    Failed -> []
+  }
+
+  on start(customer_id: String, amount: Int) -> {
+    transition(Phase.Refund)
+  }
+
   on phase(Phase.Refund) -> {
     let result = tool.call(Stripe.CreateRefund, {
       customer_id: state.customer_id,
@@ -308,6 +365,14 @@ agent PaymentAgent {
       Ok(refund) -> transition(Phase.Done)
       Err(e) -> transition(Phase.Failed)
     }
+  }
+
+  on phase(Phase.Done) -> {
+    stop()
+  }
+
+  on phase(Phase.Failed) -> {
+    stop()
   }
 }
 ```
@@ -378,7 +443,7 @@ agent RefundAgent {
       "Decide if this ticket warrants a refund.",
       state.ticket_id
     )
-    memory.put("refund_sessions", "decision", decision)
+    memory.put("decision", decision)
     match decision.action {
       "approve" -> transition(Phase.Refund)
       "deny"    -> transition(Phase.Done)
@@ -386,7 +451,7 @@ agent RefundAgent {
   }
 
   on phase(Phase.Refund) -> {
-    let d = memory.get!("refund_sessions", "decision")
+    let d = memory.get!("decision")
     let result = tool.call(Stripe.CreateRefund, {
       customer_id: state.customer_id,
       amount: d.amount
