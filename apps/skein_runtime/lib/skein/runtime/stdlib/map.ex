@@ -7,10 +7,14 @@ defmodule Skein.Runtime.Stdlib.Map do
 
   ## Examples (Skein)
 
-      let m = { name: "Alice", age: 30 }
+      let m = Map.put({}, "name", "Alice")
       Map.get(m, "name")        -- Some("Alice")
-      Map.keys(m)               -- ["name", "age"]
+      Map.keys(m)               -- ["name"]
       Map.has(m, "email")       -- false
+
+  Record literals like `{ name: "Alice" }` compile with atom keys, which do
+  not match the string keys used by `Map.get`/`Map.has`; build string-keyed
+  maps with `Map.put` for keyed lookups.
   """
 
   @doc "Returns `{:some, value}` if `key` exists, or `:none`."

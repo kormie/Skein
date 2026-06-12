@@ -124,11 +124,16 @@ List.reverse(nums)             -- [5, 4, 3, 2, 1]
 Key-value operations. Maps are unordered collections of unique keys to values.
 
 ```skein
-let m = { name: "Alice", age: 30 }
+let m = Map.put({}, "name", "Alice")
 Map.get(m, "name")        -- Some("Alice")
-Map.keys(m)               -- ["name", "age"]
+Map.keys(m)               -- ["name"]
 Map.has(m, "email")       -- false
 ```
+
+Record literals like `{ name: "Alice", age: 30 }` compile with **atom** keys —
+they are payload values for typed fields, `respond.json`, and effect calls,
+and their keys do not match the string keys used by `Map.get`/`Map.has`.
+Build string-keyed maps with `Map.put` when you need keyed lookups.
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
@@ -179,11 +184,14 @@ Values are `Some(value)` or `None`. Functions like `List.find` and `Map.get` ret
 ```skein
 fn increment(n: Int) -> Int { n + 1 }
 
-let x = Some(42)
+let x = List.first([42])   -- Some(42)
 Option.unwrap(x, 0)        -- 42 (returns 0 on None)
 Option.map(x, &increment)  -- Some(43)
 Option.is_some(x)          -- true
 ```
+
+There is no `Some(...)`/`None` constructor syntax: Option values come from
+stdlib functions such as `List.first`, `List.find`, and `Map.get`.
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
@@ -230,9 +238,9 @@ Uuid.parse("...")           -- Ok(uuid)
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `new` | `() -> String` | Generate a random v4 UUID |
-| `parse` | `(String) -> Result[String, String]` | Parse and validate UUID string |
-| `to_string` | `(String) -> String` | Format UUID as string |
+| `new` | `() -> Uuid` | Generate a random v4 UUID |
+| `parse` | `(String) -> Result[Uuid, String]` | Parse and validate UUID string |
+| `to_string` | `(Uuid) -> String` | Format UUID as string |
 
 ## Instant
 
