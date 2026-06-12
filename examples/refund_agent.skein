@@ -31,22 +31,16 @@ agent RefundAgent {
     trace.annotate("ticket_id", order)
     let decision = llm.chat(
       "claude-opus-4-8",
-      "Evaluate this refund request. Answer only 'approve' or 'deny'.",
+      "Evaluate this refund request. Answer with exactly one word: approve or deny.",
       order
     )!
     trace.annotate("decision", decision)
     memory.put("decision", decision)
 
-    let approved = String.contains(decision, "approve")
-    match approved {
-      true -> transition(Phase.Approved)
-      false -> {
-        let denied = String.contains(decision, "deny")
-        match denied {
-          true -> transition(Phase.Denied)
-          false -> transition(Phase.Failed)
-        }
-      }
+    match String.trim(decision) {
+      "approve" -> transition(Phase.Approved)
+      "deny" -> transition(Phase.Denied)
+      _ -> transition(Phase.Failed)
     }
   }
 

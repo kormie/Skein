@@ -22,7 +22,7 @@
 **Input:** UTF-8 source text
 **Output:** List of `{token_type, location, value?}` tuples
 
-Built with NimbleParsec for performance and composability.
+Hand-written tokenizer using binary pattern matching — dependency-free, with precise error positions.
 
 Token categories:
 

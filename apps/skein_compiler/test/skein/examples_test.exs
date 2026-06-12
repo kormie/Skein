@@ -24,21 +24,19 @@ defmodule Skein.ExamplesTest do
 
   describe "examples are warning-free" do
     test "every example checks with zero errors and zero warnings" do
-      examples =
-        [
-          Path.wildcard(Path.join(project_root(), "examples/*.skein")),
-          Path.wildcard(Path.join(project_root(), "examples/market_research/*.skein"))
-        ]
-        |> List.flatten()
+      examples = Path.wildcard(Path.join(project_root(), "examples/**/*.skein"))
 
       refute examples == []
 
       for path <- examples do
-        assert {:ok, %{errors: [], warnings: warnings}} = Compiler.check_file(path)
+        relative = Path.relative_to(path, project_root())
+        assert {:ok, %{errors: errors, warnings: warnings}} = Compiler.check_file(path)
+
+        assert errors == [],
+               "#{relative} has errors: " <> inspect(Enum.map(errors, &{&1.code, &1.message}))
 
         assert warnings == [],
-               "#{Path.relative_to(path, project_root())} has warnings: " <>
-                 inspect(Enum.map(warnings, &{&1.code, &1.message}))
+               "#{relative} has warnings: " <> inspect(Enum.map(warnings, &{&1.code, &1.message}))
       end
     end
   end

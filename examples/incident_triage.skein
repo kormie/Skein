@@ -31,15 +31,14 @@ agent IncidentTriage {
     let data = memory.get!("alert_id")
     let severity = llm.chat(
       "claude-opus-4-8",
-      "Classify this incident severity. Answer only 'critical', 'normal', or 'noise'.",
+      "Classify this incident severity. Answer with exactly one word: critical, normal, or noise.",
       data
     )!
     memory.put("severity", severity)
 
-    let noise = String.contains(severity, "noise")
-    match noise {
-      true -> transition(Phase.Ignore)
-      false -> transition(Phase.Investigate)
+    match String.trim(severity) {
+      "noise" -> transition(Phase.Ignore)
+      _ -> transition(Phase.Investigate)
     }
   }
 
@@ -49,10 +48,9 @@ agent IncidentTriage {
     let analysis = llm.chat("claude-opus-4-8", "Investigate root cause", data)!
     memory.put("analysis", analysis)
 
-    let critical = String.contains(severity, "critical")
-    match critical {
-      true -> transition(Phase.Escalate)
-      false -> transition(Phase.Resolve)
+    match String.trim(severity) {
+      "critical" -> transition(Phase.Escalate)
+      _ -> transition(Phase.Resolve)
     }
   }
 

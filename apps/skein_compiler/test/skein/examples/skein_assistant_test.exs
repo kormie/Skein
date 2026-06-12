@@ -14,6 +14,13 @@ defmodule Skein.Examples.SkeinAssistantTest do
     Compiler.compile_file(Path.join(project_root(), "examples/skein_assistant.skein"))
   end
 
+  # Resolve a handler function by route from __handlers__/0 metadata so the
+  # tests survive handlers being added, removed, or reordered.
+  defp call_handler(mod, route, request) do
+    handler = Enum.find(mod.__handlers__(), &(&1.route == route)).handler
+    apply(mod, handler, [request])
+  end
+
   describe "skein_assistant.skein" do
     test "compiles successfully" do
       assert {:module, mod} = compile()
@@ -39,7 +46,7 @@ defmodule Skein.Examples.SkeinAssistantTest do
 
     test "health handler returns ok as text" do
       {:module, mod} = compile()
-      result = mod.__handler_2__(%{})
+      result = call_handler(mod, "/health", %{})
       assert {:respond_text, 200, "ok"} = result
     end
 
@@ -49,7 +56,10 @@ defmodule Skein.Examples.SkeinAssistantTest do
       {:module, mod} = compile()
 
       result =
-        mod.__handler_0__(%{params: %{session_id: "sess-1"}, body: "How do I write a module?"})
+        call_handler(mod, "/ask", %{
+          params: %{session_id: "sess-1"},
+          body: "How do I write a module?"
+        })
 
       assert {:respond_json, 200, answer} = result
       assert answer != nil
@@ -61,10 +71,10 @@ defmodule Skein.Examples.SkeinAssistantTest do
       {:module, mod} = compile()
 
       # First ask a question to populate memory
-      mod.__handler_0__(%{params: %{session_id: "sess-hist"}, body: "What is Skein?"})
+      call_handler(mod, "/ask", %{params: %{session_id: "sess-hist"}, body: "What is Skein?"})
 
       # Then get history — it contains the question and the answer
-      result = mod.__handler_1__(%{params: %{session_id: "sess-hist"}})
+      result = call_handler(mod, "/history/:session_id", %{params: %{session_id: "sess-hist"}})
       assert {:respond_json, 200, history} = result
       assert history =~ "What is Skein?"
     end

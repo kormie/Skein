@@ -36,7 +36,7 @@ skein/
 | Component | Choice |
 |-----------|--------|
 | Compiler language | Elixir |
-| Lexer | NimbleParsec |
+| Lexer | Hand-written binary matching |
 | Parser | Hand-written recursive descent |
 | IR target | Core Erlang |
 | Agent runtime | OTP's `:gen_statem` (used directly) |

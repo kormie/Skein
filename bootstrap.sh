@@ -257,7 +257,6 @@ defmodule SkeinCompiler.MixProject do
 
   defp deps do
     [
-      {:nimble_parsec, "~> 1.4"},
       {:jason, "~> 1.4"}
     ]
   end
