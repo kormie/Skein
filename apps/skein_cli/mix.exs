@@ -33,7 +33,11 @@ defmodule SkeinCli.MixProject do
       # runtime: false keeps plain CLI paths from auto-starting the raxol
       # closure; the release ships it :load (see root mix.exs) and the TUI
       # entry point starts it on demand.
-      {:raxol, "~> 2.4.0", runtime: false}
+      {:raxol, "~> 2.4.0", runtime: false},
+      # Vendored with Skein patches (macOS input fix, NIF subtree removed) —
+      # see vendor/raxol_terminal/SKEIN_PATCHES.md. Drop once upstreamed.
+      # runtime: false for the same reason as raxol above (ships :load).
+      {:raxol_terminal, path: "../../vendor/raxol_terminal", override: true, runtime: false}
     ]
   end
 end
