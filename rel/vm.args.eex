@@ -1,3 +1,11 @@
 ## Disable the BEAM break handler so Ctrl+C exits the CLI immediately
 ## instead of presenting the BREAK: (a)bort menu.
 +Bd
+
+## The skein binary is a CLI, not an interactive Erlang node: never boot
+## the Erlang shell. With a shell attached to the TTY, its line editor
+## competes with the Raxol TUI driver for stdin — keys never reach the
+## TUI and Ctrl-C then kills the VM mid-TUI without terminal cleanup
+## (issue #171 macOS verification). This also stops every TTY invocation
+## from flashing the Erlang banner.
+-noshell

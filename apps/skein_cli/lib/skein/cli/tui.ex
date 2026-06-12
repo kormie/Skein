@@ -49,11 +49,29 @@ defmodule Skein.CLI.Tui do
          {:ok, pid} when is_pid(pid) <-
            Raxol.run(Skein.CLI.Tui.TraceApp, trace_result: result, title: "skein trace") do
       await(pid)
+      restore_terminal()
     else
       _ -> IO.puts(Skein.CLI.Render.trace_plain(result))
     end
 
     :ok
+  end
+
+  # Belt-and-braces teardown after the TUI exits by any path. The Raxol
+  # driver restores the terminal itself on clean shutdown, but if it dies
+  # without cleanup the terminal is left with mouse reporting / bracketed
+  # paste / the alternate screen enabled — scrolling then floods the shell
+  # with escape reports (seen on macOS, issue #171). Disabling
+  # already-disabled modes is harmless, so always emit the reset.
+  defp restore_terminal do
+    IO.write([
+      # mouse reporting (all variants) + SGR encoding off
+      "\e[?1003l\e[?1006l\e[?1000l",
+      # focus events + bracketed paste off
+      "\e[?1004l\e[?2004l",
+      # leave the alternate screen, show the cursor, reset attributes
+      "\e[?1049l\e[?25h\e[0m"
+    ])
   end
 
   defp start_tui_runtime do
