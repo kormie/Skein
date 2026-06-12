@@ -23,13 +23,13 @@ The release train so far: **v0.2.0** and **v0.3.0** shipped 2026-06-11, and **v1
 
 ### v1.0.0 GA
 
-The [v1.0.0 Release milestone](https://github.com/kormie/Skein/milestone/6) gates the GA tag. Everything in it is audit-driven cleanup: compiler fixes for the W0001 interpolation false positive (#196) and the float-literal lexer crash (#197), warning-free examples (#199), and meta-doc/docs-page accuracy (#200, #223–#229).
+The [v1.0.0 Release milestone](https://github.com/kormie/Skein/milestone/6) gates the GA tag. Everything in it is audit-driven cleanup: compiler fixes for the W0001 interpolation false positive (#196) and the float-literal lexer crash (#197), warning-free examples (#199), meta-doc/docs-page accuracy (#200, #223–#229), interpolation segments as AST nodes (#234), and machine-applicable error fixes — `span` + `edit_kind` on every exact `fix_code` (#150).
 
 ### Post-1.0 Backlog
 
 Tracked in [`docs/ROADMAP.md`](https://github.com/kormie/Skein/blob/main/docs/ROADMAP.md) with linked issues:
 
-- **v1.1: Hardening & Language** — `llm.rerank` (#145), LSP code actions phase 2 (#150), docs/spec drift guards in CI (#202), Bedrock follow-ups (credential chain #179, real token streaming #178, ARN model IDs #180)
+- **v1.1: Hardening & Language** — `llm.rerank` (#145), docs/spec drift guards in CI (#202), Bedrock follow-ups (credential chain #179, real token streaming #178, ARN model IDs #180)
 - **v1.2: Interop & Agent Workflows** — Erlang/Elixir FFI (`extern`, #141), human-in-the-loop approval workflows (#144), web trace viewer (#143), CLI TUI (#171)
 - **Future: Platform** — hot code upgrades (#142), managed deployment platform (#148), tool/connector marketplace (#149)
 

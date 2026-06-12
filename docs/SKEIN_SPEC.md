@@ -739,16 +739,28 @@ All errors are JSON-serializable with this structure:
   "location": { "file": "service.skein", "line": 12, "col": 5 },
   "context": "The source line or expression in question",
   "fix_hint": "Explanation of how to fix",
-  "fix_code": "Exact code to add or change"
+  "fix_code": "Exact code to add or change",
+  "span": { "start": { "line": 2, "col": 3 }, "end": { "line": 2, "col": 3 } },
+  "edit_kind": "insert_line"
 }
 ```
+
+`span` and `edit_kind` are present when the `fix_code` is an exact,
+machine-applicable edit (they are `null` when `fix_code` is an
+illustrative template). `span` is 1-based with an exclusive end column;
+`edit_kind` is one of `replace` (swap the spanned text for `fix_code`;
+empty `fix_code` deletes it), `insert_before` / `insert_after` (insert
+`fix_code` at the span's start/end), `insert_line` (insert `fix_code` as
+a new line at the span's start line, indented to its start column), or
+`delete_line` (remove the spanned lines). Consumers can apply these
+edits generically — no per-error-code logic.
 
 ### Error Codes
 
 | Code | Category | Severity | Meaning |
 |------|----------|----------|---------|
 | E0001 | Syntax | error | Unexpected token |
-| E0002 | Syntax | error | Invalid string: unterminated string literal, an expression inside `${...}` interpolation (only an identifier with optional dot access is allowed), or an unterminated interpolation |
+| E0002 | Syntax | error | Invalid string: unterminated string literal, an expression inside `${...}` interpolation (only an identifier with optional dot access is allowed), an empty interpolation (`${}`), or an unterminated interpolation |
 | E0003 | Syntax | error | Invalid number literal (e.g. underscore grouping in a float: `1_000.5`) |
 | E0010 | Name | error | Undefined identifier |
 | E0011 | Name | error | Duplicate definition |
@@ -758,7 +770,7 @@ All errors are JSON-serializable with this structure:
 | E0015 | Tool | error | Duplicate short tool name in `capability tool.use` params |
 | E0016 | Name | error | Cross-module function call (functions are module-private; expose a tool instead) |
 | E0017 | Capability | error | Duplicate scoped capability declaration (`memory.kv`, `event.log`, `process.spawn`, `timer` allow one per module or agent) |
-| E0020 | Type | error | Type mismatch (including wrong argument counts for fn, stdlib, and effect calls) |
+| E0020 | Type | error | Type mismatch (including wrong argument counts for fn, stdlib, and effect calls, and interpolation in string patterns) |
 | E0021 | Type | warning | Non-exhaustive match |
 | E0022 | Type | error | Invalid `!` on non-Result |
 | E0023 | Type | error | Invalid `?` on non-Result (or enclosing fn doesn't return Result) |

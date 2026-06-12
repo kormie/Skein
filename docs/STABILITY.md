@@ -67,7 +67,9 @@ Diagnostic codes are machine-consumed — LSP code actions, MCP
 - Codes are **append-only**: a code is never renumbered, repurposed, or
   deleted (a code can stop being emitted, but its meaning is retired with it).
 - The structured shape (`code`, `severity`, `message`, `location`,
-  `fix_hint`, `fix_code`, `context`) only gains fields.
+  `fix_hint`, `fix_code`, `context`, `span`, `edit_kind`) only gains fields.
+- `edit_kind` values are append-only: an existing kind never changes meaning
+  (spec §7 defines the application semantics of each).
 - Message *text* may be reworded in minors; tooling must key off `code`, not
   message text.
 
