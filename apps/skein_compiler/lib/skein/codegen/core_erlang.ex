@@ -249,6 +249,13 @@ defmodule Skein.CodeGen.CoreErlang do
          module_capabilities,
          type_decls
        ) do
+    # Module-level fns are inherited into each nested agent so an agent
+    # phase handler (or helper fn) can call them as local functions
+    # (skein-testing #8). They were previously invisible to the agent's
+    # codegen, so the call lowered to an unbound variable and crashed
+    # core_lint.
+    module_fns = Enum.filter(declarations, &match?(%AST.Fn{}, &1))
+
     declarations
     |> Enum.filter(&match?(%AST.Agent{}, &1))
     |> Enum.reduce_while({:ok, []}, fn agent, {:ok, acc} ->
@@ -257,7 +264,8 @@ defmodule Skein.CodeGen.CoreErlang do
       opts = [
         namespace: module_name,
         capabilities: agent.capabilities ++ module_capabilities,
-        type_decls: type_decls
+        type_decls: type_decls,
+        inherited_fns: module_fns
       ]
 
       case generate_agent(agent, opts) do
@@ -304,9 +312,21 @@ defmodule Skein.CodeGen.CoreErlang do
     capabilities = Keyword.get(opts, :capabilities, ast.capabilities)
     type_decls = Keyword.get(opts, :type_decls, %{})
 
+    # The enclosing module's fns are inherited as local functions of the
+    # agent module so phase handlers and helper fns can call them. The
+    # agent's own fns win on a name clash.
+    agent_fn_names = MapSet.new(ast.fns, & &1.name)
+
+    inherited_fns =
+      opts
+      |> Keyword.get(:inherited_fns, [])
+      |> Enum.reject(&MapSet.member?(agent_fn_names, &1.name))
+
+    agent_fns = ast.fns ++ inherited_fns
+
     # Build function name -> arity map for local call resolution
     fn_arities =
-      ast.fns
+      agent_fns
       |> Map.new(fn f -> {f.name, length(f.params)} end)
 
     # Find the start handler
@@ -319,7 +339,7 @@ defmodule Skein.CodeGen.CoreErlang do
 
     # Generate __info__/1
     info_fname = :cerl.c_fname(:__info__, 1)
-    info_fun = generate_agent_info_fn(module_atom, ast.fns)
+    info_fun = generate_agent_info_fn(module_atom, agent_fns)
 
     # Generate __phases__/0 — returns phase metadata
     phases_fname = :cerl.c_fname(:__phases__, 0)
@@ -341,12 +361,12 @@ defmodule Skein.CodeGen.CoreErlang do
     phase_handler_fun =
       generate_phase_handler_fn(phase_handlers, capabilities, fn_arities, type_decls)
 
-    # Generate user functions
+    # Generate user functions (the agent's own plus inherited module fns)
     fn_exports =
-      Enum.map(ast.fns, fn f -> :cerl.c_fname(String.to_atom(f.name), length(f.params)) end)
+      Enum.map(agent_fns, fn f -> :cerl.c_fname(String.to_atom(f.name), length(f.params)) end)
 
     fn_defs =
-      Enum.map(ast.fns, fn f ->
+      Enum.map(agent_fns, fn f ->
         fname = :cerl.c_fname(String.to_atom(f.name), length(f.params))
         fun = generate_fn(f, capabilities, fn_arities, type_decls)
         {fname, fun}

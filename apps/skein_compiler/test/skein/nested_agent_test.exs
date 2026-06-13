@@ -15,6 +15,7 @@ defmodule Skein.NestedAgentTest do
   # these names; any other undefined reference still warns.
   @compile {:no_warn_undefined, Skein.Agent.Orders.OrderAgent}
   @compile {:no_warn_undefined, Skein.Agent.Refunds.RefundAgent}
+  @compile {:no_warn_undefined, Skein.Agent.M.A}
 
   alias Skein.AST
   alias Skein.Analyzer
@@ -309,6 +310,40 @@ defmodule Skein.NestedAgentTest do
       # the transition proves the schema-typed call executed end-to-end.
       assert {:transition, :done, _state, _events} =
                agent_mod.__phase_handler__(:analyze, %{}, [])
+    end
+
+    test "an agent phase handler can call a module-level fn (#8)" do
+      # Regression for skein-testing#8: a module-level fn called from a
+      # nested agent's phase handler used to lower to an unbound variable
+      # and crash core_lint. Module fns are now inherited as local
+      # functions of the agent's compiled module.
+      mod =
+        compile!("""
+        module M {
+          fn double(n: Int) -> Int { n * 2 }
+
+          agent A {
+            state { d: Int }
+            enum Phase { Go -> [] }
+            on start(n: Int) -> { transition(Phase.Go) }
+            on phase(Phase.Go) -> {
+              let d = double(21)
+              stop()
+            }
+          }
+        }
+        """)
+
+      assert mod == Skein.User.M
+
+      agent_mod = Skein.Agent.M.A
+
+      # The inherited fn is callable directly on the agent module...
+      assert agent_mod.double(21) == 42
+
+      # ...and resolves inside the phase handler (which used to crash
+      # core_lint with an unbound variable for the call).
+      assert {:stop, _state, _events} = agent_mod.__phase_handler__(:go, %{}, [])
     end
 
     test "top-level agents still compile unchanged" do
