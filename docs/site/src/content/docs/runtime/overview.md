@@ -197,16 +197,16 @@ Skein.Runtime.Store.put(table, record, capabilities)
 Skein.Runtime.Store.delete(table, id, capabilities)
 #=> {:ok, id}
 
-# Filters are an equality map; the matching records come back as a list
+# Filters are an equality map; the matching records come back wrapped in :ok
 Skein.Runtime.Store.query(table, %{status: "active"}, capabilities)
-#=> [record, ...]
+#=> {:ok, [record, ...]}
 ```
 
 Every operation:
 1. Validates `store.table` capability for the target table
 2. Performs the ETS operation
 3. Records a trace span with timing and outcome
-4. Returns `{:ok, _}` / `{:error, _}` (get/put/delete) or the bare record list (query)
+4. Returns `{:ok, _}` / `{:error, _}` — including `query`, whose `:ok` payload is the matching-record list
 
 ### `Skein.Runtime.StoreEcto`
 

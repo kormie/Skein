@@ -101,7 +101,7 @@ defmodule Skein.Runtime.TopicStatemTest do
   end
 
   def postcondition(_state, {:call, _, :do_publish, [_name, _msg]}, result) do
-    result == :ok
+    match?({:ok, _}, result)
   end
 
   def postcondition(state, {:call, _, :do_list_topics, []}, result) do

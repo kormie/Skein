@@ -113,6 +113,22 @@ defmodule Skein.Analyzer do
   # Store operations: store.<table>.<method>(...)
   @store_methods ["get", "get!", "put", "put!", "delete", "query"]
 
+  # Control-flow keywords common in other languages that Skein deliberately
+  # does not have. When one appears where an expression is expected it's
+  # otherwise mis-reported as an unknown variable; map each to a hint that
+  # points at the construct Skein uses instead (skein-testing #5).
+  @match_hint "Skein has no '%{kw}'; conditionals are 'match' on Bool, e.g. match cond { true -> ... false -> ... }"
+  @absent_keyword_hints %{
+    "if" => String.replace(@match_hint, "%{kw}", "if"),
+    "else" => String.replace(@match_hint, "%{kw}", "else"),
+    "elif" => String.replace(@match_hint, "%{kw}", "elif"),
+    "then" => String.replace(@match_hint, "%{kw}", "then"),
+    "switch" => String.replace(@match_hint, "%{kw}", "switch"),
+    "case" => String.replace(@match_hint, "%{kw}", "case"),
+    "cond" => String.replace(@match_hint, "%{kw}", "cond"),
+    "unless" => String.replace(@match_hint, "%{kw}", "unless")
+  }
+
   # Standard library function registry: {Module, function} -> {param_types, return_type}
   @stdlib_registry %{
     "String" => %{
@@ -1534,6 +1550,22 @@ defmodule Skein.Analyzer do
              fix_hint:
                "Skein has no 'return' statement; a function returns the value of its last expression",
              fix_code: ""
+           }
+         ]}
+
+      # Conditional/loop keywords from other languages that Skein deliberately
+      # omits — steer to `match` rather than the misleading did-you-mean hint
+      # that treats them as misspelled variables (skein-testing #5).
+      Map.has_key?(@absent_keyword_hints, name) ->
+        {:unknown,
+         [
+           %Error{
+             code: "E0010",
+             severity: :error,
+             message: "'#{name}' is not a Skein construct",
+             location: location_from_meta(meta, env.file),
+             fix_hint: Map.fetch!(@absent_keyword_hints, name),
+             fix_code: "match condition {\n  true -> ...\n  false -> ...\n}"
            }
          ]}
 

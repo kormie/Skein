@@ -65,13 +65,13 @@ defmodule Skein.Runtime.QueueTest do
       Queue.subscribe_fn("caps-jobs", fn msg -> send(test_pid, {:got, msg}) end)
 
       caps = [%{kind: "queue.publish", params: ["caps-jobs"]}]
-      assert :ok = Queue.publish("caps-jobs", %{body: "x"}, caps)
+      assert {:ok, _} = Queue.publish("caps-jobs", %{body: "x"}, caps)
       assert_receive {:got, %{body: "x"}}, 1000
     end
 
     test "parameterless capability permits any queue name" do
       caps = [%{kind: "queue.publish", params: []}]
-      assert :ok = Queue.publish("any-queue", %{body: "x"}, caps)
+      assert {:ok, _} = Queue.publish("any-queue", %{body: "x"}, caps)
     end
 
     test "rejects publish without a queue.publish capability" do

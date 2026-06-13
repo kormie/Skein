@@ -112,9 +112,11 @@ defmodule Skein.Integration.MemoryLlmTest do
         }
         """)
 
+      # Schemaless llm.json returns a (possibly empty) map under the test
+      # backend, which now conforms to the requested schema rather than a
+      # fixed canned shape (skein-testing #4).
       assert {:ok, result} = mod.decide("Ticket: item not received")
       assert is_map(result)
-      assert Map.has_key?(result, "action")
     end
   end
 
@@ -255,8 +257,10 @@ defmodule Skein.Integration.MemoryLlmTest do
         }
         """)
 
-      # TestBackend returns string-keyed %{"action" => "approve", "amount" => 100, ...}
-      # like the real backends; schema-directed atomization makes d.action work.
+      # A fixture backend returns a concrete string-keyed RefundDecision
+      # like the real backends; schema-directed atomization makes d.action
+      # and d.amount work end-to-end.
+      Skein.Runtime.Llm.set_backend(Skein.Integration.MemoryLlmTest.RefundDecisionBackend)
       assert mod.decide("Ticket: item not received") == "approve:100"
     end
 
@@ -319,6 +323,10 @@ defmodule Skein.Integration.MemoryLlmTest do
         """)
 
       agent_mod = Module.concat(["Skein", "Agent", "RefundFlow", "Decider"])
+
+      # Fixture backend returns action "approve" so the phase handler takes
+      # the Refund branch deterministically.
+      Skein.Runtime.Llm.set_backend(Skein.Integration.MemoryLlmTest.RefundDecisionBackend)
 
       assert {:transition, :refund, _state, _events} =
                agent_mod.__phase_handler__(:analyze, %{}, [])
@@ -558,5 +566,22 @@ defmodule Skein.Integration.MemoryLlmTest do
       assert {:error, errors} = Skein.Analyzer.analyze(ast)
       assert Enum.any?(errors, &(&1.code == "E0012" and &1.message =~ "model"))
     end
+  end
+end
+
+defmodule Skein.Integration.MemoryLlmTest.RefundDecisionBackend do
+  @moduledoc false
+  # A fixture LLM backend that returns a concrete RefundDecision, used by
+  # the #154 field-access / agent-flow tests that need specific values
+  # rather than the schema-conforming placeholders the default test
+  # backend now produces.
+  @behaviour Skein.Runtime.Llm.Backend
+
+  @impl true
+  def chat(_model, _system, _input), do: {:ok, ""}
+
+  @impl true
+  def json(_model, _system, _input, _schema) do
+    {:ok, %{"action" => "approve", "amount" => 100, "reason" => "item not received"}}
   end
 end

@@ -1,5 +1,69 @@
 # Changelog
 
+## v1.0.0-rc.3 (2026-06-13)
+
+The **third 1.0 release candidate** — burning down the tractable runtime,
+correctness, and agent-writability findings from exercising rc.2 (the
+*Skein Post MVP Tracker*; reports filed in `kormie/skein-testing`). The
+deeper language-design items surfaced (effect Result typing, matchable
+`Err(NotFound)`/`HttpError` enums, `handler timer`, `resume`, event
+read/export, constraint enforcement) are scoped to the next rc.
+
+### Runtime
+
+- `queue.publish` / `topic.publish` / `store.<table>.query` return a
+  proper `Result` instead of a bare `:ok` / bare list, so `!`/`?` unwrap
+  them instead of crashing with an opaque `Erlang error: :if_clause`
+  (skein-testing#17, #24). `publish` returns `{:ok, name}` (matching the
+  spec's `Result[String, PublishError]`); the spec's `store.query`
+  signature is corrected to `Result[List[T], StoreError]` (query can fail
+  on an unknown filter field, which `List[T]` could not represent).
+- `req.json[T]` atomizes schema-declared keys via a shared
+  `Skein.Runtime.JsonSchema` module, so typed field access (`body.field`)
+  works like the `llm.json[T]` path instead of crashing with a `KeyError`
+  on the string-keyed map (skein-testing#2).
+- `skein run` mounts every module's HTTP handlers behind one server
+  (`Router.build_multi`) and registers all background handlers, instead of
+  picking a single module and 404-ing the rest of a multi-module project
+  (skein-testing#21).
+
+### Compiler
+
+- A module-level `fn` called from a nested agent's phase handler (or helper
+  `fn`) now compiles: module fns are inherited as local functions of the
+  agent's BEAM module, rather than lowering to an unbound variable and
+  crashing `core_lint` (skein-testing#8).
+- `if`/`else` (and `elif`/`then`/`switch`/`case`/`cond`/`unless`) emit a
+  dedicated E0010 pointing at `match` on `Bool`, instead of the misleading
+  "Unknown identifier — did you mean to declare this variable?"
+  (skein-testing#5).
+
+### Test LLM backend
+
+- `llm.json[T]` synthesizes a value conforming to the requested schema `T`
+  (was a fixed `{action, amount, reason}` map), so structured output is
+  testable for any type (skein-testing#4).
+- `llm.stream` is implemented on the test backend, so streaming runs
+  offline like `chat`/`embed` (skein-testing#19).
+- `llm.json` recovers JSON wrapped in a code fence or surrounding prose
+  before failing with `:parse_failed` (skein-testing#27).
+
+### CLI & DX
+
+- `skein new` scaffolds a `.gitattributes` Linguist override so `.skein`
+  renders with highlighting on GitHub (skein-testing#7) and a project
+  `.mcp.json` so MCP-aware agents pick up the Skein server zero-config
+  (skein-testing#12).
+
+### Docs
+
+- The generated `AGENTS.md` / `llms.txt` primer stops teaching patterns
+  that crash (store not-found now matches `Err(_)`; `tool.call` is shown
+  unwrapped) and promotes the highest-impact gotchas — effects return a
+  `Result`, no `if`/`else`, `store.get` not-found is `Err(_)`; the false
+  "agent fns callable from external code" claim is corrected
+  (skein-testing#10).
+
 ## v1.0.0-rc.2 (2026-06-12)
 
 The **second 1.0 release candidate** — the rc.1 soak audit (`/release-readiness`) plus an adversarial code review of its own fix PR (#230), closing the entire v1.0.0 Release GA milestone. The soak continues on this rc, which actually contains the fixes.

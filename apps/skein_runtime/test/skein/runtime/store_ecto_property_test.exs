@@ -125,7 +125,7 @@ defmodule Skein.Runtime.StoreEctoPropertyTest do
 
       Enum.each(unique, fn r -> StoreEcto.put("ecto_prop_test", r, @caps) end)
 
-      results = StoreEcto.query("ecto_prop_test", %{}, @caps)
+      {:ok, results} = StoreEcto.query("ecto_prop_test", %{}, @caps)
       assert length(results) == length(unique)
     end
   end

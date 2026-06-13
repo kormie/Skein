@@ -379,7 +379,7 @@ Tool calls require `capability tool.use(ToolName)` and are traced with timing an
 
 ## Helper Functions
 
-Agents can declare `fn` functions that are callable both within the agent and from external code:
+Agents can declare `fn` functions, callable from the agent's own handlers and other helper functions (and, for a nested agent, the enclosing module's `fn`s are callable too):
 
 ```skein
 agent UtilAgent {

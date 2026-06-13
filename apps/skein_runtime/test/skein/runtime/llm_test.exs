@@ -267,6 +267,96 @@ defmodule Skein.Runtime.LlmTest do
                Llm.chat("claude-sonnet-4-5", "system", "input", @valid_capabilities)
     end
   end
+
+  # ------------------------------------------------------------------
+  # Test backend conformance / leniency (skein-testing #4, #19, #27)
+  # ------------------------------------------------------------------
+
+  describe "test backend conforms to the requested schema (#4)" do
+    test "json/5 synthesizes a value shaped like T, not a fixed canned map" do
+      schema = %{
+        "type" => "object",
+        "required" => ["action", "confidence"],
+        "properties" => %{
+          "action" => %{"type" => "string"},
+          "confidence" => %{"type" => "integer"}
+        }
+      }
+
+      assert {:ok, result} =
+               Llm.json("claude-sonnet-4-5", "Decide", "x", schema, @valid_capabilities)
+
+      # Declared fields are present (and atomized) regardless of name.
+      assert is_binary(result.action)
+      assert is_integer(result.confidence)
+      assert result.confidence > 0
+    end
+
+    test "json/5 respects @one_of (enum) and @min on the schema" do
+      schema = %{
+        "type" => "object",
+        "required" => ["decision", "score"],
+        "properties" => %{
+          "decision" => %{"type" => "string", "enum" => ["approve", "deny"]},
+          "score" => %{"type" => "integer", "minimum" => 10}
+        }
+      }
+
+      assert {:ok, result} =
+               Llm.json("claude-sonnet-4-5", "Decide", "x", schema, @valid_capabilities)
+
+      assert result.decision in ["approve", "deny"]
+      assert result.score >= 10
+    end
+  end
+
+  describe "test backend implements stream (#19)" do
+    test "stream/5 assembles deterministic non-empty text offline" do
+      assert {:ok, text} =
+               Llm.stream(
+                 "claude-sonnet-4-5",
+                 "sys",
+                 "hello",
+                 fn _chunk -> :ok end,
+                 @valid_capabilities
+               )
+
+      assert is_binary(text)
+      assert String.length(text) > 0
+    end
+  end
+
+  describe "lenient JSON parsing (#27)" do
+    test "extracts JSON wrapped in a ```json code fence" do
+      Llm.set_backend(Skein.Runtime.LlmTest.FencedJsonBackend)
+
+      schema = %{
+        "type" => "object",
+        "required" => ["next"],
+        "properties" => %{"next" => %{"type" => "string"}}
+      }
+
+      assert {:ok, result} =
+               Llm.json("claude-sonnet-4-5", "Choose", "x", schema, @valid_capabilities)
+
+      assert result.next == "fight"
+    end
+
+    test "extracts a JSON object embedded in surrounding prose" do
+      Llm.set_backend(Skein.Runtime.LlmTest.ProseJsonBackend)
+
+      schema = %{
+        "type" => "object",
+        "required" => ["next"],
+        "properties" => %{"next" => %{"type" => "string"}}
+      }
+
+      assert {:ok, result} =
+               Llm.json("claude-sonnet-4-5", "Choose", "x", schema, @valid_capabilities)
+
+      assert result.next == "loot"
+    end
+  end
 end
 
 defmodule Skein.Runtime.LlmTest.NestedJsonBackend do
@@ -310,5 +400,32 @@ defmodule Skein.Runtime.LlmTest.RawTextJsonBackend do
   @impl true
   def json(_model, _system, _input, _schema) do
     {:ok, ~s({"action": "go", "noise": true})}
+  end
+end
+
+defmodule Skein.Runtime.LlmTest.FencedJsonBackend do
+  @moduledoc false
+  @behaviour Skein.Runtime.Llm.Backend
+
+  @impl true
+  def chat(_model, _system, _input), do: {:ok, ""}
+
+  @impl true
+  def json(_model, _system, _input, _schema) do
+    {:ok, "Here is the result:\n\n```json\n{\"next\": \"fight\"}\n```\n"}
+  end
+end
+
+defmodule Skein.Runtime.LlmTest.ProseJsonBackend do
+  @moduledoc false
+  @behaviour Skein.Runtime.Llm.Backend
+
+  @impl true
+  def chat(_model, _system, _input), do: {:ok, ""}
+
+  @impl true
+  def json(_model, _system, _input, _schema) do
+    {:ok,
+     "I notice the instructions, but here's my answer: {\"next\": \"loot\"} — hope that helps!"}
   end
 end

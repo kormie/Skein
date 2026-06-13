@@ -586,7 +586,7 @@ store.<table>.get!(id: Uuid) -> T                  -- raises on miss
 store.<table>.put(record: T) -> Result[T, StoreError]
 store.<table>.put!(record: T) -> T                 -- raises on failure
 store.<table>.delete(id: Uuid) -> Result[Uuid, StoreError]
-store.<table>.query(filters: Map) -> List[T]
+store.<table>.query(filters: Map) -> Result[List[T], StoreError]
 ```
 
 ### 6.3 Memory

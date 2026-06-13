@@ -54,8 +54,8 @@ defmodule Skein.Runtime.RequestPropertyTest do
       body = Jason.encode!(obj)
       req = %{body: body}
       assert {:ok, parsed} = Request.json(req, schema)
-      assert parsed["name"] == obj["name"]
-      assert parsed["age"] == obj["age"]
+      assert parsed[:name] == obj["name"]
+      assert parsed[:age] == obj["age"]
     end
   end
 

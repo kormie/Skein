@@ -75,9 +75,9 @@ StoreEcto.get("users", "u1", caps)
 #=> {:ok, %{id: "u1", email: "alice@test.com", name: "Alice"}}
 
 # Query with filters
-# Filters are an equality map; matching records come back as a list
+# Filters are an equality map; matching records come back wrapped in :ok
 StoreEcto.query("users", %{email: "alice@test.com"}, caps)
-#=> [%{id: "u1", email: "alice@test.com", name: "Alice"}]
+#=> {:ok, [%{id: "u1", email: "alice@test.com", name: "Alice"}]}
 
 # Delete by primary key
 StoreEcto.delete("users", "u1", caps)

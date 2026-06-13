@@ -68,12 +68,19 @@ defmodule Skein.Runtime.Queue do
   Publishes a message to a named queue, checking the `queue.publish`
   capability first. This is the entry point for compiled Skein code
   (`queue.publish(name, data)`), mirroring `Skein.Runtime.Topic.publish/3`.
+
+  Returns `{:ok, queue_name}` once the message is enqueued, or
+  `{:error, reason}` when the `queue.publish` capability is missing —
+  matching the spec's `Result[String, PublishError]`. Returning a Result
+  lets `queue.publish(...)!`/`?` behave like every other effect rather
+  than crashing on the un-wrapped `:ok`.
   """
-  @spec publish(String.t(), term(), list()) :: :ok | {:error, String.t()}
+  @spec publish(String.t(), term(), list()) :: {:ok, String.t()} | {:error, String.t()}
   def publish(queue_name, message, capabilities) do
     case Skein.Runtime.Capability.check_scoped("queue.publish", queue_name, capabilities) do
       :ok ->
         publish(queue_name, message)
+        {:ok, queue_name}
 
       {:error, _reason} = error ->
         error

@@ -59,8 +59,8 @@ module UserService {
   handler http GET "/users/:id" (req) -> {
     let id = Uuid.parse!(req.params.id)
     match store.users.get(id) {
-      Ok(u)         -> respond.json(200, u)
-      Err(NotFound) -> respond.json(404, { error: "not found" })
+      Ok(u)  -> respond.json(200, u)
+      Err(_) -> respond.json(404, { error: "not found" })
     }
   }
 
@@ -133,7 +133,7 @@ tool Billing.CreateRefund {
 
 -- caller module (or agent)
 capability tool.use(Billing.CreateRefund)
-let result = tool.call(Billing.CreateRefund, { customer_id: cid, amount: 500 })
+let result = tool.call(Billing.CreateRefund, { customer_id: cid, amount: 500 })!  -- ! unwraps the Result
 ```
 
 ## Agents, Phases, and Transitions
@@ -141,7 +141,8 @@ let result = tool.call(Billing.CreateRefund, { customer_id: cid, amount: 500 })
 Agents declare state, a `Phase` enum with legal transitions, and `on`
 handlers. They can be top-level (one per file) or nested inside a module —
 a nested agent compiles to its own BEAM module and sees the enclosing
-module's types and capabilities in addition to its own. Transitions are
+module's types, capabilities, and functions in addition to its own (a
+phase handler may call the module's `fn`s directly). Transitions are
 checked at compile time — `transition()` to a phase not listed in the current
 phase's `-> [...]` list is an error (E0030), and every phase needs an
 `on phase` handler (E0032).
@@ -179,6 +180,16 @@ agent instance.
 
 ## Known Gotchas
 
+- **Effects return a `Result` — unwrap it.** `llm.chat`, `llm.json[T]`,
+  `req.json[T]`, `store.<t>.get/put/delete/query`, `http.get/post/...`,
+  `queue.publish`, `topic.publish`, and `tool.call` all return
+  `Result[T, E]` at runtime. Use `expr!` (crash on `Err`) or `expr?`
+  (propagate) before touching the value — otherwise you get an opaque
+  BEAM crash. This is the single most common trap.
+- **No `if`/`else`.** Conditionals are `match` on a `Bool`:
+  `match cond { true -> ... false -> ... }`.
+- **`store.<t>.get` not-found is `Err(_)`**, not a named `NotFound`
+  variant — write `Err(_) -> ...`, not `Err(NotFound) -> ...`.
 - `input` is a keyword — never use it as a parameter or binding name (use
   `ctx`, `data`, or a typed name).
 - `stop()` must be called with parentheses.

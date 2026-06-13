@@ -127,9 +127,11 @@ defmodule Skein.Runtime.StoreEcto do
   Queries records matching the given filters.
 
   Filters is a map of field name (atom or string) to value.
-  Returns a list of matching records as maps.
+  Returns `{:ok, records}` with the matching records as maps (the list
+  may be empty), or `{:error, reason}`. Mirrors `Store.query/3` so the
+  `!`/`?` operators behave uniformly across storage backends.
   """
-  @spec query(String.t(), map(), [map()]) :: list(map()) | {:error, String.t()}
+  @spec query(String.t(), map(), [map()]) :: {:ok, [map()]} | {:error, String.t()}
   def query(table_name, filters, capabilities)
       when is_binary(table_name) and is_map(filters) and is_list(capabilities) do
     Trace.with_span(%{kind: :store, method: :query, table: table_name}, fn ->
@@ -145,8 +147,11 @@ defmodule Skein.Runtime.StoreEcto do
             from(r in acc, where: field(r, ^key) == ^value)
           end)
 
-        Skein.Runtime.Repo.all(query)
-        |> Enum.map(&schema_to_map/1)
+        records =
+          Skein.Runtime.Repo.all(query)
+          |> Enum.map(&schema_to_map/1)
+
+        {:ok, records}
       end
     end)
   end

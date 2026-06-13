@@ -28,8 +28,13 @@ defmodule Skein.Runtime.Server do
   Starts the HTTP server.
 
   Options:
-  - `:module` — The compiled Skein module (required)
+  - `:modules` — A list of compiled Skein modules to mount (preferred)
+  - `:module` — A single compiled Skein module (shorthand for `modules: [m]`)
   - `:port` — Port to listen on (default: 4000)
+
+  At least one of `:modules`/`:module` is required. Every module's HTTP
+  handlers are mounted behind one server and its background (schedule/
+  queue/topic) handlers are registered.
   """
   @spec start_link(keyword()) :: GenServer.on_start()
   def start_link(opts) do
@@ -50,17 +55,23 @@ defmodule Skein.Runtime.Server do
 
   @impl true
   def init(opts) do
-    module = Keyword.fetch!(opts, :module)
+    modules =
+      case Keyword.get(opts, :modules) do
+        nil -> [Keyword.fetch!(opts, :module)]
+        mods when is_list(mods) -> mods
+      end
+
     port = Keyword.get(opts, :port, 4000)
 
-    router = Router.build(module)
-    register_background_handlers(module)
+    router = Router.build_multi(modules)
+    Enum.each(modules, &register_background_handlers/1)
 
     case Bandit.start_link(plug: router, port: port, ip: {127, 0, 0, 1}) do
       {:ok, bandit_pid} ->
         {:ok,
          %{
-           module: module,
+           modules: modules,
+           module: hd(modules),
            port: port,
            bandit_pid: bandit_pid
          }}

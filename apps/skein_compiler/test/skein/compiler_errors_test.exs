@@ -133,5 +133,29 @@ defmodule Skein.CompilerErrorsTest do
       assert return_error.fix_hint =~ "no 'return' statement"
       assert return_error.fix_hint =~ "last expression"
     end
+
+    test "'if'/'else' point at match instead of a did-you-mean variable hint" do
+      source = """
+      module Conditional {
+        fn classify(action: String) -> String {
+          let a = String.downcase(action)
+          if String.contains(a, "rest") { "heal" } else { "hurt" }
+        }
+      }
+      """
+
+      assert {:error, errors} = Compiler.compile_string(source)
+
+      if_error = Enum.find(errors, &(&1.message == "'if' is not a Skein construct"))
+      assert if_error
+      assert if_error.fix_hint =~ "match"
+      assert if_error.fix_hint =~ "Bool"
+      # The misleading "Did you mean to declare this variable?" hint is gone.
+      refute if_error.fix_hint =~ "declare this variable"
+
+      else_error = Enum.find(errors, &(&1.message == "'else' is not a Skein construct"))
+      assert else_error
+      assert else_error.fix_hint =~ "match"
+    end
   end
 end

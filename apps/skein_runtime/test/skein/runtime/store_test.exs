@@ -119,7 +119,7 @@ defmodule Skein.Runtime.StoreTest do
       {:ok, _} = Store.put("users", %{id: "u2", name: "Bob", role: "user"}, @caps)
       {:ok, _} = Store.put("users", %{id: "u3", name: "Carol", role: "admin"}, @caps)
 
-      results = Store.query("users", %{role: "admin"}, @caps)
+      {:ok, results} = Store.query("users", %{role: "admin"}, @caps)
       assert is_list(results)
       assert length(results) == 2
       names = Enum.map(results, & &1.name) |> Enum.sort()
@@ -133,14 +133,14 @@ defmodule Skein.Runtime.StoreTest do
       {:ok, _} = Store.put("users", %{id: "u2", name: "Bob", role: "admin", active: false}, @caps)
       {:ok, _} = Store.put("users", %{id: "u3", name: "Carol", role: "user", active: true}, @caps)
 
-      results = Store.query("users", %{role: "admin", active: true}, @caps)
+      {:ok, results} = Store.query("users", %{role: "admin", active: true}, @caps)
       assert length(results) == 1
       assert hd(results).name == "Alice"
     end
 
     test "returns empty list when no records match" do
       {:ok, _} = Store.put("users", %{id: "u1", name: "Alice"}, @caps)
-      results = Store.query("users", %{name: "Nobody"}, @caps)
+      {:ok, results} = Store.query("users", %{name: "Nobody"}, @caps)
       assert results == []
     end
 
@@ -148,7 +148,7 @@ defmodule Skein.Runtime.StoreTest do
       {:ok, _} = Store.put("users", %{id: "u1", name: "Alice"}, @caps)
       {:ok, _} = Store.put("users", %{id: "u2", name: "Bob"}, @caps)
 
-      results = Store.query("users", %{}, @caps)
+      {:ok, results} = Store.query("users", %{}, @caps)
       assert length(results) == 2
     end
 
