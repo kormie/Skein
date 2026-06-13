@@ -292,7 +292,60 @@ defmodule Skein.Runtime.Llm do
         {:ok, parsed}
 
       {:error, %Jason.DecodeError{} = decode_error} ->
-        {:error, Error.parse_failed(raw_text, "JSON", Exception.message(decode_error))}
+        # Models often wrap the JSON object in prose or a ```json code
+        # fence. Retry against any embedded candidate before giving up so
+        # a chatty-but-correct response still parses (skein-testing #27).
+        case extract_json_candidate(raw_text) do
+          {:ok, candidate} ->
+            case Jason.decode(candidate) do
+              {:ok, parsed} -> {:ok, parsed}
+              {:error, _} -> {:error, Error.parse_failed(raw_text, "JSON", Exception.message(decode_error))}
+            end
+
+          :error ->
+            {:error, Error.parse_failed(raw_text, "JSON", Exception.message(decode_error))}
+        end
+    end
+  end
+
+  # Pull a JSON object/array out of surrounding prose or markdown fences.
+  # Prefers a fenced block (```json ... ```), then falls back to the span
+  # from the first opening bracket to the last matching closing bracket.
+  defp extract_json_candidate(raw_text) do
+    fenced =
+      Regex.run(~r/```(?:json)?\s*(.*?)```/s, raw_text, capture: :all_but_first)
+
+    cond do
+      is_list(fenced) and fenced != [] ->
+        {:ok, fenced |> hd() |> String.trim()}
+
+      true ->
+        bracket_span(raw_text)
+    end
+  end
+
+  defp bracket_span(text) do
+    # Whichever of the object/array spans opens earliest in the text wins.
+    [slice_between(text, "{", "}"), slice_between(text, "[", "]")]
+    |> Enum.flat_map(fn
+      {:ok, {offset, span}} -> [{offset, span}]
+      :error -> []
+    end)
+    |> Enum.min_by(fn {offset, _span} -> offset end, fn -> nil end)
+    |> case do
+      nil -> :error
+      {_offset, span} -> {:ok, span}
+    end
+  end
+
+  defp slice_between(text, open, close) do
+    with [{start, _} | _] <- :binary.matches(text, open),
+         matches when matches != [] <- :binary.matches(text, close),
+         {last, _} <- List.last(matches),
+         true <- last > start do
+      {:ok, {start, binary_part(text, start, last - start + 1)}}
+    else
+      _ -> :error
     end
   end
 
@@ -549,8 +602,27 @@ defmodule Skein.Runtime.Llm.TestBackend do
   end
 
   @impl true
-  def json(_model, _system, _input, _schema) do
-    {:ok, %{"action" => "approve", "amount" => 100, "reason" => "Test decision"}}
+  def json(_model, _system, _input, schema) do
+    # Synthesize a value that conforms to the requested schema so
+    # structured-output logic can be unit-tested deterministically against
+    # any type T, not only the old canned {action, amount, reason} shape
+    # (skein-testing #4).
+    {:ok, Skein.Runtime.Llm.TestData.synthesize(schema)}
+  end
+
+  @impl true
+  def stream(_model, _system, input) do
+    # Chunk the same canned text chat/1 returns so llm.stream can be
+    # exercised offline like chat/embed (skein-testing #19).
+    text = "Test response for: #{inspect(input)}"
+    {:ok, chunk_text(text)}
+  end
+
+  defp chunk_text(text) do
+    text
+    |> String.codepoints()
+    |> Enum.chunk_every(8)
+    |> Enum.map(&Enum.join/1)
   end
 
   @impl true
@@ -673,6 +745,46 @@ defmodule Skein.Runtime.Llm.FailingStreamBackend do
   def stream(_model, _system, _input) do
     {:error, Skein.Runtime.Llm.Error.provider_error("500", "Stream failed")}
   end
+end
+
+defmodule Skein.Runtime.Llm.TestData do
+  @moduledoc """
+  Synthesizes deterministic values conforming to a JSON Schema, used by
+  the test LLM backend so `llm.json[T]` returns a value shaped like the
+  requested type `T` rather than a single canned map. Keys are strings
+  (the backend convention); `Skein.Runtime.Llm` atomizes declared fields.
+  """
+
+  @spec synthesize(map()) :: term()
+  def synthesize(%{"oneOf" => [branch | _]}), do: synthesize(branch)
+  def synthesize(%{"const" => value}), do: value
+  def synthesize(%{"enum" => [first | _]}), do: first
+
+  def synthesize(%{"type" => "object", "properties" => properties}) do
+    Map.new(properties, fn {name, sub_schema} -> {name, synthesize(sub_schema)} end)
+  end
+
+  # Map[K, V] / opaque object: keys are data, so an empty map conforms.
+  def synthesize(%{"type" => "object"}), do: %{}
+
+  def synthesize(%{"type" => "array", "items" => items}), do: [synthesize(items)]
+  def synthesize(%{"type" => "array"}), do: []
+
+  def synthesize(%{"type" => "integer"} = schema), do: Map.get(schema, "minimum", 1)
+  def synthesize(%{"type" => "number"} = schema), do: Map.get(schema, "minimum", 1) * 1.0
+  def synthesize(%{"type" => "boolean"}), do: true
+
+  def synthesize(%{"type" => "string", "format" => format}), do: string_for_format(format)
+  def synthesize(%{"type" => "string"}), do: "test"
+
+  # Unconstrained / unrecognized schema.
+  def synthesize(_schema), do: "test"
+
+  defp string_for_format("uuid"), do: "00000000-0000-0000-0000-000000000000"
+  defp string_for_format("date-time"), do: "2026-01-01T00:00:00Z"
+  defp string_for_format("email"), do: "test@example.com"
+  defp string_for_format("uri"), do: "https://example.com"
+  defp string_for_format(_), do: "test"
 end
 
 defmodule Skein.Runtime.Llm.DynamicStreamBackend do
