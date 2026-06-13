@@ -61,18 +61,66 @@ defmodule Skein.Runtime.Router do
   end
 
   @doc """
+  Builds a Plug module that routes across several Skein modules.
+
+  A multi-module `skein run` mounts every module's HTTP handlers behind a
+  single server: each request is tried against the modules in order and
+  the first one with a matching route handles it (skein-testing#21).
+  """
+  @spec build_multi([module()]) :: module()
+  def build_multi(skein_modules) do
+    router_name =
+      Module.concat([
+        Skein.Runtime.Router,
+        Generated,
+        Multi,
+        :"M#{:erlang.phash2(skein_modules)}"
+      ])
+
+    if :code.is_loaded(router_name) do
+      :code.purge(router_name)
+      :code.delete(router_name)
+    end
+
+    contents =
+      quote do
+        @behaviour Plug
+
+        @impl true
+        def init(opts), do: opts
+
+        @impl true
+        def call(conn, _opts) do
+          Skein.Runtime.Router.dispatch_multi(conn, unquote(skein_modules))
+        end
+      end
+
+    Module.create(router_name, contents, Macro.Env.location(__ENV__))
+    router_name
+  end
+
+  @doc """
   Dispatches a `Plug.Conn` to the appropriate Skein handler or built-in endpoint.
 
   This is the core routing function called by generated router modules.
   """
   @spec dispatch(Plug.Conn.t(), module()) :: Plug.Conn.t()
   def dispatch(conn, skein_module) do
+    dispatch_multi(conn, [skein_module])
+  end
+
+  @doc """
+  Dispatches a `Plug.Conn` across a list of Skein modules, trying each in
+  order until one has a matching route.
+  """
+  @spec dispatch_multi(Plug.Conn.t(), [module()]) :: Plug.Conn.t()
+  def dispatch_multi(conn, skein_modules) do
     conn = read_body_if_needed(conn)
 
     if conn.method == "GET" and conn.request_path == "/__skein/traces" do
       serve_traces(conn)
     else
-      dispatch_handler(conn, skein_module)
+      dispatch_handler(conn, skein_modules)
     end
   end
 
@@ -100,10 +148,14 @@ defmodule Skein.Runtime.Router do
   # Handler dispatch
   # ------------------------------------------------------------------
 
-  defp dispatch_handler(conn, skein_module) do
+  defp dispatch_handler(conn, skein_modules) do
     case method_atom(conn.method) do
       {:ok, method} ->
-        dispatch_handler(conn, skein_module, method)
+        path = conn.request_path
+        headers = Map.new(conn.req_headers)
+        body = conn.assigns[:raw_body] || ""
+
+        attempt_modules(conn, skein_modules, method, path, headers, body)
 
       :error ->
         conn
@@ -112,11 +164,16 @@ defmodule Skein.Runtime.Router do
     end
   end
 
-  defp dispatch_handler(conn, skein_module, method) do
-    path = conn.request_path
-    headers = Map.new(conn.req_headers)
-    body = conn.assigns[:raw_body] || ""
+  # Try each module in turn; the first matching route wins. A non-matching
+  # module returns {:error, _} and we fall through to the next. Only when no
+  # module matches do we 404.
+  defp attempt_modules(conn, [], _method, _path, _headers, _body) do
+    conn
+    |> Plug.Conn.put_resp_content_type("application/json")
+    |> Plug.Conn.send_resp(404, ~s({"error":"Not Found"}))
+  end
 
+  defp attempt_modules(conn, [skein_module | rest], method, path, headers, body) do
     try do
       case Handler.dispatch(skein_module, method, path, headers, body) do
         {:ok, status, resp_body, content_type} ->
@@ -125,9 +182,7 @@ defmodule Skein.Runtime.Router do
           |> Plug.Conn.send_resp(status, resp_body)
 
         {:error, _reason} ->
-          conn
-          |> Plug.Conn.put_resp_content_type("application/json")
-          |> Plug.Conn.send_resp(404, ~s({"error":"Not Found"}))
+          attempt_modules(conn, rest, method, path, headers, body)
       end
     rescue
       exception ->

@@ -753,7 +753,7 @@ defmodule Skein.CLI do
   def run(args) do
     case run_config(args) do
       {:ok, config} ->
-        Skein.Runtime.Server.start_link(module: config.module, port: config.port)
+        Skein.Runtime.Server.start_link(modules: config.modules, port: config.port)
 
       {:error, _} = err ->
         err
@@ -800,16 +800,24 @@ defmodule Skein.CLI do
               acc
           end
         end)
+        # compile order, not the reversed accumulator
+        |> Enum.reverse()
 
-      handler_module =
-        Enum.find(modules, fn mod ->
+      # Every module with handlers is mounted: HTTP routes are merged into
+      # one router and background (schedule/queue/topic) handlers register,
+      # rather than picking a single module and 404-ing the rest
+      # (skein-testing#21).
+      handler_modules =
+        Enum.filter(modules, fn mod ->
           function_exported?(mod, :__handlers__, 0) and mod.__handlers__() != []
         end)
 
-      if handler_module do
-        {:ok, %{module: handler_module, port: port}}
-      else
-        {:error, "No handlers found in compiled modules"}
+      case handler_modules do
+        [] ->
+          {:error, "No handlers found in compiled modules"}
+
+        mods ->
+          {:ok, %{modules: mods, module: hd(mods), port: port}}
       end
     end
   end

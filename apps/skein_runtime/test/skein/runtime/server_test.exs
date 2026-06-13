@@ -225,6 +225,50 @@ defmodule Skein.Runtime.ServerTest do
     end
   end
 
+  describe "multi-module routing (#21)" do
+    test "mounts HTTP handlers from every module behind one server" do
+      mod_a =
+        compile_module!("""
+        module ServerMultiA {
+          capability http.in
+          handler http GET "/a" (req) -> { respond.json(200, "from-a") }
+        }
+        """)
+
+      mod_b =
+        compile_module!("""
+        module ServerMultiB {
+          capability http.in
+          handler http GET "/b" (req) -> { respond.json(200, "from-b") }
+        }
+        """)
+
+      # A module with no HTTP handlers must not shadow the others (the
+      # original bug mounted exactly one module's router, often this kind).
+      mod_c =
+        compile_module!("""
+        module ServerMultiC {
+          capability topic.consume
+          handler topic "events" (msg) -> { respond.json(200, "ok") }
+        }
+        """)
+
+      port = unique_port()
+      {:ok, pid} = Server.start_link(modules: [mod_c, mod_a, mod_b], port: port)
+      Process.sleep(50)
+
+      assert {200, body_a} = http_request(port, :get, "/a")
+      assert Jason.decode!(body_a) == "from-a"
+
+      assert {200, body_b} = http_request(port, :get, "/b")
+      assert Jason.decode!(body_b) == "from-b"
+
+      assert {404, _} = http_request(port, :get, "/nope")
+
+      Server.stop(pid)
+    end
+  end
+
   describe "end-to-end: compile handlers + serve HTTP" do
     test "GET handler returns JSON response" do
       mod =
