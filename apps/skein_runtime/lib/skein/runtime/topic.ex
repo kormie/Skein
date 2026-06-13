@@ -61,18 +61,19 @@ defmodule Skein.Runtime.Topic do
   Publishes a message to a named topic. The message is dispatched
   asynchronously to ALL subscribers (fan-out).
 
-  Returns `{:ok, message}` once the broadcast is dispatched, or
-  `{:error, reason}` when the `topic.publish` capability is missing.
-  Returning a Result lets `topic.publish(...)!`/`?` behave like every
-  other effect rather than crashing on the un-wrapped `:ok`.
+  Returns `{:ok, topic_name}` once the broadcast is dispatched, or
+  `{:error, reason}` when the `topic.publish` capability is missing —
+  matching the spec's `Result[String, PublishError]`. Returning a Result
+  lets `topic.publish(...)!`/`?` behave like every other effect rather
+  than crashing on the un-wrapped `:ok`.
   """
-  @spec publish(String.t(), term(), list()) :: {:ok, term()} | {:error, String.t()}
+  @spec publish(String.t(), term(), list()) :: {:ok, String.t()} | {:error, String.t()}
   def publish(topic_name, message, capabilities) do
     case check_capability("topic.publish", topic_name, capabilities) do
       :ok ->
         ensure_started()
         GenServer.cast(__MODULE__, {:publish, topic_name, message})
-        {:ok, message}
+        {:ok, topic_name}
 
       {:error, _reason} = error ->
         error

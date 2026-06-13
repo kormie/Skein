@@ -2722,7 +2722,8 @@ defmodule Skein.CodeGen.CoreErlangTest do
         send(test_pid, {:queued, msg})
       end)
 
-      assert {:ok, "hello"} = mod.enqueue()
+      # publish returns {:ok, queue_name} (Result[String, PublishError])
+      assert {:ok, "codegen-jobs"} = mod.enqueue()
       assert_receive {:queued, "hello"}, 1000
     end
 
