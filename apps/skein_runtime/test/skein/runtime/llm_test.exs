@@ -313,7 +313,13 @@ defmodule Skein.Runtime.LlmTest do
   describe "test backend implements stream (#19)" do
     test "stream/5 assembles deterministic non-empty text offline" do
       assert {:ok, text} =
-               Llm.stream("claude-sonnet-4-5", "sys", "hello", fn _chunk -> :ok end, @valid_capabilities)
+               Llm.stream(
+                 "claude-sonnet-4-5",
+                 "sys",
+                 "hello",
+                 fn _chunk -> :ok end,
+                 @valid_capabilities
+               )
 
       assert is_binary(text)
       assert String.length(text) > 0
@@ -419,6 +425,7 @@ defmodule Skein.Runtime.LlmTest.ProseJsonBackend do
 
   @impl true
   def json(_model, _system, _input, _schema) do
-    {:ok, "I notice the instructions, but here's my answer: {\"next\": \"loot\"} — hope that helps!"}
+    {:ok,
+     "I notice the instructions, but here's my answer: {\"next\": \"loot\"} — hope that helps!"}
   end
 end

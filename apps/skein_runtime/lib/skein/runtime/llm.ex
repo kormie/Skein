@@ -298,8 +298,11 @@ defmodule Skein.Runtime.Llm do
         case extract_json_candidate(raw_text) do
           {:ok, candidate} ->
             case Jason.decode(candidate) do
-              {:ok, parsed} -> {:ok, parsed}
-              {:error, _} -> {:error, Error.parse_failed(raw_text, "JSON", Exception.message(decode_error))}
+              {:ok, parsed} ->
+                {:ok, parsed}
+
+              {:error, _} ->
+                {:error, Error.parse_failed(raw_text, "JSON", Exception.message(decode_error))}
             end
 
           :error ->
