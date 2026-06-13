@@ -33,6 +33,24 @@ defmodule Skein.CLI.NewTest do
       assert File.exists?(Path.join(project_dir, "test/main_test.skein"))
     end
 
+    test "scaffolds a .gitattributes Linguist override for .skein (#7)", %{tmp_dir: tmp} do
+      project_dir = Path.join(tmp, "hl_app")
+      {:ok, _} = CLI.new([project_dir])
+
+      attrs = File.read!(Path.join(project_dir, ".gitattributes"))
+      assert attrs =~ "*.skein linguist-language="
+    end
+
+    test "scaffolds a project .mcp.json registering the Skein MCP server (#12)", %{tmp_dir: tmp} do
+      project_dir = Path.join(tmp, "mcp_app")
+      {:ok, _} = CLI.new([project_dir])
+
+      mcp = File.read!(Path.join(project_dir, ".mcp.json"))
+      assert {:ok, parsed} = Jason.decode(mcp)
+      assert get_in(parsed, ["mcpServers", "skein", "command"]) == "skein"
+      assert get_in(parsed, ["mcpServers", "skein", "args"]) == ["mcp"]
+    end
+
     test "generates valid skein.toml with project name", %{tmp_dir: tmp} do
       project_dir = Path.join(tmp, "cool_app")
       {:ok, _} = CLI.new([project_dir])

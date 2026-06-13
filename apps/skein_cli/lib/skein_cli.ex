@@ -157,6 +157,16 @@ defmodule Skein.CLI do
       # a parent repo (keeps .beam/_build noise out of git status)
       File.write!(Path.join(project_dir, ".gitignore"), gitignore())
 
+      # Linguist override so .skein renders with syntax highlighting on
+      # GitHub instead of monochrome plain text, until Skein is recognized
+      # natively (skein-testing#7).
+      File.write!(Path.join(project_dir, ".gitattributes"), gitattributes())
+
+      # Project-scoped MCP registration so MCP-aware agents pick up the
+      # Skein server (spec lookup + compile_check) zero-config
+      # (skein-testing#12).
+      File.write!(Path.join(project_dir, ".mcp.json"), mcp_json())
+
       if write_agents_md? do
         File.write!(Path.join(project_dir, "AGENTS.md"), AgentsMd.render())
         File.write!(Path.join(project_dir, "CLAUDE.md"), AgentsMd.claude_md_pointer())
@@ -223,6 +233,34 @@ defmodule Skein.CLI do
     *.db-wal
 
     .DS_Store
+    """
+  end
+
+  # GitHub's syntax highlighting and language detection are driven by
+  # github/linguist, which has no .skein entry yet, so .skein files render
+  # as flat monochrome text. Aliasing to Rust (a close fit for Skein's
+  # fn/let/match/-> surface) gives reasonable highlighting as a stopgap
+  # until Skein is recognized natively. Remove this once that lands.
+  defp gitattributes do
+    """
+    # Highlight .skein as Rust on GitHub until Skein is natively recognized.
+    *.skein linguist-language=Rust
+    """
+  end
+
+  # .mcp.json is the cross-tool convention (Claude Code and others read it):
+  # committing it means every clone/session gets the Skein MCP server —
+  # spec lookup, docs search, and compile_check — out of the box.
+  defp mcp_json do
+    """
+    {
+      "mcpServers": {
+        "skein": {
+          "command": "skein",
+          "args": ["mcp"]
+        }
+      }
+    }
     """
   end
 
