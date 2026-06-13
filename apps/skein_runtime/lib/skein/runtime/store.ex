@@ -124,9 +124,12 @@ defmodule Skein.Runtime.Store do
   Filters is a map of field names (atoms or strings) to values.
   Returns all records where every filter field matches.
 
-  Returns a list of matching records (may be empty).
+  Returns `{:ok, records}` with the matching records (the list may be
+  empty), or `{:error, reason}` when the `store` capability is missing.
+  Returning a Result keeps `store.<table>.query(...)` consistent with
+  `get`/`put`/`delete`, so the `!`/`?` operators behave uniformly.
   """
-  @spec query(String.t(), map(), [map()]) :: list(map())
+  @spec query(String.t(), map(), [map()]) :: {:ok, [map()]} | {:error, String.t()}
   def query(table_name, filters, capabilities)
       when is_binary(table_name) and is_map(filters) and is_list(capabilities) do
     Trace.with_span(%{kind: :store, method: :query, table: table_name}, fn ->
@@ -134,9 +137,12 @@ defmodule Skein.Runtime.Store do
         :ok ->
           ensure_table()
 
-          :ets.match_object(@table, {{table_name, :_}, :_})
-          |> Enum.map(fn {{_table, _id}, record} -> record end)
-          |> Enum.filter(fn record -> matches_filters?(record, filters) end)
+          records =
+            :ets.match_object(@table, {{table_name, :_}, :_})
+            |> Enum.map(fn {{_table, _id}, record} -> record end)
+            |> Enum.filter(fn record -> matches_filters?(record, filters) end)
+
+          {:ok, records}
 
         {:error, _} = error ->
           error

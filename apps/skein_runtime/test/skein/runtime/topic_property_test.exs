@@ -119,7 +119,7 @@ defmodule Skein.Runtime.TopicPropertyTest do
           ) do
       Topic.reset_all()
       # Should complete without error even with no subscribers
-      assert :ok = Topic.publish(topic_name, message, [%{kind: "topic.publish", params: []}])
+      assert {:ok, _} = Topic.publish(topic_name, message, [%{kind: "topic.publish", params: []}])
     end
   end
 

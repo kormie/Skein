@@ -79,7 +79,7 @@ defmodule Skein.Runtime.StorePropertyTest do
 
       Enum.each(unique, fn r -> Store.put("prop_test", r, @caps) end)
 
-      results = Store.query("prop_test", %{}, @caps)
+      {:ok, results} = Store.query("prop_test", %{}, @caps)
       assert length(results) == length(unique)
     end
   end

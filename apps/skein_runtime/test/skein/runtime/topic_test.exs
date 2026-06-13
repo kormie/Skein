@@ -102,7 +102,7 @@ defmodule Skein.Runtime.TopicTest do
 
     test "message to unsubscribed topic is dropped" do
       # No subscriber for this topic — should not crash
-      assert :ok =
+      assert {:ok, _} =
                Topic.publish("nonexistent-topic", %{body: "dropped"}, [
                  %{kind: "topic.publish", params: ["nonexistent-topic"]}
                ])

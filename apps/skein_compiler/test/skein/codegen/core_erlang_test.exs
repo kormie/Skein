@@ -1384,7 +1384,7 @@ defmodule Skein.CodeGen.CoreErlangTest do
       {:ok, _} = Skein.Runtime.Store.put("users", %{id: "u2", name: "Bob", role: "user"}, caps)
       {:ok, _} = Skein.Runtime.Store.put("users", %{id: "u3", name: "Carol", role: "admin"}, caps)
 
-      results = mod.search(%{role: "admin"})
+      assert {:ok, results} = mod.search(%{role: "admin"})
       assert is_list(results)
       assert length(results) == 2
       names = Enum.map(results, & &1.name) |> Enum.sort()
@@ -2722,8 +2722,36 @@ defmodule Skein.CodeGen.CoreErlangTest do
         send(test_pid, {:queued, msg})
       end)
 
-      assert :ok = mod.enqueue()
+      assert {:ok, "hello"} = mod.enqueue()
       assert_receive {:queued, "hello"}, 1000
+    end
+
+    test "queue.publish / store.query / topic.publish return Results that ! can unwrap" do
+      # Regression for skein-testing #17 and #24: these effects used to
+      # return a bare `:ok` / bare list, so `!`-unwrapping them crashed
+      # with an opaque `Erlang error: :if_clause` instead of yielding a value.
+      mod =
+        compile!("""
+        module ResultShapes {
+          capability queue.publish("jobs")
+          capability topic.publish("events")
+          capability store.table("widgets")
+          type Widget { id: Uuid @primary  name: String  qty: Int }
+
+          fn pub_queue() -> Bool { let r = queue.publish("jobs", { id: "x" })! true }
+          fn pub_topic() -> Bool { let r = topic.publish("events", { id: "y" })! true }
+          fn run_query() -> Int {
+            let r = store.widgets.query({ name: "alpha" })!
+            List.length(r)
+          }
+        }
+        """)
+
+      on_exit(fn -> Skein.Runtime.Queue.reset_all() end)
+
+      assert mod.pub_queue() == true
+      assert mod.pub_topic() == true
+      assert mod.run_query() == 0
     end
 
     test "queue.publish outside the declared queue label is denied at runtime" do

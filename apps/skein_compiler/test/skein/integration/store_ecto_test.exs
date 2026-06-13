@@ -144,12 +144,12 @@ defmodule Skein.Integration.StoreEctoTest do
         )
 
       # QUERY — find by name
-      results = StoreEcto.query("integration_users", %{name: "Alicia"}, caps_list)
+      {:ok, results} = StoreEcto.query("integration_users", %{name: "Alicia"}, caps_list)
       assert length(results) == 1
       assert hd(results).email == "alicia@example.com"
 
       # QUERY — find all
-      all_results = StoreEcto.query("integration_users", %{}, caps_list)
+      {:ok, all_results} = StoreEcto.query("integration_users", %{}, caps_list)
       assert length(all_results) == 2
 
       # DELETE — remove a record

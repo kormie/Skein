@@ -163,7 +163,7 @@ defmodule Skein.Runtime.StoreEctoTest do
       {:ok, _} =
         StoreEcto.put("ecto_users", %{id: "u3", email: "c@test.com", name: "Alice"}, @caps)
 
-      results = StoreEcto.query("ecto_users", %{name: "Alice"}, @caps)
+      {:ok, results} = StoreEcto.query("ecto_users", %{name: "Alice"}, @caps)
       assert is_list(results)
       assert length(results) == 2
 
@@ -178,7 +178,7 @@ defmodule Skein.Runtime.StoreEctoTest do
       {:ok, _} =
         StoreEcto.put("ecto_users", %{id: "u2", email: "b@test.com", name: "Alice"}, @caps)
 
-      results = StoreEcto.query("ecto_users", %{name: "Alice", email: "a@test.com"}, @caps)
+      {:ok, results} = StoreEcto.query("ecto_users", %{name: "Alice", email: "a@test.com"}, @caps)
       assert length(results) == 1
       assert hd(results).id == "u1"
     end
@@ -187,7 +187,7 @@ defmodule Skein.Runtime.StoreEctoTest do
       {:ok, _} =
         StoreEcto.put("ecto_users", %{id: "u1", email: "a@test.com", name: "Alice"}, @caps)
 
-      results = StoreEcto.query("ecto_users", %{name: "Nobody"}, @caps)
+      {:ok, results} = StoreEcto.query("ecto_users", %{name: "Nobody"}, @caps)
       assert results == []
     end
 
@@ -197,7 +197,7 @@ defmodule Skein.Runtime.StoreEctoTest do
 
       {:ok, _} = StoreEcto.put("ecto_users", %{id: "u2", email: "b@test.com", name: "Bob"}, @caps)
 
-      results = StoreEcto.query("ecto_users", %{}, @caps)
+      {:ok, results} = StoreEcto.query("ecto_users", %{}, @caps)
       assert length(results) == 2
     end
 
@@ -222,7 +222,7 @@ defmodule Skein.Runtime.StoreEctoTest do
       {:ok, _} =
         StoreEcto.put("ecto_users", %{id: "u1", email: "a@test.com", name: "Alice"}, @caps)
 
-      results = StoreEcto.query("ecto_users", %{"name" => "Alice"}, @caps)
+      {:ok, results} = StoreEcto.query("ecto_users", %{"name" => "Alice"}, @caps)
       assert length(results) == 1
     end
   end
