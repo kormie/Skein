@@ -842,7 +842,7 @@ defmodule Skein.ExamplesTest do
       result = mod.__handler_0__(req)
       assert {:respond_json, 201, body} = result
       assert is_map(body)
-      assert body["topic"] == "AI chips"
+      assert body[:topic] == "AI chips"
     end
 
     test "resume handler parses typed JSON body" do
@@ -853,7 +853,7 @@ defmodule Skein.ExamplesTest do
       result = mod.__handler_2__(req)
       assert {:respond_json, 200, body} = result
       assert is_map(body)
-      assert body["refined_topic"] == "AI chips for edge"
+      assert body[:refined_topic] == "AI chips for edge"
     end
   end
 

@@ -349,45 +349,9 @@ defmodule Skein.Runtime.Llm do
     end
   end
 
-  # -- Schema-directed key atomization ---------------------------------------
-  #
-  # Backends decode JSON with string keys, but compiled field access reads
-  # atom keys (`d.action` -> `map_get(:action, d)`). The schema derived from
-  # `T` in `llm.json[T]` closes the key set, so atomizing exactly the
-  # schema-declared property names is safe — wire data outside the schema
-  # never reaches String.to_atom and is passed through unchanged.
-
-  # Enum variants (`oneOf`): atomize against the branch whose "type" const
-  # matches the value's discriminator.
-  defp atomize_by_schema(%{} = value, %{"oneOf" => branches}) do
-    discriminator = Map.get(value, "type")
-
-    case Enum.find(branches, &(get_in(&1, ["properties", "type", "const"]) == discriminator)) do
-      nil -> value
-      branch -> atomize_by_schema(value, branch)
-    end
-  end
-
-  defp atomize_by_schema(%{} = value, %{"type" => "object", "properties" => properties}) do
-    Map.new(value, fn {key, sub_value} ->
-      case Map.fetch(properties, key) do
-        {:ok, sub_schema} -> {String.to_atom(key), atomize_by_schema(sub_value, sub_schema)}
-        :error -> {key, sub_value}
-      end
-    end)
-  end
-
-  # Map[K, V] (`additionalProperties`): keys are data, not field names —
-  # they stay strings; only the values' declared fields atomize.
-  defp atomize_by_schema(%{} = value, %{"type" => "object", "additionalProperties" => sub}) do
-    Map.new(value, fn {key, sub_value} -> {key, atomize_by_schema(sub_value, sub)} end)
-  end
-
-  defp atomize_by_schema(value, %{"type" => "array", "items" => items}) when is_list(value) do
-    Enum.map(value, &atomize_by_schema(&1, items))
-  end
-
-  defp atomize_by_schema(value, _schema), do: value
+  # Schema-directed key atomization is shared with the HTTP JSON path so
+  # llm.json[T] and req.json[T] coerce keys identically.
+  defp atomize_by_schema(value, schema), do: Skein.Runtime.JsonSchema.atomize(value, schema)
 
   # -- Enriched span recording ---------------------------------------------
 
@@ -756,6 +720,9 @@ defmodule Skein.Runtime.Llm.TestData do
   """
 
   @spec synthesize(map()) :: term()
+  # An empty/unconstrained schema (schemaless `llm.json`) still needs to
+  # decode as a JSON object, so yield a map rather than a scalar.
+  def synthesize(schema) when map_size(schema) == 0, do: %{}
   def synthesize(%{"oneOf" => [branch | _]}), do: synthesize(branch)
   def synthesize(%{"const" => value}), do: value
   def synthesize(%{"enum" => [first | _]}), do: first

@@ -51,7 +51,11 @@ defmodule Skein.Runtime.Request do
   defp validate(parsed, schema) do
     with :ok <- validate_required(parsed, schema),
          :ok <- validate_types(parsed, schema) do
-      {:ok, parsed}
+      # Coerce schema-declared keys to atoms so compiled field access
+      # (`body.hero` -> map_get(:hero, ...)) lands on the right key —
+      # the same struct coercion the llm.json[T] path performs
+      # (skein-testing #2).
+      {:ok, Skein.Runtime.JsonSchema.atomize(parsed, schema)}
     end
   end
 

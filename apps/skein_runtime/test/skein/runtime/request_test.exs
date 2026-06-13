@@ -21,8 +21,10 @@ defmodule Skein.Runtime.RequestTest do
       req = %{body: ~s({"email":"test@example.com","name":"Alice"})}
 
       assert {:ok, parsed} = Request.json(req, @user_schema)
-      assert parsed["email"] == "test@example.com"
-      assert parsed["name"] == "Alice"
+      # Schema-declared keys are atomized so compiled field access works
+      # (skein-testing #2); fields outside the schema stay strings.
+      assert parsed.email == "test@example.com"
+      assert parsed.name == "Alice"
     end
 
     test "returns error for invalid JSON" do
@@ -137,6 +139,23 @@ defmodule Skein.Runtime.RequestTest do
 
       assert {:ok, parsed} = Request.json(req, @user_schema)
       assert parsed["extra"] == "field"
+    end
+
+    test "atomizes nested declared fields like the llm.json path" do
+      schema = %{
+        "type" => "object",
+        "properties" => %{
+          "user" => %{
+            "type" => "object",
+            "properties" => %{"name" => %{"type" => "string"}}
+          }
+        },
+        "required" => ["user"]
+      }
+
+      req = %{body: ~s({"user":{"name":"Ada"}})}
+      assert {:ok, parsed} = Request.json(req, schema)
+      assert parsed.user.name == "Ada"
     end
   end
 end
