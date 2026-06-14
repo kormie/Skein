@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v1.0.0-rc.4 (2026-06-14)
 
 Completing two rc.3 findings that shipped only partially (the
 v1.0.0-rc.4 milestone on the *Skein Post MVP Tracker*).
