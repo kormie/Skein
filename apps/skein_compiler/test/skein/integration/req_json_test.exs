@@ -107,6 +107,55 @@ defmodule Skein.Integration.ReqJsonTest do
       assert Jason.decode!(conn_ok.resp_body)["name"] == "Widget"
     end
 
+    test "coerces nested object-typed fields recursively (atom keys)" do
+      # Regression: req.json[T] previously only atomized top-level keys, so a
+      # declared nested object field came back string-keyed and crashed on
+      # `body.address.city` (KeyError on :city). Nested record-typed fields
+      # must coerce recursively so they read like any other field.
+      mod =
+        compile_module!("""
+        module ReqJsonNested {
+          capability http.in
+
+          type Address {
+            city: String
+            zip: String
+          }
+
+          type Signup {
+            email: String
+            name: String
+            address: Address
+          }
+
+          handler http POST "/signup" (req) -> {
+            let body = req.json[Signup]!
+            respond.json(200, {
+              email: body.email,
+              name: body.name,
+              city: body.address.city,
+              zip: body.address.zip
+            })
+          }
+        }
+        """)
+
+      conn =
+        call_router(
+          mod,
+          :post,
+          "/signup",
+          ~s({"email":"a@b.com","name":"Ada","address":{"city":"Lovelace","zip":"01000"}})
+        )
+
+      assert conn.status == 200
+      parsed = Jason.decode!(conn.resp_body)
+      assert parsed["email"] == "a@b.com"
+      assert parsed["name"] == "Ada"
+      assert parsed["city"] == "Lovelace"
+      assert parsed["zip"] == "01000"
+    end
+
     test "handler with integer fields in type" do
       mod =
         compile_module!("""

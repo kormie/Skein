@@ -1,5 +1,24 @@
 # Changelog
 
+## v1.0.0-rc.4 (2026-06-14)
+
+Completing two rc.3 findings that shipped only partially (the
+v1.0.0-rc.4 milestone on the *Skein Post MVP Tracker*).
+
+### Runtime
+
+- `req.json[T]` and `llm.json[T]` now coerce **nested** object-typed
+  fields recursively, not just top-level keys. A declared nested record
+  field (e.g. `body.address.city`) previously came back as a string-keyed
+  map and crashed with a `KeyError` on the atom field; the JSON Schema
+  derived from `T` now inlines nested record/enum types, so the shared
+  `Skein.Runtime.JsonSchema` atomizer descends into them and the test LLM
+  backend shapes nested fields too (skein-testing#2, #30).
+- `store.<table>.query(filter)` returns `Err(StoreError)` for an unknown
+  filter field instead of silently returning `Ok([])`, so typos and bad
+  column names fail loudly through `!`/`?` rather than masquerading as "no
+  results". Valid filters are unchanged (skein-testing#24).
+
 ## v1.0.0-rc.3 (2026-06-13)
 
 The **third 1.0 release candidate** — burning down the tractable runtime,
