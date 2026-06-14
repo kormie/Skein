@@ -157,6 +157,25 @@ defmodule Skein.Runtime.StoreTest do
       assert {:error, msg} = result
       assert msg =~ "not declared"
     end
+
+    test "returns an error for an unknown filter field" do
+      # Regression: an unknown filter field used to silently return Ok([]),
+      # so typos/bad columns masqueraded as "no results". It must now surface
+      # as a matchable error so `!`/`?` fail loudly.
+      {:ok, _} = Store.put("users", %{id: "u1", name: "Alice", role: "admin"}, @caps)
+      {:ok, _} = Store.put("users", %{id: "u2", name: "Bob", role: "user"}, @caps)
+
+      assert {:error, msg} = Store.query("users", %{no_such_field: "x"}, @caps)
+      assert msg =~ "Unknown filter field"
+      assert msg =~ "no_such_field"
+    end
+
+    test "valid filters are unaffected by unknown-field validation" do
+      {:ok, _} = Store.put("users", %{id: "u1", name: "Alice", role: "admin"}, @caps)
+      {:ok, _} = Store.put("users", %{id: "u2", name: "Bob", role: "user"}, @caps)
+
+      assert {:ok, [%{name: "Alice"}]} = Store.query("users", %{role: "admin"}, @caps)
+    end
   end
 
   # ------------------------------------------------------------------

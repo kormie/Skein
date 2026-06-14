@@ -80,11 +80,15 @@ defmodule Skein.CodeGen.CoreErlang do
       ast.declarations
       |> Enum.filter(&match?(%AST.Capability{}, &1))
 
-    # Collect type declarations for schema resolution (llm.json[T])
+    # Collect type and enum declarations for schema resolution
+    # (llm.json[T] / req.json[T], including nested record/enum fields).
     type_decls =
       ast.declarations
-      |> Enum.filter(&match?(%AST.TypeDecl{}, &1))
-      |> Map.new(fn %AST.TypeDecl{name: name} = decl -> {name, decl} end)
+      |> Enum.filter(&(match?(%AST.TypeDecl{}, &1) or match?(%AST.EnumDecl{}, &1)))
+      |> Map.new(fn
+        %AST.TypeDecl{name: name} = decl -> {name, decl}
+        %AST.EnumDecl{name: name} = decl -> {name, decl}
+      end)
 
     # Collect function declarations
     fns =
@@ -1819,12 +1823,7 @@ defmodule Skein.CodeGen.CoreErlang do
       req_var = :cerl.c_var(Map.get(scope, subject_name))
 
       type_decls = Map.get(scope, :__type_decls__, %{})
-
-      schema =
-        case Map.get(type_decls, type_name) do
-          %AST.TypeDecl{} = decl -> SchemaGen.to_json_schema(decl)
-          _ -> %{}
-        end
+      schema = json_schema_for(type_name, type_decls)
 
       schema_expr = :cerl.abstract(schema)
 
@@ -1866,11 +1865,7 @@ defmodule Skein.CodeGen.CoreErlang do
       case type_param do
         %AST.TypeRef{name: type_name} ->
           type_decls = Map.get(scope, :__type_decls__, %{})
-
-          case Map.get(type_decls, type_name) do
-            %AST.TypeDecl{} = decl -> SchemaGen.to_json_schema(decl)
-            _ -> %{}
-          end
+          json_schema_for(type_name, type_decls)
 
         _ ->
           %{}
@@ -2603,6 +2598,34 @@ defmodule Skein.CodeGen.CoreErlang do
       end)
 
     :cerl.make_list(caps_list)
+  end
+
+  # ------------------------------------------------------------------
+  # JSON Schema resolution for json[T]
+  # ------------------------------------------------------------------
+
+  # Build the JSON Schema for a `json[T]` type parameter. The full
+  # declaration map is threaded as the resolution env so SchemaGen can
+  # inline nested record/enum-typed fields (rather than emitting a bare
+  # `{"type": "object"}`); this is what lets the runtime coerce nested
+  # objects to atom keys recursively for both req.json[T] and llm.json[T].
+  defp json_schema_for(type_name, type_decls) do
+    env = schema_env(type_decls)
+
+    case Map.get(type_decls, type_name) do
+      %AST.TypeDecl{} = decl -> SchemaGen.to_json_schema(decl, env)
+      %AST.EnumDecl{} = decl -> SchemaGen.enum_to_schema(decl, env)
+      _ -> %{}
+    end
+  end
+
+  # Convert the collected declarations into the tagged env shape SchemaGen
+  # expects (`%{name => {:type, decl} | {:enum, decl}}`).
+  defp schema_env(type_decls) do
+    Map.new(type_decls, fn
+      {name, %AST.TypeDecl{} = decl} -> {name, {:type, decl}}
+      {name, %AST.EnumDecl{} = decl} -> {name, {:enum, decl}}
+    end)
   end
 
   # ------------------------------------------------------------------

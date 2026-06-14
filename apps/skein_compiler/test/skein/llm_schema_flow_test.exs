@@ -77,6 +77,31 @@ defmodule Skein.LlmSchemaFlowTest do
     assert Map.has_key?(properties, "action") or Map.has_key?(properties, :action)
   end
 
+  test "module fn: llm.json[T] schema inlines nested record-typed fields" do
+    mod =
+      compile!("""
+      module SchemaNested {
+        capability model("anthropic", "claude-opus-4-8")
+
+        type Inner { a: String }
+        type Outer { inner: Inner }
+
+        fn run(x: String) -> String {
+          let o = llm.json[Outer](model: "claude-opus-4-8", system: "s", input: x)!
+          o.inner.a
+        }
+      }
+      """)
+
+    # Use the deterministic test backend, which synthesizes a value shaped
+    # like the schema. The nested field must be inlined in the schema so the
+    # backend produces a nested object (not an empty map) and the runtime
+    # coerces it to atom keys — otherwise `o.inner.a` crashes with a KeyError.
+    Skein.Runtime.Llm.set_backend(Skein.Runtime.Llm.TestBackend)
+
+    assert mod.run("anything") == "test"
+  end
+
   test "nested agent phase handler: llm.json[T] passes the module type's schema" do
     compile!("""
     module SchemaFromAgent {

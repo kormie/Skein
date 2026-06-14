@@ -125,9 +125,12 @@ defmodule Skein.Runtime.Store do
   Returns all records where every filter field matches.
 
   Returns `{:ok, records}` with the matching records (the list may be
-  empty), or `{:error, reason}` when the `store` capability is missing.
-  Returning a Result keeps `store.<table>.query(...)` consistent with
-  `get`/`put`/`delete`, so the `!`/`?` operators behave uniformly.
+  empty), or `{:error, reason}` when the `store` capability is missing or
+  a filter names a field the table's records don't have. Surfacing an
+  unknown filter field as an error (rather than silently returning `[]`)
+  keeps typos and bad column names from masquerading as "no results", and
+  makes `!`/`?` fail loudly. Returning a Result also keeps
+  `store.<table>.query(...)` consistent with `get`/`put`/`delete`.
   """
   @spec query(String.t(), map(), [map()]) :: {:ok, [map()]} | {:error, String.t()}
   def query(table_name, filters, capabilities)
@@ -140,9 +143,14 @@ defmodule Skein.Runtime.Store do
           records =
             :ets.match_object(@table, {{table_name, :_}, :_})
             |> Enum.map(fn {{_table, _id}, record} -> record end)
-            |> Enum.filter(fn record -> matches_filters?(record, filters) end)
 
-          {:ok, records}
+          case validate_filter_keys(table_name, records, filters) do
+            :ok ->
+              {:ok, Enum.filter(records, fn record -> matches_filters?(record, filters) end)}
+
+            {:error, _} = error ->
+              error
+          end
 
         {:error, _} = error ->
           error
@@ -174,6 +182,51 @@ defmodule Skein.Runtime.Store do
   defp extract_id(record) when is_map(record) do
     Map.get(record, :id) || Map.get(record, "id")
   end
+
+  # Validate that every filter key names a field the table actually has.
+  #
+  # The ETS store is schemaless, so the table's field set is reconstructed
+  # from the keys present across its stored records. An unknown filter key
+  # (a typo or bad column) returns an error instead of silently matching no
+  # rows. When the table holds no records there is no schema to validate
+  # against, so any filter is allowed (the query simply yields no matches).
+  defp validate_filter_keys(table_name, records, filters) do
+    known = known_fields(records)
+
+    if MapSet.size(known) == 0 do
+      :ok
+    else
+      unknown =
+        filters
+        |> Map.keys()
+        |> Enum.map(&to_string/1)
+        |> Enum.reject(fn key -> MapSet.member?(known, key) end)
+
+      case unknown do
+        [] ->
+          :ok
+
+        keys ->
+          allowed = known |> MapSet.to_list() |> Enum.sort() |> Enum.join(", ")
+
+          {:error,
+           "Unknown filter field#{plural(keys)} #{Enum.map_join(keys, ", ", &inspect/1)} " <>
+             "for query on table '#{table_name}'. Allowed fields: #{allowed}"}
+      end
+    end
+  end
+
+  # The union of field names (as strings) across all stored records.
+  defp known_fields(records) do
+    Enum.reduce(records, MapSet.new(), fn record, acc ->
+      record
+      |> Map.keys()
+      |> Enum.reduce(acc, fn key, inner -> MapSet.put(inner, to_string(key)) end)
+    end)
+  end
+
+  defp plural([_]), do: ""
+  defp plural(_), do: "s"
 
   defp matches_filters?(record, filters) when is_map(record) and is_map(filters) do
     Enum.all?(filters, fn {key, value} ->
