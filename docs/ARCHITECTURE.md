@@ -663,6 +663,32 @@ scenario "refund flow" {
 
 Variables from the `given` block are in scope during the `expect` block. Kind: `:scenario`.
 
+> **In flight (1.0): scenario-scoped capability environments.** The reset (2026-06-15) replaces the
+> superseded `via &stub` override design with **nested capability envelopes** scoped to the tool
+> under test:
+>
+> ```skein
+> scenario "refund sends id header" {
+>   capability tool.use(Billing.Refund) {
+>     capability http.out("api.stripe.com") {
+>       implement(req: HttpRequest) -> Result[HttpResponse, HttpError] { ... }
+>     }
+>     capability uuid    { implement() -> Uuid { ... } }
+>     capability instant { implement() -> Instant { ... } }
+>   }
+>   expect { let r = tool.call(Billing.Refund, { ticket_id: "t_123" })!  assert r.status == "ok" }
+> }
+> ```
+>
+> A scenario declares the **complete** capability environment a tool may exercise; nested
+> capabilities are scoped to that tool's execution; `implement` blocks are local, typed, and pure;
+> production callers still declare only `capability tool.use(T)`. The analyzer computes a tool
+> **effect summary** (transitive) and rejects incomplete envelopes; the runtime maintains a
+> **dynamic capability stack** resolving each effect `implement → replay → test-default → live →
+> structured failure`, retiring `Skein.Runtime.Dependencies`/`with_overrides`. The fate of `given`
+> and whether seed-only stateful state ships in 1.0 are open. Full design:
+> [`docs/design/scenario-capability-environments.md`](design/scenario-capability-environments.md).
+
 ### 5.3 Golden Trace Tests (`golden`)
 
 ```skein

@@ -1,6 +1,11 @@
 # Skein Stability and Versioning Policy
 
-**Status:** applies from v1.0.0 onward.
+**Status:** applies **from v1.0.0 onward**. v1.0.0 has **not** been released yet — v1.0.0-rc.1 was
+tagged 2026-06-12 but the 2026-06-15 roadmap reset determined GA is not imminent (see
+`docs/ROADMAP.md`). Until 1.0 tags, the language/runtime/CLI surface is still **pre-1.0 and may
+change** — notably the scenario testing surface (scenario-scoped capability environments replacing
+`given`/`via`; see `docs/design/scenario-capability-environments.md`) and the soundness fixes in
+flight. The freeze promises below bind once 1.0 is tagged, not before.
 
 Skein is a language, a runtime, and a toolchain that ship together as one
 versioned artifact. "Semver" therefore means more here than it does for a

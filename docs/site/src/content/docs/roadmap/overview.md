@@ -15,22 +15,28 @@ The full test suite (unit, property-based, and integration) runs green in CI on 
 
 ## Release Status
 
-The release train so far: **v0.2.0** and **v0.3.0** shipped 2026-06-11, and **v1.0.0-rc.1** is tagged — the spec is frozen for 1.0. The rc soaks while the remaining **v1.0.0 Release** milestone items (documentation accuracy and example polish found by the release-readiness audits) land; then the rc promotes to **v1.0.0**.
+The release train so far: **v0.2.0** and **v0.3.0** shipped 2026-06-11, and **v1.0.0-rc.1** was tagged 2026-06-12. **A 2026-06-15 roadmap reset re-sequenced the path to 1.0.** A source-verified dogfooding audit of the skein-testing and FablePool ports reclassified GA from a docs-accuracy cleanup into a soundness + honesty + observability + conformance gate. **v1.0.0 GA is not imminent, and the next release is a development release (v0.4.0), not another RC.** The earlier "the rc soaks, then promotes to 1.0" plan is superseded.
 
 ---
 
 ## What's Next
 
-### v1.0.0 GA
+The path to 1.0 is six waves across two development milestones, then a true RC, then GA. The canonical detail (waves, acceptance criteria, citations) lives in [`docs/ROADMAP.md`](https://github.com/kormie/Skein/blob/main/docs/ROADMAP.md).
 
-The [v1.0.0 Release milestone](https://github.com/kormie/Skein/milestone/6) gates the GA tag. Everything in it is audit-driven cleanup: compiler fixes for the W0001 interpolation false positive (#196) and the float-literal lexer crash (#197), warning-free examples (#199), meta-doc/docs-page accuracy (#200, #223–#229), interpolation segments as AST nodes (#234), and machine-applicable error fixes — `span` + `edit_kind` on every exact `fix_code` (#150).
+### v0.4.0 — Soundness & scenario capability environments
+
+Waves 0–2: stop RC-promotion framing and make the docs/spec truthful; finish type/runtime soundness and pin it with a negative-fixture corpus; and ship **scenario-scoped capability environments** — a scenario declares the complete capability environment a tool may exercise, as a nested `capability tool.use(T) { capability http.out(...) { implement(...) } }` tree with local, typed, pure `implement` blocks. This **replaces** the earlier `via &stub` design (now superseded and out of 1.0).
+
+### v0.5.0 — Observability, canonical substrate & conformance
+
+Waves 3–6: a deterministic scenario/golden/replay gate (tests never accidentally hit live effects); CLI human/agent observability (framework-neutral trace renderer, byte-stable plain output, JSON schemas, a TTY/TUI gate that never breaks MCP/LSP/non-TTY protocols); a minimal canonical bytes/hash substrate (only if "FablePool-capable" stays in the pitch); and a dogfood conformance gate that compiles, loads, and **runs** reduced programs from Skein, skein-testing, and FablePool-skein.
 
 ### Post-1.0 Backlog
 
 Tracked in [`docs/ROADMAP.md`](https://github.com/kormie/Skein/blob/main/docs/ROADMAP.md) with linked issues:
 
-- **v1.1: Hardening & Language** — `llm.rerank` (#145), docs/spec drift guards in CI (#202), Bedrock follow-ups (credential chain #179, real token streaming #178, ARN model IDs #180)
-- **v1.2: Interop & Agent Workflows** — Erlang/Elixir FFI (`extern`, #141), human-in-the-loop approval workflows (#144), web trace viewer (#143), CLI TUI (#171)
+- **v1.1: Hardening & Language** — closures (#248), effectful crypto (#257), content-addressed store (#255), language ergonomics (#251/#249/#247), `via` if still useful, `llm.rerank` (#145), docs/spec drift guards (#202), LSP rename/references (#240)
+- **v1.2: Interop & Agent Workflows** — Erlang/Elixir FFI (`extern`, #141), human-in-the-loop approval workflows (#144), web trace viewer (#143), Raxol CLI TUI (#171, separately gated), structural codemod (#241)
 - **Future: Platform** — hot code upgrades (#142), managed deployment platform (#148), tool/connector marketplace (#149)
 
 ---

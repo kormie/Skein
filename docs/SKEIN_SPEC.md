@@ -273,6 +273,14 @@ max_restarts_decl = "max_restarts:" integer "per" integer "s"
 
 ### 3.10 Tests
 
+> **Status (pre-1.0, in flux — 2026-06-15 reset):** the `scenario`/`golden` surface below is being
+> revised. The 1.0 direction is **scenario-scoped capability environments** — a `scenario` declares
+> the complete capability environment a tool may exercise as a nested
+> `capability tool.use(T) { capability <effect>(...) { implement(...) } }` tree, with `test` reserved
+> for pure unit tests (no effects). The `given` block and the bare `assert`-only `expect` shown here
+> may change; the superseded `via` design is **not** the 1.0 surface. See
+> `docs/design/scenario-capability-environments.md` and `docs/ROADMAP.md` (Wave 2).
+
 ```
 test_decl    = "test" string block
              | "scenario" string "{" given_block expect_block "}"
@@ -1102,4 +1110,9 @@ with `tool.call` — there is no cross-module function access to test against.
 
 ---
 
-*End of Skein Language Specification v1.0*
+*End of Skein Language Specification — v1.0 draft (pre-release; not yet frozen).*
+
+> The 1.0 spec is **not** finally frozen. v1.0.0-rc.1 was tagged but the 2026-06-15 roadmap reset
+> determined GA is not imminent; the scenario-testing surface (§3.10/§8.5), the fate of `given`/
+> `resume`, and the soundness fixes in flight may still change before the freeze. See
+> `docs/STABILITY.md` and `docs/ROADMAP.md`.

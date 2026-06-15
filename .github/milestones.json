@@ -17,26 +17,42 @@
   },
   {
     "title": "v1.0.0-rc Release",
-    "description": "The gate for tagging v1.0.0-rc — the output of the 2026-06-11 release-readiness full pass (/release-readiness; every blocker confirmed by two independent adversarial verifiers). Three fronts: the frozen spec promises surface the compiler rejects (queue.publish, resume(), llm.stream on_chunk, stdlib signature drift, the keyword list, an incomplete error-code registry); two unstructured compiler crashes (transition() outside agents, underscored float literals is tracked for GA); and the docs site's canonical examples don't compile (language/runtime/reference/getting-started pages, plus a landing-page model id that retires 2026-06-15). Shipped: every item fixed and v1.0.0-rc.1 tagged 2026-06-12.",
-    "state": "closed"
+    "state": "closed",
+    "description": "The gate for tagging v1.0.0-rc.1 — output of the 2026-06-11 release-readiness pass. Shipped: every item fixed and v1.0.0-rc.1 tagged 2026-06-12. NOTE (2026-06-15 roadmap reset): rc.1 was tagged prematurely. The 2026-06-14/15 dogfooding audit (skein-testing + FablePool ports) reset the GA picture — v1.0.0 is no longer an imminent RC promotion. The next release is the development milestone v0.4.0, not another RC. See docs/ROADMAP.md."
+  },
+  {
+    "title": "v0.4.0 — Soundness & scenario capability environments",
+    "state": "open",
+    "description": "First reset wave (1.0 blockers). Wave 0: stop RC-promotion framing; make docs/spec truthful (no imminent-GA claims, no `via` as accepted design). Wave 1: type/runtime soundness (no `:unknown` at public boundaries; record/map structural checking; one Result representation across every effect boundary; golden replay actually activates) — mostly landed, finished and pinned by a negative-fixture corpus. Wave 2: scenario-scoped capability environments — nested `capability tool.use(T) { capability http.out(...) { implement(...) } }` envelopes (replacing the `via` design), tool effect-summary analysis, provider purity, a runtime dynamic capability stack, and analyzer-enforced test purity (effects only in `scenario`, never `test`). Design: docs/design/scenario-capability-environments.md."
+  },
+  {
+    "title": "v0.5.0 — Observability, canonical substrate & conformance",
+    "state": "open",
+    "description": "Second reset wave (1.0 blockers). Wave 3: deterministic scenario/golden/replay gate — scenario-local store/memory/event isolation, controlled uuid/instant/llm providers, http blocked unless implemented/replayed/explicitly allowed, structured mismatch diagnostics. Wave 4: CLI human/agent observability — pure framework-neutral trace renderer (fix the `skein trace` crash), byte-stable plain output, JSON output schemas for check/test/trace, a TTY/TUI gate that never breaks MCP/LSP/non-TTY protocols; the Raxol interactive TUI (#171) may land here if its size/cold-start/no-NIF/teardown/macOS gates pass, else it slips to v1.2. Wave 5: minimal canonical substrate (spec the canonical bytes first + cross-impl vectors, then Bytes/hash/hex/base64/verify-only crypto, String.join/codepoints, Int modulo/bitwise) — included iff `FablePool-capable` stays in the 1.0 pitch (open decision). Wave 6: dogfood conformance gate — CI compiles, loads, and RUNS reduced programs from Skein/skein-testing/FablePool-skein plus the negative-fixture corpus."
+  },
+  {
+    "title": "v1.0.0-rc.2 — True release candidate",
+    "state": "open",
+    "description": "Cut a real RC only once every 1.0 blocker in v0.4.0 + v0.5.0 is green and the conformance gate executes the reduced testbeds end-to-end. This replaces the premature rc.1 framing: no new RC until the new 1.0 gate is close to green. Soak before promoting to v1.0.0."
   },
   {
     "title": "v1.0.0 Release",
-    "description": "The GA gate: v1.0.0-rc soaks while the readiness sweep's warning-grade findings land — the W0001 interpolation false positive, the lexer crash on underscored floats, silent mix skein.* aliases, examples shipping analyzer warnings, and meta-docs a release behind. The pre-rc feature work that originally gated 1.0 (#121 #118 #154 #147 #146 #155 #156 #157 #173 #162) all shipped in v0.3.0. v1.0.0 tags when the rc has soaked and this milestone is empty."
+    "state": "open",
+    "description": "The GA tag — NOT imminent (reset 2026-06-15). GA is a sound, honest, testable, observable core: (1) sound type/runtime core; (2) typed/honest capabilities & effects; (3) scenario-scoped capability environments; (4) deterministic/replayable scenario/golden testing; (5) CLI human/agent observability; (6) minimal canonical bytes/hash substrate (if FablePool-capable is claimed); (7) dogfood conformance across Skein, skein-testing, and FablePool-skein. Tags once v1.0.0-rc.2 has soaked and every blocker is closed. The earlier 'rc soaks while docs findings land, then promote' plan is superseded."
   },
   {
     "title": "v1.1: Hardening & Language",
     "previous_titles": [
       "Post-MVP 1: Hardening & Language"
     ],
-    "description": "Post-1.0 hardening continues: llm.rerank for RAG (#145, unblocked by the embeddings backend #146), code-action phase 2 spans + edit_kind on Skein.Error (#150), and the Bedrock backend follow-ups from #173 — AWS credential-chain resolution (#179), real converse-stream token streaming (#178), and ARN-form model IDs (#180). The bugs and the guard/embeddings work originally scoped here moved into the v1.0.0 Release milestone."
+    "description": "Post-1.0 language + effect work intentionally cut from the minimal 1.0 surface: closures/anonymous functions (#248), `via`/`via Module` if still useful after scenario environments, behavioural stateful stubs (store/memory/event fault injection), general effect-provider interfaces, content-addressed store (#255), effectful crypto — secure RNG/keygen/signing (#257), `llm.rerank` (#145), docs/spec drift guards (#202), and the LSP structural-navigation work (#240). Language ergonomics surfaced by dogfooding (record update #251, module constants #249, enum variant payloads #247, Int/String stdlib gaps #246/#250) land here unless the conformance suite proves a specific one a hard 1.0 blocker."
   },
   {
     "title": "v1.2: Interop & Agent Workflows",
     "previous_titles": [
       "Post-MVP 2: Interop & Agent Workflows"
     ],
-    "description": "Bigger design efforts after the hardening wave: Erlang/Elixir FFI via extern (#141), human-in-the-loop approval workflows with suspend before sensitive tool calls (#144), the browser-based trace viewer (#143), and a terminal UI framework for an interactive CLI (#171)."
+    "description": "Bigger design efforts after the hardening wave: Erlang/Elixir FFI via extern (#141), human-in-the-loop approval workflows with suspend before sensitive tool calls (#144), the browser-based trace viewer (#143), the Raxol TUI for an interactive CLI (#171, separately gated from the framework-neutral CLI work), and native structural search/codemod (#241)."
   },
   {
     "title": "Future: Platform",
