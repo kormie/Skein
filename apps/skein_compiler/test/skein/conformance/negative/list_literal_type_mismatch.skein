@@ -1,0 +1,8 @@
+-- expect: E0020
+-- #259: list literals infer a real element type. ["a", "b"] is List[String]
+-- and must not satisfy a declared List[Int].
+module ListLiteralTypeMismatch {
+  fn run() -> List[Int] {
+    ["a", "b"]
+  }
+}

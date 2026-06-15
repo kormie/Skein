@@ -1,0 +1,22 @@
+-- expect: E0020
+-- #253: full inference now covers tool implement bodies.
+module ToolImplementMissingUnwrap {
+  capability http.out("api.example.com")
+
+  tool ToolImplementMissingUnwrap.Fetch {
+    description: "fetch a url"
+
+    input {
+      url: String
+    }
+
+    output {
+      length: Int
+    }
+
+    implement {
+      let body = http.get(url)
+      Ok({ length: String.length(body) })
+    }
+  }
+}

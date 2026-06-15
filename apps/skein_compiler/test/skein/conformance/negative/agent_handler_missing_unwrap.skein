@@ -1,0 +1,29 @@
+-- expect: E0020
+-- #253: full inference now covers agent on-start/on-phase handler bodies.
+module AgentHandlerMissingUnwrap {
+  agent Worker {
+    capability model("anthropic", "claude-opus-4-8")
+    capability memory.kv("work")
+
+    enum Phase {
+      Review -> [Done]
+      Done -> []
+    }
+
+    on start(order_id: String) -> {
+      memory.put("order_id", order_id)
+      transition(Phase.Review)
+    }
+
+    on phase(Phase.Review) -> {
+      let order = memory.get!("order_id")
+      let decision = llm.chat("claude-opus-4-8", "decide", order)
+      let n = String.length(decision)
+      transition(Phase.Done)
+    }
+
+    on phase(Phase.Done) -> {
+      stop()
+    }
+  }
+}
