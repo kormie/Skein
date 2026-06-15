@@ -77,7 +77,7 @@ Float.floor(2.9)         -- 2
 
 ## List
 
-Collection operations. Lists are ordered, heterogeneous sequences.
+Collection operations. Lists are ordered, homogeneous sequences: a `List[T]` holds elements that all share one type `T`, so a mixed literal like `[1, "two"]` is a compile error.
 
 ```skein
 fn double(x: Int) -> Int { x * 2 }

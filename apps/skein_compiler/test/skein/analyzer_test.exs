@@ -370,6 +370,217 @@ defmodule Skein.AnalyzerTest do
   end
 
   # ------------------------------------------------------------------
+  # Type lattice soundness (issue #259)
+  # ------------------------------------------------------------------
+
+  describe "type lattice soundness (issue #259)" do
+    # Each of these four programs compiled with ZERO diagnostics before the
+    # type-lattice fix even though every body is ill-typed against its
+    # declared return type (user-type/enum/:unknown were "compatible with
+    # anything"; Ok/Err and list literals inferred :unknown). They must now
+    # be E0020-class type errors.
+
+    test "user type: Int body against a declared user type is rejected" do
+      errors =
+        analyze_errors("""
+        module M {
+          type T {
+            value: Int
+          }
+
+          fn bad() -> T {
+            42
+          }
+        }
+        """)
+
+      assert Enum.any?(errors, &(&1.code == "E0020" and &1.severity == :error))
+    end
+
+    test "enum: Int body against a declared enum is rejected" do
+      errors =
+        analyze_errors("""
+        module M {
+          enum E {
+            A
+            B
+          }
+
+          fn bad() -> E {
+            99
+          }
+        }
+        """)
+
+      assert Enum.any?(errors, &(&1.code == "E0020" and &1.severity == :error))
+    end
+
+    test "Ok(String) against Result[Int, String] is rejected" do
+      errors =
+        analyze_errors("""
+        module M {
+          fn bad() -> Result[Int, String] {
+            Ok("hi")
+          }
+        }
+        """)
+
+      assert Enum.any?(errors, &(&1.code == "E0020" and &1.severity == :error))
+    end
+
+    test "heterogeneous list literal against List[Int] is rejected" do
+      errors =
+        analyze_errors("""
+        module M {
+          fn bad() -> List[Int] {
+            [1, "two", 3]
+          }
+        }
+        """)
+
+      assert Enum.any?(errors, &(&1.code == "E0020" and &1.severity == :error))
+    end
+
+    # Control: a plain primitive mismatch was already rejected — keep it green.
+    test "control: String body against Int is still rejected" do
+      errors =
+        analyze_errors("""
+        module M {
+          fn bad() -> Int {
+            "hello"
+          }
+        }
+        """)
+
+      assert Enum.any?(errors, &(&1.code == "E0020"))
+    end
+
+    # Positive controls: well-typed versions of the same shapes must still
+    # compile clean (guard against over-tightening the variance).
+    test "Ok(Int) against Result[Int, String] is accepted" do
+      assert {:ok, _} =
+               analyze("""
+               module M {
+                 fn good() -> Result[Int, String] {
+                   Ok(42)
+                 }
+               }
+               """)
+    end
+
+    test "Err(String) against Result[Int, String] is accepted" do
+      assert {:ok, _} =
+               analyze("""
+               module M {
+                 fn good() -> Result[Int, String] {
+                   Err("nope")
+                 }
+               }
+               """)
+    end
+
+    test "homogeneous list literal against List[Int] is accepted" do
+      assert {:ok, _} =
+               analyze("""
+               module M {
+                 fn good() -> List[Int] {
+                   [1, 2, 3]
+                 }
+               }
+               """)
+    end
+
+    test "user type against the same user type is accepted" do
+      assert {:ok, _} =
+               analyze("""
+               module M {
+                 type Foo {
+                   value: Int
+                 }
+
+                 fn identity(foo: Foo) -> Foo {
+                   foo
+                 }
+               }
+               """)
+    end
+
+    test "a user type is not compatible with a different user type" do
+      errors =
+        analyze_errors("""
+        module M {
+          type Foo {
+            value: Int
+          }
+
+          type Bar {
+            value: Int
+          }
+
+          fn bad(foo: Foo) -> Bar {
+            foo
+          }
+        }
+        """)
+
+      assert Enum.any?(errors, &(&1.code == "E0020" and &1.severity == :error))
+    end
+
+    # Criterion 4: :unknown is transient-only. A schema-bearing type parameter
+    # (`req.json[T]` / `llm.json[T]` / `msg.json[T]`) that names an undeclared
+    # type would reach codegen and silently emit an empty JSON Schema on a
+    # public boundary — it must be a hard error instead.
+    test "req.json[T] with an undeclared type is rejected" do
+      errors =
+        analyze_errors("""
+        module M {
+          capability http.in
+
+          handler http POST "/x" (req) -> {
+            let data = req.json[Undeclared]()?
+            respond.json(200, { ok: true })
+          }
+        }
+        """)
+
+      assert Enum.any?(errors, &(&1.code == "E0024" and &1.severity == :error))
+    end
+
+    test "llm.json[T] with an undeclared type is rejected" do
+      errors =
+        analyze_errors("""
+        module M {
+          capability model("anthropic", "claude-opus-4-8")
+
+          fn classify(input: String) -> String {
+            llm.json[Undeclared]("claude-opus-4-8", "system", input)!
+          }
+        }
+        """)
+
+      assert Enum.any?(errors, &(&1.code == "E0024" and &1.severity == :error))
+    end
+
+    test "req.json[T] with a declared type is accepted" do
+      assert {:ok, _} =
+               analyze("""
+               module M {
+                 capability http.in
+
+                 type CreateUserInput {
+                   name: String
+                 }
+
+                 handler http POST "/users" (req) -> {
+                   let data = req.json[CreateUserInput]()?
+                   respond.json(200, { ok: true })
+                 }
+               }
+               """)
+    end
+  end
+
+  # ------------------------------------------------------------------
   # Match exhaustiveness
   # ------------------------------------------------------------------
 
@@ -672,6 +883,9 @@ defmodule Skein.AnalyzerTest do
     end
 
     test "user-declared type is valid in function signatures" do
+      # The type reference itself must resolve (no E0024). The body returns a
+      # value of the declared type so this stays well-typed under the invariant
+      # lattice — a bare `42` here would (correctly) be an E0020 mismatch.
       assert {:ok, _} =
                analyze("""
                module M {
@@ -679,8 +893,8 @@ defmodule Skein.AnalyzerTest do
                    value: Int
                  }
 
-                 fn make_foo() -> Foo {
-                   42
+                 fn make_foo(foo: Foo) -> Foo {
+                   foo
                  }
                }
                """)

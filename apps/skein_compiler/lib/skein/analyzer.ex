@@ -394,6 +394,12 @@ defmodule Skein.Analyzer do
           run_agent_passes(agent, build_nested_agent_env(agent, env))
         end)
 
+    # Pass 10: schema-bearing type params on `*.json[T]` calls (nested-agent
+    # bodies are covered by Pass 9 above, so exclude them here to avoid
+    # duplicate diagnostics)
+    non_agent_decls = Enum.reject(ast.declarations, &match?(%AST.Agent{}, &1))
+    errors = errors ++ check_schema_type_params(non_agent_decls ++ test_views, env)
+
     filter_result(errors, ast, env)
   end
 
@@ -451,6 +457,9 @@ defmodule Skein.Analyzer do
     # is accounted for at module level)
     own_caps_env = %{env | capabilities: Map.get(env, :own_capabilities, env.capabilities)}
     errors = errors ++ check_unused_capabilities(all_decls, own_caps_env)
+
+    # Schema-bearing type params on `*.json[T]` calls in agent bodies
+    errors = errors ++ check_schema_type_params(all_decls, env)
 
     # idempotent() in agent fns (not handlers) is invalid
     errors ++ check_idempotent_in_agent_fns(ast.fns, env)
@@ -999,6 +1008,21 @@ defmodule Skein.Analyzer do
   defp collect_calls({_tag, value}), do: collect_calls(value)
   defp collect_calls(_other), do: []
 
+  # Validates schema-bearing type parameters on `*.json[T]` calls (`req.json[T]`,
+  # `llm.json[T]`, `msg.json[T]`) across every body — including tool `implement`
+  # blocks that the per-body inference passes do not yet visit. An undeclared T
+  # is never otherwise caught, yet reaches codegen, where it silently emits an
+  # empty JSON Schema on a public boundary. :unknown is transient-only: pin the
+  # type to a declared one before codegen (issue #259, criterion 4).
+  defp check_schema_type_params(declarations, env) do
+    declarations
+    |> collect_calls()
+    |> Enum.flat_map(fn
+      %AST.Call{type_param: %AST.TypeRef{} = type_ref} -> validate_type_ref(type_ref, env)
+      _ -> []
+    end)
+  end
+
   defp describe_callee(%AST.Identifier{name: name}), do: "'#{name}'"
 
   defp describe_callee(%AST.FieldAccess{subject: %AST.Identifier{name: subject}, field: field}),
@@ -1094,10 +1118,20 @@ defmodule Skein.Analyzer do
 
   @doc false
   @spec resolve_type(AST.TypeRef.t() | nil, map()) :: atom() | tuple()
-  def resolve_type(%AST.TypeRef{name: name, params: []}, _types) do
+  def resolve_type(%AST.TypeRef{name: name, params: []}, types) do
     case Map.get(@builtin_types, name) do
-      nil -> {:user_type, name}
-      type -> type
+      nil ->
+        # Enum names must resolve to {:enum, name} (not {:user_type, name}) so a
+        # declared enum return type matches the {:enum, name} inferred for its
+        # variant values. Before issue #259 this mismatch was hidden by the
+        # "enum/user_type compatible with anything" lattice holes.
+        case Map.get(types, name) do
+          :enum -> {:enum, name}
+          _ -> {:user_type, name}
+        end
+
+      type ->
+        type
     end
   end
 
@@ -1871,18 +1905,17 @@ defmodule Skein.Analyzer do
     arm_types = Enum.map(arm_results, &elem(&1, 0))
     arm_errors = Enum.flat_map(arm_results, &elem(&1, 1))
 
-    # Check all arm types are consistent
-    consistency_errors = check_arm_type_consistency(arm_types, meta, env)
+    # Unify the arm types: the result type is their join, and arms that cannot
+    # be unified produce an E0020. Same-headed compound types (Result/List/...)
+    # whose inner types diverge widen the divergent component to :unknown rather
+    # than erroring — e.g. a discarded handler match whose arms return
+    # Result[String, StoreError] and Result[String, HttpError] (spec §8.3).
+    {result_type, consistency_errors} = unify_arm_types(arm_types, meta, env)
 
     # Check exhaustiveness (enum-typed params resolve as {:user_type, name};
     # normalize declared enum names so those matches are checked too)
     exhaustiveness_warnings =
       check_exhaustiveness(normalize_match_subject_type(subject_type, env), arms, meta, env)
-
-    result_type =
-      arm_types
-      |> Enum.reject(&(&1 == :unknown))
-      |> List.first(:unknown)
 
     {result_type, subject_errors ++ arm_errors ++ consistency_errors ++ exhaustiveness_warnings}
   end
@@ -2036,7 +2069,19 @@ defmodule Skein.Analyzer do
                 ]
               end
 
-            {:unknown, args_errors ++ arity_errors}
+            # Infer the half of the Result the constructor pins; the other half
+            # stays :unknown so it unifies with whatever the declared type asks
+            # for (issue #259: Ok/Err must not infer a bare :unknown that passes
+            # against any declared type). With exactly one arg we know its type;
+            # otherwise the arity error already fired, so fall back to :unknown.
+            inferred =
+              case args_results do
+                [{arg_type, _}] when name == "Ok" -> {:result, arg_type, :unknown}
+                [{arg_type, _}] when name == "Err" -> {:result, :unknown, arg_type}
+                _ -> :unknown
+              end
+
+            {inferred, args_errors ++ arity_errors}
 
           true ->
             case find_enum_variant(name, env) do
@@ -2138,6 +2183,36 @@ defmodule Skein.Analyzer do
   # Let (standalone — shouldn't appear outside blocks, but handle gracefully)
   defp infer_type(%AST.Let{value: value}, env) do
     infer_type(value, env)
+  end
+
+  # List literal: List[T] is homogeneous (issue #259). We infer the element
+  # type from the first element whose type is known, then flag every element
+  # whose (known) type is incompatible. An empty or all-:unknown list infers
+  # List[:unknown], which unifies with any declared List[_].
+  defp infer_type(%AST.ListLit{elements: elements, meta: meta}, env) do
+    results = Enum.map(elements, &infer_type(&1, env))
+    element_errors = Enum.flat_map(results, &elem(&1, 1))
+    element_types = Enum.map(results, &elem(&1, 0))
+
+    canonical = Enum.find(element_types, :unknown, &(&1 != :unknown))
+
+    homogeneity_errors =
+      element_types
+      |> Enum.filter(fn t -> t != :unknown and not types_compatible?(canonical, t) end)
+      |> Enum.map(fn t ->
+        %Error{
+          code: "E0020",
+          severity: :error,
+          message:
+            "List elements must share one type: expected #{format_type(canonical)}, got #{format_type(t)}",
+          location: location_from_meta(meta, env.file),
+          fix_hint:
+            "Every element of a List[#{format_type(canonical)}] must be a #{format_type(canonical)}",
+          fix_code: "// Use elements that are all #{format_type(canonical)}"
+        }
+      end)
+
+    {{:list, canonical}, element_errors ++ homogeneity_errors}
   end
 
   defp infer_type(%AST.MapLit{entries: entries}, env) do
@@ -2748,31 +2823,66 @@ defmodule Skein.Analyzer do
   # Match arm type consistency
   # ------------------------------------------------------------------
 
-  defp check_arm_type_consistency(arm_types, meta, env) do
+  # Joins the arm types into a single result type and reports arms that cannot
+  # be unified. Returns {result_type, errors}. :unknown arms are transient and
+  # ignored. The join (unify_types/2) treats :unknown as the top of the lattice
+  # and widens diverging inner types of same-headed compounds to :unknown;
+  # genuinely different shapes (Int vs String, Result vs Int, two distinct
+  # enums/user types) are :incompatible and produce an E0020.
+  defp unify_arm_types(arm_types, meta, env) do
     known_types = Enum.reject(arm_types, &(&1 == :unknown))
 
     case known_types do
       [] ->
-        []
+        {:unknown, []}
 
       [first | rest] ->
-        Enum.flat_map(rest, fn t ->
-          if types_compatible?(t, first) do
-            []
-          else
-            [
-              %Error{
-                code: "E0020",
-                severity: :error,
-                message:
-                  "Match arm type mismatch: expected #{format_type(first)}, got #{format_type(t)}",
-                location: location_from_meta(meta, env.file),
-                fix_hint: "Ensure all match arms return the same type",
-                fix_code: "// Return #{format_type(first)} from this arm"
-              }
-            ]
+        Enum.reduce(rest, {first, []}, fn t, {acc_type, errors} ->
+          case unify_types(acc_type, t) do
+            :incompatible ->
+              {acc_type,
+               errors ++
+                 [
+                   %Error{
+                     code: "E0020",
+                     severity: :error,
+                     message:
+                       "Match arm type mismatch: expected #{format_type(acc_type)}, got #{format_type(t)}",
+                     location: location_from_meta(meta, env.file),
+                     fix_hint: "Ensure all match arms return the same type",
+                     fix_code: "// Return #{format_type(acc_type)} from this arm"
+                   }
+                 ]}
+
+            unified ->
+              {unified, errors}
           end
         end)
+    end
+  end
+
+  # Least-upper-bound of two inferred types for arm/branch unification. Returns
+  # a unified type or :incompatible. :unknown is the top; same-headed compounds
+  # recurse, widening incompatible components to :unknown rather than failing.
+  defp unify_types(t, t), do: t
+  defp unify_types(:unknown, t), do: t
+  defp unify_types(t, :unknown), do: t
+  defp unify_types({:list, a}, {:list, b}), do: {:list, unify_or_unknown(a, b)}
+  defp unify_types({:set, a}, {:set, b}), do: {:set, unify_or_unknown(a, b)}
+  defp unify_types({:option, a}, {:option, b}), do: {:option, unify_or_unknown(a, b)}
+
+  defp unify_types({:result, a1, b1}, {:result, a2, b2}),
+    do: {:result, unify_or_unknown(a1, a2), unify_or_unknown(b1, b2)}
+
+  defp unify_types({:map, k1, v1}, {:map, k2, v2}),
+    do: {:map, unify_or_unknown(k1, k2), unify_or_unknown(v1, v2)}
+
+  defp unify_types(_, _), do: :incompatible
+
+  defp unify_or_unknown(a, b) do
+    case unify_types(a, b) do
+      :incompatible -> :unknown
+      unified -> unified
     end
   end
 
@@ -2830,14 +2940,21 @@ defmodule Skein.Analyzer do
   defp types_compatible?({:map, k1, v1}, {:map, k2, v2}),
     do: types_compatible?(k1, k2) and types_compatible?(v1, v2)
 
-  # User types are compatible with :unknown for now (we don't track field types)
-  defp types_compatible?({:user_type, _}, _), do: true
-  defp types_compatible?(_, {:user_type, _}), do: true
+  # Records are constructed as map literals (spec §8: `Ok({ id: r.body.id, ...})`),
+  # so a structural map is compatible with a user type. This is NOT the deleted
+  # "user_type compatible with anything" hole — it is strictly map ~ user_type,
+  # the record-construction path. Field-level checking of the map against the
+  # record's declared fields is deferred inference (issue #253), not #259.
+  defp types_compatible?({:map, _, _}, {:user_type, _}), do: true
+  defp types_compatible?({:user_type, _}, {:map, _, _}), do: true
 
-  # Enum types
-  defp types_compatible?({:enum, _}, _), do: true
-  defp types_compatible?(_, {:enum, _}), do: true
-
+  # Variance is INVARIANT for 1.0 (issue #259): a named type is compatible only
+  # with itself. `User` ~ `User`, `Status` ~ `Status` — both handled by the
+  # `a, a` clause above. Crucially there is NO "user_type/enum compatible with
+  # anything" escape hatch: that hole let every ill-typed program touching a
+  # user type, enum, list literal, or Ok/Err slip through. :unknown remains the
+  # only permissive type, and only because it is a transient inference marker
+  # (see check_function / the public-boundary :unknown guard).
   defp types_compatible?(_, _), do: false
 
   # ------------------------------------------------------------------
