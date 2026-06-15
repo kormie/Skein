@@ -1,6 +1,6 @@
 # Contributing to Skein
 
-Skein is at **v1.0.0-rc** — the spec is frozen for 1.0 while the release candidate soaks. Expect a stable surface; please report anything that contradicts the spec or docs. This page covers the
+Skein is **pre-1.0**, in active development toward a smaller, stronger first stable release (see the [roadmap reset](docs/ROADMAP.md), 2026-06-15). v1.0.0-rc.1 was tagged but **GA is not imminent** and the spec is **not** finally frozen — the soundness, scenario-testing (capability environments), observability, and conformance work in flight may still change surface. Please report anything that contradicts the spec or docs. This page covers the
 workflow; for environment setup, building, and running tests, see the
 [development guide](https://kormie.github.io/Skein/contributing/development/).
 
@@ -29,7 +29,11 @@ automatically; a maintainer then sets priority and milestone and removes the tri
 
 ## Milestones
 
-- **v1.0.0 Release** — the active gate: ship nothing broken, promise nothing unimplemented.
+- **v0.4.0 — Soundness & scenario capability environments** — the active gate (Waves 0–2): docs truth,
+  type/runtime soundness, and scenario-scoped capability environments.
+- **v0.5.0 — Observability, canonical substrate & conformance** — next (Waves 3–6).
+- **v1.0.0-rc.2 — True release candidate** — cut only when every 1.0 blocker is green.
+- **v1.0.0 Release** — GA, after rc.2 soaks (not imminent).
 - **v1.1: Hardening & Language** / **v1.2: Interop & Agent Workflows** / **Future: Platform** —
   the post-1.0 backlog, in priority order.
 - **v0.1 Alpha Release**, **v0.2 Beta Release**, and **v1.0.0-rc Release** — closed; they gated

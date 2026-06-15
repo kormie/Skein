@@ -1,6 +1,14 @@
 # Design: Capability-Bound Implementations (the override plane)
 
-**Status:** Draft for sign-off · **Supersedes:** #267 (override unification), the `Skein.Runtime.Dependencies` / `with_overrides` plane merged in #261
+> **⚠️ SUPERSEDED (2026-06-15 roadmap reset).** This `via &stub` / `via Module` design is **not**
+> the 1.0 surface. It is replaced by **scenario-scoped capability environments** —
+> see [`scenario-capability-environments.md`](./scenario-capability-environments.md). `via` and
+> `via Module` are explicitly **out of 1.0** (reconsider in 1.1). This file is retained for the
+> freeze trail and for the parts that carry forward unchanged: the per-namespace effect provider
+> contracts (§5), the test-purity rule (§8), and the `bound → replay → live` resolution ladder
+> (§7), which become `implement → replay → test-default → live` under the new envelope model.
+
+**Status:** Superseded draft · **Originally superseded:** #267 (override unification), the `Skein.Runtime.Dependencies` / `with_overrides` plane merged in #261
 **Related:** new "test purity" rule (see §8)
 
 ## 1. Summary
