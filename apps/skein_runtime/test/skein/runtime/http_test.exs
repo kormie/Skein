@@ -136,7 +136,12 @@ defmodule Skein.Runtime.HttpTest do
         {:ok, socket} = :gen_tcp.accept(listen, 5_000)
         {:ok, request} = :gen_tcp.recv(socket, 0, 5_000)
         send(parent, {:request, request})
-        :gen_tcp.send(socket, "HTTP/1.1 200 OK\r\ncontent-length: 2\r\nconnection: close\r\n\r\nok")
+
+        :gen_tcp.send(
+          socket,
+          "HTTP/1.1 200 OK\r\ncontent-length: 2\r\nconnection: close\r\n\r\nok"
+        )
+
         :gen_tcp.close(socket)
         :gen_tcp.close(listen)
       end)

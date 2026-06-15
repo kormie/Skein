@@ -2008,6 +2008,7 @@ defmodule Skein.Analyzer do
       }
       when method in @store_methods ->
         {Map.get(@store_return_types, method, :unknown), args_errors}
+
       %AST.Identifier{name: name} when is_map_key(env.functions, name) ->
         fn_info = Map.get(env.functions, name)
         expected_arity = length(fn_info.params)
