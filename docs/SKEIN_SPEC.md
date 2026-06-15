@@ -354,8 +354,8 @@ match order.total {
 
 Because a guarded arm only matches conditionally, it does not count toward
 exhaustiveness: a `match` whose variant or `Bool` coverage relies on a guarded
-arm still warns (`E0021`/`E0024`/`W0004`), and at runtime a `match` where every
-arm's guard fails raises `case_clause`.
+arm is still non-exhaustive (`E0021`/`E0024`; `W0004` for value-level gaps), and
+at runtime a `match` where every arm's guard fails raises `case_clause`.
 
 ---
 
@@ -397,7 +397,7 @@ arm's guard fails raises `case_clause`.
 1. All function parameters and return types must be explicitly annotated.
 2. `let` bindings infer their type from the right-hand side.
 3. `match` arms must all return the same type.
-4. `match` on an enum must cover all variants (or include `_` wildcard).
+4. `match` on a closed type — an enum, `Bool`, `Result` (`Ok`/`Err`), or `Option` (`Some`/`None`) — must cover every case or include a `_` wildcard; a non-exhaustive match is a compile error (`E0021`/`E0024`), not a runtime crash.
 5. `!` can only be applied to `Result[T, E]` — produces `T`.
 6. `?` can only be applied to `Result[T, E]` — enclosing function must return `Result[_, E]`.
 7. `Option[T]` fields are not included in the `required` list of generated JSON schemas.
@@ -771,10 +771,10 @@ edits generically — no per-error-code logic.
 | E0016 | Name | error | Cross-module function call (functions are module-private; expose a tool instead) |
 | E0017 | Capability | error | Duplicate scoped capability declaration (`memory.kv`, `event.log`, `process.spawn`, `timer` allow one per module or agent) |
 | E0020 | Type | error | Type mismatch (including wrong argument counts for fn, stdlib, and effect calls, and interpolation in string patterns) |
-| E0021 | Type | warning | Non-exhaustive match |
+| E0021 | Type | error | Non-exhaustive match on a closed type (`Bool`, enum, `Result`, `Option`) with no `_` wildcard |
 | E0022 | Type | error | Invalid `!` on non-Result |
 | E0023 | Type | error | Invalid `?` on non-Result (or enclosing fn doesn't return Result) |
-| E0024 | Type | error / warning | Unknown type name (error); non-exhaustive match on an enum, missing variant patterns (warning, §3.11) |
+| E0024 | Type | error | Unknown type name; or non-exhaustive match on an enum/`Result`/`Option` missing variant patterns (§3.11) |
 | E0025 | Type | error | Constraint annotation on wrong type |
 | E0026 | Type | error | Invalid named argument (unknown/duplicate name, positional after named, callee without named-argument support) |
 | E0027 | Type | error | Invalid guard expression (guards allow literals, bindings, field access, comparisons, boolean operators, and `+`/`-`/`*` arithmetic) |

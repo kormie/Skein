@@ -1,0 +1,10 @@
+-- expect: E0024
+-- #261: a non-exhaustive match on a closed type (Result) with no wildcard is a
+-- compile error, not a runtime case_clause crash.
+module NonExhaustiveResult {
+  fn run(s: String) -> Int {
+    match Int.parse(s) {
+      Ok(n) -> n
+    }
+  }
+}

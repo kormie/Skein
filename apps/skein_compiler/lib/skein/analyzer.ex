@@ -2800,7 +2800,7 @@ defmodule Skein.Analyzer do
         [
           %Error{
             code: "E0021",
-            severity: :warning,
+            severity: :error,
             message: "Non-exhaustive match: missing pattern 'true'",
             location: location_from_meta(meta, env.file),
             fix_hint: "Add a 'true -> ...' arm or a wildcard '_' pattern",
@@ -2812,7 +2812,7 @@ defmodule Skein.Analyzer do
         [
           %Error{
             code: "E0021",
-            severity: :warning,
+            severity: :error,
             message: "Non-exhaustive match: missing pattern 'false'",
             location: location_from_meta(meta, env.file),
             fix_hint: "Add a 'false -> ...' arm or a wildcard '_' pattern",
@@ -2876,7 +2876,7 @@ defmodule Skein.Analyzer do
               [
                 %Error{
                   code: "E0024",
-                  severity: :warning,
+                  severity: :error,
                   message:
                     "Non-exhaustive match on #{enum_name}: missing pattern(s) #{missing_list}",
                   location: location_from_meta(meta, env.file),
@@ -2889,6 +2889,28 @@ defmodule Skein.Analyzer do
           missing_warnings ++ value_level_warnings(enum_name, unguarded_arms, env)
         end
     end
+  end
+
+  # Result is a closed two-case type: a match must cover Ok AND Err (or a
+  # wildcard/binding catch-all), else it's a non-exhaustive-match error (#261).
+  defp check_exhaustiveness({:result, _ok, _err}, arms, meta, env) do
+    closed_match_errors(arms, meta, env, "Result",
+      ok: &ok_pattern?/1,
+      ok_missing: "Ok(_)",
+      err: &err_pattern?/1,
+      err_missing: "Err(_)"
+    )
+  end
+
+  # Option is a closed two-case type: a match must cover Some AND None (or a
+  # wildcard/binding catch-all), else it's a non-exhaustive-match error (#261).
+  defp check_exhaustiveness({:option, _inner}, arms, meta, env) do
+    closed_match_errors(arms, meta, env, "Option",
+      ok: &some_pattern?/1,
+      ok_missing: "Some(_)",
+      err: &none_pattern?/1,
+      err_missing: "None"
+    )
   end
 
   # For non-bool/non-enum subjects, we can't check exhaustiveness
@@ -2912,6 +2934,68 @@ defmodule Skein.Analyzer do
       []
     end
   end
+
+  # Shared exhaustiveness check for the two closed two-case types (Result, Option).
+  # A wildcard or a lowercase binding pattern covers everything; otherwise both
+  # cases must be present.
+  defp closed_match_errors(arms, meta, env, type_name, opts) do
+    patterns = arms |> Enum.reject(& &1.guard) |> Enum.map(& &1.pattern)
+
+    if catch_all_pattern?(patterns) do
+      []
+    else
+      missing =
+        []
+        |> then(fn acc ->
+          if Enum.any?(patterns, opts[:ok]), do: acc, else: acc ++ [opts[:ok_missing]]
+        end)
+        |> then(fn acc ->
+          if Enum.any?(patterns, opts[:err]), do: acc, else: acc ++ [opts[:err_missing]]
+        end)
+
+      case missing do
+        [] ->
+          []
+
+        cases ->
+          missing_list = Enum.join(cases, ", ")
+
+          [
+            %Error{
+              code: "E0024",
+              severity: :error,
+              message: "Non-exhaustive match on #{type_name}: missing pattern(s) #{missing_list}",
+              location: location_from_meta(meta, env.file),
+              fix_hint: "Add arms for #{missing_list} or a wildcard '_' pattern",
+              fix_code: Enum.map_join(cases, "\n", &"#{&1} -> value")
+            }
+          ]
+      end
+    end
+  end
+
+  # A wildcard `_` or a lowercase binding identifier covers all remaining cases.
+  # An uppercase identifier (e.g. `None`) is a variant pattern, not a catch-all.
+  defp catch_all_pattern?(patterns) do
+    Enum.any?(patterns, fn
+      %AST.Wildcard{} -> true
+      %AST.Identifier{name: name} -> not String.match?(name, ~r/^[A-Z]/)
+      _ -> false
+    end)
+  end
+
+  defp ok_pattern?(%AST.Call{target: %AST.Identifier{name: "Ok"}}), do: true
+  defp ok_pattern?(_), do: false
+
+  defp err_pattern?(%AST.Call{target: %AST.Identifier{name: "Err"}}), do: true
+  defp err_pattern?(_), do: false
+
+  defp some_pattern?(%AST.Call{target: %AST.Identifier{name: "Some"}}), do: true
+  defp some_pattern?(_), do: false
+
+  defp none_pattern?(%AST.Identifier{name: "None"}), do: true
+  defp none_pattern?(%AST.Call{target: %AST.Identifier{name: "None"}}), do: true
+  defp none_pattern?(_), do: false
 
   # Enum-typed fn params resolve as {:user_type, name}; declared enum
   # names are enum subjects for exhaustiveness purposes.

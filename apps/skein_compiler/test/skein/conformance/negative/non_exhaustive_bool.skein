@@ -1,0 +1,9 @@
+-- expect: E0021
+-- #261: a non-exhaustive Bool match (missing an arm, no wildcard) is an error.
+module NonExhaustiveBool {
+  fn run(b: Bool) -> String {
+    match b {
+      true -> "yes"
+    }
+  }
+}
