@@ -111,11 +111,11 @@ defmodule Skein.Runtime.HttpTest do
       assert is_map(response.headers)
     end
 
-    test "a non-2xx response is {:ok, response} the caller can match on status" do
+    test "a non-2xx response is Err(Status(code, body)) the caller can match on" do
       port = serve_once(503, "upstream down", [])
       caps = [%{kind: "http.out", params: []}]
 
-      assert {:ok, %{status: 503, body: "upstream down"}} =
+      assert {:error, {:status, 503, "upstream down"}} =
                Http.get("http://localhost:#{port}/x", caps)
     end
 

@@ -12,19 +12,17 @@ defmodule Skein.Runtime.Http do
 
   `http.<verb>` returns `Result[HttpResponse, HttpError]`:
 
-  - **Success** (`{:ok, %{status, body, headers}}`) — *any* completed response,
-    including non-2xx. `status` is the integer code, `headers` is a
-    `Map[String, String]`, and `body` is the JSON-decoded value when the
-    response parses as a JSON object/array, otherwise the raw body string.
-    Wire keys inside `body` stay strings (they are arbitrary data, never
-    interned as atoms).
+  - **2xx success** (`{:ok, %{status, body, headers}}`) — `status` is the
+    integer code, `headers` is a `Map[String, String]`, and `body` is the
+    JSON-decoded value when the response parses as a JSON object/array,
+    otherwise the raw body string. Wire keys inside `body` stay strings (they
+    are arbitrary data, never interned as atoms).
+  - **Non-2xx** (`{:error, {:status, code, body}}`) — the spec `HttpError`
+    `Status(code, body)` variant, which the caller can `match` on to react to
+    upstream 4xx/5xx instead of getting an opaque raise (skein-testing#22).
   - **Transport failure** (`{:error, error}`) — the request never produced a
-    response. `error` is one of the `HttpError` variants: `:timeout`
-    (lowered `Timeout`), `:connection_failed` (lowered `ConnectionFailed`).
-
-  Note: a non-2xx response is **not** an error — it is an `{:ok, response}`
-  the caller can `match` on by `status`. Only a failed/aborted request is an
-  `Err`. This is what lets handlers react to upstream 4xx/5xx (skein-testing#22).
+    response. `error` is `:timeout` (lowered `Timeout`) or `:connection_failed`
+    (lowered `ConnectionFailed`).
 
   This module is called by compiled Skein code — the codegen emits calls
   like `Skein.Runtime.Http.get(url, capabilities)`.
@@ -153,12 +151,11 @@ defmodule Skein.Runtime.Http do
     end
   end
 
-  # Replayed responses reconstruct the spec HttpResponse from the recorded
-  # status/body/headers. Any completed response (incl. non-2xx) is {:ok, _};
-  # there is no recorded transport failure to surface.
+  # Replayed responses reconstruct the spec Result from the recorded
+  # status/body/headers: 2xx -> {:ok, HttpResponse}, non-2xx -> Err(Status).
   defp recorded_result(%{"status" => status, "response_body" => body} = recorded) do
     headers = Map.get(recorded, "response_headers", %{})
-    {:ok, build_response(status, body || "", headers)}
+    classify_response(status, body || "", headers)
   end
 
   defp do_request(method, url, body) do
@@ -193,11 +190,22 @@ defmodule Skein.Runtime.Http do
         headers_map = normalize_headers(resp_headers)
         # Status/body/headers are recorded on the span so the trace replays.
         extra = %{status: status, response_body: body_string, response_headers: headers_map}
-        {{:ok, build_response(status, body_string, headers_map)}, extra}
+        {classify_response(status, body_string, headers_map), extra}
 
       {:error, reason} ->
         {{:error, classify_transport_error(reason)}, %{}}
     end
+  end
+
+  # Map a completed response to the spec Result[HttpResponse, HttpError]:
+  # a 2xx is {:ok, HttpResponse}; any other status is Err(Status(code, body))
+  # (the spec §6.1 HttpError.Status variant), which the caller can match on.
+  defp classify_response(status, body_string, headers) when status >= 200 and status < 300 do
+    {:ok, build_response(status, body_string, headers)}
+  end
+
+  defp classify_response(status, body_string, _headers) do
+    {:error, {:status, status, body_string}}
   end
 
   # Build the spec HttpResponse: status (Int), body (decoded JSON when the

@@ -206,7 +206,7 @@ defmodule Skein.Runtime.ReplayInjectionTest do
       end)
     end
 
-    test "a recorded non-2xx status replays as an {:ok, response} with that status" do
+    test "a recorded non-2xx status replays as Err(Status(code, body))" do
       trace = [
         %{
           "kind" => "http",
@@ -217,10 +217,10 @@ defmodule Skein.Runtime.ReplayInjectionTest do
         }
       ]
 
-      # A non-2xx is a completed response the caller matches on status — not an
-      # Err (skein-testing#22). Only transport failures are Err.
+      # A non-2xx is the spec HttpError.Status variant the caller can match on
+      # (skein-testing#22), no longer an opaque raise.
       Replay.with_replay(trace, fn ->
-        assert {:ok, %{status: 404, body: "not found"}} =
+        assert {:error, {:status, 404, "not found"}} =
                  Http.get("http://localhost:1/missing", @http_caps)
       end)
     end
