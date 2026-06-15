@@ -3965,6 +3965,56 @@ defmodule Skein.AnalyzerTest do
   # Effect call arity (documented effect signatures)
   # ------------------------------------------------------------------
 
+  describe "test/scenario/golden bodies are fully inferred (#253)" do
+    test "a missing !/? on an effect inside a test block is a compile error" do
+      assert {:error, errors} =
+               analyze("""
+               module M {
+                 capability model("anthropic", "claude-opus-4-8")
+
+                 test "uses chat" {
+                   let r = llm.chat("claude-opus-4-8", "sys", "hi")
+                   assert String.length(r) > 0
+                 }
+               }
+               """)
+
+      assert Enum.any?(errors, &(&1.code == "E0020"))
+    end
+
+    test "! on an Option inside a test block is a compile error (E0022)" do
+      assert {:error, errors} =
+               analyze("""
+               module M {
+                 fn first(xs: List[String]) -> Option[String] {
+                   List.first(xs)
+                 }
+
+                 test "unwraps an option with bang" {
+                   let x = first(["a"])!
+                   assert x == "a"
+                 }
+               }
+               """)
+
+      assert Enum.any?(errors, &(&1.code == "E0022"))
+    end
+
+    test "a correct test block (effects unwrapped) still compiles clean" do
+      assert {:ok, _} =
+               analyze("""
+               module M {
+                 capability model("anthropic", "claude-opus-4-8")
+
+                 test "uses chat" {
+                   let r = llm.chat("claude-opus-4-8", "sys", "hi")!
+                   assert String.length(r) > 0
+                 }
+               }
+               """)
+    end
+  end
+
   describe "arithmetic operators are numeric-only (#252)" do
     test "String + String is a compile error, not a runtime crash" do
       assert {:error, errors} =

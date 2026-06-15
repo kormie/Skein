@@ -398,6 +398,9 @@ defmodule Skein.Analyzer do
     # Pass 2b: Type-check handler bodies
     errors = errors ++ check_handlers(ast.declarations, env)
 
+    # Pass 2d: Type-check test / scenario / golden bodies (#253)
+    errors = errors ++ check_test_inference(ast.declarations, env)
+
     # Pass 2c: Scope-independent interpolation rules — uppercase
     # interpolation roots and interpolated string patterns. One generic
     # walk covers bodies the type-inference passes skip (test blocks).
@@ -1579,6 +1582,41 @@ defmodule Skein.Analyzer do
     handler_env = %{env | variables: Map.put(env.variables, param, :unknown)}
     {_type, errors} = infer_type(body, handler_env)
     errors
+  end
+
+  # ------------------------------------------------------------------
+  # Pass 2d: Type-check test / scenario / golden bodies (#253)
+  # ------------------------------------------------------------------
+
+  # Test bodies are executable: they bind effect results, call tools, and
+  # assert. Before #253 they ran the capability/interpolation walks but skipped
+  # full inference, so a soundness bug (a missing `!`/`?`, `!`-on-`Option`,
+  # `String +`) slipped through `test` blocks. Run the same inference the rest
+  # of the pipeline uses; a scenario's `given` bindings are in scope for its
+  # `expect` body.
+  defp check_test_inference(declarations, env) do
+    Enum.flat_map(declarations, fn
+      %AST.Test{body: body} ->
+        {_type, errors} = infer_type(body, env)
+        errors
+
+      %AST.Golden{body: body} ->
+        {_type, errors} = infer_type(body, env)
+        errors
+
+      %AST.Scenario{given_vars: given_vars, expect_body: body} ->
+        {vars, given_errors} =
+          Enum.reduce(given_vars || [], {env.variables, []}, fn {name, value}, {vars, errs} ->
+            {value_type, value_errors} = infer_type(value, %{env | variables: vars})
+            {Map.put(vars, name, value_type), errs ++ value_errors}
+          end)
+
+        {_type, errors} = infer_type(body, %{env | variables: vars})
+        given_errors ++ errors
+
+      _ ->
+        []
+    end)
   end
 
   # ------------------------------------------------------------------
