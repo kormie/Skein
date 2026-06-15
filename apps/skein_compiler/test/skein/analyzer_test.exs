@@ -4015,6 +4015,76 @@ defmodule Skein.AnalyzerTest do
     end
   end
 
+  describe "agent handler bodies are fully inferred (#253)" do
+    test "a missing ! on an effect inside a phase handler is a compile error" do
+      assert {:error, errors} =
+               analyze("""
+               module M {
+                 agent Refunder {
+                   capability model("anthropic", "claude-opus-4-8")
+                   capability memory.kv("refunds")
+
+                   enum Phase {
+                     Review -> [Done]
+                     Done -> []
+                   }
+
+                   on start(order_id: String) -> {
+                     memory.put("order_id", order_id)
+                     transition(Phase.Review)
+                   }
+
+                   on phase(Phase.Review) -> {
+                     let order = memory.get!("order_id")
+                     let decision = llm.chat("claude-opus-4-8", "decide", order)
+                     let n = String.length(decision)
+                     transition(Phase.Done)
+                   }
+
+                   on phase(Phase.Done) -> {
+                     stop()
+                   }
+                 }
+               }
+               """)
+
+      assert Enum.any?(errors, &(&1.code == "E0020"))
+    end
+
+    test "a phase handler that unwraps its effects compiles clean" do
+      assert {:ok, _} =
+               analyze("""
+               module M {
+                 agent Refunder {
+                   capability model("anthropic", "claude-opus-4-8")
+                   capability memory.kv("refunds")
+
+                   enum Phase {
+                     Review -> [Done]
+                     Done -> []
+                   }
+
+                   on start(order_id: String) -> {
+                     memory.put("order_id", order_id)
+                     transition(Phase.Review)
+                   }
+
+                   on phase(Phase.Review) -> {
+                     let order = memory.get!("order_id")
+                     let decision = llm.chat("claude-opus-4-8", "decide", order)!
+                     let n = String.length(decision)
+                     transition(Phase.Done)
+                   }
+
+                   on phase(Phase.Done) -> {
+                     stop()
+                   }
+                 }
+               }
+               """)
+    end
+  end
+
   describe "tool implement bodies are fully inferred (#253)" do
     test "a missing !/? on an effect inside an implement block is a compile error" do
       assert {:error, errors} =

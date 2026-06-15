@@ -479,11 +479,14 @@ defmodule Skein.Analyzer do
     # Pass 5: Type-check agent function bodies
     errors = errors ++ check_functions(ast.fns, env)
 
-    # Pass 5b: Effect-call arity in handler bodies. Handler bodies don't
-    # run the full infer_type pass, so without this walk an
-    # over/under-applied effect call would silently compile to a call on
-    # a nonexistent runtime arity (codegen appends labels/callbacks/caps).
-    errors = errors ++ check_handler_effect_arity(ast.handlers, env)
+    # Pass 5b: Full type inference on agent handler bodies (#253). Handler
+    # bodies are executable — they bind effect results, drive transitions, and
+    # build emitted events. Running the same inference the rest of the pipeline
+    # uses (with the handler's params in scope on top of the agent's state and
+    # functions) makes a missing `!`/`?`, an over/under-applied effect, or any
+    # other type error a compile error instead of a runtime crash. This
+    # subsumes the older arity-only walk.
+    errors = errors ++ check_agent_handler_inference(ast, env)
 
     all_decls = agent_decl_views(ast)
 
@@ -937,25 +940,32 @@ defmodule Skein.Analyzer do
     end
   end
 
-  # Agent handler bodies skip infer_type, so the arity bounds are applied
-  # by a dedicated walk over every Call node in each handler body.
-  defp check_handler_effect_arity(handlers, env) do
-    handlers
-    |> Enum.flat_map(fn %AST.AgentHandler{body: body} -> collect_calls(body) end)
-    |> Enum.flat_map(fn
-      %AST.Call{
-        target: %AST.FieldAccess{subject: %AST.Identifier{name: namespace}, field: method},
-        args: args,
-        meta: meta
-      } ->
-        if effect_namespace?(namespace) and effect_method?(namespace, method) do
-          effect_call_arity_errors(namespace, method, args, meta, env)
-        else
-          []
-        end
+  # Full type inference over every agent handler body (#253). Each handler's
+  # declared params (e.g. `on start(order_id: String)`) are bound on top of the
+  # agent env (which already carries state fields, functions, types, and enums),
+  # then the body is inferred like any other executable body — catching missing
+  # `!`/`?`, effect arity, and type mismatches that the body would otherwise
+  # only surface as a runtime crash.
+  defp check_agent_handler_inference(%AST.Agent{handlers: handlers}, env) do
+    Enum.flat_map(handlers, fn %AST.AgentHandler{params: params, body: body} ->
+      param_vars =
+        (params || [])
+        |> Enum.map(fn %AST.Field{name: name, type: type} ->
+          {name, resolve_type(type, env.types)}
+        end)
+        |> Map.new()
 
-      _other ->
-        []
+      # `state` is the runtime-provided instance state map; field access on it
+      # (`state.ticket_id`) stays permissive (:unknown) — it is the gen_statem
+      # data, not a compile-time-typed record.
+      variables =
+        env.variables
+        |> Map.put("state", :unknown)
+        |> Map.merge(param_vars)
+
+      handler_env = %{env | variables: variables}
+      {_type, errors} = infer_type(body, handler_env)
+      errors
     end)
   end
 
@@ -1601,7 +1611,9 @@ defmodule Skein.Analyzer do
         end)
         |> Map.new()
 
-      {_type, errors} = infer_type(implement, %{env | variables: Map.merge(env.variables, input_vars)})
+      {_type, errors} =
+        infer_type(implement, %{env | variables: Map.merge(env.variables, input_vars)})
+
       errors
     end)
   end
