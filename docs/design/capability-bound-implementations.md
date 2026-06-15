@@ -12,10 +12,10 @@ runtime default. A `scenario` may rebind it to a stub:
 
 ```
 scenario "high-value refund auto-approves" {
-  capability uuid                                   = &Stubs.incrementing
-  capability instant                                = &Stubs.fixed_clock
-  capability model("anthropic", "claude-opus-4-8")  = &Stubs.approve_llm
-  capability tool.use(Stripe.Refund)                = &Stubs.refund_ok
+  capability uuid                                   via &Stubs.incrementing
+  capability instant                                via &Stubs.fixed_clock
+  capability model("anthropic", "claude-opus-4-8")  via &Stubs.approve_llm
+  capability tool.use(Stripe.Refund)                via &Stubs.refund_ok
 
   expect { ... }
 }
@@ -53,13 +53,18 @@ only authorizes that host. It only swaps *who answers*.
 
 ## 4. Syntax
 
-The left of `=` is exactly a capability declaration (same grammar as a module's). The right
-is a `&`-reference to a named function (per the answer: always `&named_fn`, never an inline
-lambda — Skein has none).
+The left is exactly a capability declaration (same grammar as a module's). The right is a
+`&`-reference to a named function (always `&named_fn`, never an inline lambda — Skein has
+none). The binding keyword is **`via`** (recommended):
 
 ```
-capability <kind>(<params>) = &<fn or Module.fn>
+capability <kind>(<params>) via &<fn or Module.fn>
 ```
+
+**Syntax decision:** `via` over `=` (reads like equality on a capability) and over `>>=`
+(rejected: `>>=` is the monad-bind operator, which violates P1's "no operator overloading /
+no monadic notation" and hurts agent-writability — a keyword is read/generated more
+reliably than a one-off glyph). *Open: confirm `via`.*
 
 Stubs are ordinary named functions, naturally grouped in test helper modules (`Stubs.*`).
 Because the reference is `&named_fn`, stubs are reusable, inspectable, and themselves pure
@@ -87,31 +92,36 @@ alternate `implement`.
 named, schema-deriving types in the spec for the stub signatures to reference. Some exist
 partially today; this design requires finishing them. Bounded, but it is spec surface.
 
-## 6. Stateful effects: `store`, `memory`, `event`
+## 6. Stateful effects: `store`, `memory`, `event` — NEEDS DISCOVERY
 
-A `&fn` stub is the wrong shape for stateful effects (a KV store is not a function). Two
-options:
+A `&fn` stub is the wrong shape for stateful effects (a KV store is not a function). This is
+the least-settled part and warrants a **discovery spike** before locking, because it also
+has to serve `golden` (see below).
 
-- **(A) Isolated state + data seeding.** In a `scenario`, `store`/`memory`/`event` are
-  backed by fresh, scenario-local state, optionally **seeded with data** — and *this* is the
-  surviving role of a `given` (data) block:
-  ```
-  scenario "..." {
-    given {
-      store.users: [ { id: "u1", email: "a@b.c", name: "Alice" } ]
-    }
-    capability model(...) = &Stubs.llm
-    expect { ... }
-  }
-  ```
-  Behavioral effects → `capability = &fn`. Stateful effects → `given` seed data. Distinct
-  shapes, distinct roles.
-- **(B) Stub module with op-functions.** Bind `capability store.table("users") = &Stubs.store`
-  and require the stub to expose `get/put/query/delete`. More uniform with §5 but reintroduces
-  multi-fn modules and an interface notion.
+- **(B) Stub module with op-functions — leaning this way.** Bind
+  `capability store.table("users") via &Stubs.UsersStore` where the stub exposes
+  `get/put/query/delete`. Uniform with §5 (a capability is served by a named implementation),
+  at the cost of reintroducing a multi-fn stub module and an interface notion. *Does not
+  preclude* seed data — a stub store can be initialized from seed data.
+- **(A) Isolated state + seed data only.** `store`/`memory`/`event` get fresh scenario-local
+  state seeded via a data block, with no behavioral stub. Simpler, but can't express
+  behavior (e.g. "the third read fails").
 
-**Recommendation:** (A). It gives `given` a real, non-overlapping job (seed stateful data)
-and keeps `capability = &fn` for behavior. **Open item (6a):** confirm (A) vs (B).
+**Direction:** B is likely right and composes with seed data, but confirm via discovery.
+
+### `golden` and seed data
+
+`golden` tests replay a recorded trace and assert same-outcomes; they need the same control
+over stateful effects (reconstruct store/memory state from the trace or from seed data). So
+whatever shape stateful control takes must serve **both** `scenario` (forward stubbing) and
+`golden` (trace reconstruction). The discovery spike covers both.
+
+### The fate of `given` — REVISIT
+
+If stateful effects use stub modules (B), the original justification for a `given` *data*
+block weakens (seed data can initialize a stub, or be plain `let` bindings). Open question:
+does `given` survive as a distinct seed-data construct, fold into stub initialization, or
+disappear in favor of `let`? Resolve alongside the stateful-effects spike.
 
 ## 7. Runtime dispatch & precedence
 
@@ -150,13 +160,24 @@ This makes "effects are visible/controlled" structural, and it is independently 
   seeding are removed in favor of capability binding + `given` seed data (the "full replace"
   decision).
 
-## 10. Open questions for sign-off
+## 10. Status of open questions
 
-- **5a** — Adopt the per-namespace request→response stub contracts (and finish the
-  `HttpRequest`/`LlmRequest`/… types in the spec)?
-- **6a** — Stateful effects via isolated state + `given` seed data (A), or stub modules (B)?
-- **8** — Confirm the analyzer hard-errors effects inside `test` (vs warning), and that
-  stub fns are required pure.
-- **Naming** — `capability X = &impl` with `=`, or a clearer verb (`capability X via &impl`)?
-- **Scope of this PR vs splits** — one issue, or split: (i) capability-bound impls +
-  runtime, (ii) test-purity rule, (iii) the §5a stub-contract types.
+- **Syntax** — *recommended:* `via` (over `=` and the rejected `>>=`). Pending final confirm.
+- **5a** — *direction:* adopt per-namespace request→response stub contracts; finish the
+  `HttpRequest`/`LlmRequest`/… spec types. Tracked as workstream (iii).
+- **6a — stateful effects + `golden` + the fate of `given`** — *unsettled; needs a discovery
+  spike* (§6). Leaning B (stub modules), composing with seed data, serving both `scenario`
+  and `golden`.
+- **8 — test purity** — *direction:* analyzer hard-errors effects inside `test`; stub fns
+  must be pure. Tracked as workstream (ii).
+
+## 11. Packaging (decided: split into 3 + discovery)
+
+1. **Capability-bound implementations** — runtime resolution (bound stub → replay → live) +
+   `scenario` `capability … via &impl` binding for behavioral effects (uuid/instant/http/
+   llm/tool); retire `Dependencies`/`with_overrides`. *Reshapes #267.*
+2. **Test purity** — analyzer-enforced: effects only in `scenario`, never `test`; stubs pure.
+3. **Stub-contract types** — `HttpRequest`/`HttpResponse`/`LlmRequest`/`LlmResponse`/… as
+   schema-deriving spec types (§5a).
+4. **Discovery spike** (gates the stateful slice of #1) — stateful effects (store/memory/
+   event) under `scenario` *and* `golden`, and the fate of `given` (§6).
