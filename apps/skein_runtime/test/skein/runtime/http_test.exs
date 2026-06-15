@@ -86,12 +86,88 @@ defmodule Skein.Runtime.HttpTest do
       # This will likely fail to connect but should not be blocked by capability check
       result = Http.get("https://api.example.com/data", capabilities)
       # The result will be either {:ok, _} or {:error, _} from the HTTP call,
-      # but NOT a capability error
+      # but NOT a capability error. A transport failure is now an HttpError
+      # variant atom (:timeout / :connection_failed), not a string.
       case result do
-        {:error, reason} -> refute reason =~ "not declared"
-        {:ok, _} -> :ok
+        {:error, reason} when is_binary(reason) -> refute reason =~ "not declared"
+        {:error, reason} when is_atom(reason) -> assert reason in [:timeout, :connection_failed]
+        {:ok, %{status: status}} -> assert is_integer(status)
       end
     end
+  end
+
+  # ------------------------------------------------------------------
+  # Response shape (spec §6.1 HttpResponse)
+  # ------------------------------------------------------------------
+
+  describe "response shape" do
+    test "a 2xx response returns {:ok, %{status, body, headers}} with a decoded JSON body" do
+      port = serve_once(200, ~s({"hero":"Gandalf","level":20}), [])
+      caps = [%{kind: "http.out", params: []}]
+
+      assert {:ok, response} = Http.get("http://localhost:#{port}/hero", caps)
+      assert response.status == 200
+      assert response.body == %{"hero" => "Gandalf", "level" => 20}
+      assert is_map(response.headers)
+    end
+
+    test "a non-2xx response is {:ok, response} the caller can match on status" do
+      port = serve_once(503, "upstream down", [])
+      caps = [%{kind: "http.out", params: []}]
+
+      assert {:ok, %{status: 503, body: "upstream down"}} =
+               Http.get("http://localhost:#{port}/x", caps)
+    end
+
+    test "a non-JSON body is returned as the raw string" do
+      port = serve_once(200, "plain text", [])
+      caps = [%{kind: "http.out", params: []}]
+
+      assert {:ok, %{status: 200, body: "plain text"}} =
+               Http.get("http://localhost:#{port}/t", caps)
+    end
+
+    test "outbound requests carry a default User-Agent header" do
+      {:ok, listen} = :gen_tcp.listen(0, [:binary, packet: :raw, active: false, reuseaddr: true])
+      {:ok, port} = :inet.port(listen)
+      parent = self()
+
+      Task.start(fn ->
+        {:ok, socket} = :gen_tcp.accept(listen, 5_000)
+        {:ok, request} = :gen_tcp.recv(socket, 0, 5_000)
+        send(parent, {:request, request})
+        :gen_tcp.send(socket, "HTTP/1.1 200 OK\r\ncontent-length: 2\r\nconnection: close\r\n\r\nok")
+        :gen_tcp.close(socket)
+        :gen_tcp.close(listen)
+      end)
+
+      caps = [%{kind: "http.out", params: []}]
+      assert {:ok, %{status: 200}} = Http.get("http://localhost:#{port}/ua", caps)
+
+      assert_receive {:request, request}, 5_000
+      assert String.downcase(request) =~ "user-agent: skein/"
+    end
+  end
+
+  # A minimal one-shot HTTP/1.1 server; returns the listening port.
+  defp serve_once(status, body, _opts) do
+    {:ok, listen} = :gen_tcp.listen(0, [:binary, packet: :raw, active: false, reuseaddr: true])
+    {:ok, port} = :inet.port(listen)
+
+    Task.start(fn ->
+      {:ok, socket} = :gen_tcp.accept(listen, 5_000)
+      {:ok, _request} = :gen_tcp.recv(socket, 0, 5_000)
+
+      response =
+        "HTTP/1.1 #{status} STATUS\r\ncontent-type: application/json\r\n" <>
+          "content-length: #{byte_size(body)}\r\nconnection: close\r\n\r\n#{body}"
+
+      :gen_tcp.send(socket, response)
+      :gen_tcp.close(socket)
+      :gen_tcp.close(listen)
+    end)
+
+    port
   end
 
   # ------------------------------------------------------------------

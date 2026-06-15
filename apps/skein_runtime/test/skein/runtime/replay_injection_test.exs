@@ -201,11 +201,12 @@ defmodule Skein.Runtime.ReplayInjectionTest do
       ]
 
       Replay.with_replay(trace, fn ->
-        assert {:ok, ~s({"ok":true})} = Http.get("http://localhost:1/data", @http_caps)
+        assert {:ok, %{status: 200, body: %{"ok" => true}}} =
+                 Http.get("http://localhost:1/data", @http_caps)
       end)
     end
 
-    test "a recorded non-2xx status replays as an error" do
+    test "a recorded non-2xx status replays as an {:ok, response} with that status" do
       trace = [
         %{
           "kind" => "http",
@@ -216,8 +217,10 @@ defmodule Skein.Runtime.ReplayInjectionTest do
         }
       ]
 
+      # A non-2xx is a completed response the caller matches on status — not an
+      # Err (skein-testing#22). Only transport failures are Err.
       Replay.with_replay(trace, fn ->
-        assert {:error, "HTTP 404: not found"} =
+        assert {:ok, %{status: 404, body: "not found"}} =
                  Http.get("http://localhost:1/missing", @http_caps)
       end)
     end
@@ -287,13 +290,13 @@ defmodule Skein.Runtime.ReplayInjectionTest do
       port = serve_once(200, ~s({"live": true}))
       url = "http://localhost:#{port}/data"
 
-      assert {:ok, ~s({"live": true})} = Http.get(url, @http_caps)
+      assert {:ok, %{status: 200, body: %{"live" => true}}} = Http.get(url, @http_caps)
 
       trace = exported_trace()
 
       Replay.with_replay(trace, fn ->
         # The one-shot server is gone — only the recording can answer.
-        assert {:ok, ~s({"live": true})} = Http.get(url, @http_caps)
+        assert {:ok, %{status: 200, body: %{"live" => true}}} = Http.get(url, @http_caps)
       end)
     end
   end
