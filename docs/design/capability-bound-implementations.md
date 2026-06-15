@@ -109,6 +109,11 @@ has to serve `golden` (see below).
 
 **Direction:** B is likely right and composes with seed data, but confirm via discovery.
 
+> **Resolved (see §12).** The discovery spike (#275) adopted **B** — refined as a runtime-owned,
+> scenario-local *state cell* driven by pure state-transition implementations — with Option A's
+> isolation as the zero-config default and a seed `&fn` shortcut for the common case. See §12 for
+> the worked examples, the `golden` plan, the `given` verdict, and the interface mechanism.
+
 ### `golden` and seed data
 
 `golden` tests replay a recorded trace and assert same-outcomes; they need the same control
@@ -165,9 +170,11 @@ This makes "effects are visible/controlled" structural, and it is independently 
 - **Syntax** — ✅ **confirmed: `via`** (over `=` and the rejected `>>=`).
 - **5a** — *direction:* adopt per-namespace request→response stub contracts; finish the
   `HttpRequest`/`LlmRequest`/… spec types. Tracked as workstream (iii).
-- **6a — stateful effects + `golden` + the fate of `given`** — *unsettled; needs a discovery
-  spike* (§6). Leaning B (stub modules), composing with seed data, serving both `scenario`
-  and `golden`.
+- **6a — stateful effects + `golden` + the fate of `given`** — ✅ **resolved by the #275 spike
+  (§12):** adopt B (runtime-owned scenario-local state cell + pure transition impls), with
+  Option A isolation as the default and a seed `&fn` shortcut; `golden` reuses the same cell
+  via trace-fold (the *replay* rung); **`given` is removed** (use `let` / seed `&fn`); the
+  interface is a compiler-known per-namespace behaviour contract checked E0020-style.
 - **8 — test purity** — *direction:* analyzer hard-errors effects inside `test`; stub fns
   must be pure. Tracked as workstream (ii).
 
@@ -181,3 +188,199 @@ This makes "effects are visible/controlled" structural, and it is independently 
    schema-deriving spec types (§5a).
 4. **Discovery spike** (gates the stateful slice of #1) — stateful effects (store/memory/
    event) under `scenario` *and* `golden`, and the fate of `given` (§6).
+
+## 12. Addendum: stateful effects, `golden`, and the fate of `given` (resolved)
+
+*Outcome of the #275 discovery spike. Supersedes the "NEEDS DISCOVERY" / "REVISIT" notes in
+§6 and the open item 6a in §10. This is design; implementation is the stateful slice of #267,
+gated on sign-off. Freeze-sensitive calls are flagged **[FREEZE]**.*
+
+### 12.1 The crux: why a `&fn` is the wrong shape, and how purity is preserved
+
+Behavioral effects bind a **pure request→response `&fn`** (§5) because the effect is itself
+stateless. `store`/`memory`/`event` are not: `get("k")` must return whatever an earlier
+`put("k", v)` wrote *in the same scenario*. Skein functions are pure and hold no mutable
+state, so the *implementation* cannot own the state.
+
+Resolution: **the runtime owns a scenario-local *state cell*; the bound implementation is a
+pure state transition over it.** This is the exact generalization of §5 — behavioral is the
+stateless degenerate case, stateful threads state — and it mirrors how Skein agents already
+work (a `gen_statem` whose callbacks are pure functions of `(state, input) -> (state, output)`).
+Purity (§8) holds unchanged: no effect call ever appears *inside* a stub.
+
+### 12.2 Shape — adopt **B**, three tiers on one resolution ladder
+
+A capability is served by a named implementation (the §5 principle). For stateful effects the
+implementation drives the runtime-owned cell. There are three tiers, and they share the one
+`bound → replay → live` ladder of §7:
+
+- **Tier 0 — isolation default (Option A, zero-config).** With no binding, each `scenario`
+  gets fresh, isolated `store`/`memory`/`event` state running the *live* op semantics
+  (generalizing today's per-test `clear()`). This is the common "I just need a clean slate" case.
+- **Tier 1 — seed shortcut (the 90% case).** Bind a pure data constructor:
+  `capability store.table("users") via &Fixtures.users` where
+  `&Fixtures.users : &fn() -> [User]`. The runtime initializes the cell from the seed and runs
+  **default** op semantics over it. Same `&fn` form as behavioral effects — no new concept.
+- **Tier 2 — behavioral stub (the rare case, what overturns Option A).** Bind a scenario-local
+  **module** that implements the namespace behaviour contract (§12.5) as pure transitions over
+  the cell; un-overridden ops fall through to default semantics. This expresses
+  "the third read fails," which Option A cannot.
+
+**[FREEZE] New syntax form.** Tier 2 binds a *module*: `via Stubs.FlakyUsers` (bare name, no
+`&` — `&` stays exclusively for function references; Skein already passes bare module/type
+references in `tool.use(T)`). Tiers 0–1 introduce no new syntax beyond #267's `via &fn`.
+
+#### Worked example — store, seed (Tier 1)
+
+```
+module RefundService {
+  fn tier_of(id: String) -> String {
+    match store.get("users", id) { Ok(u) -> u.tier, Err(_) -> "unknown" }
+  }
+
+  scenario "gold users are prioritized" {
+    capability store.table("users") via &Fixtures.gold_users
+    expect {
+      assert tier_of("u1") == "gold"
+      assert tier_of("u2") == "silver"
+    }
+  }
+}
+
+module Fixtures {
+  fn gold_users() -> [User] {
+    [ User { id: "u1", tier: "gold" }, User { id: "u2", tier: "silver" } ]
+  }
+}
+```
+
+#### Worked example — store, behavioral "the third read fails" (Tier 2)
+
+```
+scenario "retries on transient store failure" {
+  capability store.table("users") via Stubs.FlakyUsers
+  expect {
+    assert tier_of("u1") == "gold"          -- read 1: ok
+    assert tier_of("u1") == "gold"          -- read 2: ok
+    assert tier_of("u1") == "unknown"       -- read 3: Err(Unavailable) -> handled
+  }
+}
+
+module Stubs.FlakyUsers {                     -- implements the `store` behaviour contract
+  type S = { rows: Map[String, User], reads: Int }
+
+  fn init() -> S {
+    S { rows: { "u1": User { id: "u1", tier: "gold" } }, reads: 0 }
+  }
+
+  fn get(s: S, id: String) -> (S, Result[User, StoreError]) {
+    let s2 = S { ...s, reads: s.reads + 1 }
+    match s2.reads {
+      3 -> (s2, Err(StoreError.Unavailable))
+      _ -> match Map.get(s.rows, id) {
+        Some(u) -> (s2, Ok(u))
+        None    -> (s2, Err(StoreError.NotFound))
+      }
+    }
+  }
+  -- put / query / delete omitted -> fall through to default isolated semantics
+}
+```
+
+#### Worked example — memory and event (seed; Tier 2 analogous)
+
+```
+scenario "resumes from a prior decision" {
+  capability memory("sessions") via &Fixtures.prior_session   -- &fn() -> Map[String, Json]
+  expect { assert recall_decision("s1") == "approved" }
+}
+
+scenario "summarizes prior audit events" {
+  capability event via &Fixtures.prior_events                 -- &fn() -> [Event]
+  expect { assert audit_count() == 2 }
+}
+```
+
+`event` is append-only, so its seed is the list of prior events and the cell is the log
+itself; a Tier-2 `event` stub (e.g. failing `event.log`) is possible but expected to be rare.
+
+**Rejected alternatives (recorded for the freeze trail).**
+- *Option A alone* — cannot inject failure ("the third read fails"), a stated requirement.
+  Retained only as Tier 0 (the default).
+- *Single reducer `&fn(state, Op) -> (state, Result)`* over an `Op` sum type — the most
+  syntax-conservative form (stays `&fn`-only, extends §5's "one shape covers all verbs"
+  literally), but: poor readability (one big `match` over `Get|Put|Query|Delete`), no per-op
+  fallthrough to defaults (every op must be handled), and awkward seeding/`init`. The named-op
+  module (Tier 2) reads like the real store and lets you override only the op under test.
+
+### 12.3 `golden` plan — the same ladder, with the trace as the binding source
+
+`golden` is **not a separate mechanism**; it is the **replay rung** (§7, rung 2) of the same
+ladder, and it drives the **same scenario-local state cell** as `scenario`. The only
+difference is where the cell's contents come from:
+
+- **Behavioral effects** → recorded responses via `Replay.next_response(kind, expected)`
+  (already implemented; validates the live call against the recording).
+- **Stateful effects** → the cell is seeded by **folding the recorded mutation events** from
+  the trace, then live ops run against it:
+  - `memory` already records a `:state_change` event per mutation and reconstructs via
+    `memory.rebuild_from_events/1` / `Replay.rebuild_memory/2` — reuse as-is.
+  - **`store` is the one gap:** today it emits only `:store` trace *spans*, not reconstructable
+    mutation events. The stateful slice of #267 must give `store` put/delete the same
+    event-sourced reconstruction parity memory has (emit fold-able mutation events; extend the
+    rebuild to cover `store`).
+  - `event` needs no reconstruction — the recorded log *is* the state.
+
+So: `scenario` binds the cell at rung 1; `golden` folds the trace into it at rung 2; production
+is live at rung 3. `bound → replay → live` is unchanged. Conceptually, **a `golden` test is a
+`scenario` whose seed/behavior is supplied by a recorded trace instead of a stub.**
+
+### 12.4 The fate of `given` — **removed** **[FREEZE]**
+
+`given` has no remaining unique role and is **removed**:
+
+- Plain value bindings (today's §8.5 `given { ticket_id: "abc-123" }`) are semantically
+  identical to `let ticket_id = "abc-123"` in the scenario body — keeping both violates P1
+  ("one obvious way").
+- Stateful *seed* data now lives in a seed `&fn` (Tier 1) or a stub `init` (Tier 2), not a
+  separate data block.
+
+**Migration surface (implementation, post-sign-off):** drop `given_block` from the grammar
+(spec §3.10), so `scenario` body becomes `capability`-bindings + `let`s + `expect`; update the
+§8.5 example to use `let`; sweep `examples/` and the test fixtures
+(`spec_examples_test.exs`, `test_construct_test.exs`) for `given {`. The parser/AST/analyzer/
+codegen paths that currently handle `given_vars` (`parser.ex:852`, `analyzer.ex:1654`,
+`core_erlang.ex:1370`) are removed or folded into ordinary `let` handling.
+
+### 12.5 Interface mechanism — behaviour contract, not a cross-module call (answers Q4 / E0016)
+
+A Tier-2 stub is a **scenario-local module implementing a compiler-known behaviour contract**,
+one per stateful namespace — the direct analog of a tool's `implement` over its contract:
+
+| Namespace | Behaviour contract (pure transitions over the cell `S`) |
+|---|---|
+| `store.table(T)` | `init() -> S`, `get(S, id) -> (S, Result[Rec, StoreError])`, `put(S, Rec) -> (S, Rec)`, `query(S, Filter) -> (S, [Rec])`, `delete(S, id) -> (S, Result[Id, StoreError])` |
+| `memory(ns)` | `init() -> S`, `get(S, key) -> (S, Result[V, _])`, `put(S, key, V) -> (S, V)`, `delete(S, key) -> (S, _)`, `list(S) -> (S, [key])` |
+| `event` | `init() -> S` (prior events), `log(S, name, data) -> (S, _)` |
+
+- The analyzer checks the binding against the contract **E0020-style** (the same mismatch class
+  §5 uses for behavioral `&fn`s) — **not E0016**.
+- **E0016 is structurally untouched.** It fires only on *call expressions* (`Mod.fn(...)`,
+  qualified self- or cross-module). User code still writes `store.get(...)` — an effect routed
+  by the runtime — and **never** writes `Stubs.FlakyUsers.get(...)`. The binding `via
+  Stubs.FlakyUsers` is a *reference* (data on the capability), not a call site. The runtime
+  owns the cell and invokes the stub's pure transitions to advance it, exactly as it invokes
+  the live store — just bound.
+- Un-overridden ops fall through to default semantics (the contract has default
+  implementations = the live in-memory store/memory/event ops over the cell).
+
+### 12.6 Impact on #267 scope
+
+The spike unblocks #267's stateful slice with a concrete shape and adds these sub-tasks:
+1. `via Module` syntax (bare module after `via`) + per-namespace behaviour contracts +
+   E0020-style checking of Tier-2 stubs (parser/analyzer).
+2. Runtime scenario-local **state cell** with `bound → replay → live` resolution for
+   `store`/`memory`/`event`; seed `&fn` (Tier 1) and stub-module (Tier 2) drivers.
+3. **`store` mutation events for `golden` reconstruction** — parity with `memory`'s
+   `:state_change` / `rebuild_from_events`.
+4. **Remove `given`** — grammar/spec/examples/tests migration (§12.4).
