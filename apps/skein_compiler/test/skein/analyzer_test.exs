@@ -4015,6 +4015,62 @@ defmodule Skein.AnalyzerTest do
     end
   end
 
+  describe "tool implement bodies are fully inferred (#253)" do
+    test "a missing !/? on an effect inside an implement block is a compile error" do
+      assert {:error, errors} =
+               analyze("""
+               module M {
+                 capability http.out("api.example.com")
+
+                 tool M.Fetch {
+                   description: "fetch a url"
+
+                   input {
+                     url: String
+                   }
+
+                   output {
+                     length: Int
+                   }
+
+                   implement {
+                     let body = http.get(url)
+                     Ok({ length: String.length(body) })
+                   }
+                 }
+               }
+               """)
+
+      assert Enum.any?(errors, &(&1.code == "E0020"))
+    end
+
+    test "an implement block that unwraps effects compiles clean" do
+      assert {:ok, _} =
+               analyze("""
+               module M {
+                 capability http.out("api.example.com")
+
+                 tool M.Fetch {
+                   description: "fetch a url"
+
+                   input {
+                     url: String
+                   }
+
+                   output {
+                     length: Int
+                   }
+
+                   implement {
+                     let response = http.get(url)!
+                     Ok({ length: 1 })
+                   }
+                 }
+               }
+               """)
+    end
+  end
+
   describe "arithmetic operators are numeric-only (#252)" do
     test "String + String is a compile error, not a runtime crash" do
       assert {:error, errors} =

@@ -401,6 +401,9 @@ defmodule Skein.Analyzer do
     # Pass 2d: Type-check test / scenario / golden bodies (#253)
     errors = errors ++ check_test_inference(ast.declarations, env)
 
+    # Pass 2e: Type-check tool `implement` bodies (#253)
+    errors = errors ++ check_tool_implement_inference(ast.declarations, env)
+
     # Pass 2c: Scope-independent interpolation rules — uppercase
     # interpolation roots and interpolated string patterns. One generic
     # walk covers bodies the type-inference passes skip (test blocks).
@@ -1582,6 +1585,25 @@ defmodule Skein.Analyzer do
     handler_env = %{env | variables: Map.put(env.variables, param, :unknown)}
     {_type, errors} = infer_type(body, handler_env)
     errors
+  end
+
+  # Tool `implement` bodies are executable too — they bind effect results and
+  # build the tool's output. Run full inference with the tool's input fields in
+  # scope so effect misuse there is a compile error, not a runtime crash (#253).
+  defp check_tool_implement_inference(declarations, env) do
+    declarations
+    |> Enum.filter(&match?(%AST.ToolDecl{implement: impl} when not is_nil(impl), &1))
+    |> Enum.flat_map(fn %AST.ToolDecl{input: input, implement: implement} ->
+      input_vars =
+        (input || [])
+        |> Enum.map(fn %AST.Field{name: name, type: type} ->
+          {name, resolve_type(type, env.types)}
+        end)
+        |> Map.new()
+
+      {_type, errors} = infer_type(implement, %{env | variables: Map.merge(env.variables, input_vars)})
+      errors
+    end)
   end
 
   # ------------------------------------------------------------------
