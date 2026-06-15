@@ -41,43 +41,39 @@ The release train (each step rides the auto-tag flow — a green version-bump me
 3. ~~**v1.0.0-rc**~~ — released 2026-06-12 as v1.0.0-rc.1 (the complete v1.0.0-rc Release milestone, #182–#195)
 4. **v1.0.0** — gated on the GA waves below. The earlier "rc soaks while warning-grade docs findings land, then promote" plan is **superseded**: the dogfooding audit reclassified GA from a docs-accuracy cleanup to a soundness + honesty + capability gate.
 
-### GA bar (decided 2026-06-15): a sound, honest, FablePool-capable core
+### GA bar (decided 2026-06-15, sharpened after external review): a sound, honest core + minimal canonical-addressing substrate
 
-**Hoist mechanism, not policy** (per the FablePool memo): Skein provides the generic substrate — sound types, deterministic canonical bytes, crypto, content-addressing, a verifiable log — and apps keep their own memory/policy model. That makes "FablePool-capable" tractable without baking a domain into the language.
+**Hoist mechanism, not policy** (per the FablePool memo): Skein provides the generic substrate — sound types, deterministic canonical bytes, pure hashing/verify — and apps keep their own memory/policy model. The bar is deliberately **minimal**: an external review confirmed the soundness hole is deeper than first scoped (Wave 1) and that "FablePool-capable" must be a concrete **conformance suite**, not open scope. Closures, signing/keygen, a content-addressed store, and general FFI are **1.1**.
 
-### GA gate — the six waves
+### GA gate — the waves (revised after external review 2026-06-15)
 
 Ordered; earlier waves unblock later ones. TDD + property tests mandatory (see top). Sizes per the key above.
 
-**Wave 1 — Soundness** *(blocker; in progress)* — a well-typed program must not crash or silently miscompute:
-- [#254](https://github.com/kormie/Skein/issues/254) — `List.reduce` callback arg order vs spec §5.4 — **fixed in this PR** (runtime now calls `f(acc, element)`) — S
-- [#252](https://github.com/kormie/Skein/issues/252) — reject `String + String` at compile time (hint → interpolation) — S
-- [#253](https://github.com/kormie/Skein/issues/253) — run type inference on `test`/`scenario`/`golden` bodies (today they skip it) — S–M
-- [skein-testing#33](https://github.com/kormie/skein-testing/issues/33) — structured diagnostic for unknown effect methods — M
-- [skein-testing#32](https://github.com/kormie/skein-testing/issues/32) — coerce `Option[T]` JSON fields to `Some`/`None` (as the store already does) — M
-- [skein-testing#3](https://github.com/kormie/skein-testing/issues/3) — a `NotFound` the matcher knows, or fix codegen + spec together — S–M
-- [skein-testing#1](https://github.com/kormie/skein-testing/issues/1) — type effect calls as `Result[T,E]` so a missing `!`/`?` is a compile error — M–L
+**Wave 1 — Type/runtime soundness** *(blocker; in progress)* — the disease, not just the symptoms. A well-typed program that touches a **user type, enum, list literal, or `Ok`/`Err` currently compiles clean and crashes/miscomputes**:
+- [#259](https://github.com/kormie/Skein/issues/259) — **P0:** the type lattice is unsound (`types_compatible?` makes user-type/enum/`:unknown` compatible with anything; `Ok`/`Err` + list literals infer `:unknown`). The root cause; carries the empirical probe. Invariant variance for 1.0. — L
+- [#260](https://github.com/kormie/Skein/issues/260) — **one Result representation** across every effect boundary: effects-as-Result, `NotFound`, HTTP shape, `req.json` validation + `Option` coercion, the `llm.json` three-tuple. Supersedes piecemeal skein-testing #1/#3/#22/#25/#32. — L
+- [#253](https://github.com/kormie/Skein/issues/253) — full inference on **all** executable bodies (tests, scenarios, goldens, agent handlers, tool `implement`). — M
+- Symptoms cleared by the above: [#252](https://github.com/kormie/Skein/issues/252) (`String +`), [skein-testing#33](https://github.com/kormie/skein-testing/issues/33) (unknown effect methods). [#254](https://github.com/kormie/Skein/issues/254) (`List.reduce` order) — **done, merged**.
 
-**Wave 2 — Spec lies & the structured-error promise** *(blocker)*:
-- [skein-testing#25](https://github.com/kormie/skein-testing/issues/25) (constraint enforcement / 400 not 500), [#20](https://github.com/kormie/skein-testing/issues/20) (`resume` dead keyword), [#18](https://github.com/kormie/skein-testing/issues/18) (timer-callback receiver), [#22](https://github.com/kormie/skein-testing/issues/22) (HTTP non-2xx → matchable Result), [#9](https://github.com/kormie/skein-testing/issues/9) (agent reachability + docs)
-- [#202](https://github.com/kormie/Skein/issues/202) — **docs/spec drift guard in CI**, extended to **compile/run the testbed programs** so "readiness" means "a real program builds" — L
+**Wave 2 — Honesty + an *executing* conformance gate** *(blocker)*:
+- [#262](https://github.com/kormie/Skein/issues/262) — the gate must **compile + load + run** the dogfood programs plus a **negative-fixture corpus** (what would have caught #259); defines the FablePool 1.0 conformance suite (test vectors). [#202](https://github.com/kormie/Skein/issues/202) — drift guard, broadened to execute. — L
+- [#261](https://github.com/kormie/Skein/issues/261) — **pre-freeze policy decisions:** non-exhaustive match, ambient nondeterminism (`Uuid.new`/`Instant.now`), `resume`, timer callback.
+- Remaining spec-lies: [skein-testing#20](https://github.com/kormie/skein-testing/issues/20) (`resume`), [#18](https://github.com/kormie/skein-testing/issues/18) (timer), [#9](https://github.com/kormie/skein-testing/issues/9) (agent reachability + docs).
 
-**Wave 3 — Pure crypto/bytes stdlib + canonical serialization** *(blocker; highest-leverage, before closures — memo §5.2)*:
-- [#256](https://github.com/kormie/Skein/issues/256) — compiler-backed canonical serialization (deterministic bytes for a value of `T`)
-- [#245](https://github.com/kormie/Skein/issues/245) — pure crypto/encoding stdlib (hash, bytes, hex/base64, signature verify)
-- [#246](https://github.com/kormie/Skein/issues/246), [#250](https://github.com/kormie/Skein/issues/250) — `Int` modulo/div/bitwise; `String.join`/codepoints
+**Wave 3 — Canonical-bytes spec (then impl) + pure hash/encode/verify** *(blocker; freeze-sensitive)*:
+- [#256](https://github.com/kormie/Skein/issues/256) — **spec the canonical encoding first** (field/map order, enum/`Option`/`Result`, float policy, domain separation) with cross-impl **test vectors**, then implement.
+- [#245](https://github.com/kormie/Skein/issues/245) — pure crypto/encoding stdlib (hash, bytes, hex/base64, **verify**) via an internal capability-gated `:crypto` wrapper — **not** general FFI.
+- [#246](https://github.com/kormie/Skein/issues/246), [#250](https://github.com/kormie/Skein/issues/250) — `Int` modulo/div/bitwise; `String.join`/codepoints.
 
-**Wave 4 — Core expressiveness** *(blocker)*:
-- [#248](https://github.com/kormie/Skein/issues/248) — anonymous functions / closures (the load-bearing one) — XL
-- [#251](https://github.com/kormie/Skein/issues/251) record update · [#249](https://github.com/kormie/Skein/issues/249) module constants · [#247](https://github.com/kormie/Skein/issues/247) positional/brace variant payloads + better error
+**Wave 4 — Minimal expressiveness** *(blocker)*:
+- [#251](https://github.com/kormie/Skein/issues/251) record update · [#249](https://github.com/kormie/Skein/issues/249) module constants · [#247](https://github.com/kormie/Skein/issues/247) variant-payload ergonomics. (Closures are 1.1 — below.)
 
-**Wave 5 — Generalized capabilities** *(blocker for the FablePool bar)*:
-- [#255](https://github.com/kormie/Skein/issues/255) string/content-addressed store (ETS parity + honest signatures)
-- [#257](https://github.com/kormie/Skein/issues/257) effectful crypto capability (secure RNG, keygen, signing)
-- [#141](https://github.com/kormie/Skein/issues/141) Erlang/Elixir FFI — pulled into GA as the near-term route to real `:crypto`
-- verifiable append-only log with redaction (memo §6-C) — *to be filed*
+### Cut to 1.1 after the external review (not GA)
 
-**Wave 6 — AI-native differentiator** *(scope TBD: 1.0 or 1.1; current lean 1.1)*: automatic inference provenance, lineage / `why(id)`, schema-agnostic data-layer grants (memo §4). FablePool runs un-stubbed after Wave 5; this is the payoff that lets it "shrink to its policy."
+"FablePool-capable" was sharpened to "minimal substrate," moving these out of 1.0:
+- [#248](https://github.com/kormie/Skein/issues/248) closures — **1.1 unless the conformance suite (#262) proves them a hard blocker.**
+- [#257](https://github.com/kormie/Skein/issues/257) effectful crypto (RNG/keygen/signing), [#255](https://github.com/kormie/Skein/issues/255) content-addressed store, [#141](https://github.com/kormie/Skein/issues/141) general FFI (the crypto route is the internal `:crypto` wrapper in #245, not `extern`).
+- AI-native differentiator — automatic inference provenance, lineage / `why(id)`, schema-agnostic data-layer grants (memo §4) — the 1.1 payoff that lets FablePool "shrink to its policy."
 
 ### Already shipped under the v1.0.0 Release milestone (rc-soak PR)
 
