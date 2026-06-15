@@ -3965,6 +3965,36 @@ defmodule Skein.AnalyzerTest do
   # Effect call arity (documented effect signatures)
   # ------------------------------------------------------------------
 
+  describe "arithmetic operators are numeric-only (#252)" do
+    test "String + String is a compile error, not a runtime crash" do
+      assert {:error, errors} =
+               analyze("""
+               module M {
+                 fn join(a: String, b: String) -> String {
+                   a + b
+                 }
+               }
+               """)
+
+      error = Enum.find(errors, &(&1.code == "E0020"))
+      assert error
+      assert error.message =~ "numeric"
+      # The fix points at string interpolation, the one way to build strings.
+      assert error.fix_hint =~ "interpolation"
+    end
+
+    test "Int + Int still type-checks" do
+      assert {:ok, _} =
+               analyze("""
+               module M {
+                 fn add(a: Int, b: Int) -> Int {
+                   a + b
+                 }
+               }
+               """)
+    end
+  end
+
   describe "effects are Result-typed (skein-testing#1)" do
     test "using an effect result as its bare success type is a compile error" do
       # llm.chat returns Result[String, LlmError]; passing it (un-unwrapped) to

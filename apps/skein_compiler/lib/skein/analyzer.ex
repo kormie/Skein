@@ -1712,17 +1712,19 @@ defmodule Skein.Analyzer do
 
       left_type in [:int, :float] and right_type in [:int, :float] ->
         result_type = if left_type == :float or right_type == :float, do: :float, else: :int
-
-        if op == :+ and left_type == :string do
-          {:string, left_errors ++ right_errors}
-        else
-          {result_type, left_errors ++ right_errors}
-        end
-
-      left_type == :string and right_type == :string and op == :+ ->
-        {:string, left_errors ++ right_errors}
+        {result_type, left_errors ++ right_errors}
 
       true ->
+        # `+`/`-`/`*`/`/` are numeric only. `String + String` used to type-check
+        # and then crash at runtime (no Erlang `+` for binaries) — #252; string
+        # building is done with interpolation, not `+`.
+        string_concat? = op == :+ and (left_type == :string or right_type == :string)
+
+        fix_hint =
+          if string_concat?,
+            do: "Skein has no string '+'; build strings with interpolation: \"${a}${b}\"",
+            else: "Ensure both operands are Int or Float"
+
         {
           :unknown,
           left_errors ++
@@ -1734,8 +1736,12 @@ defmodule Skein.Analyzer do
                 message:
                   "Operator '#{op}' requires numeric operands, got #{format_type(left_type)} and #{format_type(right_type)}",
                 location: location_from_meta(meta, env.file),
-                fix_hint: "Ensure both operands are Int or Float",
-                fix_code: "// Convert both operands of '#{op}' to Int or Float"
+                fix_hint: fix_hint,
+                fix_code:
+                  if(string_concat?,
+                    do: ~s("${a}${b}"),
+                    else: "// Convert both operands of '#{op}' to Int or Float"
+                  )
               }
             ]
         }
