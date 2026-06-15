@@ -1,7 +1,7 @@
 # Skein Roadmap
 
-**As of:** 2026-06-12
-**Based on:** `docs/AUDIT_FIRST_PRINCIPLES.md`, the 2026-06-09 codebase audit (`docs/AUDIT_2026-06-09.md`), a source-verified status pass on 2026-06-10, and the 2026-06-11 + 2026-06-12 `/release-readiness` full passes.
+**As of:** 2026-06-15
+**Based on:** the prior `/release-readiness` passes (2026-06-11/12) **plus a source-verified dogfooding audit (2026-06-14/15)** of the `skein-testing` and [FablePool](https://github.com/kormie/FablePool-skein) ports — the testbeds the readiness sweeps never covered. That audit reset the GA picture below; see also the FablePool design memo [`memory-in-skein.md`](https://github.com/kormie/FablePool-skein/blob/main/docs/design/memory-in-skein.md), which classifies the gaps into language-core / pure-stdlib / capability / app-policy layers.
 
 This is the forward-looking work list for Skein. Items are ordered by impact — the top items close the biggest gaps between the language's stated goals and its current reality.
 
@@ -22,7 +22,13 @@ The compilation pipeline works end-to-end: lexer, parser, analyzer, codegen, and
 
 Most of the foundational gap-closing work from earlier roadmap revisions is **done**: real type inference for field access and pattern bindings, schema derivation for nested types and enum variants, the production Anthropic LLM backend, runtime capability enforcement for tool/LLM/topic (name- and model-aware), agent instance-scoped memory, error `context` + `fix_code` on all compiler errors, float-aware division, multi-`emit` accumulation, tool input validation, contextual (non-reserved) keywords, the persistent SQLite EventStore backend, string-literal match patterns, `store.<table>.get!/put!`, and the `queue.consume`/`schedule.trigger` capability naming.
 
-The open work below comes from the **release-readiness full passes** (`/release-readiness`: build/test gates, toolchain e2e, and an adversarially verified sweep of every docs page, spec section, example, and meta-doc — every blocker confirmed by two independent verifiers). The 2026-06-11 pass produced the rc milestone (shipped in v1.0.0-rc.1); the 2026-06-12 rc-soak pass produced the documentation-accuracy issues now gating GA.
+**That is not the whole picture, and the GA bar moved because of it.** The `/release-readiness` passes only ever swept the *first-party* spec, docs, and §8 examples — never the dogfooding testbeds, which is the entire point of `skein-testing` and FablePool. A source-verified audit of those ports (2026-06-14/15) surfaced ~27 live findings the sweeps structurally could not catch:
+
+- **Soundness holes** — well-typed programs that crash or silently miscompute: effect calls are typed as their bare success type, so a missing `!`/`?` compiles then crashes ([skein-testing#1](https://github.com/kormie/skein-testing/issues/1)); `String + String` type-checks and crashes at runtime ([#252](https://github.com/kormie/Skein/issues/252)); `List.reduce` invoked its callback in the reverse argument order from its own spec ([#254](https://github.com/kormie/Skein/issues/254)); `!`-on-`Option` slips through `test` blocks ([#253](https://github.com/kormie/Skein/issues/253)); unknown effect methods leak `unbound_var`/`:if_clause` ([skein-testing#33](https://github.com/kormie/skein-testing/issues/33)).
+- **Spec lies** — the spec's own §8.2 example uses an `Err(NotFound)` pattern that can never match ([skein-testing#3](https://github.com/kormie/skein-testing/issues/3)); `req.json[T]` is documented to validate `@min`/`@max`/`@one_of` but does not ([skein-testing#25](https://github.com/kormie/skein-testing/issues/25)); `resume` and the `timer` callback are documented but unreachable ([skein-testing#20](https://github.com/kormie/skein-testing/issues/20), [#18](https://github.com/kormie/skein-testing/issues/18)).
+- **Missing capabilities** — porting a real signed/content-addressed protocol hit a wall: no closures ([#248](https://github.com/kormie/Skein/issues/248)), no crypto/bytes/encoding ([#245](https://github.com/kormie/Skein/issues/245)), no `Int` modulo/bitwise ([#246](https://github.com/kormie/Skein/issues/246)), no `String.join`/codepoints ([#250](https://github.com/kormie/Skein/issues/250)), no record update ([#251](https://github.com/kormie/Skein/issues/251)) or module constants ([#249](https://github.com/kormie/Skein/issues/249)).
+
+Under the `docs/STABILITY.md` freeze, tagging 1.0 with these in place would make every one a permanent foot-gun. **GA is not imminent.** The six waves below are the path; the GA bar is now a **sound, honest, FablePool-capable core** (decided 2026-06-15).
 
 ---
 
@@ -33,11 +39,49 @@ The release train (each step rides the auto-tag flow — a green version-bump me
 1. ~~**v0.2.0**~~ — released 2026-06-11 (Beta milestone + installer + the #114 fix)
 2. ~~**v0.3.0**~~ — released 2026-06-11 (the original v1.0.0 milestone: #121 #118 #154 #147 #146 #155 #156 #157 #173 #162)
 3. ~~**v1.0.0-rc**~~ — released 2026-06-12 as v1.0.0-rc.1 (the complete v1.0.0-rc Release milestone, #182–#195)
-4. **v1.0.0** — the rc soaks while the **v1.0.0 Release** milestone (warning-grade findings) lands, then promote
+4. **v1.0.0** — gated on the GA waves below. The earlier "rc soaks while warning-grade docs findings land, then promote" plan is **superseded**: the dogfooding audit reclassified GA from a docs-accuracy cleanup to a soundness + honesty + capability gate.
 
-### Milestone: v1.0.0 Release (GA gate, lands during the rc soak)
+### GA bar (decided 2026-06-15): a sound, honest, FablePool-capable core
 
-GA tags when this is empty. The compiler/examples items shipped on the rc-soak audit PR; the
+**Hoist mechanism, not policy** (per the FablePool memo): Skein provides the generic substrate — sound types, deterministic canonical bytes, crypto, content-addressing, a verifiable log — and apps keep their own memory/policy model. That makes "FablePool-capable" tractable without baking a domain into the language.
+
+### GA gate — the six waves
+
+Ordered; earlier waves unblock later ones. TDD + property tests mandatory (see top). Sizes per the key above.
+
+**Wave 1 — Soundness** *(blocker; in progress)* — a well-typed program must not crash or silently miscompute:
+- [#254](https://github.com/kormie/Skein/issues/254) — `List.reduce` callback arg order vs spec §5.4 — **fixed in this PR** (runtime now calls `f(acc, element)`) — S
+- [#252](https://github.com/kormie/Skein/issues/252) — reject `String + String` at compile time (hint → interpolation) — S
+- [#253](https://github.com/kormie/Skein/issues/253) — run type inference on `test`/`scenario`/`golden` bodies (today they skip it) — S–M
+- [skein-testing#33](https://github.com/kormie/skein-testing/issues/33) — structured diagnostic for unknown effect methods — M
+- [skein-testing#32](https://github.com/kormie/skein-testing/issues/32) — coerce `Option[T]` JSON fields to `Some`/`None` (as the store already does) — M
+- [skein-testing#3](https://github.com/kormie/skein-testing/issues/3) — a `NotFound` the matcher knows, or fix codegen + spec together — S–M
+- [skein-testing#1](https://github.com/kormie/skein-testing/issues/1) — type effect calls as `Result[T,E]` so a missing `!`/`?` is a compile error — M–L
+
+**Wave 2 — Spec lies & the structured-error promise** *(blocker)*:
+- [skein-testing#25](https://github.com/kormie/skein-testing/issues/25) (constraint enforcement / 400 not 500), [#20](https://github.com/kormie/skein-testing/issues/20) (`resume` dead keyword), [#18](https://github.com/kormie/skein-testing/issues/18) (timer-callback receiver), [#22](https://github.com/kormie/skein-testing/issues/22) (HTTP non-2xx → matchable Result), [#9](https://github.com/kormie/skein-testing/issues/9) (agent reachability + docs)
+- [#202](https://github.com/kormie/Skein/issues/202) — **docs/spec drift guard in CI**, extended to **compile/run the testbed programs** so "readiness" means "a real program builds" — L
+
+**Wave 3 — Pure crypto/bytes stdlib + canonical serialization** *(blocker; highest-leverage, before closures — memo §5.2)*:
+- [#256](https://github.com/kormie/Skein/issues/256) — compiler-backed canonical serialization (deterministic bytes for a value of `T`)
+- [#245](https://github.com/kormie/Skein/issues/245) — pure crypto/encoding stdlib (hash, bytes, hex/base64, signature verify)
+- [#246](https://github.com/kormie/Skein/issues/246), [#250](https://github.com/kormie/Skein/issues/250) — `Int` modulo/div/bitwise; `String.join`/codepoints
+
+**Wave 4 — Core expressiveness** *(blocker)*:
+- [#248](https://github.com/kormie/Skein/issues/248) — anonymous functions / closures (the load-bearing one) — XL
+- [#251](https://github.com/kormie/Skein/issues/251) record update · [#249](https://github.com/kormie/Skein/issues/249) module constants · [#247](https://github.com/kormie/Skein/issues/247) positional/brace variant payloads + better error
+
+**Wave 5 — Generalized capabilities** *(blocker for the FablePool bar)*:
+- [#255](https://github.com/kormie/Skein/issues/255) string/content-addressed store (ETS parity + honest signatures)
+- [#257](https://github.com/kormie/Skein/issues/257) effectful crypto capability (secure RNG, keygen, signing)
+- [#141](https://github.com/kormie/Skein/issues/141) Erlang/Elixir FFI — pulled into GA as the near-term route to real `:crypto`
+- verifiable append-only log with redaction (memo §6-C) — *to be filed*
+
+**Wave 6 — AI-native differentiator** *(scope TBD: 1.0 or 1.1; current lean 1.1)*: automatic inference provenance, lineage / `why(id)`, schema-agnostic data-layer grants (memo §4). FablePool runs un-stubbed after Wave 5; this is the payoff that lets it "shrink to its policy."
+
+### Already shipped under the v1.0.0 Release milestone (rc-soak PR)
+
+These items already shipped (the milestone shows 31 closed) — the rc-soak audit + docs-accuracy + Bedrock-hardening wave, **not** the GA gate (the GA gate is the six waves above). The compiler/examples items shipped on the rc-soak audit PR; the
 documentation-accuracy wave (#223–#229, filed by the 2026-06-12 rc-soak readiness pass) rides
 the same PR. The Bedrock production-hardening follow-ups (#178 #179 #180, plus the #236 SSO
 work #179 split out) were pulled into scope from v1.1 on 2026-06-12:

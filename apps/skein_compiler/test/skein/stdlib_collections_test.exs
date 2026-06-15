@@ -31,6 +31,27 @@ defmodule Skein.StdlibCollectionsTest do
     end
   end
 
+  describe "List.reduce" do
+    # Pins the spec §5.4 callback order: f(acc, element), accumulator first.
+    # A non-commutative fold distinguishes it: acc*10+el over [1,2,3] from 0
+    # is 123 when acc-first, but 60 if accumulator/element are swapped.
+    test "invokes the callback as f(acc, element) per spec §5.4" do
+      mod =
+        compile!("""
+        module ListReduce {
+          fn build(acc: Int, el: Int) -> Int { acc * 10 + el }
+          fn run(items: List[Int]) -> Int {
+            List.reduce(items, 0, &build)
+          }
+        }
+        """)
+
+      assert mod.run([1, 2, 3]) == 123
+      assert mod.run([]) == 0
+      assert mod.run([7]) == 7
+    end
+  end
+
   describe "List.reverse" do
     test "reverses a list" do
       mod =
