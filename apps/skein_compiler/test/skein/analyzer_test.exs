@@ -3965,6 +3965,182 @@ defmodule Skein.AnalyzerTest do
   # Effect call arity (documented effect signatures)
   # ------------------------------------------------------------------
 
+  describe "test/scenario/golden bodies are fully inferred (#253)" do
+    test "a missing !/? on an effect inside a test block is a compile error" do
+      assert {:error, errors} =
+               analyze("""
+               module M {
+                 capability model("anthropic", "claude-opus-4-8")
+
+                 test "uses chat" {
+                   let r = llm.chat("claude-opus-4-8", "sys", "hi")
+                   assert String.length(r) > 0
+                 }
+               }
+               """)
+
+      assert Enum.any?(errors, &(&1.code == "E0020"))
+    end
+
+    test "! on an Option inside a test block is a compile error (E0022)" do
+      assert {:error, errors} =
+               analyze("""
+               module M {
+                 fn first(xs: List[String]) -> Option[String] {
+                   List.first(xs)
+                 }
+
+                 test "unwraps an option with bang" {
+                   let x = first(["a"])!
+                   assert x == "a"
+                 }
+               }
+               """)
+
+      assert Enum.any?(errors, &(&1.code == "E0022"))
+    end
+
+    test "a correct test block (effects unwrapped) still compiles clean" do
+      assert {:ok, _} =
+               analyze("""
+               module M {
+                 capability model("anthropic", "claude-opus-4-8")
+
+                 test "uses chat" {
+                   let r = llm.chat("claude-opus-4-8", "sys", "hi")!
+                   assert String.length(r) > 0
+                 }
+               }
+               """)
+    end
+  end
+
+  describe "agent handler bodies are fully inferred (#253)" do
+    test "a missing ! on an effect inside a phase handler is a compile error" do
+      assert {:error, errors} =
+               analyze("""
+               module M {
+                 agent Refunder {
+                   capability model("anthropic", "claude-opus-4-8")
+                   capability memory.kv("refunds")
+
+                   enum Phase {
+                     Review -> [Done]
+                     Done -> []
+                   }
+
+                   on start(order_id: String) -> {
+                     memory.put("order_id", order_id)
+                     transition(Phase.Review)
+                   }
+
+                   on phase(Phase.Review) -> {
+                     let order = memory.get!("order_id")
+                     let decision = llm.chat("claude-opus-4-8", "decide", order)
+                     let n = String.length(decision)
+                     transition(Phase.Done)
+                   }
+
+                   on phase(Phase.Done) -> {
+                     stop()
+                   }
+                 }
+               }
+               """)
+
+      assert Enum.any?(errors, &(&1.code == "E0020"))
+    end
+
+    test "a phase handler that unwraps its effects compiles clean" do
+      assert {:ok, _} =
+               analyze("""
+               module M {
+                 agent Refunder {
+                   capability model("anthropic", "claude-opus-4-8")
+                   capability memory.kv("refunds")
+
+                   enum Phase {
+                     Review -> [Done]
+                     Done -> []
+                   }
+
+                   on start(order_id: String) -> {
+                     memory.put("order_id", order_id)
+                     transition(Phase.Review)
+                   }
+
+                   on phase(Phase.Review) -> {
+                     let order = memory.get!("order_id")
+                     let decision = llm.chat("claude-opus-4-8", "decide", order)!
+                     let n = String.length(decision)
+                     transition(Phase.Done)
+                   }
+
+                   on phase(Phase.Done) -> {
+                     stop()
+                   }
+                 }
+               }
+               """)
+    end
+  end
+
+  describe "tool implement bodies are fully inferred (#253)" do
+    test "a missing !/? on an effect inside an implement block is a compile error" do
+      assert {:error, errors} =
+               analyze("""
+               module M {
+                 capability http.out("api.example.com")
+
+                 tool M.Fetch {
+                   description: "fetch a url"
+
+                   input {
+                     url: String
+                   }
+
+                   output {
+                     length: Int
+                   }
+
+                   implement {
+                     let body = http.get(url)
+                     Ok({ length: String.length(body) })
+                   }
+                 }
+               }
+               """)
+
+      assert Enum.any?(errors, &(&1.code == "E0020"))
+    end
+
+    test "an implement block that unwraps effects compiles clean" do
+      assert {:ok, _} =
+               analyze("""
+               module M {
+                 capability http.out("api.example.com")
+
+                 tool M.Fetch {
+                   description: "fetch a url"
+
+                   input {
+                     url: String
+                   }
+
+                   output {
+                     length: Int
+                   }
+
+                   implement {
+                     let response = http.get(url)!
+                     Ok({ length: 1 })
+                   }
+                 }
+               }
+               """)
+    end
+  end
+
   describe "arithmetic operators are numeric-only (#252)" do
     test "String + String is a compile error, not a runtime crash" do
       assert {:error, errors} =

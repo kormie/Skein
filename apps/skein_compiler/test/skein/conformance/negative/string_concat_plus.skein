@@ -1,0 +1,8 @@
+-- expect: E0020
+-- #252: String + String type-checked then crashed at runtime. Arithmetic is
+-- numeric-only; strings are built with interpolation.
+module StringConcatPlus {
+  fn join(a: String, b: String) -> String {
+    a + b
+  }
+}

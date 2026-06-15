@@ -49,10 +49,10 @@ The release train (each step rides the auto-tag flow — a green version-bump me
 
 Ordered; earlier waves unblock later ones. TDD + property tests mandatory (see top). Sizes per the key above.
 
-**Wave 1 — Type/runtime soundness** *(blocker; in progress)* — the disease, not just the symptoms. A well-typed program that touches a **user type, enum, list literal, or `Ok`/`Err` currently compiles clean and crashes/miscomputes**:
+**Wave 1 — Type/runtime soundness** *(complete)* — the disease, not just the symptoms. A well-typed program that touches a **user type, enum, list literal, or `Ok`/`Err` currently compiles clean and crashes/miscomputes**:
 - [#259](https://github.com/kormie/Skein/issues/259) — **P0:** the type lattice is unsound (`types_compatible?` makes user-type/enum/`:unknown` compatible with anything; `Ok`/`Err` + list literals infer `:unknown`). The root cause; carries the empirical probe. Invariant variance for 1.0. — L
 - ~~[#260](https://github.com/kormie/Skein/issues/260)~~ — **done:** one Result representation across every effect boundary. Effects now infer `Result[T,E]` so a missing `!`/`?` is a compile error (skein-testing#1); `store`/`memory` miss is `Err(NotFound)` (skein-testing#3); `http` is `Result[HttpResponse, HttpError]` with a default User-Agent, non-2xx → `Err(Status)` (skein-testing#22); `req.json[T]` enforces `@`-constraints, coerces `Option`→`Some`/`None`, and returns a 400 on bad input (skein-testing#25/#32); `llm.json` is a single 2-tuple representation. Supersedes skein-testing #1/#3/#22/#25/#32.
-- [#253](https://github.com/kormie/Skein/issues/253) — full inference on **all** executable bodies (tests, scenarios, goldens, agent handlers, tool `implement`). — M
+- ~~[#253](https://github.com/kormie/Skein/issues/253)~~ — **done:** full inference on **all** executable bodies — test/scenario/golden blocks, tool `implement` blocks, and agent handlers now run the same type inference as module functions, so a missing `!`/`?` (or any type error) in those bodies is a compile error, not a runtime crash. Closes the `:unknown`-permissive gap #259 left on not-yet-inferred bodies.
 - Symptoms cleared by the above: ~~[#252](https://github.com/kormie/Skein/issues/252)~~ (`String +` is now a compile error — **done**), ~~[skein-testing#33](https://github.com/kormie/skein-testing/issues/33)~~ (unknown effect methods now structured E0010 — **done**). [#254](https://github.com/kormie/Skein/issues/254) (`List.reduce` order) — **done, merged**.
 
 **Wave 2 — Honesty + an *executing* conformance gate** *(blocker)*:

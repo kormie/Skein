@@ -1,0 +1,11 @@
+-- expect: E0010
+-- skein-testing#33: a method that is not part of a known effect namespace's
+-- surface must be a structured E0010, not a leaked unbound_var/:if_clause.
+module UnknownEffectMethod {
+  capability http.out("api.example.com")
+
+  fn run(url: String) -> Int {
+    let r = http.frobnicate(url)!
+    1
+  }
+}

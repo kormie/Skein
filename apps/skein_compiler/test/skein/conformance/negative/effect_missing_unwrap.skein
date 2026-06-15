@@ -1,0 +1,12 @@
+-- expect: E0020
+-- skein-testing#1: an effect result used as its bare success type must be a
+-- compile error, not a runtime crash. llm.chat returns Result[String, LlmError];
+-- passing it (un-unwrapped) to String.length is a type mismatch.
+module EffectMissingUnwrap {
+  capability model("anthropic", "claude-opus-4-8")
+
+  fn run() -> Int {
+    let r = llm.chat("claude-opus-4-8", "sys", "hi")
+    String.length(r)
+  }
+}

@@ -1,0 +1,9 @@
+-- expect: E0020
+-- #259: Ok/Err must infer real inner types. Ok("hello") is Result[String, _];
+-- it must not unify with a declared Result[Int, String] (the lattice is now
+-- invariant, not "compatible with anything").
+module OkInnerTypeMismatch {
+  fn run() -> Result[Int, String] {
+    Ok("hello")
+  }
+}

@@ -1,0 +1,10 @@
+-- expect: E0022
+-- #253: `!` only unwraps Result, never Option. List.first returns Option[T];
+-- `!` on it must be E0022, even inside a test block (where inference used to be
+-- skipped).
+module BangOnOption {
+  test "bang on option" {
+    let x = List.first(["a"])!
+    assert x == "a"
+  }
+}
