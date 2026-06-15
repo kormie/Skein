@@ -676,7 +676,9 @@ suspend(reason: String) -> ()
 There is no in-agent `resume` call. `suspend` hands control back to the
 host, and a suspended agent is resumed *from outside* by the host-side
 runtime API — `Skein.Runtime.Agent.resume(pid, next_phase)` — which
-moves the agent into the given phase.
+moves the agent into the given phase. The `resume` keyword is nonetheless
+**reserved** (§1 keyword list): it is intentionally burned for 1.0 so a future
+1.x in-agent `resume` form can claim it without a breaking keyword addition.
 
 ### 6.9 Idempotency
 
