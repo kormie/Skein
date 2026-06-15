@@ -169,7 +169,12 @@ defmodule Skein.CodeGen.SchemaGen do
         %{"type" => "object", "additionalProperties" => type_to_schema(v, env, seen)}
 
       {"Option", [inner]} ->
-        type_to_schema(inner, env, seen)
+        # Keep the inner type for JSON-Schema validation but tag the field so
+        # the decode boundary coerces it to Some(v)/None (skein-testing#32).
+        # The "x-skein-optional" marker is ignored by JSON-Schema validators.
+        inner
+        |> type_to_schema(env, seen)
+        |> Map.put("x-skein-optional", true)
 
       {user_type, []} ->
         resolve_user_type(user_type, env, seen)

@@ -15,6 +15,8 @@ defmodule Skein.Runtime.Request do
   Returns `{:ok, parsed_map}` or `{:error, reason}`.
   """
 
+  alias Skein.Runtime.ValidationError
+
   @doc """
   Parses the request body as JSON and validates against the given schema.
 
@@ -23,7 +25,8 @@ defmodule Skein.Runtime.Request do
 
   Returns `{:ok, parsed}` on success or `{:error, reason}` on failure.
   """
-  @spec json(map(), map()) :: {:ok, map()} | {:error, String.t()}
+  @spec json(map(), map()) ::
+          {:ok, map()} | {:error, Skein.Runtime.ValidationError.t() | String.t()}
   def json(req, schema) when is_map(req) and is_map(schema) do
     body = Map.get(req, :body, "")
 
@@ -32,10 +35,10 @@ defmodule Skein.Runtime.Request do
         validate(parsed, schema)
 
       {:ok, _non_map} ->
-        {:error, "Invalid JSON: expected object, got non-object value"}
+        {:error, ValidationError.new(["request body must be a JSON object"])}
 
       {:error, _decode_error} ->
-        {:error, "Invalid JSON: could not parse request body"}
+        {:error, ValidationError.new(["request body is not valid JSON"])}
     end
   end
 
@@ -49,52 +52,73 @@ defmodule Skein.Runtime.Request do
   end
 
   defp validate(parsed, schema) do
-    with :ok <- validate_required(parsed, schema),
-         :ok <- validate_types(parsed, schema) do
-      # Coerce schema-declared keys to atoms so compiled field access
-      # (`body.hero` -> map_get(:hero, ...)) lands on the right key —
-      # the same struct coercion the llm.json[T] path performs
-      # (skein-testing #2).
-      {:ok, Skein.Runtime.JsonSchema.atomize(parsed, schema)}
+    violations =
+      required_violations(parsed, schema) ++
+        type_violations(parsed, schema) ++
+        constraint_violations(parsed, schema)
+
+    case violations do
+      [] ->
+        # Coerce schema-declared keys to atoms (and Option fields to Some/None)
+        # so compiled field access (`body.hero` -> map_get(:hero, ...)) lands on
+        # the right key — the same coercion the llm.json[T] path performs
+        # (skein-testing #2 / #32).
+        {:ok, Skein.Runtime.JsonSchema.atomize(parsed, schema)}
+
+      violations ->
+        {:error, ValidationError.new(violations)}
     end
   end
 
-  defp validate_required(parsed, schema) do
-    required = Map.get(schema, "required", [])
-
-    missing =
-      Enum.reject(required, fn field ->
-        Map.has_key?(parsed, field)
-      end)
-
-    case missing do
-      [] -> :ok
-      fields -> {:error, "Missing required fields: #{Enum.join(fields, ", ")}"}
-    end
+  defp required_violations(parsed, schema) do
+    schema
+    |> Map.get("required", [])
+    |> Enum.reject(&Map.has_key?(parsed, &1))
+    |> Enum.map(&"#{&1}: required field is missing")
   end
 
-  defp validate_types(parsed, schema) do
-    properties = Map.get(schema, "properties", %{})
+  defp type_violations(parsed, schema) do
+    each_present_field(parsed, schema, fn field, value, field_schema ->
+      case validate_type(value, field_schema) do
+        :ok -> []
+        {:error, reason} -> ["#{field}: #{reason}"]
+      end
+    end)
+  end
 
-    errors =
-      Enum.reduce(properties, [], fn {field, field_schema}, acc ->
-        case Map.get(parsed, field) do
-          nil ->
-            # Field not present — already handled by required check
-            acc
+  # Enforce the `@`-constraint annotations carried into the schema:
+  # @one_of -> "enum", @min -> "minimum", @max -> "maximum" (skein-testing#25).
+  defp constraint_violations(parsed, schema) do
+    each_present_field(parsed, schema, fn field, value, field_schema ->
+      Enum.flat_map(field_schema, fn
+        {"enum", allowed} ->
+          if value in allowed,
+            do: [],
+            else: ["#{field}: must be one of #{Enum.map_join(allowed, ", ", &inspect/1)}"]
 
-          value ->
-            case validate_type(value, field_schema) do
-              :ok -> acc
-              {:error, reason} -> ["#{field}: #{reason}" | acc]
-            end
-        end
+        {"minimum", min} when is_number(value) ->
+          if value >= min, do: [], else: ["#{field}: must be >= #{min}"]
+
+        {"maximum", max} when is_number(value) ->
+          if value <= max, do: [], else: ["#{field}: must be <= #{max}"]
+
+        _ ->
+          []
       end)
+    end)
+  end
 
-    case errors do
-      [] -> :ok
-      errs -> {:error, "Validation failed: #{Enum.join(Enum.reverse(errs), "; ")}"}
-    end
+  # Run `fun.(field, value, field_schema)` for every schema property present in
+  # the body, collecting the returned violation lists.
+  defp each_present_field(parsed, schema, fun) do
+    schema
+    |> Map.get("properties", %{})
+    |> Enum.flat_map(fn {field, field_schema} ->
+      case Map.get(parsed, field) do
+        nil -> []
+        value -> fun.(field, value, field_schema)
+      end
+    end)
   end
 
   defp validate_type(value, %{"type" => "string"}) when is_binary(value), do: :ok

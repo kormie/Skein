@@ -110,9 +110,12 @@ defmodule Skein.CodeGen.SchemaGenTest do
                %{"type" => "object", "additionalProperties" => %{"type" => "integer"}}
     end
 
-    test "Option[String] -> string schema (required handled elsewhere)" do
+    test "Option[String] -> string schema marked optional (required handled elsewhere)" do
+      # The inner type drives JSON-Schema validation; the marker tells the
+      # decode boundary to coerce the field to Some/None (skein-testing#32).
       assert SchemaGen.type_to_schema(type_ref("Option", [type_ref("String")])) == %{
-               "type" => "string"
+               "type" => "string",
+               "x-skein-optional" => true
              }
     end
   end
@@ -162,7 +165,7 @@ defmodule Skein.CodeGen.SchemaGenTest do
       assert schema["type"] == "object"
       assert schema["properties"]["email"] == %{"type" => "string", "format" => "email"}
       assert schema["properties"]["name"] == %{"type" => "string"}
-      assert schema["properties"]["phone"] == %{"type" => "string"}
+      assert schema["properties"]["phone"] == %{"type" => "string", "x-skein-optional" => true}
       # phone is NOT in required
       assert "email" in schema["required"]
       assert "name" in schema["required"]
