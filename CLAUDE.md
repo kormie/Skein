@@ -331,7 +331,7 @@ Use the `:cerl` module in Erlang to programmatically construct Core Erlang AST n
 
 3. **Types generate schemas.** Every named type must be derivable to JSON Schema. If a type construct can't derive a schema, reconsider the construct.
 
-4. **Effects require capabilities.** Any function that performs I/O must be checked against declared capabilities. No exceptions (the FFI escape hatch is explicitly marked as unsafe).
+4. **Effects require capabilities, and all nondeterminism is controlled.** Any function that performs I/O must be checked against declared capabilities. No exceptions (the FFI escape hatch is explicitly marked as unsafe). This includes *every* source of nondeterminism: reading the clock and generating UUIDs/randomness are capability-gated effects (`instant.now()`, `uuid.new()`), never ambient stdlib — and every nondeterministic source is controllable (live in prod, overridable under test, recorded/replayed for determinism). A well-formed Skein program has no uncontrolled nondeterminism. (First principle P4.)
 
 5. **Errors are structured.** Every compiler error must produce JSON-serializable output with `fix_hint` and `fix_code`. This is not optional — it's a core feature for agent-writability.
 
