@@ -528,15 +528,16 @@ Result.err(error: E) -> Result[T, E]
 ### 5.9 Uuid
 
 ```
-Uuid.new() -> Uuid
 Uuid.parse(s: String) -> Result[Uuid, String]
 Uuid.to_string(u: Uuid) -> String
 ```
 
+> Generating a UUID is nondeterministic, so `uuid.new()` is a capability-gated
+> effect (§6.12), not a stdlib function.
+
 ### 5.10 Instant
 
 ```
-Instant.now() -> Instant
 Instant.parse(s: String) -> Result[Instant, String]
 Instant.to_string(i: Instant) -> String
 Instant.add(i: Instant, d: Duration) -> Instant
@@ -545,6 +546,9 @@ Instant.diff(a: Instant, b: Instant) -> Duration
 Instant.is_before(a: Instant, b: Instant) -> Bool
 Instant.is_after(a: Instant, b: Instant) -> Bool
 ```
+
+> Reading the current time is nondeterministic, so `instant.now()` is a
+> capability-gated effect (§6.12), not a stdlib function.
 
 ### 5.11 Duration
 
@@ -725,6 +729,27 @@ The same applies to timers: with `work`, the function runs in a
 supervised task each time the timer fires; without it, each fire records
 a named no-op span.
 
+### 6.12 Nondeterminism
+
+```
+-- Requires: capability uuid
+uuid.new() -> Uuid
+
+-- Requires: capability instant
+instant.now() -> Instant
+```
+
+Generating a UUID and reading the wall clock are the two pieces of ambient
+nondeterminism Skein controls. They are **effects, not stdlib functions**: each
+requires a capability, so a program's dependence on randomness or the clock is
+explicit, and each is **controllable** — live in production, deterministic under
+test overrides, and recorded/replayed under `Replay` so a trace that minted an
+id or timestamp reproduces exactly. (The clock capability is named `instant`,
+not `clock`; the `timer` effect (§6.11) is Skein's sleeping/scheduling clock.)
+Unlike most effects these return their value directly rather than a `Result` —
+neither can fail — so no `!`/`?` is needed. The pure operations (`Uuid.parse`,
+`Instant.add`, `Instant.diff`, …) remain ambient stdlib (§5).
+
 ---
 
 ## 7. Compiler Errors
@@ -817,6 +842,8 @@ module Hello {
 module UserService {
   capability http.in
   capability store.table("users")
+  capability uuid
+  capability instant
 
   type User {
     id: Uuid @primary
@@ -842,10 +869,10 @@ module UserService {
   handler http POST "/users" (req) -> {
     let data = req.json[CreateUserInput]()?
     let user = store.users.put({
-      id: Uuid.new(),
+      id: uuid.new(),
       email: data.email,
       name: data.name,
-      created_at: Instant.now()
+      created_at: instant.now()
     })!
     respond.json(201, user)
   }
@@ -859,6 +886,8 @@ module BillingWorker {
   capability queue.consume("billing.events")
   capability http.out("api.stripe.com")
   capability store.table("transactions")
+  capability uuid
+  capability instant
 
   enum BillingEvent {
     ChargeSucceeded(charge_id: String, amount: Int)
@@ -876,10 +905,10 @@ module BillingWorker {
 
   fn record_charge(charge_id: String, amount: Int) -> Result[String, StoreError] {
     store.transactions.put({
-      id: Uuid.new(),
+      id: uuid.new(),
       charge_id: charge_id,
       amount: amount,
-      created_at: Instant.now()
+      created_at: instant.now()
     })
   }
 

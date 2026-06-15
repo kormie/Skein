@@ -229,25 +229,29 @@ Result.is_ok(r)            -- true
 
 ## Uuid
 
-UUID generation and parsing (v4).
+UUID parsing and formatting (v4). Generating a UUID is nondeterministic, so it is
+the capability-gated `uuid.new()` **effect** (requires `capability uuid`), not a
+stdlib function — see the Effects reference.
 
 ```skein
-let id = Uuid.new()        -- "550e8400-e29b-41d4-a716-446655440000"
-Uuid.parse("...")           -- Ok(uuid)
+let id = uuid.new()        -- effect: "550e8400-e29b-41d4-a716-446655440000"
+Uuid.parse("...")           -- stdlib: Ok(uuid)
 ```
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `new` | `() -> Uuid` | Generate a random v4 UUID |
 | `parse` | `(String) -> Result[Uuid, String]` | Parse and validate UUID string |
 | `to_string` | `(Uuid) -> String` | Format UUID as string |
 
 ## Instant
 
-Timestamps. Represents a point in time.
+Timestamps. Represents a point in time. Reading the current time is
+nondeterministic, so it is the capability-gated `instant.now()` **effect**
+(requires `capability instant`), not a stdlib function; the operations below are
+pure stdlib.
 
 ```skein
-let now = Instant.now()
+let now = instant.now()                  -- effect (requires capability instant)
 let later = Instant.add(now, Duration.hours(2))
 Instant.is_before(now, later)  -- true
 Instant.diff(later, now)       -- Duration (2 hours)
@@ -255,7 +259,6 @@ Instant.diff(later, now)       -- Duration (2 hours)
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `now` | `() -> Instant` | Current timestamp |
 | `parse` | `(String) -> Result[Instant, String]` | Parse ISO 8601 string |
 | `to_string` | `(Instant) -> String` | Format as ISO 8601 |
 | `add` | `(Instant, Duration) -> Instant` | Add duration to instant |
@@ -295,4 +298,4 @@ String.upcase("hello")
 call 'Elixir.Skein.Runtime.Stdlib.String':'upcase'("hello")
 ```
 
-The code generator recognizes stdlib calls by matching the module name against `@stdlib_modules` in the code generator. No capabilities are required for stdlib calls since they perform no I/O effects — though note that `Uuid.new()` and `Instant.now()` are nondeterministic and return different values on each call.
+The code generator recognizes stdlib calls by matching the module name against `@stdlib_modules` in the code generator. No capabilities are required for stdlib calls since they perform no I/O effects and are deterministic. The two nondeterministic generators — `uuid.new()` and `instant.now()` — are **not** stdlib; they are capability-gated effects so their values can be controlled under test and replay.

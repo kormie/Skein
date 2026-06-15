@@ -20,6 +20,8 @@ defmodule Skein.SpecExamplesTest do
      module UserService {
        capability http.in
        capability store.table("users")
+       capability uuid
+       capability instant
 
        type User {
          id: Uuid @primary
@@ -45,10 +47,10 @@ defmodule Skein.SpecExamplesTest do
        handler http POST "/users" (req) -> {
          let data = req.json[CreateUserInput]()?
          let user = store.users.put({
-           id: Uuid.new(),
+           id: uuid.new(),
            email: data.email,
            name: data.name,
-           created_at: Instant.now()
+           created_at: instant.now()
          })!
          respond.json(201, user)
        }
@@ -60,6 +62,8 @@ defmodule Skein.SpecExamplesTest do
        capability queue.consume("billing.events")
        capability http.out("api.stripe.com")
        capability store.table("transactions")
+       capability uuid
+       capability instant
 
        enum BillingEvent {
          ChargeSucceeded(charge_id: String, amount: Int)
@@ -77,10 +81,10 @@ defmodule Skein.SpecExamplesTest do
 
        fn record_charge(charge_id: String, amount: Int) -> Result[String, StoreError] {
          store.transactions.put({
-           id: Uuid.new(),
+           id: uuid.new(),
            charge_id: charge_id,
            amount: amount,
-           created_at: Instant.now()
+           created_at: instant.now()
          })
        }
 

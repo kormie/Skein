@@ -202,13 +202,14 @@ defmodule Skein.StdlibTypesTest do
   # ---------------------------------------------------------------
   # Uuid stdlib
   # ---------------------------------------------------------------
-  describe "Uuid.new" do
+  describe "uuid.new effect" do
     test "generates a valid UUID" do
       mod =
         compile!("""
         module UuidNew {
+          capability uuid
           fn make() -> Uuid {
-            Uuid.new()
+            uuid.new()
           }
         }
         """)
@@ -243,13 +244,14 @@ defmodule Skein.StdlibTypesTest do
   # ---------------------------------------------------------------
   # Instant stdlib
   # ---------------------------------------------------------------
-  describe "Instant.now" do
+  describe "instant.now effect" do
     test "returns current time as ISO 8601" do
       mod =
         compile!("""
         module InstantNow {
+          capability instant
           fn current() -> Instant {
-            Instant.now()
+            instant.now()
           }
         }
         """)
@@ -418,13 +420,14 @@ defmodule Skein.StdlibTypesTest do
   # ---------------------------------------------------------------
   # Property tests — types
   # ---------------------------------------------------------------
-  describe "Uuid properties" do
-    property "Uuid.new always generates valid UUIDs" do
+  describe "uuid.new properties" do
+    property "uuid.new always generates valid UUIDs" do
       mod =
         compile!("""
         module PropUuid {
+          capability uuid
           fn make() -> Uuid {
-            Uuid.new()
+            uuid.new()
           }
         }
         """)

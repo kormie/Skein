@@ -4299,6 +4299,82 @@ defmodule Skein.AnalyzerTest do
     end
   end
 
+  describe "nondeterminism is capability-gated (#261)" do
+    test "uuid.new() requires capability uuid" do
+      assert {:error, errors} =
+               analyze("""
+               module M {
+                 fn make() -> Uuid {
+                   uuid.new()
+                 }
+               }
+               """)
+
+      assert Enum.any?(errors, &(&1.code == "E0012"))
+    end
+
+    test "instant.now() requires capability instant" do
+      assert {:error, errors} =
+               analyze("""
+               module M {
+                 fn current() -> Instant {
+                   instant.now()
+                 }
+               }
+               """)
+
+      assert Enum.any?(errors, &(&1.code == "E0012"))
+    end
+
+    test "uuid.new() / instant.now() with their capabilities compile clean" do
+      assert {:ok, _} =
+               analyze("""
+               module M {
+                 capability uuid
+                 capability instant
+
+                 fn make() -> Uuid {
+                   uuid.new()
+                 }
+
+                 fn current() -> Instant {
+                   instant.now()
+                 }
+               }
+               """)
+    end
+
+    test "a nondeterminism effect inside a record literal is capability-checked" do
+      # Regression: effects nested in a map literal (store.put({ id: uuid.new() }))
+      # must still require their capability.
+      assert {:error, errors} =
+               analyze("""
+               module M {
+                 capability store.table("users")
+
+                 fn save() -> Result[String, String] {
+                   store.users.put({ id: uuid.new() })
+                 }
+               }
+               """)
+
+      assert Enum.any?(errors, &(&1.code == "E0012"))
+    end
+
+    test "Uuid.new() / Instant.now() (the old stdlib form) no longer exist" do
+      assert {:error, errors} =
+               analyze("""
+               module M {
+                 fn make() -> Uuid {
+                   Uuid.new()
+                 }
+               }
+               """)
+
+      assert Enum.any?(errors, &(&1.code == "E0010"))
+    end
+  end
+
   describe "unknown effect methods (skein-testing#33)" do
     test "an unknown method on a known effect namespace is a structured E0010" do
       assert {:error, errors} =

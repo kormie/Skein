@@ -93,7 +93,12 @@ defmodule Skein.Analyzer do
     "trace" => nil,
     "process" => "process.spawn",
     "timer" => "timer",
-    "event" => "event.log"
+    "event" => "event.log",
+    # Nondeterministic generators are effects, not ambient stdlib (#261):
+    # uuid.new() needs `capability uuid`, instant.now() needs `capability instant`.
+    # ("clock" is deliberately NOT used — that's the timer/sleep concept.)
+    "uuid" => "uuid",
+    "instant" => "instant"
   }
 
   # Known effect methods per namespace
@@ -107,7 +112,9 @@ defmodule Skein.Analyzer do
     "trace" => ["annotate"],
     "process" => ["spawn"],
     "timer" => ["after", "interval", "cancel"],
-    "event" => ["log"]
+    "event" => ["log"],
+    "uuid" => ["new"],
+    "instant" => ["now"]
   }
 
   # Store operations: store.<table>.<method>(...)
@@ -141,7 +148,11 @@ defmodule Skein.Analyzer do
     {"process", "spawn"} => {:result, :unknown, :string},
     {"timer", "after"} => {:result, :string, :string},
     {"timer", "interval"} => {:result, :string, :string},
-    {"timer", "cancel"} => {:result, :string, :string}
+    {"timer", "cancel"} => {:result, :string, :string},
+    # Nondeterministic generators can't fail, so they return the bare value
+    # (no Result / no `!` needed) — just like memory.list.
+    {"uuid", "new"} => :uuid,
+    {"instant", "now"} => :instant
   }
 
   # store.<table>.<method> return types (spec §6.2). The record type `T` is not
@@ -303,12 +314,12 @@ defmodule Skein.Analyzer do
       "err" => %{params: [:unknown], return_type: {:result, :unknown, :unknown}}
     },
     "Uuid" => %{
-      "new" => %{params: [], return_type: :uuid},
+      # `new` is an effect now (uuid.new(), #261), not ambient stdlib.
       "parse" => %{params: [:string], return_type: {:result, :uuid, :string}},
       "to_string" => %{params: [:uuid], return_type: :string}
     },
     "Instant" => %{
-      "now" => %{params: [], return_type: :instant},
+      # `now` is an effect now (instant.now(), #261), not ambient stdlib.
       "parse" => %{params: [:string], return_type: {:result, :instant, :string}},
       "to_string" => %{params: [:instant], return_type: :string},
       "add" => %{params: [:instant, :duration], return_type: :instant},
@@ -637,7 +648,9 @@ defmodule Skein.Analyzer do
     {"event", "log"} => ["name", "data"],
     {"timer", "after"} => ["delay_ms", "task", "work"],
     {"timer", "interval"} => ["every_ms", "task", "work"],
-    {"timer", "cancel"} => ["ref"]
+    {"timer", "cancel"} => ["ref"],
+    {"uuid", "new"} => [],
+    {"instant", "now"} => []
   }
 
   # Trailing effect parameters that may be omitted. `process.spawn(name)`
@@ -3247,12 +3260,14 @@ defmodule Skein.Analyzer do
              },
              field: method
            },
+           args: args,
            meta: meta
          },
          env
        )
        when method in @store_methods do
-    check_store_capability(table_name, method, meta, env)
+    check_store_capability(table_name, method, meta, env) ++
+      Enum.flat_map(args, &collect_effect_calls(&1, env))
   end
 
   # Tool effect with identifier first arg: tool.call(ToolName, args) / tool.schema(ToolName)
@@ -3263,7 +3278,7 @@ defmodule Skein.Analyzer do
              subject: %AST.Identifier{name: "tool"},
              field: method
            },
-           args: [first_arg | _],
+           args: [first_arg | _] = args,
            meta: meta
          },
          env
@@ -3271,12 +3286,15 @@ defmodule Skein.Analyzer do
        when method in ["call", "schema"] do
     tool_name = extract_tool_name_from_expr(first_arg)
 
-    if tool_name do
-      check_tool_capability(tool_name, method, meta, env)
-    else
-      # Non-identifier first arg (e.g. variable) — fall back to generic check
-      check_effect_capability("tool", method, meta, env)
-    end
+    own =
+      if tool_name do
+        check_tool_capability(tool_name, method, meta, env)
+      else
+        # Non-identifier first arg (e.g. variable) — fall back to generic check
+        check_effect_capability("tool", method, meta, env)
+      end
+
+    own ++ Enum.flat_map(args, &collect_effect_calls(&1, env))
   end
 
   defp collect_effect_calls(
@@ -3285,15 +3303,19 @@ defmodule Skein.Analyzer do
              subject: %AST.Identifier{name: namespace},
              field: method
            },
+           args: args,
            meta: meta
          } = _call,
          env
        ) do
-    if effect_namespace?(namespace) and effect_method?(namespace, method) do
-      check_effect_capability(namespace, method, meta, env)
-    else
-      []
-    end
+    own =
+      if effect_namespace?(namespace) and effect_method?(namespace, method) do
+        check_effect_capability(namespace, method, meta, env)
+      else
+        []
+      end
+
+    own ++ Enum.flat_map(args, &collect_effect_calls(&1, env))
   end
 
   defp collect_effect_calls(%AST.Call{args: args}, env) do
@@ -3321,6 +3343,14 @@ defmodule Skein.Analyzer do
 
   defp collect_effect_calls(%AST.BinaryOp{left: left, right: right}, env) do
     collect_effect_calls(left, env) ++ collect_effect_calls(right, env)
+  end
+
+  defp collect_effect_calls(%AST.MapLit{entries: entries}, env) do
+    Enum.flat_map(entries, fn {_key, value} -> collect_effect_calls(value, env) end)
+  end
+
+  defp collect_effect_calls(%AST.ListLit{elements: elements}, env) do
+    Enum.flat_map(elements, &collect_effect_calls(&1, env))
   end
 
   defp collect_effect_calls(%AST.UnaryOp{operand: operand}, env) do
@@ -4306,6 +4336,14 @@ defmodule Skein.Analyzer do
 
   defp collect_effect_namespaces(%AST.BinaryOp{left: left, right: right}) do
     collect_effect_namespaces(left) ++ collect_effect_namespaces(right)
+  end
+
+  defp collect_effect_namespaces(%AST.MapLit{entries: entries}) do
+    Enum.flat_map(entries, fn {_key, value} -> collect_effect_namespaces(value) end)
+  end
+
+  defp collect_effect_namespaces(%AST.ListLit{elements: elements}) do
+    Enum.flat_map(elements, &collect_effect_namespaces/1)
   end
 
   defp collect_effect_namespaces(%AST.UnaryOp{operand: operand}) do

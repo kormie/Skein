@@ -30,7 +30,11 @@ defmodule Skein.CodeGen.CoreErlang do
     "trace" => :"Elixir.Skein.Runtime.Trace",
     "process" => :"Elixir.Skein.Runtime.Process",
     "timer" => :"Elixir.Skein.Runtime.Timer",
-    "event" => :"Elixir.Skein.Runtime.EventStore"
+    "event" => :"Elixir.Skein.Runtime.EventStore",
+    # Nondeterministic generators are effects (#261): uuid.new()/instant.now()
+    # lower to capability-checked, replay-aware runtime calls.
+    "uuid" => :"Elixir.Skein.Runtime.Uuid",
+    "instant" => :"Elixir.Skein.Runtime.Instant"
   }
 
   # Scoped capability labels (spec §3.2): for these namespaces the declared

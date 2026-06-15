@@ -1,0 +1,8 @@
+-- expect: E0012
+-- #261: uuid.new() is a capability-gated effect, not ambient stdlib. Without
+-- `capability uuid` it must be a compile error.
+module NondeterminismUncapped {
+  fn make() -> Uuid {
+    uuid.new()
+  }
+}
