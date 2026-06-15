@@ -117,7 +117,7 @@ defmodule Skein.Runtime.StoreEctoTest do
     end
 
     test "returns not_found for missing id" do
-      assert {:error, "not_found"} = StoreEcto.get("ecto_users", "nonexistent", @caps)
+      assert {:error, :not_found} = StoreEcto.get("ecto_users", "nonexistent", @caps)
     end
 
     test "returns capability error when table not declared" do
@@ -136,7 +136,7 @@ defmodule Skein.Runtime.StoreEctoTest do
         StoreEcto.put("ecto_users", %{id: "u1", email: "a@test.com", name: "Alice"}, @caps)
 
       assert {:ok, "u1"} = StoreEcto.delete("ecto_users", "u1", @caps)
-      assert {:error, "not_found"} = StoreEcto.get("ecto_users", "u1", @caps)
+      assert {:error, :not_found} = StoreEcto.get("ecto_users", "u1", @caps)
     end
 
     test "deleting a non-existent id succeeds silently" do

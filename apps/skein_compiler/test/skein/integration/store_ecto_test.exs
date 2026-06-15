@@ -154,7 +154,7 @@ defmodule Skein.Integration.StoreEctoTest do
 
       # DELETE — remove a record
       {:ok, "user-001"} = StoreEcto.delete("integration_users", "user-001", caps_list)
-      assert {:error, "not_found"} = StoreEcto.get("integration_users", "user-001", caps_list)
+      assert {:error, :not_found} = StoreEcto.get("integration_users", "user-001", caps_list)
 
       # GET — remaining record still exists
       {:ok, bob} = StoreEcto.get("integration_users", "user-002", caps_list)

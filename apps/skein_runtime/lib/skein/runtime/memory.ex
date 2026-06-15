@@ -69,9 +69,11 @@ defmodule Skein.Runtime.Memory do
   @doc """
   Retrieves a value by key from the specified namespace.
 
-  Returns `{:ok, value}` or `{:error, "not_found"}`.
+  Returns `{:ok, value}` or `{:error, :not_found}`. The miss value is the atom
+  `:not_found` so it matches the spec's `Result[T, NotFound]` contract — the
+  `Err(NotFound)` pattern lowers to `{:error, :not_found}` (skein-testing#3).
   """
-  @spec get(String.t(), String.t(), [map()]) :: {:ok, any()} | {:error, String.t()}
+  @spec get(String.t(), String.t(), [map()]) :: {:ok, any()} | {:error, :not_found | String.t()}
   def get(namespace, key, capabilities)
       when is_binary(namespace) and is_binary(key) and is_list(capabilities) do
     Trace.with_span(%{kind: :memory, method: :get, namespace: namespace}, fn ->
@@ -82,7 +84,7 @@ defmodule Skein.Runtime.Memory do
 
           case :ets.lookup(@table, {namespace, scoped}) do
             [{{^namespace, ^scoped}, value}] -> {:ok, value}
-            [] -> {:error, "not_found"}
+            [] -> {:error, :not_found}
           end
 
         {:error, _} = error ->
@@ -101,7 +103,9 @@ defmodule Skein.Runtime.Memory do
       when is_binary(namespace) and is_binary(key) and is_list(capabilities) do
     case get(namespace, key, capabilities) do
       {:ok, value} -> value
-      {:error, reason} -> raise RuntimeError, reason
+      {:error, :not_found} -> raise RuntimeError, "not_found"
+      {:error, reason} when is_binary(reason) -> raise RuntimeError, reason
+      {:error, reason} -> raise RuntimeError, inspect(reason)
     end
   end
 

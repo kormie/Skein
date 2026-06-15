@@ -1254,7 +1254,7 @@ defmodule Skein.CodeGen.CoreErlangTest do
       # Store is empty — should return not_found
       Skein.Runtime.Store.clear("users")
       result = mod.find("some-id")
-      assert {:error, "not_found"} = result
+      assert {:error, :not_found} = result
     end
 
     test "store.users.get returns record when it exists" do
@@ -1361,7 +1361,35 @@ defmodule Skein.CodeGen.CoreErlangTest do
       assert {:ok, "i1"} = result
 
       # Verify the record is gone
-      assert {:error, "not_found"} = Skein.Runtime.Store.get("items", "i1", caps)
+      assert {:error, :not_found} = Skein.Runtime.Store.get("items", "i1", caps)
+    end
+  end
+
+  describe "store NotFound matching" do
+    test "Err(NotFound) arm matches a store miss; Ok(u) arm matches a hit" do
+      mod =
+        compile!("""
+        module StoreNotFound {
+          capability store.table("items")
+
+          fn lookup(id: String) -> String {
+            match store.items.get(id) {
+              Ok(u)         -> u.name
+              Err(NotFound) -> "missing"
+            }
+          }
+        }
+        """)
+
+      Skein.Runtime.Store.clear("items")
+      caps = [%{kind: "store.table", params: ["items"]}]
+
+      # A miss must route through the Err(NotFound) arm (skein-testing#3): the
+      # spec's Result[T, NotFound] contract requires {:error, :not_found}.
+      assert "missing" = mod.lookup("absent")
+
+      {:ok, _} = Skein.Runtime.Store.put("items", %{id: "i1", name: "Widget"}, caps)
+      assert "Widget" = mod.lookup("i1")
     end
   end
 
@@ -1438,7 +1466,7 @@ defmodule Skein.CodeGen.CoreErlangTest do
       # The module has "orders" capability but let's verify it works
       Skein.Runtime.Store.clear("orders")
       result = mod.find("o1")
-      assert {:error, "not_found"} = result
+      assert {:error, :not_found} = result
     end
   end
 
@@ -1897,7 +1925,7 @@ defmodule Skein.CodeGen.CoreErlangTest do
       Skein.Runtime.Memory.clear("test_get")
       mod.save("k1", "v1")
       assert {:ok, "v1"} = mod.load("k1")
-      assert {:error, "not_found"} = mod.load("missing")
+      assert {:error, :not_found} = mod.load("missing")
       Skein.Runtime.Memory.clear("test_get")
     end
   end
@@ -1926,7 +1954,7 @@ defmodule Skein.CodeGen.CoreErlangTest do
       Skein.Runtime.Memory.clear("test_del")
       mod.save("k1", "v1")
       assert {:ok, "k1"} = mod.remove("k1")
-      assert {:error, "not_found"} = mod.load("k1")
+      assert {:error, :not_found} = mod.load("k1")
       Skein.Runtime.Memory.clear("test_del")
     end
   end

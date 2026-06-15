@@ -92,7 +92,7 @@ defmodule Skein.Runtime.MemoryTest do
     end
 
     test "returns {:error, \"not_found\"} for missing keys" do
-      assert {:error, "not_found"} = Memory.get("sessions", "nonexistent", @valid_capabilities)
+      assert {:error, :not_found} = Memory.get("sessions", "nonexistent", @valid_capabilities)
     end
 
     test "rejects without capability" do
@@ -141,7 +141,7 @@ defmodule Skein.Runtime.MemoryTest do
     test "removes a stored value" do
       Memory.put("sessions", "hello", "world", @valid_capabilities)
       assert {:ok, "hello"} = Memory.delete("sessions", "hello", @valid_capabilities)
-      assert {:error, "not_found"} = Memory.get("sessions", "hello", @valid_capabilities)
+      assert {:error, :not_found} = Memory.get("sessions", "hello", @valid_capabilities)
     end
 
     test "returns {:ok, key} even if key doesn't exist" do
@@ -293,7 +293,7 @@ defmodule Skein.Runtime.MemoryTest do
       Memory.delete("sessions", "shared_key", @caps)
 
       # Instance del2's key is gone
-      assert {:error, "not_found"} = Memory.get("sessions", "shared_key", @caps)
+      assert {:error, :not_found} = Memory.get("sessions", "shared_key", @caps)
 
       # Instance del1's key is intact
       Process.put(:skein_agent_instance_id, "inst_del1")
@@ -407,10 +407,10 @@ defmodule Skein.Runtime.MemoryTest do
       Memory.clear("sessions")
 
       Process.put(:skein_agent_instance_id, "inst_c1")
-      assert {:error, "not_found"} = Memory.get("sessions", "k", @caps)
+      assert {:error, :not_found} = Memory.get("sessions", "k", @caps)
 
       Process.put(:skein_agent_instance_id, "inst_c2")
-      assert {:error, "not_found"} = Memory.get("sessions", "k", @caps)
+      assert {:error, :not_found} = Memory.get("sessions", "k", @caps)
 
       Process.delete(:skein_agent_name)
       Process.delete(:skein_agent_instance_id)

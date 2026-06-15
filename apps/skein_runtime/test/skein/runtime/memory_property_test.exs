@@ -74,7 +74,7 @@ defmodule Skein.Runtime.MemoryPropertyTest do
           ) do
       Memory.clear(ns)
       caps = caps_for(ns)
-      assert {:error, "not_found"} = Memory.get(ns, key, caps)
+      assert {:error, :not_found} = Memory.get(ns, key, caps)
     end
   end
 
@@ -87,7 +87,7 @@ defmodule Skein.Runtime.MemoryPropertyTest do
       caps = caps_for(ns)
       Memory.put(ns, key, value, caps)
       assert {:ok, ^key} = Memory.delete(ns, key, caps)
-      assert {:error, "not_found"} = Memory.get(ns, key, caps)
+      assert {:error, :not_found} = Memory.get(ns, key, caps)
       Memory.clear(ns)
     end
   end

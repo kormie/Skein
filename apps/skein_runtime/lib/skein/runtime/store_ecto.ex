@@ -56,15 +56,17 @@ defmodule Skein.Runtime.StoreEcto do
   @doc """
   Retrieves a record by its primary key.
 
-  Returns `{:ok, map}` or `{:error, reason}`.
+  Returns `{:ok, map}` or `{:error, reason}`. A miss is the atom `:not_found`
+  so it matches the spec's `Result[T, NotFound]` contract, identical to the
+  ETS-backed `Skein.Runtime.Store` (skein-testing#3).
   """
-  @spec get(String.t(), any(), [map()]) :: {:ok, map()} | {:error, String.t()}
+  @spec get(String.t(), any(), [map()]) :: {:ok, map()} | {:error, :not_found | String.t()}
   def get(table_name, id, capabilities) when is_binary(table_name) and is_list(capabilities) do
     Trace.with_span(%{kind: :store, method: :get, table: table_name}, fn ->
       with :ok <- check_store_capability(table_name, capabilities),
            {:ok, schema_mod} <- require_schema(table_name) do
         case Skein.Runtime.Repo.get(schema_mod, id) do
-          nil -> {:error, "not_found"}
+          nil -> {:error, :not_found}
           record -> {:ok, schema_to_map(record)}
         end
       end

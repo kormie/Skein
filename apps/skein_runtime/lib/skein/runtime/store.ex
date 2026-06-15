@@ -24,9 +24,11 @@ defmodule Skein.Runtime.Store do
   @doc """
   Retrieves a record by its primary key (id).
 
-  Returns `{:ok, record}` or `{:error, "not_found"}`.
+  Returns `{:ok, record}` or `{:error, :not_found}`. The miss value is the
+  atom `:not_found` so it matches the spec's `Result[T, NotFound]` contract —
+  the `Err(NotFound)` pattern lowers to `{:error, :not_found}` (skein-testing#3).
   """
-  @spec get(String.t(), any(), [map()]) :: {:ok, map()} | {:error, String.t()}
+  @spec get(String.t(), any(), [map()]) :: {:ok, map()} | {:error, :not_found | String.t()}
   def get(table_name, id, capabilities) when is_binary(table_name) and is_list(capabilities) do
     Trace.with_span(%{kind: :store, method: :get, table: table_name}, fn ->
       case check_store_capability(table_name, capabilities) do
@@ -35,7 +37,7 @@ defmodule Skein.Runtime.Store do
 
           case :ets.lookup(@table, {table_name, id}) do
             [{{^table_name, ^id}, record}] -> {:ok, record}
-            [] -> {:error, "not_found"}
+            [] -> {:error, :not_found}
           end
 
         {:error, _} = error ->
@@ -53,7 +55,7 @@ defmodule Skein.Runtime.Store do
   def get!(table_name, id, capabilities) do
     case get(table_name, id, capabilities) do
       {:ok, record} -> record
-      {:error, reason} -> raise RuntimeError, reason
+      {:error, reason} -> raise RuntimeError, error_message(reason)
     end
   end
 
@@ -94,7 +96,7 @@ defmodule Skein.Runtime.Store do
   def put!(table_name, record, capabilities) do
     case put(table_name, record, capabilities) do
       {:ok, stored} -> stored
-      {:error, reason} -> raise RuntimeError, reason
+      {:error, reason} -> raise RuntimeError, error_message(reason)
     end
   end
 
@@ -182,6 +184,12 @@ defmodule Skein.Runtime.Store do
   defp extract_id(record) when is_map(record) do
     Map.get(record, :id) || Map.get(record, "id")
   end
+
+  # The `!` forms raise; the message must be a string even though a miss is now
+  # the atom `:not_found`.
+  defp error_message(:not_found), do: "not_found"
+  defp error_message(reason) when is_binary(reason), do: reason
+  defp error_message(reason), do: inspect(reason)
 
   # Validate that every filter key names a field the table actually has.
   #

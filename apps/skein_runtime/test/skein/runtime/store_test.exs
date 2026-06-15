@@ -60,7 +60,7 @@ defmodule Skein.Runtime.StoreTest do
     end
 
     test "returns not_found for missing id" do
-      assert {:error, "not_found"} = Store.get("users", "nonexistent", @caps)
+      assert {:error, :not_found} = Store.get("users", "nonexistent", @caps)
     end
 
     test "returns capability error when table not declared" do
@@ -95,7 +95,7 @@ defmodule Skein.Runtime.StoreTest do
     test "removes an existing record" do
       {:ok, _} = Store.put("users", %{id: "u1", name: "Alice"}, @caps)
       assert {:ok, "u1"} = Store.delete("users", "u1", @caps)
-      assert {:error, "not_found"} = Store.get("users", "u1", @caps)
+      assert {:error, :not_found} = Store.get("users", "u1", @caps)
     end
 
     test "deleting a non-existent id succeeds silently" do
@@ -254,7 +254,7 @@ defmodule Skein.Runtime.StoreTest do
   describe "capability enforcement" do
     test "allows operations on declared tables" do
       assert {:ok, _} = Store.put("users", %{id: "u1"}, @caps)
-      assert {:error, "not_found"} = Store.get("users", "missing", @caps)
+      assert {:error, :not_found} = Store.get("users", "missing", @caps)
     end
 
     test "blocks operations on undeclared tables" do
@@ -274,8 +274,8 @@ defmodule Skein.Runtime.StoreTest do
       ]
 
       Store.clear("orders")
-      assert {:error, "not_found"} = Store.get("users", "u1", multi_caps)
-      assert {:error, "not_found"} = Store.get("orders", "o1", multi_caps)
+      assert {:error, :not_found} = Store.get("users", "u1", multi_caps)
+      assert {:error, :not_found} = Store.get("orders", "o1", multi_caps)
     end
   end
 
@@ -290,8 +290,8 @@ defmodule Skein.Runtime.StoreTest do
 
       Store.clear("users")
 
-      assert {:error, "not_found"} = Store.get("users", "u1", @caps)
-      assert {:error, "not_found"} = Store.get("users", "u2", @caps)
+      assert {:error, :not_found} = Store.get("users", "u1", @caps)
+      assert {:error, :not_found} = Store.get("users", "u2", @caps)
     end
   end
 end

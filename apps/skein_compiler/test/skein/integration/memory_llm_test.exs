@@ -61,7 +61,7 @@ defmodule Skein.Integration.MemoryLlmTest do
 
       # Get values
       assert {:ok, "alice"} = mod.fetch("user:1")
-      assert {:error, "not_found"} = mod.fetch("nonexistent")
+      assert {:error, :not_found} = mod.fetch("nonexistent")
 
       # List with prefix
       keys = mod.all_keys("user:")
@@ -69,7 +69,7 @@ defmodule Skein.Integration.MemoryLlmTest do
 
       # Delete
       assert {:ok, "user:1"} = mod.remove("user:1")
-      assert {:error, "not_found"} = mod.fetch("user:1")
+      assert {:error, :not_found} = mod.fetch("user:1")
 
       # List after delete
       keys = mod.all_keys("user:")
