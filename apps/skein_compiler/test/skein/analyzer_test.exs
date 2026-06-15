@@ -585,7 +585,7 @@ defmodule Skein.AnalyzerTest do
   # ------------------------------------------------------------------
 
   describe "match exhaustiveness" do
-    test "boolean match missing false arm warns" do
+    test "boolean match missing false arm is a compile error (#261)" do
       errors =
         analyze_errors("""
         module M {
@@ -598,11 +598,11 @@ defmodule Skein.AnalyzerTest do
         """)
 
       assert Enum.any?(errors, fn e ->
-               e.code == "E0021" and e.severity == :warning
+               e.code == "E0021" and e.severity == :error
              end)
     end
 
-    test "boolean match missing true arm warns" do
+    test "boolean match missing true arm is a compile error (#261)" do
       errors =
         analyze_errors("""
         module M {
@@ -615,7 +615,7 @@ defmodule Skein.AnalyzerTest do
         """)
 
       assert Enum.any?(errors, fn e ->
-               e.code == "E0021" and e.severity == :warning
+               e.code == "E0021" and e.severity == :error
              end)
     end
 
@@ -681,8 +681,87 @@ defmodule Skein.AnalyzerTest do
         """)
 
       assert Enum.any?(errors, fn e ->
-               e.code == "E0024" and e.severity == :warning and e.message =~ "Charge"
+               e.code == "E0024" and e.severity == :error and e.message =~ "Charge"
              end)
+    end
+
+    test "Result match missing the Err arm is a compile error (#261)" do
+      errors =
+        analyze_errors("""
+        module M {
+          fn f(s: String) -> Int {
+            match Int.parse(s) {
+              Ok(n) -> n
+            }
+          }
+        }
+        """)
+
+      assert Enum.any?(errors, fn e ->
+               e.code == "E0024" and e.severity == :error and e.message =~ "Err"
+             end)
+    end
+
+    test "Result match with Ok and Err(NotFound) is exhaustive (spec §8.2 shape)" do
+      assert {:ok, _} =
+               analyze("""
+               module M {
+                 capability http.in
+                 capability store.table("users")
+
+                 handler http GET "/u/:id" (req) -> {
+                   match store.users.get(req.params.id) {
+                     Ok(u)         -> respond.json(200, u)
+                     Err(NotFound) -> respond.json(404, { error: "no" })
+                   }
+                 }
+               }
+               """)
+    end
+
+    test "Option match missing the None arm is a compile error (#261)" do
+      errors =
+        analyze_errors("""
+        module M {
+          fn f(xs: List[String]) -> String {
+            match List.first(xs) {
+              Some(x) -> x
+            }
+          }
+        }
+        """)
+
+      assert Enum.any?(errors, fn e ->
+               e.code == "E0024" and e.severity == :error and e.message =~ "None"
+             end)
+    end
+
+    test "Option match with Some and None is exhaustive" do
+      assert {:ok, _} =
+               analyze("""
+               module M {
+                 fn f(xs: List[String]) -> String {
+                   match List.first(xs) {
+                     Some(x) -> x
+                     None    -> "empty"
+                   }
+                 }
+               }
+               """)
+    end
+
+    test "a wildcard makes a Result match exhaustive" do
+      assert {:ok, _} =
+               analyze("""
+               module M {
+                 fn f(s: String) -> Int {
+                   match Int.parse(s) {
+                     Ok(n) -> n
+                     _     -> 0
+                   }
+                 }
+               }
+               """)
     end
 
     test "dotted variant patterns count as variant coverage (no false E0024)" do
@@ -4217,6 +4296,82 @@ defmodule Skein.AnalyzerTest do
                """)
 
       assert Enum.any?(errors, &(&1.code == "E0020"))
+    end
+  end
+
+  describe "nondeterminism is capability-gated (#261)" do
+    test "uuid.new() requires capability uuid" do
+      assert {:error, errors} =
+               analyze("""
+               module M {
+                 fn make() -> Uuid {
+                   uuid.new()
+                 }
+               }
+               """)
+
+      assert Enum.any?(errors, &(&1.code == "E0012"))
+    end
+
+    test "instant.now() requires capability instant" do
+      assert {:error, errors} =
+               analyze("""
+               module M {
+                 fn current() -> Instant {
+                   instant.now()
+                 }
+               }
+               """)
+
+      assert Enum.any?(errors, &(&1.code == "E0012"))
+    end
+
+    test "uuid.new() / instant.now() with their capabilities compile clean" do
+      assert {:ok, _} =
+               analyze("""
+               module M {
+                 capability uuid
+                 capability instant
+
+                 fn make() -> Uuid {
+                   uuid.new()
+                 }
+
+                 fn current() -> Instant {
+                   instant.now()
+                 }
+               }
+               """)
+    end
+
+    test "a nondeterminism effect inside a record literal is capability-checked" do
+      # Regression: effects nested in a map literal (store.put({ id: uuid.new() }))
+      # must still require their capability.
+      assert {:error, errors} =
+               analyze("""
+               module M {
+                 capability store.table("users")
+
+                 fn save() -> Result[String, String] {
+                   store.users.put({ id: uuid.new() })
+                 }
+               }
+               """)
+
+      assert Enum.any?(errors, &(&1.code == "E0012"))
+    end
+
+    test "Uuid.new() / Instant.now() (the old stdlib form) no longer exist" do
+      assert {:error, errors} =
+               analyze("""
+               module M {
+                 fn make() -> Uuid {
+                   Uuid.new()
+                 }
+               }
+               """)
+
+      assert Enum.any?(errors, &(&1.code == "E0010"))
     end
   end
 

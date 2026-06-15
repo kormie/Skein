@@ -1366,6 +1366,60 @@ defmodule Skein.CodeGen.CoreErlangTest do
     end
   end
 
+  describe "nondeterminism effects (#261)" do
+    test "uuid.new() compiles and generates a valid UUID; instant.now() reads the clock" do
+      mod =
+        compile!("""
+        module Nondeterminism {
+          capability uuid
+          capability instant
+
+          fn make_id() -> Uuid {
+            uuid.new()
+          }
+
+          fn current() -> Instant {
+            instant.now()
+          }
+        }
+        """)
+
+      id = mod.make_id()
+
+      assert Regex.match?(
+               ~r/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+               id
+             )
+
+      now = mod.current()
+      assert {:ok, _, _} = DateTime.from_iso8601(now)
+    end
+
+    test "uuid.new() inside a record literal is deterministic under an override" do
+      mod =
+        compile!("""
+        module RecordId {
+          capability store.table("items")
+          capability uuid
+
+          fn save(name: String) -> Result[String, String] {
+            store.items.put({ id: uuid.new(), name: name })
+          }
+        }
+        """)
+
+      Skein.Runtime.Store.clear("items")
+
+      {stored1, stored2} =
+        Skein.Runtime.Dependencies.with_overrides([uuid: :incrementing], fn ->
+          {mod.save("a"), mod.save("b")}
+        end)
+
+      assert {:ok, %{id: "00000000-0000-4000-8000-000000000000", name: "a"}} = stored1
+      assert {:ok, %{id: "00000000-0000-4000-8000-000000000001", name: "b"}} = stored2
+    end
+  end
+
   describe "store NotFound matching" do
     test "Err(NotFound) arm matches a store miss; Ok(u) arm matches a hit" do
       mod =

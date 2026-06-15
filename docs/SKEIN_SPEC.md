@@ -354,8 +354,8 @@ match order.total {
 
 Because a guarded arm only matches conditionally, it does not count toward
 exhaustiveness: a `match` whose variant or `Bool` coverage relies on a guarded
-arm still warns (`E0021`/`E0024`/`W0004`), and at runtime a `match` where every
-arm's guard fails raises `case_clause`.
+arm is still non-exhaustive (`E0021`/`E0024`; `W0004` for value-level gaps), and
+at runtime a `match` where every arm's guard fails raises `case_clause`.
 
 ---
 
@@ -397,7 +397,7 @@ arm's guard fails raises `case_clause`.
 1. All function parameters and return types must be explicitly annotated.
 2. `let` bindings infer their type from the right-hand side.
 3. `match` arms must all return the same type.
-4. `match` on an enum must cover all variants (or include `_` wildcard).
+4. `match` on a closed type — an enum, `Bool`, `Result` (`Ok`/`Err`), or `Option` (`Some`/`None`) — must cover every case or include a `_` wildcard; a non-exhaustive match is a compile error (`E0021`/`E0024`), not a runtime crash.
 5. `!` can only be applied to `Result[T, E]` — produces `T`.
 6. `?` can only be applied to `Result[T, E]` — enclosing function must return `Result[_, E]`.
 7. `Option[T]` fields are not included in the `required` list of generated JSON schemas.
@@ -528,15 +528,16 @@ Result.err(error: E) -> Result[T, E]
 ### 5.9 Uuid
 
 ```
-Uuid.new() -> Uuid
 Uuid.parse(s: String) -> Result[Uuid, String]
 Uuid.to_string(u: Uuid) -> String
 ```
 
+> Generating a UUID is nondeterministic, so `uuid.new()` is a capability-gated
+> effect (§6.12), not a stdlib function.
+
 ### 5.10 Instant
 
 ```
-Instant.now() -> Instant
 Instant.parse(s: String) -> Result[Instant, String]
 Instant.to_string(i: Instant) -> String
 Instant.add(i: Instant, d: Duration) -> Instant
@@ -545,6 +546,9 @@ Instant.diff(a: Instant, b: Instant) -> Duration
 Instant.is_before(a: Instant, b: Instant) -> Bool
 Instant.is_after(a: Instant, b: Instant) -> Bool
 ```
+
+> Reading the current time is nondeterministic, so `instant.now()` is a
+> capability-gated effect (§6.12), not a stdlib function.
 
 ### 5.11 Duration
 
@@ -672,7 +676,9 @@ suspend(reason: String) -> ()
 There is no in-agent `resume` call. `suspend` hands control back to the
 host, and a suspended agent is resumed *from outside* by the host-side
 runtime API — `Skein.Runtime.Agent.resume(pid, next_phase)` — which
-moves the agent into the given phase.
+moves the agent into the given phase. The `resume` keyword is nonetheless
+**reserved** (§1 keyword list): it is intentionally burned for 1.0 so a future
+1.x in-agent `resume` form can claim it without a breaking keyword addition.
 
 ### 6.9 Idempotency
 
@@ -725,6 +731,27 @@ The same applies to timers: with `work`, the function runs in a
 supervised task each time the timer fires; without it, each fire records
 a named no-op span.
 
+### 6.12 Nondeterminism
+
+```
+-- Requires: capability uuid
+uuid.new() -> Uuid
+
+-- Requires: capability instant
+instant.now() -> Instant
+```
+
+Generating a UUID and reading the wall clock are the two pieces of ambient
+nondeterminism Skein controls. They are **effects, not stdlib functions**: each
+requires a capability, so a program's dependence on randomness or the clock is
+explicit, and each is **controllable** — live in production, deterministic under
+test overrides, and recorded/replayed under `Replay` so a trace that minted an
+id or timestamp reproduces exactly. (The clock capability is named `instant`,
+not `clock`; the `timer` effect (§6.11) is Skein's sleeping/scheduling clock.)
+Unlike most effects these return their value directly rather than a `Result` —
+neither can fail — so no `!`/`?` is needed. The pure operations (`Uuid.parse`,
+`Instant.add`, `Instant.diff`, …) remain ambient stdlib (§5).
+
 ---
 
 ## 7. Compiler Errors
@@ -771,10 +798,10 @@ edits generically — no per-error-code logic.
 | E0016 | Name | error | Cross-module function call (functions are module-private; expose a tool instead) |
 | E0017 | Capability | error | Duplicate scoped capability declaration (`memory.kv`, `event.log`, `process.spawn`, `timer` allow one per module or agent) |
 | E0020 | Type | error | Type mismatch (including wrong argument counts for fn, stdlib, and effect calls, and interpolation in string patterns) |
-| E0021 | Type | warning | Non-exhaustive match |
+| E0021 | Type | error | Non-exhaustive match on a closed type (`Bool`, enum, `Result`, `Option`) with no `_` wildcard |
 | E0022 | Type | error | Invalid `!` on non-Result |
 | E0023 | Type | error | Invalid `?` on non-Result (or enclosing fn doesn't return Result) |
-| E0024 | Type | error / warning | Unknown type name (error); non-exhaustive match on an enum, missing variant patterns (warning, §3.11) |
+| E0024 | Type | error | Unknown type name; or non-exhaustive match on an enum/`Result`/`Option` missing variant patterns (§3.11) |
 | E0025 | Type | error | Constraint annotation on wrong type |
 | E0026 | Type | error | Invalid named argument (unknown/duplicate name, positional after named, callee without named-argument support) |
 | E0027 | Type | error | Invalid guard expression (guards allow literals, bindings, field access, comparisons, boolean operators, and `+`/`-`/`*` arithmetic) |
@@ -817,6 +844,8 @@ module Hello {
 module UserService {
   capability http.in
   capability store.table("users")
+  capability uuid
+  capability instant
 
   type User {
     id: Uuid @primary
@@ -842,10 +871,10 @@ module UserService {
   handler http POST "/users" (req) -> {
     let data = req.json[CreateUserInput]()?
     let user = store.users.put({
-      id: Uuid.new(),
+      id: uuid.new(),
       email: data.email,
       name: data.name,
-      created_at: Instant.now()
+      created_at: instant.now()
     })!
     respond.json(201, user)
   }
@@ -859,6 +888,8 @@ module BillingWorker {
   capability queue.consume("billing.events")
   capability http.out("api.stripe.com")
   capability store.table("transactions")
+  capability uuid
+  capability instant
 
   enum BillingEvent {
     ChargeSucceeded(charge_id: String, amount: Int)
@@ -876,10 +907,10 @@ module BillingWorker {
 
   fn record_charge(charge_id: String, amount: Int) -> Result[String, StoreError] {
     store.transactions.put({
-      id: Uuid.new(),
+      id: uuid.new(),
       charge_id: charge_id,
       amount: amount,
-      created_at: Instant.now()
+      created_at: instant.now()
     })
   }
 

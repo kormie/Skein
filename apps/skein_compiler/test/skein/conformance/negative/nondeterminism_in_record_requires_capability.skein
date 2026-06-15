@@ -1,0 +1,9 @@
+-- expect: E0012
+-- #261: an effect nested inside a record literal is still capability-checked —
+-- store.put({ id: uuid.new() }) requires `capability uuid`.
+module NondeterminismInRecord {
+  capability store.table("users")
+  fn save() -> Result[String, String] {
+    store.users.put({ id: uuid.new() })
+  }
+}

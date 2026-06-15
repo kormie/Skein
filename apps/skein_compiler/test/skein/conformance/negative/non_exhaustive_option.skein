@@ -1,0 +1,9 @@
+-- expect: E0024
+-- #261: a non-exhaustive match on Option (missing None) is a compile error.
+module NonExhaustiveOption {
+  fn run(xs: List[String]) -> String {
+    match List.first(xs) {
+      Some(x) -> x
+    }
+  }
+}
