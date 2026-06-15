@@ -61,10 +61,10 @@ none). The binding keyword is **`via`** (recommended):
 capability <kind>(<params>) via &<fn or Module.fn>
 ```
 
-**Syntax decision:** `via` over `=` (reads like equality on a capability) and over `>>=`
-(rejected: `>>=` is the monad-bind operator, which violates P1's "no operator overloading /
-no monadic notation" and hurts agent-writability — a keyword is read/generated more
-reliably than a one-off glyph). *Open: confirm `via`.*
+**Syntax decision (CONFIRMED):** `via` over `=` (reads like equality on a capability) and
+over `>>=` (rejected: `>>=` is the monad-bind operator, which violates P1's "no operator
+overloading / no monadic notation" and hurts agent-writability — a keyword is read/generated
+more reliably than a one-off glyph).
 
 Stubs are ordinary named functions, naturally grouped in test helper modules (`Stubs.*`).
 Because the reference is `&named_fn`, stubs are reusable, inspectable, and themselves pure
@@ -162,7 +162,7 @@ This makes "effects are visible/controlled" structural, and it is independently 
 
 ## 10. Status of open questions
 
-- **Syntax** — *recommended:* `via` (over `=` and the rejected `>>=`). Pending final confirm.
+- **Syntax** — ✅ **confirmed: `via`** (over `=` and the rejected `>>=`).
 - **5a** — *direction:* adopt per-namespace request→response stub contracts; finish the
   `HttpRequest`/`LlmRequest`/… spec types. Tracked as workstream (iii).
 - **6a — stateful effects + `golden` + the fate of `given`** — *unsettled; needs a discovery
