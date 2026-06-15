@@ -64,9 +64,19 @@ defmodule Skein.Runtime.Handler do
                   html_body = to_string(response_body)
                   {:ok, status, html_body, :html}
 
+                # A propagated (`?`) request-validation error becomes a clean
+                # 400, not a 200 or 500 (skein-testing#25).
+                {:error, %Skein.Runtime.ValidationError{} = error} ->
+                  validation_response(error)
+
                 other ->
                   {:ok, 200, encode_json(other), :json}
               end
+            rescue
+              # A `req.json[T]!` that fails validation raises the error; map it
+              # to a 400 rather than letting it surface as a 500.
+              error in Skein.Runtime.ValidationError ->
+                validation_response(error)
             catch
               {:idempotent_skip} ->
                 {:ok, 200, encode_json("already processed"), :json}
@@ -129,6 +139,11 @@ defmodule Skein.Runtime.Handler do
     path
     |> String.split("/")
     |> Enum.reject(&(&1 == ""))
+  end
+
+  defp validation_response(%Skein.Runtime.ValidationError{} = error) do
+    body = Jason.encode!(%{error: "validation_failed", violations: error.violations})
+    {:ok, error.status, body, :json}
   end
 
   defp encode_json(value) when is_binary(value), do: Jason.encode!(value)

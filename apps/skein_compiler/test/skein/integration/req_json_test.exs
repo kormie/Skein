@@ -60,7 +60,7 @@ defmodule Skein.Integration.ReqJsonTest do
       assert parsed["name"] == "Alice"
     end
 
-    test "handler returns error for invalid JSON body" do
+    test "invalid JSON / missing required field is a clean 400, not a 500" do
       mod =
         compile_module!("""
         module ReqJsonInvalid {
@@ -78,10 +78,68 @@ defmodule Skein.Integration.ReqJsonTest do
         }
         """)
 
-      # Send invalid JSON
+      # Malformed JSON -> 400 (skein-testing#25), not a 500 leak.
       conn = call_router(mod, :post, "/users", "not json")
-      # Should get a 500 or error since we used ! (unwrap-crash)
-      assert conn.status == 500
+      assert conn.status == 400
+
+      # Missing a required field -> 400 naming the field.
+      conn_missing = call_router(mod, :post, "/users", ~s({"email":"a@b.com"}))
+      assert conn_missing.status == 400
+      assert Jason.decode!(conn_missing.resp_body)["error"] == "validation_failed"
+    end
+
+    test "enforces @one_of / @min / @max with a 400 (skein-testing#25)" do
+      mod =
+        compile_module!("""
+        module ReqJsonConstraints {
+          capability http.in
+
+          type Order {
+            status: String @one_of(["new", "paid", "shipped"])
+            qty: Int @min(1) @max(100)
+          }
+
+          handler http POST "/orders" (req) -> {
+            let o = req.json[Order]!
+            respond.json(200, { ok: true })
+          }
+        }
+        """)
+
+      assert call_router(mod, :post, "/orders", ~s({"status":"new","qty":5})).status == 200
+      assert call_router(mod, :post, "/orders", ~s({"status":"BOGUS","qty":5})).status == 400
+      assert call_router(mod, :post, "/orders", ~s({"status":"new","qty":9999})).status == 400
+    end
+
+    test "coerces Option fields to Some/None so match works (skein-testing#32)" do
+      mod =
+        compile_module!("""
+        module ReqJsonOption {
+          capability http.in
+
+          type Maybe {
+            name: String
+            note: Option[String]
+          }
+
+          handler http POST "/maybe" (req) -> {
+            let body = req.json[Maybe]!
+            match body.note {
+              Some(s) -> respond.json(200, { name: body.name, note: s, present: true })
+              None    -> respond.json(200, { name: body.name, present: false })
+            }
+          }
+        }
+        """)
+
+      present = call_router(mod, :post, "/maybe", ~s({"name":"n1","note":"hello"}))
+      assert present.status == 200
+      assert Jason.decode!(present.resp_body)["present"] == true
+      assert Jason.decode!(present.resp_body)["note"] == "hello"
+
+      absent = call_router(mod, :post, "/maybe", ~s({"name":"n2"}))
+      assert absent.status == 200
+      assert Jason.decode!(absent.resp_body)["present"] == false
     end
 
     test "handler with req.json[T] and ? propagation" do

@@ -180,7 +180,7 @@ defmodule Skein.CLI.McpTest do
       # insert_line edit at the module body's first line
       File.write!(path, """
       module Fixable {
-        fn fetch() -> String {
+        fn fetch() -> Result[String, String] {
           let r = http.get("https://example.com/data")
           r
         }

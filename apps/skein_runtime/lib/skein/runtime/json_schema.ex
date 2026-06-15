@@ -29,10 +29,23 @@ defmodule Skein.Runtime.JsonSchema do
   end
 
   def atomize(%{} = value, %{"type" => "object", "properties" => properties}) do
-    Map.new(value, fn {key, sub_value} ->
-      case Map.fetch(properties, key) do
-        {:ok, sub_schema} -> {atom_key(key), atomize(sub_value, sub_schema)}
-        :error -> {key, sub_value}
+    # Atomize the present, schema-declared keys (coercing Option fields to
+    # Some(v)), pass extra wire keys through unchanged, then inject None for
+    # any absent Option-declared field so `match body.f { Some(s) -> ; None }`
+    # never hits a missing atom key (skein-testing#32).
+    present =
+      Map.new(value, fn {key, sub_value} ->
+        case Map.fetch(properties, key) do
+          {:ok, sub_schema} -> {atom_key(key), coerce_field(sub_value, sub_schema)}
+          :error -> {key, sub_value}
+        end
+      end)
+
+    Enum.reduce(properties, present, fn {field, sub_schema}, acc ->
+      if optional?(sub_schema) and not Map.has_key?(value, field) do
+        Map.put(acc, atom_key(field), :none)
+      else
+        acc
       end
     end)
   end
@@ -48,6 +61,19 @@ defmodule Skein.Runtime.JsonSchema do
   end
 
   def atomize(value, _schema), do: value
+
+  # A present field value: a declared Option field is wrapped in Some(v) (the
+  # tuple {:some, _} the codegen matches), everything else recurses normally.
+  defp coerce_field(value, sub_schema) do
+    if optional?(sub_schema) do
+      {:some, atomize(value, sub_schema)}
+    else
+      atomize(value, sub_schema)
+    end
+  end
+
+  defp optional?(%{"x-skein-optional" => true}), do: true
+  defp optional?(_), do: false
 
   # A field name is already an atom only when it survived a previous pass;
   # string keys from the wire are interned against the closed schema set.

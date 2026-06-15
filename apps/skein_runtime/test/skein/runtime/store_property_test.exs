@@ -49,7 +49,7 @@ defmodule Skein.Runtime.StorePropertyTest do
       Store.clear("prop_test")
       {:ok, _} = Store.put("prop_test", record, @caps)
       {:ok, _} = Store.delete("prop_test", record.id, @caps)
-      assert {:error, "not_found"} = Store.get("prop_test", record.id, @caps)
+      assert {:error, :not_found} = Store.get("prop_test", record.id, @caps)
     end
   end
 

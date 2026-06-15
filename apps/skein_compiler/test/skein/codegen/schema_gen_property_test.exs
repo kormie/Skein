@@ -106,10 +106,12 @@ defmodule Skein.CodeGen.SchemaGenPropertyTest do
     end
   end
 
-  property "Option is transparent: schema matches the inner type's schema" do
+  property "Option keeps the inner type's schema plus the optional marker" do
+    # The inner type still drives JSON-Schema validation; the marker tells the
+    # decode boundary to coerce the field to Some/None (skein-testing#32).
     check all(inner <- type_gen()) do
       assert SchemaGen.type_to_schema(type_ref("Option", [inner])) ==
-               SchemaGen.type_to_schema(inner)
+               Map.put(SchemaGen.type_to_schema(inner), "x-skein-optional", true)
     end
   end
 

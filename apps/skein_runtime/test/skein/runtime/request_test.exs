@@ -2,6 +2,7 @@ defmodule Skein.Runtime.RequestTest do
   use ExUnit.Case, async: true
 
   alias Skein.Runtime.Request
+  alias Skein.Runtime.ValidationError
 
   @user_schema %{
     "type" => "object",
@@ -27,32 +28,79 @@ defmodule Skein.Runtime.RequestTest do
       assert parsed.name == "Alice"
     end
 
-    test "returns error for invalid JSON" do
+    test "returns a ValidationError for invalid JSON" do
       req = %{body: "not json at all"}
 
-      assert {:error, reason} = Request.json(req, @user_schema)
-      assert reason =~ "Invalid JSON"
+      assert {:error, %ValidationError{} = error} = Request.json(req, @user_schema)
+      assert error.message =~ "JSON"
     end
 
-    test "returns error for empty body" do
+    test "returns a ValidationError for empty body" do
       req = %{body: ""}
 
-      assert {:error, reason} = Request.json(req, @user_schema)
-      assert reason =~ "Invalid JSON"
+      assert {:error, %ValidationError{} = error} = Request.json(req, @user_schema)
+      assert error.message =~ "JSON"
     end
 
-    test "returns error when required field is missing" do
+    test "returns a ValidationError naming the missing required field" do
       req = %{body: ~s({"email":"test@example.com"})}
 
-      assert {:error, reason} = Request.json(req, @user_schema)
-      assert reason =~ "name"
+      assert {:error, %ValidationError{violations: violations}} = Request.json(req, @user_schema)
+      assert Enum.any?(violations, &(&1 =~ "name"))
     end
 
-    test "returns error when field has wrong type" do
+    test "returns a ValidationError when a field has the wrong type" do
       req = %{body: ~s({"email":"test@example.com","name":123})}
 
-      assert {:error, reason} = Request.json(req, @user_schema)
-      assert reason =~ "name"
+      assert {:error, %ValidationError{violations: violations}} = Request.json(req, @user_schema)
+      assert Enum.any?(violations, &(&1 =~ "name"))
+    end
+
+    test "enforces @one_of / @min / @max constraints (skein-testing#25)" do
+      schema = %{
+        "type" => "object",
+        "properties" => %{
+          "status" => %{"type" => "string", "enum" => ["new", "paid", "shipped"]},
+          "qty" => %{"type" => "integer", "minimum" => 1, "maximum" => 100}
+        },
+        "required" => ["status", "qty"]
+      }
+
+      assert {:ok, _} = Request.json(%{body: ~s({"status":"new","qty":5})}, schema)
+
+      assert {:error, %ValidationError{violations: v1}} =
+               Request.json(%{body: ~s({"status":"BOGUS","qty":5})}, schema)
+
+      assert Enum.any?(v1, &(&1 =~ "status"))
+
+      assert {:error, %ValidationError{violations: v2}} =
+               Request.json(%{body: ~s({"status":"new","qty":9999})}, schema)
+
+      assert Enum.any?(v2, &(&1 =~ "qty"))
+
+      assert {:error, %ValidationError{violations: v3}} =
+               Request.json(%{body: ~s({"status":"new","qty":0})}, schema)
+
+      assert Enum.any?(v3, &(&1 =~ "qty"))
+    end
+
+    test "coerces Option fields to Some/None (skein-testing#32)" do
+      schema = %{
+        "type" => "object",
+        "properties" => %{
+          "name" => %{"type" => "string"},
+          "note" => %{"type" => "string", "x-skein-optional" => true}
+        },
+        "required" => ["name"]
+      }
+
+      # Present optional value -> Some(v)
+      assert {:ok, present} = Request.json(%{body: ~s({"name":"n1","note":"hello"})}, schema)
+      assert present.note == {:some, "hello"}
+
+      # Absent optional field -> None
+      assert {:ok, absent} = Request.json(%{body: ~s({"name":"n2"})}, schema)
+      assert absent.note == :none
     end
 
     test "accepts object without required list (all fields optional)" do

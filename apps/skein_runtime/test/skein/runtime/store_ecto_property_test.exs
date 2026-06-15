@@ -94,7 +94,7 @@ defmodule Skein.Runtime.StoreEctoPropertyTest do
       StoreEcto.clear("ecto_prop_test")
       {:ok, _} = StoreEcto.put("ecto_prop_test", record, @caps)
       {:ok, _} = StoreEcto.delete("ecto_prop_test", record.id, @caps)
-      assert {:error, "not_found"} = StoreEcto.get("ecto_prop_test", record.id, @caps)
+      assert {:error, :not_found} = StoreEcto.get("ecto_prop_test", record.id, @caps)
     end
   end
 

@@ -119,7 +119,7 @@ defmodule Skein.Runtime.UnifiedEventsTest do
       Memory.put(@namespace, "keep", "this", @caps)
       Memory.delete(@namespace, "temp", @caps)
 
-      assert {:error, "not_found"} = Memory.get(@namespace, "temp", @caps)
+      assert {:error, :not_found} = Memory.get(@namespace, "temp", @caps)
       assert {:ok, "this"} = Memory.get(@namespace, "keep", @caps)
 
       rebuilt = Memory.rebuild_from_events(@namespace)

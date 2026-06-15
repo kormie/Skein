@@ -129,7 +129,7 @@ defmodule Skein.Integration.ToolTest do
         module ToolCaller {
           capability tool.use(Greet)
 
-          fn invoke(name: String) -> String {
+          fn invoke(name: String) -> Result[String, String] {
             tool.call(Greet, name)
           }
         }
@@ -144,7 +144,7 @@ defmodule Skein.Integration.ToolTest do
         module ToolCaller2 {
           capability tool.use(Missing)
 
-          fn invoke() -> String {
+          fn invoke() -> Result[String, String] {
             tool.call(Missing, "data")
           }
         }
@@ -166,7 +166,7 @@ defmodule Skein.Integration.ToolTest do
         module ToolCalcBind {
           capability tool.use(Calc)
 
-          fn double(n: Int) -> String {
+          fn double(n: Int) -> Result[String, String] {
             let result = tool.call(Calc, n)
             result
           }
@@ -191,7 +191,7 @@ defmodule Skein.Integration.ToolTest do
         module ToolLister {
           capability tool.use(ToolA)
 
-          fn get_tools() -> String {
+          fn get_tools() -> Result[List[String], String] {
             tool.list()
           }
         }
@@ -212,7 +212,7 @@ defmodule Skein.Integration.ToolTest do
         module ToolSchemaGetter {
           capability tool.use(SchemaTool)
 
-          fn get_schema() -> String {
+          fn get_schema() -> Result[String, String] {
             tool.schema(SchemaTool)
           }
         }
@@ -235,7 +235,7 @@ defmodule Skein.Integration.ToolTest do
         module ToolTraced {
           capability tool.use(TracedTool)
 
-          fn invoke() -> String {
+          fn invoke() -> Result[String, String] {
             tool.call(TracedTool, "input")
           }
         }
@@ -576,7 +576,7 @@ defmodule Skein.Integration.ToolTest do
         module StrictToolCaller {
           capability tool.use(Strict.Echo)
 
-          fn bad_call() -> String {
+          fn bad_call() -> Result[String, String] {
             tool.call(Strict.Echo, { message: 42 })
           }
         }
@@ -606,7 +606,7 @@ defmodule Skein.Integration.ToolTest do
         module FailingToolCaller {
           capability tool.use(Failing.Always)
 
-          fn call_it() -> String {
+          fn call_it() -> Result[String, String] {
             tool.call(Failing.Always, { reason: "nope" })
           }
         }
@@ -772,7 +772,7 @@ defmodule Skein.Integration.ToolTest do
         module ToolCallerIdent {
           capability tool.use(Greet)
 
-          fn invoke(name: String) -> String {
+          fn invoke(name: String) -> Result[String, String] {
             tool.call(Greet, name)
           }
         }
@@ -791,7 +791,7 @@ defmodule Skein.Integration.ToolTest do
         module DottedToolCaller {
           capability tool.use(Stripe.Refund)
 
-          fn refund(data: String) -> String {
+          fn refund(data: String) -> Result[String, String] {
             tool.call(Stripe.Refund, data)
           }
         }
@@ -809,7 +809,7 @@ defmodule Skein.Integration.ToolTest do
         module SchemaToolIdent {
           capability tool.use(SchemaTool)
 
-          fn get_schema() -> String {
+          fn get_schema() -> Result[String, String] {
             tool.schema(SchemaTool)
           }
         }
@@ -835,7 +835,7 @@ defmodule Skein.Integration.ToolTest do
             implement { "computed" }
           }
 
-          fn invoke(x: String) -> String {
+          fn invoke(x: String) -> Result[String, String] {
             tool.call(HelperTool, x)
           }
 
@@ -863,7 +863,7 @@ defmodule Skein.Integration.ToolTest do
         module TracedIdentService {
           capability tool.use(TracedIdent)
 
-          fn invoke() -> String {
+          fn invoke() -> Result[String, String] {
             tool.call(TracedIdent, "input")
           }
         }

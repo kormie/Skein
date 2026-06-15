@@ -34,19 +34,19 @@ defmodule Skein.Integration.MemoryLlmTest do
         module MemoryService {
           capability memory.kv("cache")
 
-          fn store(key: String, value: String) -> String {
+          fn store(key: String, value: String) -> Result[String, String] {
             memory.put(key, value)
           }
 
-          fn fetch(key: String) -> String {
+          fn fetch(key: String) -> Result[String, String] {
             memory.get(key)
           }
 
-          fn remove(key: String) -> String {
+          fn remove(key: String) -> Result[String, String] {
             memory.delete(key)
           }
 
-          fn all_keys(prefix: String) -> String {
+          fn all_keys(prefix: String) -> List[String] {
             memory.list(prefix)
           }
         }
@@ -61,7 +61,7 @@ defmodule Skein.Integration.MemoryLlmTest do
 
       # Get values
       assert {:ok, "alice"} = mod.fetch("user:1")
-      assert {:error, "not_found"} = mod.fetch("nonexistent")
+      assert {:error, :not_found} = mod.fetch("nonexistent")
 
       # List with prefix
       keys = mod.all_keys("user:")
@@ -69,7 +69,7 @@ defmodule Skein.Integration.MemoryLlmTest do
 
       # Delete
       assert {:ok, "user:1"} = mod.remove("user:1")
-      assert {:error, "not_found"} = mod.fetch("user:1")
+      assert {:error, :not_found} = mod.fetch("user:1")
 
       # List after delete
       keys = mod.all_keys("user:")
@@ -90,7 +90,7 @@ defmodule Skein.Integration.MemoryLlmTest do
         module AiChat {
           capability model("anthropic", "claude-sonnet-4-5")
 
-          fn ask(question: String) -> String {
+          fn ask(question: String) -> Result[String, String] {
             llm.chat("claude-sonnet-4-5", "You are a helpful assistant.", question)
           }
         }
@@ -106,7 +106,7 @@ defmodule Skein.Integration.MemoryLlmTest do
         module AiJson {
           capability model("anthropic", "claude-sonnet-4-5")
 
-          fn decide(ticket: String) -> String {
+          fn decide(ticket: String) -> Result[String, String] {
             llm.json("claude-sonnet-4-5", "Decide if this warrants a refund.", ticket)
           }
         }
@@ -132,15 +132,15 @@ defmodule Skein.Integration.MemoryLlmTest do
           capability memory.kv("decisions")
           capability model("anthropic", "claude-sonnet-4-5")
 
-          fn analyze(ticket: String) -> String {
+          fn analyze(ticket: String) -> Result[String, String] {
             llm.chat("claude-sonnet-4-5", "Analyze this ticket.", ticket)
           }
 
-          fn save_result(key: String, value: String) -> String {
+          fn save_result(key: String, value: String) -> Result[String, String] {
             memory.put(key, value)
           }
 
-          fn get_result(key: String) -> String {
+          fn get_result(key: String) -> Result[String, String] {
             memory.get(key)
           }
         }
@@ -174,11 +174,11 @@ defmodule Skein.Integration.MemoryLlmTest do
           capability memory.kv("traced")
           capability model("anthropic", "claude-sonnet-4-5")
 
-          fn store(key: String, value: String) -> String {
+          fn store(key: String, value: String) -> Result[String, String] {
             memory.put(key, value)
           }
 
-          fn ask(question: String) -> String {
+          fn ask(question: String) -> Result[String, String] {
             llm.chat("claude-sonnet-4-5", "system", question)
           }
         }
@@ -228,7 +228,7 @@ defmodule Skein.Integration.MemoryLlmTest do
 
           capability model("anthropic", "claude-sonnet-4-5")
 
-          fn decide(ticket: String) -> String {
+          fn decide(ticket: String) -> Result[RefundDecision, String] {
             llm.json[RefundDecision]("claude-sonnet-4-5", "Decide if this warrants a refund.", ticket)
           }
         }
@@ -342,7 +342,7 @@ defmodule Skein.Integration.MemoryLlmTest do
         module AiUntyped {
           capability model("anthropic", "claude-sonnet-4-5")
 
-          fn decide(ticket: String) -> String {
+          fn decide(ticket: String) -> Result[String, String] {
             llm.json("claude-sonnet-4-5", "Decide.", ticket)
           }
         }
@@ -361,7 +361,7 @@ defmodule Skein.Integration.MemoryLlmTest do
     test "memory calls without memory.kv are rejected at compile time" do
       source = """
       module NoCap {
-        fn save(key: String, value: String) -> String {
+        fn save(key: String, value: String) -> Result[String, String] {
           memory.put(key, value)
         }
       }
@@ -376,7 +376,7 @@ defmodule Skein.Integration.MemoryLlmTest do
     test "llm calls without model capability are rejected at compile time" do
       source = """
       module NoCap {
-        fn ask(data: String) -> String {
+        fn ask(data: String) -> Result[String, String] {
           llm.chat("claude-sonnet-4-5", "system", data)
         }
       }
@@ -391,7 +391,7 @@ defmodule Skein.Integration.MemoryLlmTest do
     test "llm.stream calls without model capability are rejected at compile time" do
       source = """
       module NoCapStream {
-        fn stream_it(data: String) -> String {
+        fn stream_it(data: String) -> Result[String, String] {
           llm.stream("claude-sonnet-4-5", "system", data)
         }
       }
@@ -417,7 +417,7 @@ defmodule Skein.Integration.MemoryLlmTest do
         module StreamIntegration {
           capability model("anthropic", "claude-sonnet-4-5")
 
-          fn stream_it(data: String) -> String {
+          fn stream_it(data: String) -> Result[String, String] {
             llm.stream("claude-sonnet-4-5", "You are a helpful assistant.", data)
           }
         }
@@ -442,7 +442,7 @@ defmodule Skein.Integration.MemoryLlmTest do
             chunk
           }
 
-          fn stream_it(data: String) -> String {
+          fn stream_it(data: String) -> Result[String, String] {
             llm.stream("claude-sonnet-4-5", "system", data, &record)
           }
         }
@@ -469,7 +469,7 @@ defmodule Skein.Integration.MemoryLlmTest do
             chunk
           }
 
-          fn stream_it(data: String) -> String {
+          fn stream_it(data: String) -> Result[String, String] {
             llm.stream("claude-sonnet-4-5", "system", data, on_chunk: &record)
           }
         }
@@ -486,11 +486,11 @@ defmodule Skein.Integration.MemoryLlmTest do
         module StreamCaps {
           capability model("anthropic", "claude-sonnet-4-5")
 
-          fn ask(data: String) -> String {
+          fn ask(data: String) -> Result[String, String] {
             llm.chat("claude-sonnet-4-5", "system", data)
           }
 
-          fn stream_it(data: String) -> String {
+          fn stream_it(data: String) -> Result[String, String] {
             llm.stream("claude-sonnet-4-5", "system", data)
           }
         }
@@ -518,7 +518,7 @@ defmodule Skein.Integration.MemoryLlmTest do
         module EmbedIntegration {
           capability model("anthropic", "text-embedding-3-small")
 
-          fn get_embedding(text: String) -> String {
+          fn get_embedding(text: String) -> Result[List[Float], String] {
             llm.embed("text-embedding-3-small", text)
           }
         }
@@ -537,11 +537,11 @@ defmodule Skein.Integration.MemoryLlmTest do
         module EmbedCaps {
           capability model("anthropic", "text-embedding-3-small")
 
-          fn ask(data: String) -> String {
+          fn ask(data: String) -> Result[String, String] {
             llm.chat("text-embedding-3-small", "system", data)
           }
 
-          fn embed_it(text: String) -> String {
+          fn embed_it(text: String) -> Result[List[Float], String] {
             llm.embed("text-embedding-3-small", text)
           }
         }
@@ -555,7 +555,7 @@ defmodule Skein.Integration.MemoryLlmTest do
     test "llm.embed without model capability is rejected at compile time" do
       source = """
       module NoCapEmbed {
-        fn embed_it(text: String) -> String {
+        fn embed_it(text: String) -> Result[List[Float], String] {
           llm.embed("text-embedding-3-small", text)
         }
       }

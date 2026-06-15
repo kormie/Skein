@@ -79,7 +79,8 @@ defmodule Skein.AnalyzerPropertyTest do
       source = """
       module TestMod {
         fn fetch(#{params}) -> String {
-          http.#{method}(#{args})
+          let _result = http.#{method}(#{args})
+          "ok"
         }
       }
       """
@@ -116,7 +117,8 @@ defmodule Skein.AnalyzerPropertyTest do
         capability http.out("#{host}")
 
         fn fetch(#{params}) -> String {
-          http.#{method}(#{args})
+          let _result = http.#{method}(#{args})
+          "ok"
         }
       }
       """
@@ -145,7 +147,8 @@ defmodule Skein.AnalyzerPropertyTest do
       source = """
       module TestMod {
         fn fetch(#{params}) -> String {
-          http.#{method}(#{args})
+          let _result = http.#{method}(#{args})
+          "ok"
         }
       }
       """
@@ -172,7 +175,8 @@ defmodule Skein.AnalyzerPropertyTest do
       source = """
       module TestMod {
         fn fetch(#{params}) -> String {
-          http.#{method}(#{args})
+          let _result = http.#{method}(#{args})
+          "ok"
         }
       }
       """
@@ -249,7 +253,8 @@ defmodule Skein.AnalyzerPropertyTest do
       source = """
       module TestMod {
         fn do_tool(#{params}) -> String {
-          tool.#{method}(#{args})
+          let _result = tool.#{method}(#{args})
+          "ok"
         }
       }
       """
@@ -274,7 +279,8 @@ defmodule Skein.AnalyzerPropertyTest do
         capability tool.use("#{tool_name}")
 
         fn do_tool(#{params}) -> String {
-          tool.#{method}(#{args})
+          let _result = tool.#{method}(#{args})
+          "ok"
         }
       }
       """
@@ -291,7 +297,8 @@ defmodule Skein.AnalyzerPropertyTest do
       source = """
       module TestMod {
         fn do_tool(#{params}) -> String {
-          tool.#{method}(#{args})
+          let _result = tool.#{method}(#{args})
+          "ok"
         }
       }
       """
@@ -332,7 +339,8 @@ defmodule Skein.AnalyzerPropertyTest do
         capability tool.use(#{tool_name})
 
         fn do_tool(#{fn_params}) -> String {
-          tool.#{method}(#{args})
+          let _result = tool.#{method}(#{args})
+          "ok"
         }
       }
       """
@@ -359,7 +367,8 @@ defmodule Skein.AnalyzerPropertyTest do
         capability tool.use(#{declared})
 
         fn do_tool(#{fn_params}) -> String {
-          tool.#{method}(#{args})
+          let _result = tool.#{method}(#{args})
+          "ok"
         }
       }
       """

@@ -77,8 +77,8 @@ defmodule Skein.Runtime.RequestPropertyTest do
           ) do
       req = %{body: bad_body}
       schema = %{"type" => "object", "properties" => %{}, "required" => []}
-      assert {:error, reason} = Request.json(req, schema)
-      assert reason =~ "Invalid JSON"
+      assert {:error, %Skein.Runtime.ValidationError{} = error} = Request.json(req, schema)
+      assert error.message =~ "JSON"
     end
   end
 
@@ -94,8 +94,8 @@ defmodule Skein.Runtime.RequestPropertyTest do
     check all(obj <- StreamData.fixed_map(%{"other" => valid_json_string()})) do
       body = Jason.encode!(obj)
       req = %{body: body}
-      assert {:error, reason} = Request.json(req, schema)
-      assert reason =~ "required_field"
+      assert {:error, %Skein.Runtime.ValidationError{} = error} = Request.json(req, schema)
+      assert error.message =~ "required_field"
     end
   end
 
@@ -111,8 +111,8 @@ defmodule Skein.Runtime.RequestPropertyTest do
     check all(bad_value <- valid_json_string()) do
       body = Jason.encode!(%{"count" => bad_value})
       req = %{body: body}
-      assert {:error, reason} = Request.json(req, schema)
-      assert reason =~ "count"
+      assert {:error, %Skein.Runtime.ValidationError{} = error} = Request.json(req, schema)
+      assert error.message =~ "count"
     end
   end
 

@@ -6,7 +6,23 @@ defmodule Skein.Runtime.Http do
   Every call is:
   1. Checked against the module's declared capabilities
   2. Traced with timing, metadata, and outcome
-  3. Returns `{:ok, body}` or `{:error, reason}`
+  3. Returns `{:ok, %HttpResponse}` or `{:error, <HttpError>}`
+
+  ## Result shape (spec §6.1)
+
+  `http.<verb>` returns `Result[HttpResponse, HttpError]`:
+
+  - **2xx success** (`{:ok, %{status, body, headers}}`) — `status` is the
+    integer code, `headers` is a `Map[String, String]`, and `body` is the
+    JSON-decoded value when the response parses as a JSON object/array,
+    otherwise the raw body string. Wire keys inside `body` stay strings (they
+    are arbitrary data, never interned as atoms).
+  - **Non-2xx** (`{:error, {:status, code, body}}`) — the spec `HttpError`
+    `Status(code, body)` variant, which the caller can `match` on to react to
+    upstream 4xx/5xx instead of getting an opaque raise (skein-testing#22).
+  - **Transport failure** (`{:error, error}`) — the request never produced a
+    response. `error` is `:timeout` (lowered `Timeout`) or `:connection_failed`
+    (lowered `ConnectionFailed`).
 
   This module is called by compiled Skein code — the codegen emits calls
   like `Skein.Runtime.Http.get(url, capabilities)`.
@@ -19,9 +35,9 @@ defmodule Skein.Runtime.Http do
   @doc """
   Performs an HTTP GET request.
 
-  Returns `{:ok, body}` or `{:error, reason}`.
+  Returns `{:ok, %{status, body, headers}}` or `{:error, <HttpError>}`.
   """
-  @spec get(String.t(), [map()]) :: {:ok, String.t()} | {:error, String.t()}
+  @spec get(String.t(), [map()]) :: {:ok, map()} | {:error, term()}
   def get(url, capabilities) when is_binary(url) and is_list(capabilities) do
     execute(:get, url, nil, capabilities)
   end
@@ -33,9 +49,9 @@ defmodule Skein.Runtime.Http do
   string bodies pass through unchanged. Skein map literals compile to
   Elixir maps, so `http.post(url, { a: 1 })` lands here as a map.
 
-  Returns `{:ok, body}` or `{:error, reason}`.
+  Returns `{:ok, %{status, body, headers}}` or `{:error, <HttpError>}`.
   """
-  @spec post(String.t(), String.t() | map(), [map()]) :: {:ok, String.t()} | {:error, String.t()}
+  @spec post(String.t(), String.t() | map(), [map()]) :: {:ok, map()} | {:error, term()}
   def post(url, body, capabilities)
       when is_binary(url) and is_binary(body) and is_list(capabilities) do
     execute(:post, url, body, capabilities)
@@ -51,9 +67,9 @@ defmodule Skein.Runtime.Http do
 
   Accepts string or map bodies like `post/3`.
 
-  Returns `{:ok, body}` or `{:error, reason}`.
+  Returns `{:ok, %{status, body, headers}}` or `{:error, <HttpError>}`.
   """
-  @spec put(String.t(), String.t() | map(), [map()]) :: {:ok, String.t()} | {:error, String.t()}
+  @spec put(String.t(), String.t() | map(), [map()]) :: {:ok, map()} | {:error, term()}
   def put(url, body, capabilities)
       when is_binary(url) and is_binary(body) and is_list(capabilities) do
     execute(:put, url, body, capabilities)
@@ -69,9 +85,9 @@ defmodule Skein.Runtime.Http do
 
   Accepts string or map bodies like `post/3`.
 
-  Returns `{:ok, body}` or `{:error, reason}`.
+  Returns `{:ok, %{status, body, headers}}` or `{:error, <HttpError>}`.
   """
-  @spec patch(String.t(), String.t() | map(), [map()]) :: {:ok, String.t()} | {:error, String.t()}
+  @spec patch(String.t(), String.t() | map(), [map()]) :: {:ok, map()} | {:error, term()}
   def patch(url, body, capabilities)
       when is_binary(url) and is_binary(body) and is_list(capabilities) do
     execute(:patch, url, body, capabilities)
@@ -85,9 +101,9 @@ defmodule Skein.Runtime.Http do
   @doc """
   Performs an HTTP DELETE request.
 
-  Returns `{:ok, body}` or `{:error, reason}`.
+  Returns `{:ok, %{status, body, headers}}` or `{:error, <HttpError>}`.
   """
-  @spec delete(String.t(), [map()]) :: {:ok, String.t()} | {:error, String.t()}
+  @spec delete(String.t(), [map()]) :: {:ok, map()} | {:error, term()}
   def delete(url, capabilities) when is_binary(url) and is_list(capabilities) do
     execute(:delete, url, nil, capabilities)
   end
@@ -135,28 +151,26 @@ defmodule Skein.Runtime.Http do
     end
   end
 
-  defp recorded_result(%{"status" => status, "response_body" => body}) do
-    body = body || ""
-
-    cond do
-      is_integer(status) and status >= 200 and status < 300 -> {:ok, body}
-      is_integer(status) -> {:error, "HTTP #{status}: #{body}"}
-      true -> {:ok, body}
-    end
+  # Replayed responses reconstruct the spec Result from the recorded
+  # status/body/headers: 2xx -> {:ok, HttpResponse}, non-2xx -> Err(Status).
+  defp recorded_result(%{"status" => status, "response_body" => body} = recorded) do
+    headers = Map.get(recorded, "response_headers", %{})
+    classify_response(status, body || "", headers)
   end
 
   defp do_request(method, url, body) do
     ensure_inets_started()
     char_url = String.to_charlist(url)
+    headers = [default_user_agent_header()]
 
     request =
       case {method, body} do
         {m, nil} when m in [:get, :delete] ->
-          {char_url, []}
+          {char_url, headers}
 
         {_m, body} when is_binary(body) ->
           content_type = ~c"application/json"
-          {char_url, [], content_type, String.to_charlist(body)}
+          {char_url, headers, content_type, String.to_charlist(body)}
       end
 
     http_method =
@@ -171,20 +185,69 @@ defmodule Skein.Runtime.Http do
            [{:timeout, 30_000}, {:connect_timeout, 10_000}],
            []
          ) do
-      {:ok, {{_version, status, _reason}, _headers, response_body}} ->
+      {:ok, {{_version, status, _reason}, resp_headers, response_body}} ->
         body_string = List.to_string(response_body)
-        # Status and body are recorded on the span so the trace is replayable.
-        extra = %{status: status, response_body: body_string}
-
-        if status >= 200 and status < 300 do
-          {{:ok, body_string}, extra}
-        else
-          {{:error, "HTTP #{status}: #{body_string}"}, extra}
-        end
+        headers_map = normalize_headers(resp_headers)
+        # Status/body/headers are recorded on the span so the trace replays.
+        extra = %{status: status, response_body: body_string, response_headers: headers_map}
+        {classify_response(status, body_string, headers_map), extra}
 
       {:error, reason} ->
-        {{:error, "HTTP request failed: #{inspect(reason)}"}, %{}}
+        {{:error, classify_transport_error(reason)}, %{}}
     end
+  end
+
+  # Map a completed response to the spec Result[HttpResponse, HttpError]:
+  # a 2xx is {:ok, HttpResponse}; any other status is Err(Status(code, body))
+  # (the spec §6.1 HttpError.Status variant), which the caller can match on.
+  defp classify_response(status, body_string, headers) when status >= 200 and status < 300 do
+    {:ok, build_response(status, body_string, headers)}
+  end
+
+  defp classify_response(status, body_string, _headers) do
+    {:error, {:status, status, body_string}}
+  end
+
+  # Build the spec HttpResponse: status (Int), body (decoded JSON when the
+  # payload is a JSON object/array, else the raw string), headers (Map).
+  defp build_response(status, body_string, headers) do
+    %{status: status, body: decode_body(body_string), headers: normalize_headers(headers)}
+  end
+
+  defp decode_body(body) when is_binary(body) do
+    case Jason.decode(body) do
+      {:ok, decoded} when is_map(decoded) or is_list(decoded) -> decoded
+      _ -> body
+    end
+  end
+
+  defp decode_body(body), do: body
+
+  # httpc returns headers as a list of {charlist, charlist}; map to a
+  # String => String map. Already-normalized maps pass through (replay).
+  defp normalize_headers(headers) when is_map(headers), do: headers
+
+  defp normalize_headers(headers) when is_list(headers) do
+    Map.new(headers, fn {k, v} -> {to_string(k), to_string(v)} end)
+  end
+
+  defp normalize_headers(_), do: %{}
+
+  # Map a transport-level failure to an HttpError variant atom. We keep the
+  # nullary variants from the spec (Timeout / ConnectionFailed); Status is an
+  # {:ok, response} concern, not a transport error.
+  defp classify_transport_error(:timeout), do: :timeout
+  defp classify_transport_error({:failed_connect, _}), do: :connection_failed
+  defp classify_transport_error(_), do: :connection_failed
+
+  defp default_user_agent_header do
+    version =
+      case :application.get_key(:skein_runtime, :vsn) do
+        {:ok, vsn} -> List.to_string(vsn)
+        _ -> "dev"
+      end
+
+    {~c"User-Agent", String.to_charlist("skein/#{version}")}
   end
 
   defp ensure_inets_started do

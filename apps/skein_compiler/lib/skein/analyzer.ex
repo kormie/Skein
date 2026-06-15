@@ -113,6 +113,47 @@ defmodule Skein.Analyzer do
   # Store operations: store.<table>.<method>(...)
   @store_methods ["get", "get!", "put", "put!", "delete", "query"]
 
+  # Declared return types per effect method (spec §6). Effects return
+  # `Result[T, E]`, so a missing `!`/`?` (or `match`) is a *compile* error
+  # rather than a runtime crash (skein-testing#1, #260). The error component is
+  # kept `:unknown` — it only ever binds in an `Err(e)` arm — while the success
+  # component carries the spec's type where doing so is cheap and does not break
+  # legitimate field access (e.g. an HTTP response body stays `:unknown`).
+  # `llm.json[T]` is resolved from its type parameter, not this table.
+  @effect_return_types %{
+    {"http", "get"} => {:result, :unknown, :unknown},
+    {"http", "post"} => {:result, :unknown, :unknown},
+    {"http", "put"} => {:result, :unknown, :unknown},
+    {"http", "patch"} => {:result, :unknown, :unknown},
+    {"http", "delete"} => {:result, :unknown, :unknown},
+    {"memory", "put"} => {:result, :unknown, :unknown},
+    {"memory", "get"} => {:result, :unknown, :unknown},
+    {"memory", "delete"} => {:result, :string, :unknown},
+    {"memory", "list"} => {:list, :string},
+    {"llm", "chat"} => {:result, :string, :unknown},
+    {"llm", "stream"} => {:result, :string, :unknown},
+    {"llm", "embed"} => {:result, {:list, :float}, :unknown},
+    {"tool", "call"} => {:result, :unknown, :unknown},
+    {"tool", "list"} => {:result, {:list, :unknown}, :unknown},
+    {"tool", "schema"} => {:result, :unknown, :unknown},
+    {"topic", "publish"} => {:result, :string, :unknown},
+    {"queue", "publish"} => {:result, :string, :unknown},
+    {"process", "spawn"} => {:result, :unknown, :string},
+    {"timer", "after"} => {:result, :string, :string},
+    {"timer", "interval"} => {:result, :string, :string},
+    {"timer", "cancel"} => {:result, :string, :string}
+  }
+
+  # store.<table>.<method> return types (spec §6.2). The record type `T` is not
+  # tracked per table, so the success side stays `:unknown`; the Result wrapper
+  # is what forces `!`/`?`/`match`.
+  @store_return_types %{
+    "get" => {:result, :unknown, :unknown},
+    "put" => {:result, :unknown, :unknown},
+    "delete" => {:result, :unknown, :unknown},
+    "query" => {:result, {:list, :unknown}, :unknown}
+  }
+
   # Control-flow keywords common in other languages that Skein deliberately
   # does not have. When one appears where an expression is expected it's
   # otherwise mis-reported as an unknown variable; map each to a hint that
@@ -830,6 +871,32 @@ defmodule Skein.Analyzer do
   # source would otherwise silently compile to a call on a nonexistent
   # runtime arity. Effects without a param-table entry (tool.*, store.*)
   # have their own checks and are skipped here.
+  # The declared return type of an effect call (spec §6). `llm.json[T]` reads
+  # its success type from the type parameter; everything else comes from the
+  # static table. Unmapped-but-known methods (e.g. the `!` forms, `memory.get!`)
+  # fall back to `:unknown`.
+  defp effect_call_return_type("llm", "json", %AST.TypeRef{} = type_param, env) do
+    {:result, resolve_type(type_param, env.types), :unknown}
+  end
+
+  defp effect_call_return_type(namespace, method, _type_param, _env) do
+    Map.get(@effect_return_types, {namespace, method}, :unknown)
+  end
+
+  defp unknown_effect_method_error(namespace, method, meta, env) do
+    known = Map.get(@effect_methods, namespace, [])
+
+    %Error{
+      code: "E0010",
+      severity: :error,
+      message: "Unknown effect method '#{namespace}.#{method}'",
+      location: location_from_meta(meta, env.file),
+      context: "'#{namespace}' has no '#{method}' method",
+      fix_hint: "Available methods: #{Enum.join(known, ", ")}",
+      fix_code: "#{namespace}.#{closest_name(method, known)}"
+    }
+  end
+
   defp effect_call_arity_errors(namespace, method, args, meta, env) do
     case Map.fetch(@effect_param_names, {namespace, method}) do
       {:ok, names} ->
@@ -1645,17 +1712,19 @@ defmodule Skein.Analyzer do
 
       left_type in [:int, :float] and right_type in [:int, :float] ->
         result_type = if left_type == :float or right_type == :float, do: :float, else: :int
-
-        if op == :+ and left_type == :string do
-          {:string, left_errors ++ right_errors}
-        else
-          {result_type, left_errors ++ right_errors}
-        end
-
-      left_type == :string and right_type == :string and op == :+ ->
-        {:string, left_errors ++ right_errors}
+        {result_type, left_errors ++ right_errors}
 
       true ->
+        # `+`/`-`/`*`/`/` are numeric only. `String + String` used to type-check
+        # and then crash at runtime (no Erlang `+` for binaries) — #252; string
+        # building is done with interpolation, not `+`.
+        string_concat? = op == :+ and (left_type == :string or right_type == :string)
+
+        fix_hint =
+          if string_concat?,
+            do: "Skein has no string '+'; build strings with interpolation: \"${a}${b}\"",
+            else: "Ensure both operands are Int or Float"
+
         {
           :unknown,
           left_errors ++
@@ -1667,8 +1736,12 @@ defmodule Skein.Analyzer do
                 message:
                   "Operator '#{op}' requires numeric operands, got #{format_type(left_type)} and #{format_type(right_type)}",
                 location: location_from_meta(meta, env.file),
-                fix_hint: "Ensure both operands are Int or Float",
-                fix_code: "// Convert both operands of '#{op}' to Int or Float"
+                fix_hint: fix_hint,
+                fix_code:
+                  if(string_concat?,
+                    do: ~s("${a}${b}"),
+                    else: "// Convert both operands of '#{op}' to Int or Float"
+                  )
               }
             ]
         }
@@ -1921,11 +1994,21 @@ defmodule Skein.Analyzer do
   end
 
   # Function call
-  defp infer_type(%AST.Call{target: target, args: args, meta: meta}, env) do
+  defp infer_type(%AST.Call{target: target, args: args, meta: meta} = call, env) do
     args_results = Enum.map(args, &infer_type(&1, env))
     args_errors = Enum.flat_map(args_results, &elem(&1, 1))
+    type_param = Map.get(call, :type_param)
 
     case target do
+      # store.<table>.<method>(...) — typed as Result so a missing !/? is a
+      # compile error (spec §6.2, skein-testing#1).
+      %AST.FieldAccess{
+        subject: %AST.FieldAccess{subject: %AST.Identifier{name: "store"}, field: _table},
+        field: method
+      }
+      when method in @store_methods ->
+        {Map.get(@store_return_types, method, :unknown), args_errors}
+
       %AST.Identifier{name: name} when is_map_key(env.functions, name) ->
         fn_info = Map.get(env.functions, name)
         expected_arity = length(fn_info.params)
@@ -2042,8 +2125,19 @@ defmodule Skein.Analyzer do
              args_errors ++ [cross_module_call_error(mod_name, fn_name, length(args), meta, env)]}
 
           effect_namespace?(mod_name) and effect_method?(mod_name, fn_name) ->
-            {:unknown,
+            {effect_call_return_type(mod_name, fn_name, type_param, env),
              args_errors ++ effect_call_arity_errors(mod_name, fn_name, args, meta, env)}
+
+          # A method that is not part of a known effect namespace's surface is a
+          # structured error, not a silent :unknown that crashes in codegen
+          # (skein-testing#33).
+          effect_namespace?(mod_name) ->
+            {:unknown, args_errors ++ [unknown_effect_method_error(mod_name, fn_name, meta, env)]}
+
+          # req.json[T] / msg.json[T] on a handler param — typed Result[T, _]
+          # so bare use (no !/?) is a compile error like any other effect.
+          fn_name == "json" and match?(%AST.TypeRef{}, type_param) ->
+            {{:result, resolve_type(type_param, env.types), :unknown}, args_errors}
 
           true ->
             {:unknown, args_errors}
