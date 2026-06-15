@@ -206,7 +206,7 @@ defmodule Skein.NamedArgsTest do
         analyze("""
         module M {
           capability model("anthropic", "claude-opus-4-8")
-          fn g(ticket: String) -> String {
+          fn g(ticket: String) -> Result[String, String] {
             llm.chat(input: ticket, model: "claude-opus-4-8", system: "Analyze.")
           }
         }
@@ -255,7 +255,7 @@ defmodule Skein.NamedArgsTest do
         analyze("""
         module M {
           capability process.spawn("workers")
-          fn g() -> String { process.spawn(task: "job") }
+          fn g() -> Result[String, String] { process.spawn(task: "job") }
         }
         """)
 
@@ -269,7 +269,7 @@ defmodule Skein.NamedArgsTest do
         module M {
           capability process.spawn("workers")
           fn do_work() -> String { "done" }
-          fn g() -> String { process.spawn(task: "job", work: &do_work) }
+          fn g() -> Result[String, String] { process.spawn(task: "job", work: &do_work) }
         }
         """)
 
@@ -283,7 +283,7 @@ defmodule Skein.NamedArgsTest do
         module M {
           capability process.spawn("workers")
           fn do_work() -> String { "done" }
-          fn g() -> String { process.spawn(work: &do_work) }
+          fn g() -> Result[String, String] { process.spawn(work: &do_work) }
         }
         """)
 
@@ -295,7 +295,7 @@ defmodule Skein.NamedArgsTest do
         analyze_errors("""
         module M {
           capability process.spawn("workers")
-          fn g() -> String { process.spawn(name: "job") }
+          fn g() -> Result[String, String] { process.spawn(name: "job") }
         }
         """)
 
@@ -399,7 +399,7 @@ defmodule Skein.NamedArgsTest do
         analyze_errors("""
         module M {
           capability model("anthropic", "claude-opus-4-8")
-          fn g(t: String) -> String {
+          fn g(t: String) -> Result[String, String] {
             llm.chat(model: "claude-opus-4-8", prompt: t, system: "x")
           }
         }
@@ -470,7 +470,7 @@ defmodule Skein.NamedArgsTest do
         module NamedLlm {
           capability model("anthropic", "claude-opus-4-8")
 
-          fn ask(question: String) -> String {
+          fn ask(question: String) -> Result[String, String] {
             llm.chat(model: "claude-opus-4-8", system: "You are helpful.", input: question)
           }
         }
@@ -486,11 +486,11 @@ defmodule Skein.NamedArgsTest do
         module NamedMemory {
           capability memory.kv("named_args_test")
 
-          fn save(k: String, v: String) -> String {
+          fn save(k: String, v: String) -> Result[String, String] {
             memory.put(key: k, value: v)
           }
 
-          fn load(k: String) -> String {
+          fn load(k: String) -> Result[String, String] {
             memory.get(key: k)
           }
         }

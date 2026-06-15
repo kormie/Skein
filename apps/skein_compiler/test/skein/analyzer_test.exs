@@ -1066,7 +1066,7 @@ defmodule Skein.AnalyzerTest do
         analyze_errors("""
         module M {
           fn fetch(url: String) -> String {
-            http.get(url)
+            http.get(url)!
           }
         }
         """)
@@ -1084,7 +1084,7 @@ defmodule Skein.AnalyzerTest do
         analyze_errors("""
         module M {
           fn send(url: String, body: String) -> String {
-            http.post(url, body)
+            http.post(url, body)!
           }
         }
         """)
@@ -1100,7 +1100,7 @@ defmodule Skein.AnalyzerTest do
         analyze_errors("""
         module M {
           fn update(url: String, body: String) -> String {
-            http.put(url, body)
+            http.put(url, body)!
           }
         }
         """)
@@ -1114,7 +1114,7 @@ defmodule Skein.AnalyzerTest do
         analyze_errors("""
         module M {
           fn remove(url: String) -> String {
-            http.delete(url)
+            http.delete(url)!
           }
         }
         """)
@@ -1128,7 +1128,7 @@ defmodule Skein.AnalyzerTest do
         analyze_errors("""
         module M {
           fn fetch(url: String) -> String {
-            http.get(url)
+            http.get(url)!
           }
         }
         """)
@@ -1143,7 +1143,7 @@ defmodule Skein.AnalyzerTest do
         analyze_errors("""
         module M {
           fn fetch(url: String) -> String {
-            http.get(url)
+            http.get(url)!
           }
         }
         """)
@@ -1162,7 +1162,7 @@ defmodule Skein.AnalyzerTest do
                  capability http.out("api.example.com")
 
                  fn fetch(url: String) -> String {
-                   http.get(url)
+                   http.get(url)!
                  }
                }
                """)
@@ -1175,7 +1175,7 @@ defmodule Skein.AnalyzerTest do
                  capability http.out("api.example.com")
 
                  fn send(url: String, body: String) -> String {
-                   http.post(url, body)
+                   http.post(url, body)!
                  }
                }
                """)
@@ -1188,11 +1188,11 @@ defmodule Skein.AnalyzerTest do
                  capability http.out("api.example.com")
 
                  fn fetch(url: String) -> String {
-                   http.get(url)
+                   http.get(url)!
                  }
 
                  fn send(url: String, body: String) -> String {
-                   http.post(url, body)
+                   http.post(url, body)!
                  }
                }
                """)
@@ -1205,7 +1205,7 @@ defmodule Skein.AnalyzerTest do
                  capability http.out
 
                  fn fetch(url: String) -> String {
-                   http.get(url)
+                   http.get(url)!
                  }
                }
                """)
@@ -1446,7 +1446,7 @@ defmodule Skein.AnalyzerTest do
           capability http.in
 
           handler http GET "/proxy" (req) -> {
-            http.get("https://example.com")
+            http.get("https://example.com")!
           }
         }
         """)
@@ -1462,7 +1462,7 @@ defmodule Skein.AnalyzerTest do
                  capability http.out("example.com")
 
                  handler http GET "/proxy" (req) -> {
-                   http.get("https://example.com/data")
+                   http.get("https://example.com/data")!
                  }
                }
                """)
@@ -1479,7 +1479,7 @@ defmodule Skein.AnalyzerTest do
         analyze_errors("""
         module M {
           fn find(id: Uuid) -> String {
-            store.users.get(id)
+            store.users.get(id)!
           }
         }
         """)
@@ -1495,7 +1495,7 @@ defmodule Skein.AnalyzerTest do
         analyze_errors("""
         module M {
           fn save(record: String) -> String {
-            store.users.put(record)
+            store.users.put(record)!
           }
         }
         """)
@@ -1511,7 +1511,7 @@ defmodule Skein.AnalyzerTest do
         analyze_errors("""
         module M {
           fn remove(id: Uuid) -> String {
-            store.users.delete(id)
+            store.users.delete(id)!
           }
         }
         """)
@@ -1526,7 +1526,7 @@ defmodule Skein.AnalyzerTest do
         analyze_errors("""
         module M {
           fn search(email: String) -> String {
-            store.users.query(email)
+            store.users.query(email)!
           }
         }
         """)
@@ -1540,7 +1540,7 @@ defmodule Skein.AnalyzerTest do
         analyze_errors("""
         module M {
           fn find(id: Uuid) -> String {
-            store.orders.get(id)
+            store.orders.get(id)!
           }
         }
         """)
@@ -1556,7 +1556,7 @@ defmodule Skein.AnalyzerTest do
           capability store.table("users")
 
           fn find(id: Uuid) -> String {
-            store.orders.get(id)
+            store.orders.get(id)!
           }
         }
         """)
@@ -1575,7 +1575,7 @@ defmodule Skein.AnalyzerTest do
                  capability store.table("users")
 
                  fn find(id: Uuid) -> String {
-                   store.users.get(id)
+                   store.users.get(id)!
                  }
                }
                """)
@@ -1588,7 +1588,7 @@ defmodule Skein.AnalyzerTest do
                  capability store.table("users")
 
                  fn save(record: String) -> String {
-                   store.users.put(record)
+                   store.users.put(record)!
                  }
                }
                """)
@@ -1602,11 +1602,11 @@ defmodule Skein.AnalyzerTest do
                  capability store.table("orders")
 
                  fn find_user(id: Uuid) -> String {
-                   store.users.get(id)
+                   store.users.get(id)!
                  }
 
                  fn find_order(id: Uuid) -> String {
-                   store.orders.get(id)
+                   store.orders.get(id)!
                  }
                }
                """)
@@ -1618,11 +1618,11 @@ defmodule Skein.AnalyzerTest do
                module M {
                  capability store.table("items")
 
-                 fn crud(id: Uuid) -> String {
-                   store.items.get(id)
-                   store.items.put(id)
-                   store.items.delete(id)
-                   store.items.query(id)
+                 fn crud(id: Uuid) -> List[String] {
+                   store.items.get(id)!
+                   store.items.put(id)!
+                   store.items.delete(id)!
+                   store.items.query(id)!
                  }
                }
                """)
@@ -1674,7 +1674,7 @@ defmodule Skein.AnalyzerTest do
         analyze_errors("""
         module M {
           fn fetch(url: String) -> String {
-            http.get(url)
+            http.get(url)!
           }
         }
         """)
@@ -1962,7 +1962,7 @@ defmodule Skein.AnalyzerTest do
         analyze_errors("""
         agent A {
           on start() -> {
-            tool.call("search", {query: "test"})
+            tool.call("search", {query: "test"})!
           }
         }
         """)
@@ -1975,7 +1975,7 @@ defmodule Skein.AnalyzerTest do
         analyze_errors("""
         agent A {
           fn fetch(url: String) -> String {
-            http.get(url)
+            http.get(url)!
           }
 
           on start() -> {
@@ -1992,7 +1992,7 @@ defmodule Skein.AnalyzerTest do
         analyze_errors("""
         agent A {
           on start() -> {
-            memory.put("key", "value")
+            memory.put("key", "value")!
           }
         }
         """)
@@ -2008,11 +2008,11 @@ defmodule Skein.AnalyzerTest do
           capability http.out
 
           fn fetch(url: String) -> String {
-            http.get(url)
+            http.get(url)!
           }
 
           on start() -> {
-            tool.call("SearchTool", {query: "test"})
+            tool.call("SearchTool", {query: "test"})!
             let result = fetch("http://example.com")
           }
         }
@@ -2047,7 +2047,7 @@ defmodule Skein.AnalyzerTest do
           capability tool.use(SearchTool)
 
           on start() -> {
-            tool.call("unknown_tool", {query: "test"})
+            tool.call("unknown_tool", {query: "test"})!
           }
         }
         """)
@@ -2069,7 +2069,7 @@ defmodule Skein.AnalyzerTest do
           }
 
           on phase(Phase.Working) -> {
-            http.get("http://example.com")
+            http.get("http://example.com")!
             transition(Phase.Done)
           }
 
@@ -2093,7 +2093,7 @@ defmodule Skein.AnalyzerTest do
         analyze_errors("""
         module M {
           fn save(key: String, value: String) -> String {
-            memory.put(key, value)
+            memory.put(key, value)!
           }
         }
         """)
@@ -2108,7 +2108,7 @@ defmodule Skein.AnalyzerTest do
         analyze_errors("""
         module M {
           fn load(key: String) -> String {
-            memory.get(key)
+            memory.get(key)!
           }
         }
         """)
@@ -2123,7 +2123,7 @@ defmodule Skein.AnalyzerTest do
         analyze_errors("""
         module M {
           fn remove(key: String) -> String {
-            memory.delete(key)
+            memory.delete(key)!
           }
         }
         """)
@@ -2138,7 +2138,7 @@ defmodule Skein.AnalyzerTest do
         analyze_errors("""
         module M {
           fn keys(prefix: String) -> String {
-            memory.list(prefix)
+            memory.list(prefix)!
           }
         }
         """)
@@ -2153,7 +2153,7 @@ defmodule Skein.AnalyzerTest do
         analyze_errors("""
         module M {
           fn save(key: String, value: String) -> String {
-            memory.put(key, value)
+            memory.put(key, value)!
           }
         }
         """)
@@ -2171,7 +2171,7 @@ defmodule Skein.AnalyzerTest do
                  capability memory.kv("sessions")
 
                  fn save(key: String, value: String) -> String {
-                   memory.put(key, value)
+                   memory.put(key, value)!
                  }
                }
                """)
@@ -2184,7 +2184,7 @@ defmodule Skein.AnalyzerTest do
                  capability memory.kv("sessions")
 
                  fn load(key: String) -> String {
-                   memory.get(key)
+                   memory.get(key)!
                  }
                }
                """)
@@ -2197,7 +2197,7 @@ defmodule Skein.AnalyzerTest do
                  capability memory.kv("sessions")
 
                  fn operate(key: String) -> String {
-                   memory.put(key, "value")
+                   memory.put(key, "value")!
                  }
                }
                """)
@@ -2210,7 +2210,7 @@ defmodule Skein.AnalyzerTest do
                  capability memory.kv
 
                  fn save(key: String, value: String) -> String {
-                   memory.put(key, value)
+                   memory.put(key, value)!
                  }
                }
                """)
@@ -2227,7 +2227,7 @@ defmodule Skein.AnalyzerTest do
         analyze_errors("""
         module M {
           fn ask(data: String) -> String {
-            llm.chat("claude-sonnet-4-5", "Be helpful.", data)
+            llm.chat("claude-sonnet-4-5", "Be helpful.", data)!
           }
         }
         """)
@@ -2242,7 +2242,7 @@ defmodule Skein.AnalyzerTest do
         analyze_errors("""
         module M {
           fn decide(data: String) -> String {
-            llm.json("claude-sonnet-4-5", "Return JSON.", data)
+            llm.json("claude-sonnet-4-5", "Return JSON.", data)!
           }
         }
         """)
@@ -2257,7 +2257,7 @@ defmodule Skein.AnalyzerTest do
         analyze_errors("""
         module M {
           fn ask(data: String) -> String {
-            llm.chat("claude-sonnet-4-5", "Be helpful.", data)
+            llm.chat("claude-sonnet-4-5", "Be helpful.", data)!
           }
         }
         """)
@@ -2275,7 +2275,7 @@ defmodule Skein.AnalyzerTest do
                  capability model("anthropic", "claude-sonnet-4-5")
 
                  fn ask(data: String) -> String {
-                   llm.chat("claude-sonnet-4-5", "Be helpful.", data)
+                   llm.chat("claude-sonnet-4-5", "Be helpful.", data)!
                  }
                }
                """)
@@ -2288,7 +2288,7 @@ defmodule Skein.AnalyzerTest do
                  capability model("anthropic", "claude-sonnet-4-5")
 
                  fn decide(data: String) -> String {
-                   llm.json("claude-sonnet-4-5", "Return JSON.", data)
+                   llm.json("claude-sonnet-4-5", "Return JSON.", data)!
                  }
                }
                """)
@@ -2305,7 +2305,7 @@ defmodule Skein.AnalyzerTest do
         analyze_errors("""
         module M {
           fn stream_it(data: String) -> String {
-            llm.stream("claude-sonnet-4-5", "Be helpful.", data)
+            llm.stream("claude-sonnet-4-5", "Be helpful.", data)!
           }
         }
         """)
@@ -2322,7 +2322,7 @@ defmodule Skein.AnalyzerTest do
                  capability model("anthropic", "claude-sonnet-4-5")
 
                  fn stream_it(data: String) -> String {
-                   llm.stream("claude-sonnet-4-5", "Be helpful.", data)
+                   llm.stream("claude-sonnet-4-5", "Be helpful.", data)!
                  }
                }
                """)
@@ -2417,7 +2417,7 @@ defmodule Skein.AnalyzerTest do
         analyze_errors("""
         module M {
           fn f(args: String) -> String {
-            tool.call(MyTool, args)
+            tool.call(MyTool, args)!
           }
         }
         """)
@@ -2433,7 +2433,7 @@ defmodule Skein.AnalyzerTest do
                  capability tool.use(MyTool)
 
                  fn f(args: String) -> String {
-                   tool.call(MyTool, args)
+                   tool.call(MyTool, args)!
                  }
                }
                """)
@@ -2443,8 +2443,8 @@ defmodule Skein.AnalyzerTest do
       errors =
         analyze_errors("""
         module M {
-          fn f() -> String {
-            tool.list()
+          fn f() -> List[String] {
+            tool.list()!
           }
         }
         """)
@@ -2458,8 +2458,8 @@ defmodule Skein.AnalyzerTest do
                module M {
                  capability tool.use(MyTool)
 
-                 fn f() -> String {
-                   tool.list()
+                 fn f() -> List[String] {
+                   tool.list()!
                  }
                }
                """)
@@ -2470,7 +2470,7 @@ defmodule Skein.AnalyzerTest do
         analyze_errors("""
         module M {
           fn f() -> String {
-            tool.schema(MyTool)
+            tool.schema(MyTool)!
           }
         }
         """)
@@ -2485,7 +2485,7 @@ defmodule Skein.AnalyzerTest do
                  capability tool.use(MyTool)
 
                  fn f() -> String {
-                   tool.schema(MyTool)
+                   tool.schema(MyTool)!
                  }
                }
                """)
@@ -2499,7 +2499,7 @@ defmodule Skein.AnalyzerTest do
                  capability tool.use(MyTool)
 
                  handler http GET "/test" (req) -> {
-                   tool.call(MyTool, req)
+                   tool.call(MyTool, req)!
                  }
                }
                """)
@@ -2512,7 +2512,7 @@ defmodule Skein.AnalyzerTest do
           capability http.in
 
           handler http GET "/test" (req) -> {
-            tool.call(MyTool, req)
+            tool.call(MyTool, req)!
           }
         }
         """)
@@ -2732,7 +2732,7 @@ defmodule Skein.AnalyzerTest do
         analyze_errors("""
         module M {
           fn send_event() -> String {
-            topic.publish("order.events", "data")
+            topic.publish("order.events", "data")!
           }
         }
         """)
@@ -2750,7 +2750,7 @@ defmodule Skein.AnalyzerTest do
                  capability topic.publish("order.events")
 
                  fn send_event() -> String {
-                   topic.publish("order.events", "data")
+                   topic.publish("order.events", "data")!
                  }
                }
                """)
@@ -2803,7 +2803,7 @@ defmodule Skein.AnalyzerTest do
                  capability tool.use(MyTool)
 
                  fn f(args: String) -> String {
-                   tool.call(MyTool, args)
+                   tool.call(MyTool, args)!
                  }
                }
                """)
@@ -2816,7 +2816,7 @@ defmodule Skein.AnalyzerTest do
           capability tool.use(MyTool)
 
           fn f(args: String) -> String {
-            tool.call(OtherTool, args)
+            tool.call(OtherTool, args)!
           }
         }
         """)
@@ -2830,7 +2830,7 @@ defmodule Skein.AnalyzerTest do
         analyze_errors("""
         module M {
           fn f(args: String) -> String {
-            tool.call(MyTool, args)
+            tool.call(MyTool, args)!
           }
         }
         """)
@@ -2845,7 +2845,7 @@ defmodule Skein.AnalyzerTest do
                  capability tool.use(MyTool)
 
                  fn f() -> String {
-                   tool.schema(MyTool)
+                   tool.schema(MyTool)!
                  }
                }
                """)
@@ -2858,7 +2858,7 @@ defmodule Skein.AnalyzerTest do
           capability tool.use(MyTool)
 
           fn f() -> String {
-            tool.schema(OtherTool)
+            tool.schema(OtherTool)!
           }
         }
         """)
@@ -2872,8 +2872,8 @@ defmodule Skein.AnalyzerTest do
                module M {
                  capability tool.use(MyTool)
 
-                 fn f() -> String {
-                   tool.list()
+                 fn f() -> List[String] {
+                   tool.list()!
                  }
                }
                """)
@@ -2886,7 +2886,7 @@ defmodule Skein.AnalyzerTest do
                  capability tool.use(Stripe.CreateRefund)
 
                  fn f(args: String) -> String {
-                   tool.call(Stripe.CreateRefund, args)
+                   tool.call(Stripe.CreateRefund, args)!
                  }
                }
                """)
@@ -2899,7 +2899,7 @@ defmodule Skein.AnalyzerTest do
           capability tool.use(Stripe.CreateRefund)
 
           fn f(args: String) -> String {
-            tool.call(Stripe.GetBalance, args)
+            tool.call(Stripe.GetBalance, args)!
           }
         }
         """)
@@ -2914,7 +2914,7 @@ defmodule Skein.AnalyzerTest do
                  capability tool.use(ToolA, ToolB)
 
                  fn f(args: String) -> String {
-                   tool.call(ToolB, args)
+                   tool.call(ToolB, args)!
                  }
                }
                """)
@@ -2929,7 +2929,7 @@ defmodule Skein.AnalyzerTest do
 
                  fn f(args: String) -> String {
                    let a = tool.call(ToolA, args)
-                   tool.call(ToolB, args)
+                   tool.call(ToolB, args)!
                  }
                }
                """)
@@ -2966,7 +2966,7 @@ defmodule Skein.AnalyzerTest do
           capability tool.use(ToolA)
 
           fn f(args: String) -> String {
-            tool.call(ToolB, args)
+            tool.call(ToolB, args)!
           }
         }
         """)
@@ -2986,7 +2986,7 @@ defmodule Skein.AnalyzerTest do
                  capability tool.use(MyTool)
 
                  handler http GET "/test" (req) -> {
-                   tool.call(MyTool, req)
+                   tool.call(MyTool, req)!
                  }
                }
                """)
@@ -3654,7 +3654,7 @@ defmodule Skein.AnalyzerTest do
           capability http.out("example.com")
 
           fn fetch(url: String) -> String {
-            http.get(url)
+            http.get(url)!
           }
         }
         """)
@@ -3924,7 +3924,7 @@ defmodule Skein.AnalyzerTest do
         analyze_errors("""
         module M {
           fn enqueue() -> String {
-            queue.publish("jobs", "data")
+            queue.publish("jobs", "data")!
           }
         }
         """)
@@ -3941,7 +3941,7 @@ defmodule Skein.AnalyzerTest do
                  capability queue.publish("jobs")
 
                  fn enqueue() -> String {
-                   queue.publish("jobs", "data")
+                   queue.publish("jobs", "data")!
                  }
                }
                """)
@@ -3954,7 +3954,7 @@ defmodule Skein.AnalyzerTest do
                  capability queue.publish("jobs")
 
                  fn enqueue() -> String {
-                   queue.publish(name: "jobs", data: "data")
+                   queue.publish(name: "jobs", data: "data")!
                  }
                }
                """)
@@ -3965,6 +3965,90 @@ defmodule Skein.AnalyzerTest do
   # Effect call arity (documented effect signatures)
   # ------------------------------------------------------------------
 
+  describe "effects are Result-typed (skein-testing#1)" do
+    test "using an effect result as its bare success type is a compile error" do
+      # llm.chat returns Result[String, LlmError]; passing it (un-unwrapped) to
+      # String.length must fail to compile instead of crashing at runtime.
+      assert {:error, errors} =
+               analyze("""
+               module M {
+                 capability model("anthropic", "claude-opus-4-8")
+
+                 fn f() -> Int {
+                   let r = llm.chat("claude-opus-4-8", "sys", "hi")
+                   String.length(r)
+                 }
+               }
+               """)
+
+      assert Enum.any?(errors, &(&1.code == "E0020"))
+    end
+
+    test "unwrapping with ! makes the success value usable" do
+      assert {:ok, _} =
+               analyze("""
+               module M {
+                 capability model("anthropic", "claude-opus-4-8")
+
+                 fn f() -> Int {
+                   let r = llm.chat("claude-opus-4-8", "sys", "hi")!
+                   String.length(r)
+                 }
+               }
+               """)
+    end
+
+    test "returning an effect result requires a Result return type" do
+      assert {:error, errors} =
+               analyze("""
+               module M {
+                 capability store.table("users")
+
+                 fn find(id: Uuid) -> String {
+                   store.users.get(id)
+                 }
+               }
+               """)
+
+      assert Enum.any?(errors, &(&1.code == "E0020"))
+    end
+  end
+
+  describe "unknown effect methods (skein-testing#33)" do
+    test "an unknown method on a known effect namespace is a structured E0010" do
+      assert {:error, errors} =
+               analyze("""
+               module M {
+                 capability http.out("api.example.com")
+
+                 fn f(url: String) -> String {
+                   http.frobnicate(url)!
+                 }
+               }
+               """)
+
+      error = Enum.find(errors, &(&1.code == "E0010"))
+      assert error
+      assert error.message =~ "http.frobnicate"
+      # The fix points at the closest real method, not a leaked unbound_var.
+      assert error.fix_hint =~ "get"
+    end
+
+    test "a valid effect method on a known namespace still type-checks" do
+      assert {:ok, _} =
+               analyze("""
+               module M {
+                 capability http.out("api.example.com")
+
+                 fn f(url: String) -> String {
+                   let _r = http.get(url)
+                   "ok"
+                 }
+               }
+               """)
+    end
+  end
+
   describe "effect call arity validation" do
     test "llm.stream accepts the documented 3-arg form" do
       assert {:ok, _} =
@@ -3973,7 +4057,7 @@ defmodule Skein.AnalyzerTest do
                  capability model("anthropic", "claude-sonnet-4-5")
 
                  fn f(data: String) -> String {
-                   llm.stream("claude-sonnet-4-5", "system", data)
+                   llm.stream("claude-sonnet-4-5", "system", data)!
                  }
                }
                """)
@@ -3990,7 +4074,7 @@ defmodule Skein.AnalyzerTest do
                  }
 
                  fn f(data: String) -> String {
-                   llm.stream("claude-sonnet-4-5", "system", data, &on_piece)
+                   llm.stream("claude-sonnet-4-5", "system", data, &on_piece)!
                  }
                }
                """)
@@ -4007,7 +4091,7 @@ defmodule Skein.AnalyzerTest do
                  }
 
                  fn f(data: String) -> String {
-                   llm.stream("claude-sonnet-4-5", "system", data, on_chunk: &on_piece)
+                   llm.stream("claude-sonnet-4-5", "system", data, on_chunk: &on_piece)!
                  }
                }
                """)
@@ -4024,7 +4108,7 @@ defmodule Skein.AnalyzerTest do
           }
 
           fn f(data: String) -> String {
-            llm.stream("claude-sonnet-4-5", "system", data, &on_piece, &on_piece)
+            llm.stream("claude-sonnet-4-5", "system", data, &on_piece, &on_piece)!
           }
         }
         """)
@@ -4041,7 +4125,7 @@ defmodule Skein.AnalyzerTest do
           capability model("anthropic", "claude-sonnet-4-5")
 
           fn f() -> String {
-            llm.chat("claude-sonnet-4-5")
+            llm.chat("claude-sonnet-4-5")!
           }
         }
         """)
@@ -4062,8 +4146,8 @@ defmodule Skein.AnalyzerTest do
                  }
 
                  fn f() -> String {
-                   process.spawn("named-task")
-                   process.spawn("with-body", &work)
+                   process.spawn("named-task")!
+                   process.spawn("with-body", &work)!
                    "ok"
                  }
                }
@@ -4085,7 +4169,7 @@ defmodule Skein.AnalyzerTest do
           }
 
           on phase(Phase.Active) -> {
-            memory.put("ns", "key", "value")
+            memory.put("ns", "key", "value")!
             stop()
           }
         }
@@ -4111,7 +4195,7 @@ defmodule Skein.AnalyzerTest do
                  }
 
                  on phase(Phase.Active) -> {
-                   memory.put("key", "value")
+                   memory.put("key", "value")!
                    stop()
                  }
                }
@@ -4367,7 +4451,7 @@ defmodule Skein.AnalyzerTest do
 
                  fn fetch(url: String) -> String {
                    trace.annotate("url", url)
-                   http.get(url)
+                   http.get(url)!
                  }
                }
                """)
@@ -4384,7 +4468,7 @@ defmodule Skein.AnalyzerTest do
         analyze_errors("""
         module M {
           fn run_task() -> String {
-            process.spawn("task")
+            process.spawn("task")!
           }
         }
         """)
@@ -4402,7 +4486,7 @@ defmodule Skein.AnalyzerTest do
                  capability process.spawn("workers")
 
                  fn run_task() -> String {
-                   process.spawn("task")
+                   process.spawn("task")!
                  }
                }
                """)
@@ -4429,7 +4513,7 @@ defmodule Skein.AnalyzerTest do
         analyze_errors("""
         module M {
           fn schedule() -> String {
-            timer.after(1000, "callback")
+            timer.after(1000, "callback")!
           }
         }
         """)
@@ -4445,7 +4529,7 @@ defmodule Skein.AnalyzerTest do
         analyze_errors("""
         module M {
           fn schedule() -> String {
-            timer.interval(5000, "callback")
+            timer.interval(5000, "callback")!
           }
         }
         """)
@@ -4461,7 +4545,7 @@ defmodule Skein.AnalyzerTest do
         analyze_errors("""
         module M {
           fn cancel_timer() -> String {
-            timer.cancel("ref123")
+            timer.cancel("ref123")!
           }
         }
         """)
@@ -4479,7 +4563,7 @@ defmodule Skein.AnalyzerTest do
                  capability timer("default")
 
                  fn schedule() -> String {
-                   timer.after(1000, "callback")
+                   timer.after(1000, "callback")!
                  }
                }
                """)
@@ -4492,7 +4576,7 @@ defmodule Skein.AnalyzerTest do
                  capability timer("default")
 
                  fn schedule() -> String {
-                   timer.interval(5000, "callback")
+                   timer.interval(5000, "callback")!
                  }
                }
                """)
@@ -4505,7 +4589,7 @@ defmodule Skein.AnalyzerTest do
                  capability timer("default")
 
                  fn cancel_timer() -> String {
-                   timer.cancel("ref123")
+                   timer.cancel("ref123")!
                  }
                }
                """)
@@ -5005,7 +5089,7 @@ defmodule Skein.AnalyzerTest do
                  capability tool.use(Stripe.CreateRefund)
 
                  fn f(args: String) -> String {
-                   tool.call(Stripe.CreateRefund, args)
+                   tool.call(Stripe.CreateRefund, args)!
                  }
                }
                """)
