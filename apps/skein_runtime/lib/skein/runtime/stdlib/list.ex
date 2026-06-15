@@ -2,7 +2,9 @@ defmodule Skein.Runtime.Stdlib.List do
   @moduledoc """
   Standard library functions for the Skein `List` type.
 
-  Lists are ordered, heterogeneous sequences. In Skein source code these
+  Lists are ordered, homogeneous sequences: `List[T]` holds elements that all
+  share one type `T`, and a list literal is type-checked accordingly (a mixed
+  literal like `[1, "two"]` is a compile error). In Skein source code these
   are called as `List.map(items, fn(x) { x * 2 })`, etc.
 
   ## Examples (Skein)

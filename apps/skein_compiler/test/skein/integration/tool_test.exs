@@ -621,7 +621,7 @@ defmodule Skein.Integration.ToolTest do
       definer =
         compile!("""
         module BranchingToolService {
-          fn risky(n: Int) -> String {
+          fn risky(n: Int) -> Result[Int, String] {
             match n {
               0 -> Err("zero not allowed")
               other -> Ok(other)
@@ -663,8 +663,8 @@ defmodule Skein.Integration.ToolTest do
       mod =
         compile!("""
         module VariantResultExprs {
-          fn make_ok(x: Int) -> String { Ok(x) }
-          fn make_err(msg: String) -> String { Err(msg) }
+          fn make_ok(x: Int) -> Result[Int, String] { Ok(x) }
+          fn make_err(msg: String) -> Result[Int, String] { Err(msg) }
         }
         """)
 
@@ -676,7 +676,7 @@ defmodule Skein.Integration.ToolTest do
       mod =
         compile!("""
         module VariantRoundTrip {
-          fn make(n: Int) -> String {
+          fn make(n: Int) -> Result[Int, String] {
             match n {
               0 -> Err("zero")
               other -> Ok(other)
@@ -705,7 +705,7 @@ defmodule Skein.Integration.ToolTest do
             Refund(amount: Int)
           }
 
-          fn charge(n: Int) -> String { Event.Charge(n) }
+          fn charge(n: Int) -> Event { Event.Charge(n) }
 
           fn describe(n: Int) -> String {
             match charge(n) {
