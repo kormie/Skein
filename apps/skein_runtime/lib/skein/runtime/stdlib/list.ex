@@ -32,7 +32,10 @@ defmodule Skein.Runtime.Stdlib.List do
   @doc "Folds `list` from the left using `initial` as the starting accumulator."
   @spec reduce(list(), any(), (any(), any() -> any())) :: any()
   def reduce(list, initial, func) when is_list(list) and is_function(func, 2) do
-    Enum.reduce(list, initial, func)
+    # Spec §5.4: the callback is `f(acc, element)` — accumulator first. Elixir's
+    # `Enum.reduce/3` invokes `fun.(element, acc)`, so adapt the order here rather
+    # than threading the raw callback (which silently reversed the fold).
+    Enum.reduce(list, initial, fn element, acc -> func.(acc, element) end)
   end
 
   @doc "Returns `{:some, element}` for the first element matching `func`, or `:none`."
