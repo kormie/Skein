@@ -40,9 +40,11 @@ This means: a small number of constructs, a curated standard library, and aggres
 
 The type system serves triple duty: it catches bugs at compile time, it generates schemas for LLM tool calling and HTTP APIs, and it provides structured specifications that constrain agent-generated code. Types aren't just for correctness — they're the interface language between human intent and machine execution.
 
-### P4: Effects Are Visible
+### P4: Effects Are Visible, and All Nondeterminism Is Controlled
 
-Every side effect — network calls, storage, model invocations, message passing — is declared, traced, and replayable. There is no way to "sneak" an effect past the capability system. This isn't just for security; it's for debuggability, auditability, and deterministic replay.
+Every side effect — network calls, storage, model invocations, message passing — is declared, traced, and replayable. There is no way to "sneak" an effect past the capability system.
+
+This extends to **every source of nondeterminism**, not just I/O. Reading the clock and generating a UUID/random value are effects too — `instant.now()` and `uuid.new()` are capability-gated, never ambient stdlib — so a program's dependence on time or randomness is explicit in its capabilities. And every nondeterministic source is **controllable**: live in production, but overridable under test and recorded/replayed for determinism. The invariant: **a well-formed Skein program has no uncontrolled nondeterminism**, so any run can be made exactly reproducible. This isn't just for security; it's for debuggability, auditability, and deterministic replay.
 
 ### P5: Crash Gracefully
 
