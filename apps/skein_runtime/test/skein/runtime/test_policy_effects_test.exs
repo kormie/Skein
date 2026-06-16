@@ -124,6 +124,27 @@ defmodule Skein.Runtime.TestPolicyEffectsTest do
   end
 end
 
+defmodule Skein.Runtime.TestPolicyIsolationTest do
+  @moduledoc "reset_scenario_state/0 clears store/memory/event so state never leaks (#283)."
+  use ExUnit.Case, async: false
+
+  alias Skein.Runtime.{Memory, Store, TestPolicy}
+
+  @store_caps [%{kind: "store.table", params: ["users"]}]
+  @mem_caps [%{kind: "memory.kv", params: ["sess"]}]
+
+  test "reset clears store and memory state" do
+    assert {:ok, _} = Store.put("users", %{id: "u1", name: "Alice"}, @store_caps)
+    assert {:ok, _} = Memory.put("sess", "k", "v", @mem_caps)
+    assert {:ok, _} = Store.get("users", "u1", @store_caps)
+
+    TestPolicy.reset_scenario_state()
+
+    assert {:error, :not_found} = Store.get("users", "u1", @store_caps)
+    assert {:error, :not_found} = Memory.get("sess", "k", @mem_caps)
+  end
+end
+
 defmodule LiveStubBackend do
   @moduledoc "A backend that is not in the offline allow-list, so it counts as live."
   alias Skein.Runtime.Llm.Response
