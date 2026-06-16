@@ -154,14 +154,26 @@ and must be added.** Per-namespace provider contracts:
 
 Use Skein `Ok(...)`/`Err(...)` — never ad-hoc Erlang tuple shapes, never magic variables.
 
-## 8. Open decisions (need human sign-off before freeze)
+## 8. Decisions (signed off 2026-06-15)
 
-- **`implement` block exact signature/keyword** (`implement(...) -> T { ... }` vs alternatives).
-- **Fate of `given`** — the prior design removed it (§12.4); under nested envelopes plain `let`
-  covers value bindings, but seed-state may want a home. Decide keep / remove / fold into seed.
-- **Whether seed-only stateful state is in 1.0** or deferred whole to 1.1.
-- **CLI live-effect flag syntax** (`--allow-live <effect>:<scope>`).
-- **Names/shapes of `HttpRequest`, `HttpResponse`, `LlmRequest`, `LlmResponse`, `Json`.**
+- **`implement` block signature/keyword — RESOLVED:** `implement(params) -> ReturnType { body }`,
+  reusing the existing `implement` keyword (the one tool bodies already use). No new keyword. A
+  capability envelope holds at most one `implement` block.
+- **Fate of `given` — RESOLVED:** keep `given`, repurposed as the home for **seed-only stateful
+  state** in 1.0 (pre-populated store/memory). Value bindings continue to use plain `let` inside
+  `expect`.
+- **Seed-only stateful state — RESOLVED:** in 1.0, via `given` (above). General behavioural stateful
+  stubs ("third read fails") remain 1.1.
+- **Names/shapes of provider contract types — RESOLVED (#274):**
+  - `HttpRequest { method: String, url: String, headers: Map[String, String], body: Json }`
+  - `HttpResponse { status: Int, body: Map, headers: Map[String, String] }` (existing)
+  - `LlmRequest { model: String, system: String, prompt: String }` (minimal)
+  - `LlmResponse { text: String }` (minimal; `llm.json` decodes `text` against the target schema)
+  - `Json` — a named type for an arbitrary JSON value (object/array/string/number/bool/null).
+
+### Still open
+
+- **CLI live-effect flag syntax** (`--allow-live <effect>:<scope>`) — Wave 3.
 
 ## 9. What moves to 1.1
 

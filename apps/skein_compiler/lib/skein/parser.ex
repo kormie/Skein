@@ -830,13 +830,17 @@ defmodule Skein.Parser do
           |> Enum.join()
 
         with {:ok, _lbrace, rest3} <- expect(:lbrace, rest2, file),
-             {:ok, given_vars, rest3} <- parse_given_block(rest3, file),
-             {:ok, expect_body, rest3} <- parse_expect_block(rest3, file),
-             {:ok, _rbrace, rest3} <- expect(:rbrace, rest3, file) do
+             {:ok, items, rest3} <-
+               parse_scenario_items(rest3, file, %{
+                 capabilities: [],
+                 given_vars: [],
+                 expect_body: nil
+               }) do
           scenario = %AST.Scenario{
             description: description,
-            given_vars: given_vars,
-            expect_body: expect_body,
+            capabilities: Enum.reverse(items.capabilities),
+            given_vars: items.given_vars,
+            expect_body: items.expect_body,
             meta: %{line: line, col: col, file: file}
           }
 
@@ -846,6 +850,129 @@ defmodule Skein.Parser do
       _ ->
         unexpected_token_error(rest, file, "a scenario description string")
     end
+  end
+
+  # scenario_item = capability_envelope | given_block | expect_block
+  # Items may appear in any order; the closing '}' ends the scenario.
+  defp parse_scenario_items([{:rbrace, _} | rest], _file, acc) do
+    {:ok, acc, rest}
+  end
+
+  defp parse_scenario_items([{:capability, _} | _] = tokens, file, acc) do
+    with {:ok, cap, rest} <- parse_scenario_capability(tokens, file) do
+      parse_scenario_items(rest, file, %{acc | capabilities: [cap | acc.capabilities]})
+    end
+  end
+
+  defp parse_scenario_items([{:ident, _, "given"} | _] = tokens, file, acc) do
+    with {:ok, given_vars, rest} <- parse_given_block(tokens, file) do
+      parse_scenario_items(rest, file, %{acc | given_vars: acc.given_vars ++ given_vars})
+    end
+  end
+
+  defp parse_scenario_items([{:ident, _, "expect"} | _] = tokens, file, acc) do
+    with {:ok, expect_body, rest} <- parse_expect_block(tokens, file) do
+      parse_scenario_items(rest, file, %{acc | expect_body: expect_body})
+    end
+  end
+
+  defp parse_scenario_items(tokens, file, _acc) do
+    unexpected_token_error(tokens, file, "a 'capability' envelope, 'given', or 'expect'")
+  end
+
+  # A scenario capability may open a nested envelope: `capability K(args) { ... }`
+  # whose body holds nested capabilities and/or a single `implement` block.
+  defp parse_scenario_capability(tokens, file) do
+    with {:ok, %AST.Capability{} = cap, rest} <- parse_capability(tokens, file) do
+      case rest do
+        [{:ident, {l, c}, "via"} | _] ->
+          via_not_supported_error(l, c, file)
+
+        [{:lbrace, _} | rest2] ->
+          with {:ok, nested, implement, rest3} <-
+                 parse_envelope_body(rest2, file, [], nil) do
+            {:ok, %{cap | nested: Enum.reverse(nested), implement: implement}, rest3}
+          end
+
+        _ ->
+          {:ok, %{cap | nested: [], implement: nil}, rest}
+      end
+    end
+  end
+
+  # Body of a capability envelope: nested `capability` declarations and at most
+  # one `implement` provider block, in any order, until the closing '}'.
+  defp parse_envelope_body([{:rbrace, _} | rest], _file, nested, implement) do
+    {:ok, nested, implement, rest}
+  end
+
+  defp parse_envelope_body([{:capability, _} | _] = tokens, file, nested, implement) do
+    with {:ok, cap, rest} <- parse_scenario_capability(tokens, file) do
+      parse_envelope_body(rest, file, [cap | nested], implement)
+    end
+  end
+
+  defp parse_envelope_body([{:implement, {line, col}} | _], file, _nested, implement)
+       when implement != nil do
+    {:error,
+     [
+       %Error{
+         code: "E0001",
+         severity: :error,
+         message: "A capability envelope may contain at most one 'implement' block",
+         location: %{file: file, line: line, col: col},
+         context: nil,
+         fix_hint: "Remove the duplicate 'implement' block",
+         fix_code: "implement(...) -> Type { ... }"
+       }
+     ]}
+  end
+
+  defp parse_envelope_body([{:implement, _} | _] = tokens, file, nested, nil) do
+    with {:ok, impl, rest} <- parse_capability_implement(tokens, file) do
+      parse_envelope_body(rest, file, nested, impl)
+    end
+  end
+
+  defp parse_envelope_body(tokens, file, _nested, _implement) do
+    unexpected_token_error(tokens, file, "a nested 'capability' or an 'implement' block")
+  end
+
+  # implement(params) -> ReturnType { body }
+  defp parse_capability_implement([{:implement, {line, col}} | rest], file) do
+    with {:ok, _lparen, rest} <- expect(:lparen, rest, file),
+         {:ok, params, rest} <- parse_params(rest, file),
+         {:ok, _rparen, rest} <- expect(:rparen, rest, file),
+         {:ok, _arrow, rest} <- expect(:arrow, rest, file),
+         {:ok, return_type, rest} <- parse_type_expr(rest, file),
+         {:ok, body, rest} <- parse_block(rest, file) do
+      impl = %AST.CapabilityImplement{
+        params: params,
+        return_type: return_type,
+        body: body,
+        meta: %{line: line, col: col, file: file}
+      }
+
+      {:ok, impl, rest}
+    end
+  end
+
+  defp via_not_supported_error(line, col, file) do
+    {:error,
+     [
+       %Error{
+         code: "E0001",
+         severity: :error,
+         message:
+           "'via' is not a Skein construct; scenarios control effects with a nested capability envelope, not 'via'",
+         location: %{file: file, line: line, col: col},
+         context: nil,
+         fix_hint:
+           "Replace the 'via' binding with a nested capability envelope and an 'implement' block",
+         fix_code:
+           "capability http.out(\"host\") {\n  implement(req: HttpRequest) -> Result[HttpResponse, HttpError] { ... }\n}"
+       }
+     ]}
   end
 
   # Parse given { key: expr, key: expr, ... }

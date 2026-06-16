@@ -1945,6 +1945,164 @@ defmodule Skein.ParserTest do
   end
 
   # ------------------------------------------------------------------
+  # Scenario capability envelopes + implement blocks (#280, Wave 2)
+  # ------------------------------------------------------------------
+
+  describe "parse/1 - scenario capability envelopes" do
+    test "parses a nested tool.use envelope with an http.out implement block" do
+      source = """
+      module M {
+        scenario "refund sends id header" {
+          capability tool.use(Billing.Refund) {
+            capability http.out("api.stripe.com") {
+              implement(req: HttpRequest) -> Result[HttpResponse, HttpError] {
+                Ok(HttpResponse { status: 200, headers: {}, body: { ok: true } })
+              }
+            }
+
+            capability uuid {
+              implement() -> Uuid {
+                Uuid.parse("00000000-0000-4000-8000-000000000001")!
+              }
+            }
+          }
+
+          expect {
+            let result = tool.call(Billing.Refund, { ticket_id: "t_123" })!
+            assert result.status == "ok"
+          }
+        }
+      }
+      """
+
+      assert {:ok, %AST.Module{declarations: [scenario]}} = parse(source)
+      assert %AST.Scenario{description: "refund sends id header"} = scenario
+
+      # One top-level envelope: tool.use(Billing.Refund)
+      assert [%AST.Capability{kind: "tool.use"} = tool_env] = scenario.capabilities
+      assert [%AST.ToolRef{name: "Billing.Refund"}] = tool_env.params
+
+      # Two nested capabilities under the tool envelope.
+      assert [
+               %AST.Capability{kind: "http.out"} = http_cap,
+               %AST.Capability{kind: "uuid"} = uuid_cap
+             ] =
+               tool_env.nested
+
+      # http.out carries a typed implement block.
+      assert %AST.CapabilityImplement{params: [%AST.Field{name: "req"}], return_type: rt} =
+               http_cap.implement
+
+      assert %AST.TypeRef{name: "Result", params: [%AST.TypeRef{name: "HttpResponse"}, _]} = rt
+
+      # uuid carries a zero-arg implement returning Uuid.
+      assert %AST.CapabilityImplement{params: [], return_type: %AST.TypeRef{name: "Uuid"}} =
+               uuid_cap.implement
+
+      # The tool envelope itself has no implement block (only nested caps).
+      assert tool_env.implement == nil
+
+      # expect body is preserved.
+      assert %AST.Block{} = scenario.expect_body
+    end
+
+    test "a bare capability with no nested body has empty nested and nil implement" do
+      source = """
+      module M {
+        scenario "minimal envelope" {
+          capability tool.use(Billing.Refund) {
+            capability instant {
+              implement() -> Instant {
+                Instant.parse("2026-01-01T00:00:00Z")!
+              }
+            }
+          }
+
+          expect {
+            assert true
+          }
+        }
+      }
+      """
+
+      assert {:ok, %AST.Module{declarations: [scenario]}} = parse(source)
+
+      assert [%AST.Capability{kind: "tool.use", nested: nested, implement: nil}] =
+               scenario.capabilities
+
+      assert [%AST.Capability{kind: "instant", nested: [], implement: %AST.CapabilityImplement{}}] =
+               nested
+    end
+
+    test "scenario still parses with given + expect and no capabilities" do
+      source = """
+      module M {
+        scenario "no envelope" {
+          given { amount: 50000 }
+          expect { assert amount == 50000 }
+        }
+      }
+      """
+
+      assert {:ok, %AST.Module{declarations: [scenario]}} = parse(source)
+      assert %AST.Scenario{capabilities: [], given_vars: [{"amount", _}]} = scenario
+    end
+
+    test "capabilities may appear before a given block" do
+      source = """
+      module M {
+        scenario "envelope then given" {
+          capability tool.use(Billing.Refund) {
+            capability uuid { implement() -> Uuid { Uuid.parse("x")! } }
+          }
+          given { amount: 1 }
+          expect { assert amount == 1 }
+        }
+      }
+      """
+
+      assert {:ok, %AST.Module{declarations: [scenario]}} = parse(source)
+      assert [%AST.Capability{kind: "tool.use"}] = scenario.capabilities
+      assert [{"amount", _}] = scenario.given_vars
+    end
+
+    test "`via` after a capability is a structured parse error pointing at the envelope form" do
+      source = """
+      module M {
+        scenario "no via allowed" {
+          capability http.out("api.stripe.com") via stub
+          expect { assert true }
+        }
+      }
+      """
+
+      assert {:error, [error | _]} = parse(source)
+      assert error.code == "E0001"
+      assert error.message =~ "via"
+      assert error.fix_hint =~ "envelope"
+      assert error.fix_code =~ "implement"
+    end
+
+    test "two implement blocks in one capability is a structured parse error" do
+      source = """
+      module M {
+        scenario "double implement" {
+          capability uuid {
+            implement() -> Uuid { Uuid.parse("a")! }
+            implement() -> Uuid { Uuid.parse("b")! }
+          }
+          expect { assert true }
+        }
+      }
+      """
+
+      assert {:error, [error | _]} = parse(source)
+      assert error.code == "E0001"
+      assert error.message =~ "implement"
+    end
+  end
+
+  # ------------------------------------------------------------------
   # Golden declarations (Phase 8a)
   # ------------------------------------------------------------------
 
