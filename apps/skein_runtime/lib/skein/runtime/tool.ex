@@ -17,6 +17,7 @@ defmodule Skein.Runtime.Tool do
   The registry is an ETS table keyed by tool name.
   """
 
+  alias Skein.Runtime.CapabilityStack
   alias Skein.Runtime.Replay
   alias Skein.Runtime.Tool.Error
   alias Skein.Runtime.Trace
@@ -127,7 +128,10 @@ defmodule Skein.Runtime.Tool do
     Trace.with_recorded_span(%{kind: :tool, method: :call, name: name}, fn ->
       case check_tool_capability(capabilities, name) do
         :ok ->
-          dispatch_call(name, input)
+          # Push the scenario capability envelope for this tool (if any) so the
+          # tool's effects resolve against its `implement` providers (#282). In
+          # production no envelope is registered, so this is a transparent no-op.
+          CapabilityStack.with_tool_envelope(name, fn -> dispatch_call(name, input) end)
 
         {:error, reason} ->
           {{:error, Error.capability_error(reason)}, %{}}

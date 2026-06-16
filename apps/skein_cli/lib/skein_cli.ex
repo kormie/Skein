@@ -515,15 +515,20 @@ defmodule Skein.CLI do
     module_name = module_name_from(name)
 
     """
-    -- Integration tests exercise src/ modules through their tools — the one
-    -- cross-module seam in Skein. `skein test` compiles and loads everything
-    -- in src/ before running these.
+    -- Integration scenarios exercise src/ modules through their tools — the one
+    -- cross-module seam in Skein. `skein test` compiles and loads everything in
+    -- src/ before running these. Effects live in `scenario` (not `test`); a
+    -- scenario declares the capability environment the tool may exercise. Greet
+    -- is pure, so a bare `tool.use` envelope is enough.
     module #{module_name}Test {
       capability tool.use(#{module_name}.Greet)
 
-      test "greets through the #{module_name}.Greet tool" {
-        let result = tool.call(#{module_name}.Greet, { name: "World" })!
-        assert result.greeting == "Hello, World!"
+      scenario "greets through the #{module_name}.Greet tool" {
+        capability tool.use(#{module_name}.Greet) { }
+        expect {
+          let result = tool.call(#{module_name}.Greet, { name: "World" })!
+          assert result.greeting == "Hello, World!"
+        }
       }
     }
     """
@@ -911,6 +916,16 @@ defmodule Skein.CLI do
   defp parse_trace_flags(["--kind", kind | rest], acc) do
     parse_trace_flags(rest, [{:kind, kind} | acc])
   end
+
+  # TTY/TUI seam (#284): these are accepted everywhere but never change piped
+  # output — there is no TUI yet, so all paths render the plain byte-stable form.
+  # `--no-tui` / SKEIN_NO_TUI force plain explicitly; `--interactive` opts in to
+  # a TTY front-end if one exists. MCP/LSP/non-TTY never route through a TUI.
+  defp parse_trace_flags(["--interactive" | rest], acc),
+    do: parse_trace_flags(rest, [{:interactive, true} | acc])
+
+  defp parse_trace_flags(["--no-tui" | rest], acc),
+    do: parse_trace_flags(rest, [{:no_tui, true} | acc])
 
   defp parse_trace_flags(["-" <> _ = flag | _], _acc),
     do: {:error, "Unknown option: #{flag} (run 'skein help' for usage)"}

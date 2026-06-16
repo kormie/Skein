@@ -36,6 +36,8 @@ defmodule Skein.Analyzer do
   - E0025: Constraint annotation on wrong type
   - E0026: Invalid named argument (unknown/duplicate name, positional after named, callee without named-argument support)
   - E0027: Invalid guard expression (guards allow literals, bindings, field access, comparisons, boolean operators, and +/-/* arithmetic)
+  - E0028: Scenario capability envelope is missing/incomplete (a called tool has no `tool.use(T)` envelope, or the envelope does not cover the tool's transitive effect summary)
+  - E0029: Effect call in a pure context (a `test` body, or a scenario `implement` provider block) — effects belong in a `scenario`, and providers must be pure
 
   ### Agent (E003x)
   - E0030: Invalid phase transition
@@ -362,15 +364,25 @@ defmodule Skein.Analyzer do
     "Instant" => :instant,
     "Duration" => :duration,
     "Email" => :email,
-    "Url" => :url
+    "Url" => :url,
+    # An arbitrary JSON value (object/array/string/number/bool/null). Used for
+    # open-shaped HTTP bodies in the effect provider contract types (#274).
+    "Json" => :json
   }
 
   # Effect error/response types defined by the Effects API (spec section 6).
   # They are part of the language surface — Result[T, HttpError] in a fn
   # signature must not be an unknown-type error.
+  #
+  # The effect provider *contract* types (HttpRequest/HttpResponse/LlmRequest/
+  # LlmResponse, #274) are modeled concretely as built-in TypeDecls (see
+  # `builtin_type_decls/0`) so scenario `implement` blocks can construct and
+  # field-access them; they are injected into the type env and override the
+  # opaque `:builtin` entry.
   @effect_type_names ~w(
-    HttpResponse HttpError StoreError NotFound MemoryError LlmError
+    HttpError StoreError NotFound MemoryError LlmError
     ToolError ToolInfo ToolName PublishError
+    HttpRequest HttpResponse LlmRequest LlmResponse
   )
 
   @builtin_type_names Map.keys(@builtin_types) ++ @effect_type_names
@@ -414,6 +426,16 @@ defmodule Skein.Analyzer do
 
     # Pass 2e: Type-check tool `implement` bodies (#253)
     errors = errors ++ check_tool_implement_inference(ast.declarations, env)
+
+    # Pass 2f: Scenario capability envelope coverage (#281) — each tool a
+    # scenario calls must declare a tool.use(T) envelope covering the tool's
+    # transitive effect summary.
+    errors = errors ++ check_scenario_envelopes(ast.declarations, env)
+
+    # Pass 2g: Purity of `test` bodies and scenario `implement` providers (#273)
+    # — `test` is for pure unit tests (effects belong in `scenario`); provider
+    # `implement` blocks must be pure.
+    errors = errors ++ check_pure_contexts(ast.declarations, env)
 
     # Pass 2c: Scope-independent interpolation rules — uppercase
     # interpolation roots and interpolated string patterns. One generic
@@ -1141,12 +1163,72 @@ defmodule Skein.Analyzer do
   # Environment construction
   # ------------------------------------------------------------------
 
+  @builtin_meta %{line: 0, col: 0, file: "<builtin>"}
+
+  # Effect provider contract types (#274), modeled as concrete TypeDecls so
+  # scenario `implement` blocks can construct/field-access them and so their
+  # JSON Schema derives through the normal type machinery. `HttpRequest.body`
+  # is `Json` (open-shaped); `HttpResponse.body` stays `Map` (spec §6).
+  defp builtin_type_decls do
+    %{
+      "HttpRequest" =>
+        type_decl("HttpRequest", [
+          field("method", "String"),
+          field("url", "String"),
+          field("headers", map_type("String", "String")),
+          field("body", "Json")
+        ]),
+      "HttpResponse" =>
+        type_decl("HttpResponse", [
+          field("status", "Int"),
+          field("body", "Map"),
+          field("headers", map_type("String", "String"))
+        ]),
+      "LlmRequest" =>
+        type_decl("LlmRequest", [
+          field("model", "String"),
+          field("system", "String"),
+          field("prompt", "String")
+        ]),
+      "LlmResponse" =>
+        type_decl("LlmResponse", [
+          field("text", "String")
+        ])
+    }
+  end
+
+  defp type_decl(name, fields) do
+    %AST.TypeDecl{name: name, fields: fields, meta: @builtin_meta}
+  end
+
+  defp field(name, %AST.TypeRef{} = type) do
+    %AST.Field{name: name, type: type, annotations: [], meta: @builtin_meta}
+  end
+
+  defp field(name, type_name) when is_binary(type_name) do
+    field(name, %AST.TypeRef{name: type_name, params: [], meta: @builtin_meta})
+  end
+
+  defp map_type(key, value) do
+    %AST.TypeRef{
+      name: "Map",
+      params: [
+        %AST.TypeRef{name: key, params: [], meta: @builtin_meta},
+        %AST.TypeRef{name: value, params: [], meta: @builtin_meta}
+      ],
+      meta: @builtin_meta
+    }
+  end
+
   defp build_initial_env(%AST.Module{name: module_name, declarations: declarations, meta: meta}) do
     file = Map.get(meta, :file, "unknown")
 
-    # Register all built-in types
+    # Register all built-in types, then upgrade the provider contract types from
+    # opaque `:builtin` names to concrete TypeDecls (#274).
     types =
-      Map.new(@builtin_type_names, fn name -> {name, :builtin} end)
+      @builtin_type_names
+      |> Map.new(fn name -> {name, :builtin} end)
+      |> Map.merge(builtin_type_decls())
 
     # Register parameterized built-in types
     types =
@@ -2404,9 +2486,112 @@ defmodule Skein.Analyzer do
     {{:map, :string, :unknown}, errors}
   end
 
+  # Nominal record literal: TypeName { field: expr, ... }. Checked field-by-field
+  # against the named type's declaration: unknown fields, missing required
+  # (non-Option) fields, and per-field type mismatches are all structured errors.
+  defp infer_type(%AST.RecordLit{type_name: name, fields: fields, meta: meta}, env) do
+    field_results = Enum.map(fields, fn {fname, value} -> {fname, infer_type(value, env)} end)
+    value_errors = Enum.flat_map(field_results, fn {_n, {_t, errs}} -> errs end)
+
+    case Map.get(env.types, name) do
+      %AST.TypeDecl{fields: decl_fields} ->
+        decl_map = Map.new(decl_fields, fn %AST.Field{name: n} = f -> {n, f} end)
+        provided_names = MapSet.new(field_results, fn {n, _} -> n end)
+
+        unknown_errors =
+          for {fname, _} <- field_results, not Map.has_key?(decl_map, fname) do
+            %Error{
+              code: "E0020",
+              severity: :error,
+              message: "Unknown field '#{fname}' for type '#{name}'",
+              location: location_from_meta(meta, env.file),
+              fix_hint:
+                "'#{name}' has fields: #{decl_map |> Map.keys() |> Enum.sort() |> Enum.join(", ")}",
+              fix_code: nil
+            }
+          end
+
+        missing_errors =
+          for {fname, %AST.Field{} = f} <- decl_map,
+              not MapSet.member?(provided_names, fname),
+              not optional_field?(f, env) do
+            %Error{
+              code: "E0020",
+              severity: :error,
+              message: "Missing required field '#{fname}' in '#{name}' literal",
+              location: location_from_meta(meta, env.file),
+              fix_hint: "Add '#{fname}: ...' to the #{name} literal",
+              fix_code: "#{fname}: ..."
+            }
+          end
+
+        mismatch_errors =
+          Enum.flat_map(field_results, fn {fname, {vtype, _}} ->
+            case Map.get(decl_map, fname) do
+              %AST.Field{type: ftype} ->
+                expected = resolve_type(ftype, env.types)
+
+                if types_compatible?(expected, vtype) do
+                  []
+                else
+                  [
+                    %Error{
+                      code: "E0020",
+                      severity: :error,
+                      message:
+                        "Field '#{fname}' of '#{name}' expects #{format_type(expected)}, got #{format_type(vtype)}",
+                      location: location_from_meta(meta, env.file),
+                      fix_hint: "Provide a #{format_type(expected)} for '#{fname}'",
+                      fix_code: nil
+                    }
+                  ]
+                end
+
+              nil ->
+                []
+            end
+          end)
+
+        {{:user_type, name}, value_errors ++ unknown_errors ++ missing_errors ++ mismatch_errors}
+
+      :enum ->
+        {{:enum, name},
+         value_errors ++
+           [
+             %Error{
+               code: "E0020",
+               severity: :error,
+               message: "Cannot construct enum '#{name}' with record syntax",
+               location: location_from_meta(meta, env.file),
+               fix_hint: "Use a variant, e.g. #{name}.SomeVariant",
+               fix_code: nil
+             }
+           ]}
+
+      _ ->
+        {:unknown,
+         value_errors ++
+           [
+             %Error{
+               code: "E0024",
+               severity: :error,
+               message: "Unknown type '#{name}' in record literal",
+               location: location_from_meta(meta, env.file),
+               fix_hint: "Did you mean one of: #{suggest_types(name, env)}?",
+               fix_code: first_type_suggestion(name, env)
+             }
+           ]}
+    end
+  end
+
   # Catch-all
   defp infer_type(_expr, _env) do
     {:unknown, []}
+  end
+
+  # A record field is optional when its declared type is Option[...].
+  defp optional_field?(%AST.Field{type: type}, env) do
+    match?({:option, _}, resolve_type(type, env.types))
   end
 
   defp infer_field_access_type(subject, field, meta, env) do
@@ -3190,6 +3375,9 @@ defmodule Skein.Analyzer do
 
   defp types_compatible?(:unknown, _), do: true
   defp types_compatible?(_, :unknown), do: true
+  # Json is any JSON value, so it unifies with any concrete value type (#274).
+  defp types_compatible?(:json, _), do: true
+  defp types_compatible?(_, :json), do: true
   defp types_compatible?(a, a), do: true
 
   # Parameterized types — recurse into inner types
@@ -3349,6 +3537,10 @@ defmodule Skein.Analyzer do
     Enum.flat_map(entries, fn {_key, value} -> collect_effect_calls(value, env) end)
   end
 
+  defp collect_effect_calls(%AST.RecordLit{fields: fields}, env) do
+    Enum.flat_map(fields, fn {_key, value} -> collect_effect_calls(value, env) end)
+  end
+
   defp collect_effect_calls(%AST.ListLit{elements: elements}, env) do
     Enum.flat_map(elements, &collect_effect_calls(&1, env))
   end
@@ -3358,6 +3550,418 @@ defmodule Skein.Analyzer do
   end
 
   defp collect_effect_calls(_expr, _env), do: []
+
+  # ------------------------------------------------------------------
+  # Pass 2f: Scenario capability envelope coverage (#281)
+  #
+  # A scenario that calls `tool.call(T)` must declare a `capability tool.use(T)`
+  # envelope, and that envelope must cover T's transitive effect summary — the
+  # nondeterministic/external effects T reaches directly or through helper fns
+  # (effects launder through helpers). Nested tool calls require nested tool
+  # envelopes, checked recursively.
+  # ------------------------------------------------------------------
+
+  # Effect namespaces that must be controlled by an explicit nested capability,
+  # mapped to the nested capability kind that satisfies them. store/memory/event
+  # get scenario-local test defaults at runtime and need no envelope entry.
+  @envelope_effect_caps %{
+    "http" => "http.out",
+    "llm" => "model",
+    "uuid" => "uuid",
+    "instant" => "instant"
+  }
+
+  defp check_scenario_envelopes(declarations, env) do
+    scenarios = Enum.filter(declarations, &match?(%AST.Scenario{}, &1))
+
+    if scenarios == [] do
+      []
+    else
+      ctx = %{
+        tools:
+          declarations
+          |> Enum.filter(&match?(%AST.ToolDecl{}, &1))
+          |> Map.new(fn %AST.ToolDecl{name: name} = t -> {name, t} end),
+        fn_bodies:
+          declarations
+          |> Enum.filter(&match?(%AST.Fn{}, &1))
+          |> Map.new(fn %AST.Fn{name: name, body: body} -> {name, body} end)
+      }
+
+      Enum.flat_map(scenarios, &check_scenario_envelope(&1, ctx, env))
+    end
+  end
+
+  defp check_scenario_envelope(%AST.Scenario{} = scenario, ctx, env) do
+    caps = scenario.capabilities || []
+    called = scenario.expect_body |> collect_called_tools() |> Enum.uniq()
+
+    Enum.flat_map(called, fn tool_name ->
+      case Enum.find(caps, &tool_use_for?(&1, tool_name)) do
+        nil ->
+          [missing_tool_envelope_error(tool_name, scenario.meta, env)]
+
+        envelope ->
+          check_envelope_covers(tool_name, envelope, scenario.meta, ctx, env, MapSet.new())
+      end
+    end)
+  end
+
+  defp check_envelope_covers(tool_name, envelope, meta, ctx, env, visited) do
+    summary = tool_effect_summary(tool_name, ctx)
+    provided = provided_requirements(envelope.nested || [])
+    missing = MapSet.difference(summary, provided)
+
+    missing_errors =
+      Enum.map(missing, &missing_capability_error(&1, tool_name, meta, env))
+
+    nested_errors =
+      summary
+      |> Enum.filter(&match?({:tool_use, _}, &1))
+      |> Enum.flat_map(fn {:tool_use, other} ->
+        if MapSet.member?(provided, {:tool_use, other}) and not MapSet.member?(visited, other) do
+          nested_env = Enum.find(envelope.nested || [], &tool_use_for?(&1, other))
+          check_envelope_covers(other, nested_env, meta, ctx, env, MapSet.put(visited, tool_name))
+        else
+          []
+        end
+      end)
+
+    missing_errors ++ nested_errors
+  end
+
+  defp tool_effect_summary(tool_name, ctx) do
+    case Map.get(ctx.tools, tool_name) do
+      %AST.ToolDecl{implement: body} when not is_nil(body) ->
+        effect_requirements(body, ctx, MapSet.new())
+
+      _ ->
+        MapSet.new()
+    end
+  end
+
+  # The transitive set of envelope-relevant effect requirements an expression
+  # reaches, following local helper-fn calls (laundering) but treating
+  # `tool.call(Other)` as a boundary (it becomes a {:tool_use, Other} req).
+  defp effect_requirements(
+         %AST.Call{
+           target: %AST.FieldAccess{subject: %AST.Identifier{name: "tool"}, field: "call"},
+           args: [first | _] = args
+         },
+         ctx,
+         visited
+       ) do
+    own =
+      case extract_tool_name_from_expr(first) do
+        nil -> MapSet.new()
+        name -> MapSet.new([{:tool_use, name}])
+      end
+
+    union_reqs([own | Enum.map(args, &effect_requirements(&1, ctx, visited))])
+  end
+
+  defp effect_requirements(
+         %AST.Call{
+           target: %AST.FieldAccess{subject: %AST.Identifier{name: namespace}, field: _method},
+           args: args
+         },
+         ctx,
+         visited
+       )
+       when is_map_key(@envelope_effect_caps, namespace) do
+    own = MapSet.new([Map.fetch!(@envelope_effect_caps, namespace)])
+    union_reqs([own | Enum.map(args, &effect_requirements(&1, ctx, visited))])
+  end
+
+  defp effect_requirements(
+         %AST.Call{target: %AST.Identifier{name: fn_name}, args: args},
+         ctx,
+         visited
+       ) do
+    callee_reqs =
+      if Map.has_key?(ctx.fn_bodies, fn_name) and not MapSet.member?(visited, fn_name) do
+        effect_requirements(Map.fetch!(ctx.fn_bodies, fn_name), ctx, MapSet.put(visited, fn_name))
+      else
+        MapSet.new()
+      end
+
+    union_reqs([callee_reqs | Enum.map(args, &effect_requirements(&1, ctx, visited))])
+  end
+
+  defp effect_requirements(%AST.Call{args: args}, ctx, visited),
+    do: union_reqs(Enum.map(args, &effect_requirements(&1, ctx, visited)))
+
+  defp effect_requirements(%AST.Block{expressions: exprs}, ctx, visited),
+    do: union_reqs(Enum.map(exprs, &effect_requirements(&1, ctx, visited)))
+
+  defp effect_requirements(%AST.Let{value: value}, ctx, visited),
+    do: effect_requirements(value, ctx, visited)
+
+  defp effect_requirements(%AST.Match{subject: subject, arms: arms}, ctx, visited) do
+    union_reqs([
+      effect_requirements(subject, ctx, visited)
+      | Enum.map(arms, fn %AST.MatchArm{body: body} -> effect_requirements(body, ctx, visited) end)
+    ])
+  end
+
+  defp effect_requirements(%AST.Pipe{left: left, right: right}, ctx, visited),
+    do:
+      union_reqs([
+        effect_requirements(left, ctx, visited),
+        effect_requirements(right, ctx, visited)
+      ])
+
+  defp effect_requirements(%AST.BinaryOp{left: left, right: right}, ctx, visited),
+    do:
+      union_reqs([
+        effect_requirements(left, ctx, visited),
+        effect_requirements(right, ctx, visited)
+      ])
+
+  defp effect_requirements(%AST.UnaryOp{operand: operand}, ctx, visited),
+    do: effect_requirements(operand, ctx, visited)
+
+  defp effect_requirements(%AST.MapLit{entries: entries}, ctx, visited),
+    do: union_reqs(Enum.map(entries, fn {_k, v} -> effect_requirements(v, ctx, visited) end))
+
+  defp effect_requirements(%AST.RecordLit{fields: fields}, ctx, visited),
+    do: union_reqs(Enum.map(fields, fn {_k, v} -> effect_requirements(v, ctx, visited) end))
+
+  defp effect_requirements(%AST.ListLit{elements: elements}, ctx, visited),
+    do: union_reqs(Enum.map(elements, &effect_requirements(&1, ctx, visited)))
+
+  defp effect_requirements(_expr, _ctx, _visited), do: MapSet.new()
+
+  defp union_reqs(sets), do: Enum.reduce(sets, MapSet.new(), &MapSet.union/2)
+
+  # Tool names invoked via tool.call in an expression (boundary effects).
+  defp collect_called_tools(%AST.Call{
+         target: %AST.FieldAccess{subject: %AST.Identifier{name: "tool"}, field: "call"},
+         args: [first | _] = args
+       }) do
+    own =
+      case extract_tool_name_from_expr(first) do
+        nil -> []
+        name -> [name]
+      end
+
+    own ++ Enum.flat_map(args, &collect_called_tools/1)
+  end
+
+  defp collect_called_tools(%AST.Call{args: args}),
+    do: Enum.flat_map(args, &collect_called_tools/1)
+
+  defp collect_called_tools(%AST.Block{expressions: exprs}),
+    do: Enum.flat_map(exprs, &collect_called_tools/1)
+
+  defp collect_called_tools(%AST.Let{value: value}), do: collect_called_tools(value)
+
+  defp collect_called_tools(%AST.Match{subject: subject, arms: arms}) do
+    collect_called_tools(subject) ++
+      Enum.flat_map(arms, fn %AST.MatchArm{body: body} -> collect_called_tools(body) end)
+  end
+
+  defp collect_called_tools(%AST.Pipe{left: left, right: right}),
+    do: collect_called_tools(left) ++ collect_called_tools(right)
+
+  defp collect_called_tools(%AST.BinaryOp{left: left, right: right}),
+    do: collect_called_tools(left) ++ collect_called_tools(right)
+
+  defp collect_called_tools(%AST.UnaryOp{operand: operand}), do: collect_called_tools(operand)
+
+  defp collect_called_tools(%AST.MapLit{entries: entries}),
+    do: Enum.flat_map(entries, fn {_k, v} -> collect_called_tools(v) end)
+
+  defp collect_called_tools(%AST.RecordLit{fields: fields}),
+    do: Enum.flat_map(fields, fn {_k, v} -> collect_called_tools(v) end)
+
+  defp collect_called_tools(%AST.ListLit{elements: elements}),
+    do: Enum.flat_map(elements, &collect_called_tools/1)
+
+  defp collect_called_tools(_), do: []
+
+  defp tool_use_for?(%AST.Capability{kind: "tool.use", params: params}, tool_name) do
+    case params do
+      [param | _] -> extract_tool_name_from_param(param) == tool_name
+      _ -> false
+    end
+  end
+
+  defp tool_use_for?(_, _), do: false
+
+  defp provided_requirements(nested) do
+    nested
+    |> Enum.map(fn %AST.Capability{kind: kind, params: params} ->
+      if kind == "tool.use" do
+        {:tool_use, params |> List.first() |> extract_tool_name_from_param()}
+      else
+        kind
+      end
+    end)
+    |> MapSet.new()
+  end
+
+  defp missing_tool_envelope_error(tool_name, meta, env) do
+    %Error{
+      code: "E0028",
+      severity: :error,
+      message:
+        "Scenario calls tool '#{tool_name}' but declares no 'capability tool.use(#{tool_name})' envelope",
+      location: location_from_meta(meta, env.file),
+      context: nil,
+      fix_hint: "Declare a tool envelope and control the effects '#{tool_name}' exercises",
+      fix_code:
+        "capability tool.use(#{tool_name}) {\n  // implement the effects this tool uses\n}"
+    }
+  end
+
+  defp missing_capability_error(req, tool_name, meta, env) do
+    %Error{
+      code: "E0028",
+      severity: :error,
+      message:
+        "Scenario envelope for tool '#{tool_name}' is missing '#{req_to_capability_decl(req)}', which the tool's effect summary requires",
+      location: location_from_meta(meta, env.file),
+      context: nil,
+      fix_hint: "Add the missing capability inside the 'tool.use(#{tool_name})' envelope",
+      fix_code: req_to_capability_decl(req)
+    }
+  end
+
+  defp req_to_capability_decl({:tool_use, name}), do: "capability tool.use(#{name})"
+  defp req_to_capability_decl("http.out"), do: "capability http.out(\"host\")"
+  defp req_to_capability_decl("model"), do: "capability model(provider, model)"
+  defp req_to_capability_decl(kind), do: "capability #{kind}"
+
+  # ------------------------------------------------------------------
+  # Pass 2g: Purity of `test` bodies and scenario `implement` providers (#273)
+  #
+  # `test` is for pure, module-level unit tests — effects belong in `scenario`.
+  # Scenario `implement` provider blocks must likewise be pure: they replace an
+  # effect, so they cannot themselves perform one. Both are E0029.
+  # ------------------------------------------------------------------
+
+  defp check_pure_contexts(declarations, env) do
+    test_errors =
+      declarations
+      |> Enum.filter(&match?(%AST.Test{}, &1))
+      |> Enum.flat_map(fn %AST.Test{body: body} ->
+        body
+        |> collect_effect_sites()
+        |> Enum.map(&effect_in_test_error(&1, env))
+      end)
+
+    provider_errors =
+      declarations
+      |> Enum.filter(&match?(%AST.Scenario{}, &1))
+      |> Enum.flat_map(fn %AST.Scenario{capabilities: caps} ->
+        caps
+        |> List.wrap()
+        |> Enum.flat_map(&collect_implement_bodies/1)
+        |> Enum.flat_map(fn body ->
+          body
+          |> collect_effect_sites()
+          |> Enum.map(&effect_in_provider_error(&1, env))
+        end)
+      end)
+
+    test_errors ++ provider_errors
+  end
+
+  # All `implement` provider bodies under a capability, including nested ones.
+  defp collect_implement_bodies(%AST.Capability{implement: implement, nested: nested}) do
+    own = if implement, do: [implement.body], else: []
+    own ++ Enum.flat_map(nested || [], &collect_implement_bodies/1)
+  end
+
+  defp collect_implement_bodies(_), do: []
+
+  # Capability-gated effect call sites in an expression (no transitivity — a
+  # pure context must not contain an effect call directly). `trace` is not gated
+  # and is therefore allowed. Returns `[{label, meta}]`.
+  defp collect_effect_sites(%AST.Call{
+         target: %AST.FieldAccess{subject: %AST.Identifier{name: "tool"}, field: method},
+         args: args,
+         meta: meta
+       })
+       when method in ["call", "schema"] do
+    [{"tool.#{method}", meta} | Enum.flat_map(args, &collect_effect_sites/1)]
+  end
+
+  defp collect_effect_sites(%AST.Call{
+         target: %AST.FieldAccess{subject: %AST.Identifier{name: namespace}, field: method},
+         args: args,
+         meta: meta
+       }) do
+    own =
+      if effect_namespace?(namespace) and effect_method?(namespace, method) and
+           Map.get(@effect_namespaces, namespace) != nil do
+        [{"#{namespace}.#{method}", meta}]
+      else
+        []
+      end
+
+    own ++ Enum.flat_map(args, &collect_effect_sites/1)
+  end
+
+  defp collect_effect_sites(%AST.Call{args: args}),
+    do: Enum.flat_map(args, &collect_effect_sites/1)
+
+  defp collect_effect_sites(%AST.Block{expressions: exprs}),
+    do: Enum.flat_map(exprs, &collect_effect_sites/1)
+
+  defp collect_effect_sites(%AST.Let{value: value}), do: collect_effect_sites(value)
+
+  defp collect_effect_sites(%AST.Match{subject: subject, arms: arms}) do
+    collect_effect_sites(subject) ++
+      Enum.flat_map(arms, fn %AST.MatchArm{body: body} -> collect_effect_sites(body) end)
+  end
+
+  defp collect_effect_sites(%AST.Pipe{left: left, right: right}),
+    do: collect_effect_sites(left) ++ collect_effect_sites(right)
+
+  defp collect_effect_sites(%AST.BinaryOp{left: left, right: right}),
+    do: collect_effect_sites(left) ++ collect_effect_sites(right)
+
+  defp collect_effect_sites(%AST.UnaryOp{operand: operand}), do: collect_effect_sites(operand)
+
+  defp collect_effect_sites(%AST.MapLit{entries: entries}),
+    do: Enum.flat_map(entries, fn {_k, v} -> collect_effect_sites(v) end)
+
+  defp collect_effect_sites(%AST.RecordLit{fields: fields}),
+    do: Enum.flat_map(fields, fn {_k, v} -> collect_effect_sites(v) end)
+
+  defp collect_effect_sites(%AST.ListLit{elements: elements}),
+    do: Enum.flat_map(elements, &collect_effect_sites/1)
+
+  defp collect_effect_sites(_), do: []
+
+  defp effect_in_test_error({label, meta}, env) do
+    %Error{
+      code: "E0029",
+      severity: :error,
+      message:
+        "Effect '#{label}' is not allowed in a 'test'; 'test' is for pure unit tests — use a 'scenario'",
+      location: location_from_meta(meta, env.file),
+      context: nil,
+      fix_hint:
+        "Move this effectful check into a 'scenario', where effects are declared and controlled",
+      fix_code: "scenario \"...\" { /* ... */ }"
+    }
+  end
+
+  defp effect_in_provider_error({label, meta}, env) do
+    %Error{
+      code: "E0029",
+      severity: :error,
+      message:
+        "Effect '#{label}' is not allowed in an 'implement' provider block; providers must be pure",
+      location: location_from_meta(meta, env.file),
+      context: nil,
+      fix_hint: "Return a value directly; a provider replaces an effect and cannot perform one",
+      fix_code: nil
+    }
+  end
 
   @doc false
   def effect_namespace?(namespace), do: Map.has_key?(@effect_namespaces, namespace)
@@ -3637,7 +4241,10 @@ defmodule Skein.Analyzer do
        }) do
     file = Map.get(meta, :file, "unknown")
 
-    types = Map.new(@builtin_type_names, fn name -> {name, :builtin} end)
+    types =
+      @builtin_type_names
+      |> Map.new(fn name -> {name, :builtin} end)
+      |> Map.merge(builtin_type_decls())
 
     types =
       types
@@ -3978,6 +4585,7 @@ defmodule Skein.Analyzer do
     end
   end
 
+  defp format_type(:json), do: "Json"
   defp format_type(:int), do: "Int"
   defp format_type(:float), do: "Float"
   defp format_type(:string), do: "String"
@@ -4206,6 +4814,10 @@ defmodule Skein.Analyzer do
     Enum.flat_map(entries, fn {_key, value} -> collect_referenced_identifiers(value) end)
   end
 
+  defp collect_referenced_identifiers(%AST.RecordLit{fields: fields}) do
+    Enum.flat_map(fields, fn {_key, value} -> collect_referenced_identifiers(value) end)
+  end
+
   defp collect_referenced_identifiers(%AST.StringLit{segments: segments}) do
     Enum.flat_map(segments, fn
       {:interpolation, expr} -> collect_referenced_identifiers(expr)
@@ -4340,6 +4952,10 @@ defmodule Skein.Analyzer do
 
   defp collect_effect_namespaces(%AST.MapLit{entries: entries}) do
     Enum.flat_map(entries, fn {_key, value} -> collect_effect_namespaces(value) end)
+  end
+
+  defp collect_effect_namespaces(%AST.RecordLit{fields: fields}) do
+    Enum.flat_map(fields, fn {_key, value} -> collect_effect_namespaces(value) end)
   end
 
   defp collect_effect_namespaces(%AST.ListLit{elements: elements}) do

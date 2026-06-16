@@ -28,15 +28,43 @@ defmodule Skein.AST do
   end
 
   defmodule Capability do
-    @moduledoc "A capability declaration within a module or agent."
+    @moduledoc """
+    A capability declaration.
+
+    In a module or agent body a capability is a flat declaration (`kind` +
+    `params`). Inside a `scenario` it may also open a nested envelope: `nested`
+    holds the capabilities scoped under it, and `implement` holds an optional
+    test-only provider block (see `CapabilityImplement`). For production
+    declarations `nested` is `[]` and `implement` is `nil`.
+    """
 
     @type t :: %__MODULE__{
             kind: String.t(),
             params: [map()],
+            nested: [Skein.AST.Capability.t()],
+            implement: Skein.AST.CapabilityImplement.t() | nil,
             meta: Skein.AST.meta()
           }
 
-    defstruct [:kind, :params, :meta]
+    defstruct [:kind, :params, :nested, :implement, :meta]
+  end
+
+  defmodule CapabilityImplement do
+    @moduledoc """
+    A test-only effect provider block inside a scenario capability envelope:
+    `implement(params) -> return_type { body }`. The body is local, typed, and
+    pure (no effect calls) — enforced by the analyzer. Reuses the `implement`
+    keyword that tool bodies already use.
+    """
+
+    @type t :: %__MODULE__{
+            params: [Skein.AST.Field.t()],
+            return_type: Skein.AST.TypeRef.t(),
+            body: Skein.AST.expr(),
+            meta: Skein.AST.meta()
+          }
+
+    defstruct [:params, :return_type, :body, :meta]
   end
 
   defmodule Fn do
@@ -181,16 +209,21 @@ defmodule Skein.AST do
   end
 
   defmodule Scenario do
-    @moduledoc "A scenario test with given bindings and expected assertions."
+    @moduledoc """
+    A scenario test. Carries an optional nested capability environment
+    (`capabilities` — the tool-scoped envelopes with `implement` providers),
+    `given` seed bindings, and an `expect` block of assertions.
+    """
 
     @type t :: %__MODULE__{
             description: String.t(),
+            capabilities: [Skein.AST.Capability.t()],
             given_vars: [term()],
             expect_body: Skein.AST.expr(),
             meta: Skein.AST.meta()
           }
 
-    defstruct [:description, :given_vars, :expect_body, :meta]
+    defstruct [:description, :capabilities, :given_vars, :expect_body, :meta]
   end
 
   defmodule Golden do
@@ -446,6 +479,23 @@ defmodule Skein.AST do
           }
 
     defstruct [:entries, :meta]
+  end
+
+  defmodule RecordLit do
+    @moduledoc """
+    A nominal record literal: `TypeName { field: expr, ... }`. Constructs a
+    value of a named `type`. Lowers to an atom-keyed map (the runtime
+    representation all user-type values share); the type name is checked by the
+    analyzer against the type's declared fields.
+    """
+
+    @type t :: %__MODULE__{
+            type_name: String.t(),
+            fields: [{String.t(), Skein.AST.expr()}],
+            meta: Skein.AST.meta()
+          }
+
+    defstruct [:type_name, :fields, :meta]
   end
 
   defmodule Block do

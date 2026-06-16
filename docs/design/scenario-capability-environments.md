@@ -97,24 +97,33 @@ During scenario execution:
 
 ## 5. Compiler / runtime work
 
-**Parser / AST.** `scenario_item = capability_envelope | let | expect_block`. A `Capability` node
-gains an optional nested body (`[capability]`) and an optional `CapabilityImplement { params,
-return_type, body, meta }`. Today the scenario AST is flat (`AST.Scenario{description, given_vars,
-expect_body}`, `ast.ex:183-194`) and `AST.Capability{kind, params}` has no body (`ast.ex:30-40`) —
-both grow. `via` never enters the lexer/grammar.
+> **Implementation status (2026-06-16):** parser/AST, effect-summary analysis, provider/test purity,
+> the provider contract types, and the runtime stack (uuid/instant/http + codegen of providers,
+> `Dependencies` retired) are **landed**. Remaining: `llm`/`model` provider routing, and the Wave 3
+> test-runner default policy (§6) + live-effect blocking.
 
-**Analyzer.**
-- **Effect-summary analysis**: for each tool/function, collect direct + transitive effect calls
-  (today only local call-site E0012 checks exist, `analyzer.ex:3384-3411`; no transitive summary).
-- For each scenario: require a `tool.use(T)` envelope per called tool; require the envelope to cover
-  the tool's effect summary; type-check each `implement` block against the effect's provider contract
-  (§7); enforce provider **purity**.
+**Parser / AST.** *(done — #280)* `scenario_item = capability_envelope | given_block | expect_block`.
+`AST.Capability` gained `nested` (`[Capability]`) and `implement` (`CapabilityImplement{params,
+return_type, body, meta}`); `AST.Scenario` gained `capabilities`. `via` never enters the
+lexer/grammar (a `via` after a capability is a structured parse error). Typed provider return values
+use nominal record literals `TypeName { ... }`.
 
-**Runtime.** A dynamic capability-context stack (today there is only a flat module capability set +
-process-dict `uuid`/`instant` overrides + a replay context — `dependencies.ex:37-92`, no stack).
-Resolution order per effect: (1) scenario `implement` block → (2) replay (golden) → (3) deterministic
-test-runner default → (4) live (only if allowed) → (5) structured failure. Context propagates to
-spawned processes/tasks/timers.
+**Analyzer.** *(done — #281/#273/#274)*
+- **Effect-summary analysis**: per tool, the transitive set of effect calls (direct + through helper
+  fns); a scenario whose envelope does not cover a called tool's summary is rejected (E0028).
+- Provider/test **purity**: effects are not allowed in `test` bodies or in `implement` providers
+  (E0029).
+- **Provider contract types**: `HttpRequest`/`HttpResponse`/`LlmRequest`/`LlmResponse` + `Json`.
+
+**Runtime.** *(largely done — #282)* `Skein.Runtime.CapabilityStack` is a dynamic capability-context
+stack. The scenario test fn registers its tool envelopes; `tool.call` pushes the matching envelope
+(nested under the active tool, else the registered top-level one) and pops on return. Per-effect
+resolution order: (1) scenario `implement` provider → (2) replay (golden) → (3) deterministic
+test-runner default *(Wave 3)* → (4) live (only if allowed) → (5) structured failure. `uuid`,
+`instant`, and `http` resolve through the stack today (via `Skein.Runtime.Nondeterminism` /
+`Skein.Runtime.Http`); the process-dict override and `Skein.Runtime.Dependencies` are **retired**.
+Remaining: `llm`/`model` routing and propagation to spawned processes/tasks/timers
+(`CapabilityStack.snapshot/0`+`restore/1` exist for the hand-off).
 
 ## 6. Test-runner default policy
 
@@ -154,14 +163,26 @@ and must be added.** Per-namespace provider contracts:
 
 Use Skein `Ok(...)`/`Err(...)` — never ad-hoc Erlang tuple shapes, never magic variables.
 
-## 8. Open decisions (need human sign-off before freeze)
+## 8. Decisions (signed off 2026-06-15)
 
-- **`implement` block exact signature/keyword** (`implement(...) -> T { ... }` vs alternatives).
-- **Fate of `given`** — the prior design removed it (§12.4); under nested envelopes plain `let`
-  covers value bindings, but seed-state may want a home. Decide keep / remove / fold into seed.
-- **Whether seed-only stateful state is in 1.0** or deferred whole to 1.1.
-- **CLI live-effect flag syntax** (`--allow-live <effect>:<scope>`).
-- **Names/shapes of `HttpRequest`, `HttpResponse`, `LlmRequest`, `LlmResponse`, `Json`.**
+- **`implement` block signature/keyword — RESOLVED:** `implement(params) -> ReturnType { body }`,
+  reusing the existing `implement` keyword (the one tool bodies already use). No new keyword. A
+  capability envelope holds at most one `implement` block.
+- **Fate of `given` — RESOLVED:** keep `given`, repurposed as the home for **seed-only stateful
+  state** in 1.0 (pre-populated store/memory). Value bindings continue to use plain `let` inside
+  `expect`.
+- **Seed-only stateful state — RESOLVED:** in 1.0, via `given` (above). General behavioural stateful
+  stubs ("third read fails") remain 1.1.
+- **Names/shapes of provider contract types — RESOLVED (#274):**
+  - `HttpRequest { method: String, url: String, headers: Map[String, String], body: Json }`
+  - `HttpResponse { status: Int, body: Map, headers: Map[String, String] }` (existing)
+  - `LlmRequest { model: String, system: String, prompt: String }` (minimal)
+  - `LlmResponse { text: String }` (minimal; `llm.json` decodes `text` against the target schema)
+  - `Json` — a named type for an arbitrary JSON value (object/array/string/number/bool/null).
+
+### Still open
+
+- **CLI live-effect flag syntax** (`--allow-live <effect>:<scope>`) — Wave 3.
 
 ## 9. What moves to 1.1
 

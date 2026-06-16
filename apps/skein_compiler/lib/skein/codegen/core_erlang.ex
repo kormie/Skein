@@ -1345,7 +1345,11 @@ defmodule Skein.CodeGen.CoreErlang do
   # Generate a __test_N__/0 function for a scenario declaration
   # Scenario tests bind given vars, then execute expect body assertions
   defp generate_test_fn(
-         %AST.Scenario{given_vars: given_vars, expect_body: expect_body},
+         %AST.Scenario{
+           capabilities: envelope_caps,
+           given_vars: given_vars,
+           expect_body: expect_body
+         },
          capabilities,
          fn_arities,
          type_decls
@@ -1373,9 +1377,18 @@ defmodule Skein.CodeGen.CoreErlang do
         :cerl.c_let([:cerl.c_var(vname)], value_expr, acc)
       end)
 
-    # Final wrap: discard result, return :ok
+    # Discard the expect-body result, return :ok.
     discard_var = :cerl.c_var(gen_var())
-    final = :cerl.c_let([discard_var], wrapped, :cerl.c_atom(:ok))
+    body = :cerl.c_let([discard_var], wrapped, :cerl.c_atom(:ok))
+
+    # Register the scenario capability envelopes (#282) BEFORE the body runs, so
+    # tool.call pushes them and effects resolve against their `implement`
+    # providers. Always registers (an empty map when there are no envelopes) so
+    # one scenario's envelopes never leak into the next.
+    register = scenario_envelope_registration(envelope_caps || [], base_scope)
+    reg_discard = :cerl.c_var(gen_var())
+    final = :cerl.c_let([reg_discard], register, body)
+
     :cerl.c_fun([], final)
   end
 
@@ -1406,12 +1419,93 @@ defmodule Skein.CodeGen.CoreErlang do
 
     body_expr = generate_expr(body, scope)
 
-    # Wrap: load trace, run body, return :ok
+    # Run the body INSIDE a replay context so its effect calls intercept the
+    # loaded trace instead of hitting live services (Wave 1 golden replay
+    # activation): Replay.with_replay(Trace, fn -> Body; :ok end).
+    body_discard = :cerl.c_var(gen_var())
+    body_fun = :cerl.c_fun([], :cerl.c_let([body_discard], body_expr, :cerl.c_atom(:ok)))
+
+    with_replay =
+      :cerl.c_call(
+        :cerl.c_atom(:"Elixir.Skein.Runtime.Replay"),
+        :cerl.c_atom(:with_replay),
+        [trace_var, body_fun]
+      )
+
+    # Wrap: load trace, run body under replay, return :ok
     discard_var = :cerl.c_var(gen_var())
 
-    inner = :cerl.c_let([discard_var], body_expr, :cerl.c_atom(:ok))
+    inner = :cerl.c_let([discard_var], with_replay, :cerl.c_atom(:ok))
     wrapped = :cerl.c_let([trace_var], load_trace, inner)
     :cerl.c_fun([], wrapped)
+  end
+
+  # Build `Skein.Runtime.CapabilityStack.register_envelopes(%{tool => envelope})`
+  # from a scenario's tool.use envelopes (#282).
+  defp scenario_envelope_registration(capabilities, base_scope) do
+    pairs =
+      capabilities
+      |> Enum.filter(&match?(%AST.Capability{kind: "tool.use"}, &1))
+      |> Enum.map(fn cap ->
+        :cerl.c_map_pair(
+          :cerl.abstract(tool_use_cap_name(cap)),
+          build_tool_envelope(cap, base_scope)
+        )
+      end)
+
+    :cerl.c_call(
+      :cerl.c_atom(:"Elixir.Skein.Runtime.CapabilityStack"),
+      :cerl.c_atom(:register_envelopes),
+      [:cerl.c_map(pairs)]
+    )
+  end
+
+  # A runtime envelope map: %{tool: name, providers: %{kind => fun}, nested: %{tool => envelope}}.
+  defp build_tool_envelope(%AST.Capability{nested: nested} = cap, base_scope) do
+    nested = nested || []
+
+    provider_pairs =
+      nested
+      |> Enum.filter(fn c -> c.kind != "tool.use" and c.implement != nil end)
+      |> Enum.map(fn c ->
+        :cerl.c_map_pair(:cerl.abstract(c.kind), build_provider_closure(c.implement, base_scope))
+      end)
+
+    nested_pairs =
+      nested
+      |> Enum.filter(fn c -> c.kind == "tool.use" end)
+      |> Enum.map(fn c ->
+        :cerl.c_map_pair(:cerl.abstract(tool_use_cap_name(c)), build_tool_envelope(c, base_scope))
+      end)
+
+    :cerl.c_map([
+      :cerl.c_map_pair(:cerl.c_atom(:tool), :cerl.abstract(tool_use_cap_name(cap))),
+      :cerl.c_map_pair(:cerl.c_atom(:providers), :cerl.c_map(provider_pairs)),
+      :cerl.c_map_pair(:cerl.c_atom(:nested), :cerl.c_map(nested_pairs))
+    ])
+  end
+
+  # An `implement(params) -> T { body }` provider compiles to a closure over its
+  # params; the runtime invokes it (0-arity for uuid/instant, 1-arity for
+  # http.out/model) when resolving the effect.
+  defp build_provider_closure(%AST.CapabilityImplement{params: params, body: body}, base_scope) do
+    param_vars = Enum.map(params, fn %AST.Field{name: name} -> :cerl.c_var(var_name(name)) end)
+
+    scope =
+      params
+      |> Enum.map(fn %AST.Field{name: name} -> {name, var_name(name)} end)
+      |> Map.new()
+      |> then(&Map.merge(base_scope, &1))
+
+    :cerl.c_fun(param_vars, generate_expr(body, scope))
+  end
+
+  defp tool_use_cap_name(%AST.Capability{params: params}) do
+    case params do
+      [%AST.ToolRef{name: name} | _] -> name
+      [%AST.StringLit{segments: [{:literal, name}]} | _] -> name
+      _ -> nil
+    end
   end
 
   defp type_ref_to_string(%AST.TypeRef{name: name, params: []}) do
@@ -2345,6 +2439,17 @@ defmodule Skein.CodeGen.CoreErlang do
       end)
 
     :cerl.c_map(pairs |> Enum.map(fn {k, v} -> :cerl.c_map_pair(k, v) end))
+  end
+
+  # Record literal: same atom-keyed map representation as user-type values, so
+  # field access (map_get) reads it back. The type name is analyzer-only.
+  defp generate_expr(%AST.RecordLit{fields: fields}, scope) do
+    pairs =
+      Enum.map(fields, fn {key, value} ->
+        :cerl.c_map_pair(:cerl.c_atom(String.to_atom(key)), generate_expr(value, scope))
+      end)
+
+    :cerl.c_map(pairs)
   end
 
   # Identifier

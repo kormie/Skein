@@ -277,18 +277,29 @@ max_restarts_decl = "max_restarts:" integer "per" integer "s"
 > revised. The 1.0 direction is **scenario-scoped capability environments** — a `scenario` declares
 > the complete capability environment a tool may exercise as a nested
 > `capability tool.use(T) { capability <effect>(...) { implement(...) } }` tree, with `test` reserved
-> for pure unit tests (no effects). The `given` block and the bare `assert`-only `expect` shown here
-> may change; the superseded `via` design is **not** the 1.0 surface. See
+> for pure unit tests (no effects). The grammar below is implemented (parser/AST, #280); the analyzer
+> computes each tool's transitive effect summary and rejects a scenario whose envelope does not cover
+> it (E0028, #281). Provider purity and the runtime resolution stack land in later work packages; the
+> superseded `via` design is **not** the 1.0 surface (and is a structured parse error). See
 > `docs/design/scenario-capability-environments.md` and `docs/ROADMAP.md` (Wave 2).
 
 ```
-test_decl    = "test" string block
-             | "scenario" string "{" given_block expect_block "}"
-             | "golden" string "from" "trace" string block
-given_block  = "given" "{" (lower_ident ":" expr)* "}"
-expect_block = "expect" "{" assertion* "}"
-assertion    = "assert" expr
+test_decl     = "test" string block
+              | "scenario" string "{" scenario_item* "}"
+              | "golden" string "from" "trace" string block
+scenario_item = capability_envelope | given_block | expect_block
+capability_envelope = "capability" cap_kind [ "(" args ")" ] [ "{" envelope_item* "}" ]
+envelope_item = capability_envelope | implement_block
+implement_block = "implement" "(" params ")" "->" type block
+given_block   = "given" "{" (lower_ident ":" expr)* "}"   -- seed bindings
+expect_block  = "expect" "{" assertion* "}"
+assertion     = "assert" expr
 ```
+
+A nested capability with an `implement` block uses that controlled (test-only, pure) provider; one
+with no `implement` block falls through to the test-runner default policy. A capability envelope holds
+at most one `implement` block. `implement` reuses the keyword tool bodies already use. There is no
+`via` form — a `via` after a capability is rejected with a fix pointing at the envelope form.
 
 ### 3.11 Expressions
 
@@ -585,9 +596,14 @@ http.put(url: String, json: Map) -> Result[HttpResponse, HttpError]
 http.patch(url: String, json: Map) -> Result[HttpResponse, HttpError]
 http.delete(url: String) -> Result[HttpResponse, HttpError]
 
+type HttpRequest  { method: String, url: String, headers: Map[String, String], body: Json }
 type HttpResponse { status: Int, body: Map, headers: Map[String, String] }
 enum HttpError { Timeout, ConnectionFailed, Status(code: Int, body: String) }
 ```
+
+`HttpRequest` is the provider contract type a scenario `implement` block receives when
+controlling `http.out` (§3.10). `Json` is an arbitrary JSON value (object/array/string/number/
+bool/null); it derives to the permissive JSON Schema `{}`.
 
 ### 6.2 Store
 
@@ -626,6 +642,9 @@ llm.stream(model: String, system: String, input: T) -> Result[String, LlmError]
 llm.stream(model: String, system: String, input: T, on_chunk) -> Result[String, LlmError]
 llm.embed(model: String, input: String) -> Result[List[Float], LlmError]
 
+type LlmRequest  { model: String, system: String, prompt: String }
+type LlmResponse { text: String }
+
 enum LlmError {
   ParseFailed(raw: String, expected_type: String, parse_error: String)
   Refused(reason: String)
@@ -636,6 +655,10 @@ enum LlmError {
   ProviderError(code: String, message: String)
 }
 ```
+
+`LlmRequest`/`LlmResponse` are the provider contract types a scenario `implement` block uses when
+controlling `model(...)` (§3.10). `LlmResponse.text` carries the raw completion; `llm.json[T]`
+decodes that text against the target schema, exactly as the live backend does.
 
 The optional `on_chunk` argument to `llm.stream` is a `&fn` reference to a
 one-parameter local function; it is invoked with each text chunk (a `String`)

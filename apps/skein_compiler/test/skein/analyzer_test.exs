@@ -4079,15 +4079,20 @@ defmodule Skein.AnalyzerTest do
       assert Enum.any?(errors, &(&1.code == "E0022"))
     end
 
-    test "a correct test block (effects unwrapped) still compiles clean" do
+    test "a correct scenario block (effects unwrapped) still compiles clean" do
+      # Effects live in `scenario`, not `test` (#273). The #253 intent — that
+      # effect inference + `!` unwrap type-check in an effectful body — is now
+      # exercised through `scenario`.
       assert {:ok, _} =
                analyze("""
                module M {
                  capability model("anthropic", "claude-opus-4-8")
 
-                 test "uses chat" {
-                   let r = llm.chat("claude-opus-4-8", "sys", "hi")!
-                   assert String.length(r) > 0
+                 scenario "uses chat" {
+                   expect {
+                     let r = llm.chat("claude-opus-4-8", "sys", "hi")!
+                     assert String.length(r) > 0
+                   }
                  }
                }
                """)

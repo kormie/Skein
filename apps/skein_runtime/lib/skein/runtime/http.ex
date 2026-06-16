@@ -29,6 +29,7 @@ defmodule Skein.Runtime.Http do
   """
 
   alias Skein.Runtime.Capability
+  alias Skein.Runtime.CapabilityStack
   alias Skein.Runtime.Replay
   alias Skein.Runtime.Trace
 
@@ -112,6 +113,8 @@ defmodule Skein.Runtime.Http do
   # Internal
   # ------------------------------------------------------------------
 
+  defp method_string(method), do: method |> Atom.to_string() |> String.upcase()
+
   defp with_encoded_body(body, request_fn) do
     case Jason.encode(body) do
       {:ok, json} -> request_fn.(json)
@@ -131,10 +134,22 @@ defmodule Skein.Runtime.Http do
     end)
   end
 
-  # An active replay context serves recorded responses instead of dialing
-  # the network. The recorded event must match the live call's method and
-  # URL — divergence is a clear error, never a silently wrong response.
+  # Resolution order (#282): a scenario `implement` provider on the active
+  # capability stack wins; then an active replay context serves recorded
+  # responses; otherwise the live network. The recorded event must match the
+  # live call's method and URL — divergence is a clear error.
   defp dispatch(method, url, body) do
+    case CapabilityStack.resolve("http.out") do
+      {:implement, provider} ->
+        request = %{method: method_string(method), url: url, headers: %{}, body: body}
+        {provider.(request), %{implemented: true}}
+
+      :no_provider ->
+        dispatch_replay_or_live(method, url, body)
+    end
+  end
+
+  defp dispatch_replay_or_live(method, url, body) do
     case Replay.next_response(:http, %{method: method, url: url}) do
       :no_replay ->
         do_request(method, url, body)
