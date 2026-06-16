@@ -36,6 +36,7 @@ defmodule Skein.Analyzer do
   - E0025: Constraint annotation on wrong type
   - E0026: Invalid named argument (unknown/duplicate name, positional after named, callee without named-argument support)
   - E0027: Invalid guard expression (guards allow literals, bindings, field access, comparisons, boolean operators, and +/-/* arithmetic)
+  - E0028: Scenario capability envelope is missing/incomplete (a called tool has no `tool.use(T)` envelope, or the envelope does not cover the tool's transitive effect summary)
 
   ### Agent (E003x)
   - E0030: Invalid phase transition
@@ -424,6 +425,11 @@ defmodule Skein.Analyzer do
 
     # Pass 2e: Type-check tool `implement` bodies (#253)
     errors = errors ++ check_tool_implement_inference(ast.declarations, env)
+
+    # Pass 2f: Scenario capability envelope coverage (#281) — each tool a
+    # scenario calls must declare a tool.use(T) envelope covering the tool's
+    # transitive effect summary.
+    errors = errors ++ check_scenario_envelopes(ast.declarations, env)
 
     # Pass 2c: Scope-independent interpolation rules — uppercase
     # interpolation roots and interpolated string patterns. One generic
@@ -3538,6 +3544,288 @@ defmodule Skein.Analyzer do
   end
 
   defp collect_effect_calls(_expr, _env), do: []
+
+  # ------------------------------------------------------------------
+  # Pass 2f: Scenario capability envelope coverage (#281)
+  #
+  # A scenario that calls `tool.call(T)` must declare a `capability tool.use(T)`
+  # envelope, and that envelope must cover T's transitive effect summary — the
+  # nondeterministic/external effects T reaches directly or through helper fns
+  # (effects launder through helpers). Nested tool calls require nested tool
+  # envelopes, checked recursively.
+  # ------------------------------------------------------------------
+
+  # Effect namespaces that must be controlled by an explicit nested capability,
+  # mapped to the nested capability kind that satisfies them. store/memory/event
+  # get scenario-local test defaults at runtime and need no envelope entry.
+  @envelope_effect_caps %{
+    "http" => "http.out",
+    "llm" => "model",
+    "uuid" => "uuid",
+    "instant" => "instant"
+  }
+
+  defp check_scenario_envelopes(declarations, env) do
+    scenarios = Enum.filter(declarations, &match?(%AST.Scenario{}, &1))
+
+    if scenarios == [] do
+      []
+    else
+      ctx = %{
+        tools:
+          declarations
+          |> Enum.filter(&match?(%AST.ToolDecl{}, &1))
+          |> Map.new(fn %AST.ToolDecl{name: name} = t -> {name, t} end),
+        fn_bodies:
+          declarations
+          |> Enum.filter(&match?(%AST.Fn{}, &1))
+          |> Map.new(fn %AST.Fn{name: name, body: body} -> {name, body} end)
+      }
+
+      Enum.flat_map(scenarios, &check_scenario_envelope(&1, ctx, env))
+    end
+  end
+
+  defp check_scenario_envelope(%AST.Scenario{} = scenario, ctx, env) do
+    caps = scenario.capabilities || []
+    called = scenario.expect_body |> collect_called_tools() |> Enum.uniq()
+
+    Enum.flat_map(called, fn tool_name ->
+      case Enum.find(caps, &tool_use_for?(&1, tool_name)) do
+        nil ->
+          [missing_tool_envelope_error(tool_name, scenario.meta, env)]
+
+        envelope ->
+          check_envelope_covers(tool_name, envelope, scenario.meta, ctx, env, MapSet.new())
+      end
+    end)
+  end
+
+  defp check_envelope_covers(tool_name, envelope, meta, ctx, env, visited) do
+    summary = tool_effect_summary(tool_name, ctx)
+    provided = provided_requirements(envelope.nested || [])
+    missing = MapSet.difference(summary, provided)
+
+    missing_errors =
+      Enum.map(missing, &missing_capability_error(&1, tool_name, meta, env))
+
+    nested_errors =
+      summary
+      |> Enum.filter(&match?({:tool_use, _}, &1))
+      |> Enum.flat_map(fn {:tool_use, other} ->
+        if MapSet.member?(provided, {:tool_use, other}) and not MapSet.member?(visited, other) do
+          nested_env = Enum.find(envelope.nested || [], &tool_use_for?(&1, other))
+          check_envelope_covers(other, nested_env, meta, ctx, env, MapSet.put(visited, tool_name))
+        else
+          []
+        end
+      end)
+
+    missing_errors ++ nested_errors
+  end
+
+  defp tool_effect_summary(tool_name, ctx) do
+    case Map.get(ctx.tools, tool_name) do
+      %AST.ToolDecl{implement: body} when not is_nil(body) ->
+        effect_requirements(body, ctx, MapSet.new())
+
+      _ ->
+        MapSet.new()
+    end
+  end
+
+  # The transitive set of envelope-relevant effect requirements an expression
+  # reaches, following local helper-fn calls (laundering) but treating
+  # `tool.call(Other)` as a boundary (it becomes a {:tool_use, Other} req).
+  defp effect_requirements(
+         %AST.Call{
+           target: %AST.FieldAccess{subject: %AST.Identifier{name: "tool"}, field: "call"},
+           args: [first | _] = args
+         },
+         ctx,
+         visited
+       ) do
+    own =
+      case extract_tool_name_from_expr(first) do
+        nil -> MapSet.new()
+        name -> MapSet.new([{:tool_use, name}])
+      end
+
+    union_reqs([own | Enum.map(args, &effect_requirements(&1, ctx, visited))])
+  end
+
+  defp effect_requirements(
+         %AST.Call{
+           target: %AST.FieldAccess{subject: %AST.Identifier{name: namespace}, field: _method},
+           args: args
+         },
+         ctx,
+         visited
+       )
+       when is_map_key(@envelope_effect_caps, namespace) do
+    own = MapSet.new([Map.fetch!(@envelope_effect_caps, namespace)])
+    union_reqs([own | Enum.map(args, &effect_requirements(&1, ctx, visited))])
+  end
+
+  defp effect_requirements(
+         %AST.Call{target: %AST.Identifier{name: fn_name}, args: args},
+         ctx,
+         visited
+       ) do
+    callee_reqs =
+      if Map.has_key?(ctx.fn_bodies, fn_name) and not MapSet.member?(visited, fn_name) do
+        effect_requirements(Map.fetch!(ctx.fn_bodies, fn_name), ctx, MapSet.put(visited, fn_name))
+      else
+        MapSet.new()
+      end
+
+    union_reqs([callee_reqs | Enum.map(args, &effect_requirements(&1, ctx, visited))])
+  end
+
+  defp effect_requirements(%AST.Call{args: args}, ctx, visited),
+    do: union_reqs(Enum.map(args, &effect_requirements(&1, ctx, visited)))
+
+  defp effect_requirements(%AST.Block{expressions: exprs}, ctx, visited),
+    do: union_reqs(Enum.map(exprs, &effect_requirements(&1, ctx, visited)))
+
+  defp effect_requirements(%AST.Let{value: value}, ctx, visited),
+    do: effect_requirements(value, ctx, visited)
+
+  defp effect_requirements(%AST.Match{subject: subject, arms: arms}, ctx, visited) do
+    union_reqs([
+      effect_requirements(subject, ctx, visited)
+      | Enum.map(arms, fn %AST.MatchArm{body: body} -> effect_requirements(body, ctx, visited) end)
+    ])
+  end
+
+  defp effect_requirements(%AST.Pipe{left: left, right: right}, ctx, visited),
+    do:
+      union_reqs([
+        effect_requirements(left, ctx, visited),
+        effect_requirements(right, ctx, visited)
+      ])
+
+  defp effect_requirements(%AST.BinaryOp{left: left, right: right}, ctx, visited),
+    do:
+      union_reqs([
+        effect_requirements(left, ctx, visited),
+        effect_requirements(right, ctx, visited)
+      ])
+
+  defp effect_requirements(%AST.UnaryOp{operand: operand}, ctx, visited),
+    do: effect_requirements(operand, ctx, visited)
+
+  defp effect_requirements(%AST.MapLit{entries: entries}, ctx, visited),
+    do: union_reqs(Enum.map(entries, fn {_k, v} -> effect_requirements(v, ctx, visited) end))
+
+  defp effect_requirements(%AST.RecordLit{fields: fields}, ctx, visited),
+    do: union_reqs(Enum.map(fields, fn {_k, v} -> effect_requirements(v, ctx, visited) end))
+
+  defp effect_requirements(%AST.ListLit{elements: elements}, ctx, visited),
+    do: union_reqs(Enum.map(elements, &effect_requirements(&1, ctx, visited)))
+
+  defp effect_requirements(_expr, _ctx, _visited), do: MapSet.new()
+
+  defp union_reqs(sets), do: Enum.reduce(sets, MapSet.new(), &MapSet.union/2)
+
+  # Tool names invoked via tool.call in an expression (boundary effects).
+  defp collect_called_tools(%AST.Call{
+         target: %AST.FieldAccess{subject: %AST.Identifier{name: "tool"}, field: "call"},
+         args: [first | _] = args
+       }) do
+    own =
+      case extract_tool_name_from_expr(first) do
+        nil -> []
+        name -> [name]
+      end
+
+    own ++ Enum.flat_map(args, &collect_called_tools/1)
+  end
+
+  defp collect_called_tools(%AST.Call{args: args}),
+    do: Enum.flat_map(args, &collect_called_tools/1)
+
+  defp collect_called_tools(%AST.Block{expressions: exprs}),
+    do: Enum.flat_map(exprs, &collect_called_tools/1)
+
+  defp collect_called_tools(%AST.Let{value: value}), do: collect_called_tools(value)
+
+  defp collect_called_tools(%AST.Match{subject: subject, arms: arms}) do
+    collect_called_tools(subject) ++
+      Enum.flat_map(arms, fn %AST.MatchArm{body: body} -> collect_called_tools(body) end)
+  end
+
+  defp collect_called_tools(%AST.Pipe{left: left, right: right}),
+    do: collect_called_tools(left) ++ collect_called_tools(right)
+
+  defp collect_called_tools(%AST.BinaryOp{left: left, right: right}),
+    do: collect_called_tools(left) ++ collect_called_tools(right)
+
+  defp collect_called_tools(%AST.UnaryOp{operand: operand}), do: collect_called_tools(operand)
+
+  defp collect_called_tools(%AST.MapLit{entries: entries}),
+    do: Enum.flat_map(entries, fn {_k, v} -> collect_called_tools(v) end)
+
+  defp collect_called_tools(%AST.RecordLit{fields: fields}),
+    do: Enum.flat_map(fields, fn {_k, v} -> collect_called_tools(v) end)
+
+  defp collect_called_tools(%AST.ListLit{elements: elements}),
+    do: Enum.flat_map(elements, &collect_called_tools/1)
+
+  defp collect_called_tools(_), do: []
+
+  defp tool_use_for?(%AST.Capability{kind: "tool.use", params: params}, tool_name) do
+    case params do
+      [param | _] -> extract_tool_name_from_param(param) == tool_name
+      _ -> false
+    end
+  end
+
+  defp tool_use_for?(_, _), do: false
+
+  defp provided_requirements(nested) do
+    nested
+    |> Enum.map(fn %AST.Capability{kind: kind, params: params} ->
+      if kind == "tool.use" do
+        {:tool_use, params |> List.first() |> extract_tool_name_from_param()}
+      else
+        kind
+      end
+    end)
+    |> MapSet.new()
+  end
+
+  defp missing_tool_envelope_error(tool_name, meta, env) do
+    %Error{
+      code: "E0028",
+      severity: :error,
+      message:
+        "Scenario calls tool '#{tool_name}' but declares no 'capability tool.use(#{tool_name})' envelope",
+      location: location_from_meta(meta, env.file),
+      context: nil,
+      fix_hint: "Declare a tool envelope and control the effects '#{tool_name}' exercises",
+      fix_code:
+        "capability tool.use(#{tool_name}) {\n  // implement the effects this tool uses\n}"
+    }
+  end
+
+  defp missing_capability_error(req, tool_name, meta, env) do
+    %Error{
+      code: "E0028",
+      severity: :error,
+      message:
+        "Scenario envelope for tool '#{tool_name}' is missing '#{req_to_capability_decl(req)}', which the tool's effect summary requires",
+      location: location_from_meta(meta, env.file),
+      context: nil,
+      fix_hint: "Add the missing capability inside the 'tool.use(#{tool_name})' envelope",
+      fix_code: req_to_capability_decl(req)
+    }
+  end
+
+  defp req_to_capability_decl({:tool_use, name}), do: "capability tool.use(#{name})"
+  defp req_to_capability_decl("http.out"), do: "capability http.out(\"host\")"
+  defp req_to_capability_decl("model"), do: "capability model(provider, model)"
+  defp req_to_capability_decl(kind), do: "capability #{kind}"
 
   @doc false
   def effect_namespace?(namespace), do: Map.has_key?(@effect_namespaces, namespace)

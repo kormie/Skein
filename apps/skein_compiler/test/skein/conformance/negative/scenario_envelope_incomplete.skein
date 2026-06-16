@@ -1,0 +1,33 @@
+-- expect: E0028
+-- #281: a scenario that tests a tool must declare a tool.use(T) envelope that
+-- covers the tool's transitive effect summary. Here Billing.Refund reaches
+-- http.out through the `charge` helper, but the envelope only controls uuid —
+-- the missing http.out must be a compile error, not an uncontrolled live call.
+module ScenarioEnvelopeIncomplete {
+  capability tool.use(Billing.Refund)
+
+  fn charge() -> Result[HttpResponse, HttpError] {
+    http.get("https://api.stripe.com/v1/charges")
+  }
+
+  tool Billing.Refund {
+    input { ticket_id: String }
+    output { status: String }
+    implement {
+      let r = charge()!
+      { status: "ok" }
+    }
+  }
+
+  scenario "refund is controlled" {
+    capability tool.use(Billing.Refund) {
+      capability uuid {
+        implement() -> Uuid { Uuid.parse("00000000-0000-4000-8000-000000000001")! }
+      }
+    }
+    expect {
+      let result = tool.call(Billing.Refund, { ticket_id: "t1" })!
+      assert result.status == "ok"
+    }
+  }
+}

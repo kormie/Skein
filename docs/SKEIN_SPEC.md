@@ -277,11 +277,11 @@ max_restarts_decl = "max_restarts:" integer "per" integer "s"
 > revised. The 1.0 direction is **scenario-scoped capability environments** — a `scenario` declares
 > the complete capability environment a tool may exercise as a nested
 > `capability tool.use(T) { capability <effect>(...) { implement(...) } }` tree, with `test` reserved
-> for pure unit tests (no effects). The grammar below reflects the **parser/AST** stage of that work
-> (#280): a scenario body is an ordered set of capability envelopes, `given` seed bindings, and one
-> `expect` block. Effect-summary checking, provider purity, and the runtime stack land in later work
-> packages; the superseded `via` design is **not** the 1.0 surface (and is a structured parse error).
-> See `docs/design/scenario-capability-environments.md` and `docs/ROADMAP.md` (Wave 2).
+> for pure unit tests (no effects). The grammar below is implemented (parser/AST, #280); the analyzer
+> computes each tool's transitive effect summary and rejects a scenario whose envelope does not cover
+> it (E0028, #281). Provider purity and the runtime resolution stack land in later work packages; the
+> superseded `via` design is **not** the 1.0 surface (and is a structured parse error). See
+> `docs/design/scenario-capability-environments.md` and `docs/ROADMAP.md` (Wave 2).
 
 ```
 test_decl     = "test" string block
