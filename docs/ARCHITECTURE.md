@@ -355,6 +355,18 @@ are unaffected. The analyzer computes each tool's transitive effect summary and 
 whose envelope does not cover it (E0028); `implement` providers and `test` bodies must be pure
 (E0029). The earlier process-dictionary override (`Skein.Runtime.Dependencies`) is retired.
 
+**Test-runner default policy (`Skein.Runtime.TestPolicy`, #283).** The `skein test` runner installs a
+process-scoped policy around each scenario/golden, supplying resolution step **(3)** above. With no
+`implement`/replay, `uuid`/`instant` get deterministic generators (incrementing UUID; instant stepping
++1 s from a fixed base, reset per test); a `model` call defaults to a deterministic test backend, but a
+*live* backend and any `http.out` request are **blocked** — raising `Skein.Runtime.LiveEffectError`,
+which fails the test rather than returning a swallowable `Err`. Live calls are opt-in via the repeatable
+`skein test --allow-live <effect>[:<scope>]` flag (gatable tokens `http.out`/`model`/`uuid`/`instant`;
+host-scoped for `http.out`; parsed by `TestPolicy.parse_allow_live/1`). Scenario-local
+`store`/`memory`/`event.log` state is reset (`TestPolicy.reset_scenario_state/0`) before each test so it
+never leaks. Outside the runner (production `skein run`) the policy is inactive and effects resolve
+straight to live; `snapshot/0`+`restore/1` hand the policy to spawned work.
+
 **Scoped capability labels (spec §3.2):** for `process.spawn`, `timer`, and `event.log` the capability parameter names a scope label (pool/group/stream). Codegen threads the declared label into every generated runtime call as the first argument — `Process.spawn(pool, task, caps)`, `Timer.after(group, delay, task, caps)`, `EventStore.log(stream, name, data, caps)` — mirroring the `memory.kv` namespace threading. The shared `Capability.check_scoped/3` enforces the label: no capability of the kind blocks the call; a parameterless declaration is unscoped (presence-only); otherwise the call's label must exactly match a declared param (`nil` labels are blocked). The label is recorded on the trace span (`pool:`/`group:`) or stored event (`stream:`). The first declared capability of the kind wins; nested agents list their own capabilities before the module's, so an agent-level label overrides the module's inside the agent (E0017 forbids two declarations in one scope).
 
 ### 2.3 Unified Event Store (`Skein.Runtime.EventStore`)
