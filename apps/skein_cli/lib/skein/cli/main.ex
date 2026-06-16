@@ -143,12 +143,9 @@ defmodule Skein.CLI.Main do
   def dispatch(["trace" | rest]) do
     case Skein.CLI.trace(rest) do
       {:ok, result} ->
-        IO.puts("Traces (#{result.count}):")
-
-        for span <- result.spans do
-          IO.puts("  [#{span.kind}] #{span.name} (#{span.duration_ms}ms)")
-        end
-
+        # Plain, byte-stable rendering through the pure framework-neutral
+        # renderer (#284). MCP/LSP/non-TTY output never routes through a TUI.
+        IO.write(Skein.CLI.Render.trace(result))
         System.halt(0)
 
       {:error, reason} ->

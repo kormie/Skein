@@ -917,6 +917,16 @@ defmodule Skein.CLI do
     parse_trace_flags(rest, [{:kind, kind} | acc])
   end
 
+  # TTY/TUI seam (#284): these are accepted everywhere but never change piped
+  # output — there is no TUI yet, so all paths render the plain byte-stable form.
+  # `--no-tui` / SKEIN_NO_TUI force plain explicitly; `--interactive` opts in to
+  # a TTY front-end if one exists. MCP/LSP/non-TTY never route through a TUI.
+  defp parse_trace_flags(["--interactive" | rest], acc),
+    do: parse_trace_flags(rest, [{:interactive, true} | acc])
+
+  defp parse_trace_flags(["--no-tui" | rest], acc),
+    do: parse_trace_flags(rest, [{:no_tui, true} | acc])
+
   defp parse_trace_flags(["-" <> _ = flag | _], _acc),
     do: {:error, "Unknown option: #{flag} (run 'skein help' for usage)"}
 
