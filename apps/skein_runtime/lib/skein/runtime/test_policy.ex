@@ -118,6 +118,19 @@ defmodule Skein.Runtime.TestPolicy do
     :ok
   end
 
+  @doc """
+  Resets the scenario-local effect state (store, memory, event log) so it never
+  leaks from one test to the next (#283). The test runner calls this before each
+  scenario/golden.
+  """
+  @spec reset_scenario_state() :: :ok
+  def reset_scenario_state do
+    Skein.Runtime.Store.clear_all()
+    Skein.Runtime.Memory.clear_all()
+    Skein.Runtime.EventStore.clear()
+    :ok
+  end
+
   @doc "The effect tokens `--allow-live` accepts."
   @spec gatable_effects() :: [String.t()]
   def gatable_effects, do: @gatable_effects
