@@ -2347,6 +2347,17 @@ defmodule Skein.CodeGen.CoreErlang do
     :cerl.c_map(pairs |> Enum.map(fn {k, v} -> :cerl.c_map_pair(k, v) end))
   end
 
+  # Record literal: same atom-keyed map representation as user-type values, so
+  # field access (map_get) reads it back. The type name is analyzer-only.
+  defp generate_expr(%AST.RecordLit{fields: fields}, scope) do
+    pairs =
+      Enum.map(fields, fn {key, value} ->
+        :cerl.c_map_pair(:cerl.c_atom(String.to_atom(key)), generate_expr(value, scope))
+      end)
+
+    :cerl.c_map(pairs)
+  end
+
   # Identifier
   defp generate_expr(%AST.Identifier{name: name}, scope)
        when binary_part(name, 0, 1) >= "A" and binary_part(name, 0, 1) <= "Z" do

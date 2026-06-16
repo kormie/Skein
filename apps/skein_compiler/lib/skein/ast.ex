@@ -481,6 +481,23 @@ defmodule Skein.AST do
     defstruct [:entries, :meta]
   end
 
+  defmodule RecordLit do
+    @moduledoc """
+    A nominal record literal: `TypeName { field: expr, ... }`. Constructs a
+    value of a named `type`. Lowers to an atom-keyed map (the runtime
+    representation all user-type values share); the type name is checked by the
+    analyzer against the type's declared fields.
+    """
+
+    @type t :: %__MODULE__{
+            type_name: String.t(),
+            fields: [{String.t(), Skein.AST.expr()}],
+            meta: Skein.AST.meta()
+          }
+
+    defstruct [:type_name, :fields, :meta]
+  end
+
   defmodule Block do
     @moduledoc "A block of expressions."
 

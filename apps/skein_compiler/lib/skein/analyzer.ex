@@ -2404,9 +2404,112 @@ defmodule Skein.Analyzer do
     {{:map, :string, :unknown}, errors}
   end
 
+  # Nominal record literal: TypeName { field: expr, ... }. Checked field-by-field
+  # against the named type's declaration: unknown fields, missing required
+  # (non-Option) fields, and per-field type mismatches are all structured errors.
+  defp infer_type(%AST.RecordLit{type_name: name, fields: fields, meta: meta}, env) do
+    field_results = Enum.map(fields, fn {fname, value} -> {fname, infer_type(value, env)} end)
+    value_errors = Enum.flat_map(field_results, fn {_n, {_t, errs}} -> errs end)
+
+    case Map.get(env.types, name) do
+      %AST.TypeDecl{fields: decl_fields} ->
+        decl_map = Map.new(decl_fields, fn %AST.Field{name: n} = f -> {n, f} end)
+        provided_names = MapSet.new(field_results, fn {n, _} -> n end)
+
+        unknown_errors =
+          for {fname, _} <- field_results, not Map.has_key?(decl_map, fname) do
+            %Error{
+              code: "E0020",
+              severity: :error,
+              message: "Unknown field '#{fname}' for type '#{name}'",
+              location: location_from_meta(meta, env.file),
+              fix_hint:
+                "'#{name}' has fields: #{decl_map |> Map.keys() |> Enum.sort() |> Enum.join(", ")}",
+              fix_code: nil
+            }
+          end
+
+        missing_errors =
+          for {fname, %AST.Field{} = f} <- decl_map,
+              not MapSet.member?(provided_names, fname),
+              not optional_field?(f, env) do
+            %Error{
+              code: "E0020",
+              severity: :error,
+              message: "Missing required field '#{fname}' in '#{name}' literal",
+              location: location_from_meta(meta, env.file),
+              fix_hint: "Add '#{fname}: ...' to the #{name} literal",
+              fix_code: "#{fname}: ..."
+            }
+          end
+
+        mismatch_errors =
+          Enum.flat_map(field_results, fn {fname, {vtype, _}} ->
+            case Map.get(decl_map, fname) do
+              %AST.Field{type: ftype} ->
+                expected = resolve_type(ftype, env.types)
+
+                if types_compatible?(expected, vtype) do
+                  []
+                else
+                  [
+                    %Error{
+                      code: "E0020",
+                      severity: :error,
+                      message:
+                        "Field '#{fname}' of '#{name}' expects #{format_type(expected)}, got #{format_type(vtype)}",
+                      location: location_from_meta(meta, env.file),
+                      fix_hint: "Provide a #{format_type(expected)} for '#{fname}'",
+                      fix_code: nil
+                    }
+                  ]
+                end
+
+              nil ->
+                []
+            end
+          end)
+
+        {{:user_type, name}, value_errors ++ unknown_errors ++ missing_errors ++ mismatch_errors}
+
+      :enum ->
+        {{:enum, name},
+         value_errors ++
+           [
+             %Error{
+               code: "E0020",
+               severity: :error,
+               message: "Cannot construct enum '#{name}' with record syntax",
+               location: location_from_meta(meta, env.file),
+               fix_hint: "Use a variant, e.g. #{name}.SomeVariant",
+               fix_code: nil
+             }
+           ]}
+
+      _ ->
+        {:unknown,
+         value_errors ++
+           [
+             %Error{
+               code: "E0024",
+               severity: :error,
+               message: "Unknown type '#{name}' in record literal",
+               location: location_from_meta(meta, env.file),
+               fix_hint: "Did you mean one of: #{suggest_types(name, env)}?",
+               fix_code: first_type_suggestion(name, env)
+             }
+           ]}
+    end
+  end
+
   # Catch-all
   defp infer_type(_expr, _env) do
     {:unknown, []}
+  end
+
+  # A record field is optional when its declared type is Option[...].
+  defp optional_field?(%AST.Field{type: type}, env) do
+    match?({:option, _}, resolve_type(type, env.types))
   end
 
   defp infer_field_access_type(subject, field, meta, env) do
@@ -3349,6 +3452,10 @@ defmodule Skein.Analyzer do
     Enum.flat_map(entries, fn {_key, value} -> collect_effect_calls(value, env) end)
   end
 
+  defp collect_effect_calls(%AST.RecordLit{fields: fields}, env) do
+    Enum.flat_map(fields, fn {_key, value} -> collect_effect_calls(value, env) end)
+  end
+
   defp collect_effect_calls(%AST.ListLit{elements: elements}, env) do
     Enum.flat_map(elements, &collect_effect_calls(&1, env))
   end
@@ -4206,6 +4313,10 @@ defmodule Skein.Analyzer do
     Enum.flat_map(entries, fn {_key, value} -> collect_referenced_identifiers(value) end)
   end
 
+  defp collect_referenced_identifiers(%AST.RecordLit{fields: fields}) do
+    Enum.flat_map(fields, fn {_key, value} -> collect_referenced_identifiers(value) end)
+  end
+
   defp collect_referenced_identifiers(%AST.StringLit{segments: segments}) do
     Enum.flat_map(segments, fn
       {:interpolation, expr} -> collect_referenced_identifiers(expr)
@@ -4340,6 +4451,10 @@ defmodule Skein.Analyzer do
 
   defp collect_effect_namespaces(%AST.MapLit{entries: entries}) do
     Enum.flat_map(entries, fn {_key, value} -> collect_effect_namespaces(value) end)
+  end
+
+  defp collect_effect_namespaces(%AST.RecordLit{fields: fields}) do
+    Enum.flat_map(fields, fn {_key, value} -> collect_effect_namespaces(value) end)
   end
 
   defp collect_effect_namespaces(%AST.ListLit{elements: elements}) do

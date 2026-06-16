@@ -2465,6 +2465,43 @@ defmodule Skein.Parser do
     {:ok, %AST.Identifier{name: name, meta: %{line: line, col: col, file: file}}, rest}
   end
 
+  # Record literal: TypeName { field: expr, ... } (incl. empty TypeName {}).
+  # Disambiguated exactly like map literals: the brace must be empty or open
+  # with `ident :`. This keeps `match Upper { arm -> ... }` (arms are patterns,
+  # not `ident :`) parsing as a match, not a record literal.
+  defp parse_primary(
+         [{:upper_ident, {line, col}, name}, {:lbrace, _}, {:rbrace, _} | rest],
+         file
+       ) do
+    record = %AST.RecordLit{
+      type_name: name,
+      fields: [],
+      meta: %{line: line, col: col, file: file}
+    }
+
+    {:ok, record, rest}
+  end
+
+  defp parse_primary(
+         [{:upper_ident, {line, col}, name}, {:lbrace, _}, {:ident, _, _}, {:colon, _} | _] =
+           [_upper, _lbrace | after_brace],
+         file
+       ) do
+    case parse_map_entries(after_brace, file, []) do
+      {:ok, fields, rest} ->
+        record = %AST.RecordLit{
+          type_name: name,
+          fields: fields,
+          meta: %{line: line, col: col, file: file}
+        }
+
+        {:ok, record, rest}
+
+      {:error, _} = error ->
+        error
+    end
+  end
+
   defp parse_primary([{:upper_ident, {line, col}, name} | rest], file) do
     {:ok, %AST.Identifier{name: name, meta: %{line: line, col: col, file: file}}, rest}
   end
