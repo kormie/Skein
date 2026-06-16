@@ -30,7 +30,9 @@ defmodule Skein.Runtime.Http do
 
   alias Skein.Runtime.Capability
   alias Skein.Runtime.CapabilityStack
+  alias Skein.Runtime.LiveEffectError
   alias Skein.Runtime.Replay
+  alias Skein.Runtime.TestPolicy
   alias Skein.Runtime.Trace
 
   @doc """
@@ -115,6 +117,15 @@ defmodule Skein.Runtime.Http do
 
   defp method_string(method), do: method |> Atom.to_string() |> String.upcase()
 
+  # The host used as the `http.out` block scope, matching the capability check's
+  # host extraction so `--allow-live http.out:<host>` lines up with declarations.
+  defp host(url) do
+    case Capability.extract_host(url) do
+      {:ok, host} -> host
+      {:error, _} -> url
+    end
+  end
+
   defp with_encoded_body(body, request_fn) do
     case Jason.encode(body) do
       {:ok, json} -> request_fn.(json)
@@ -152,6 +163,13 @@ defmodule Skein.Runtime.Http do
   defp dispatch_replay_or_live(method, url, body) do
     case Replay.next_response(:http, %{method: method, url: url}) do
       :no_replay ->
+        # Under `skein test`, an outbound request with no implement/replay is
+        # blocked unless the host was explicitly allowed — raising so a program's
+        # own error handling cannot swallow it and let an offline test pass.
+        if TestPolicy.block_live?("http.out", host(url)) do
+          raise LiveEffectError.new("http.out", host(url))
+        end
+
         do_request(method, url, body)
 
       {:ok, recorded} ->
