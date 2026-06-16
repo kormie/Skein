@@ -331,6 +331,35 @@ defmodule Skein.Integration.TestConstructTest do
       assert mod.__test_0__() == :ok
     end
 
+    test "golden body runs UNDER replay: effects intercept the trace, not live (Wave 1)",
+         %{tmp_dir: tmp_dir} do
+      trace_path = Path.join(tmp_dir, "llm_trace.json")
+
+      File.write!(
+        trace_path,
+        Jason.encode!([
+          %{kind: "llm", model: "claude-opus-4-8", method: "chat", response: "REPLAYED"}
+        ])
+      )
+
+      mod =
+        compile!("""
+        module GoldenReplay {
+          capability model("anthropic", "claude-opus-4-8")
+
+          golden "replays the recorded llm response" from trace "#{trace_path}" {
+            let r = llm.chat("claude-opus-4-8", "sys", "hi")!
+            assert r == "REPLAYED"
+          }
+        }
+        """)
+
+      # The body's llm.chat must return the RECORDED response, not a live call.
+      # Before golden replay activation the body ran outside any replay context,
+      # so this would attempt a real backend call instead of serving "REPLAYED".
+      assert mod.__test_0__() == :ok
+    end
+
     test "golden test with failing assertion", %{tmp_dir: tmp_dir} do
       trace_path = Path.join(tmp_dir, "test_trace2.json")
       File.write!(trace_path, "[]")

@@ -1406,10 +1406,23 @@ defmodule Skein.CodeGen.CoreErlang do
 
     body_expr = generate_expr(body, scope)
 
-    # Wrap: load trace, run body, return :ok
+    # Run the body INSIDE a replay context so its effect calls intercept the
+    # loaded trace instead of hitting live services (Wave 1 golden replay
+    # activation): Replay.with_replay(Trace, fn -> Body; :ok end).
+    body_discard = :cerl.c_var(gen_var())
+    body_fun = :cerl.c_fun([], :cerl.c_let([body_discard], body_expr, :cerl.c_atom(:ok)))
+
+    with_replay =
+      :cerl.c_call(
+        :cerl.c_atom(:"Elixir.Skein.Runtime.Replay"),
+        :cerl.c_atom(:with_replay),
+        [trace_var, body_fun]
+      )
+
+    # Wrap: load trace, run body under replay, return :ok
     discard_var = :cerl.c_var(gen_var())
 
-    inner = :cerl.c_let([discard_var], body_expr, :cerl.c_atom(:ok))
+    inner = :cerl.c_let([discard_var], with_replay, :cerl.c_atom(:ok))
     wrapped = :cerl.c_let([trace_var], load_trace, inner)
     :cerl.c_fun([], wrapped)
   end
