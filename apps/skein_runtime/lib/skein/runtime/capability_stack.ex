@@ -27,6 +27,7 @@ defmodule Skein.Runtime.CapabilityStack do
   """
 
   @key {__MODULE__, :stack}
+  @registry_key {__MODULE__, :envelopes}
 
   @type provider :: (-> term()) | (term() -> term())
   @type envelope :: %{
@@ -115,11 +116,57 @@ defmodule Skein.Runtime.CapabilityStack do
     :ok
   end
 
-  @doc "Clears the stack in the calling process."
+  @doc "Clears the stack and the registered envelopes in the calling process."
   @spec clear() :: :ok
   def clear do
     Process.delete(@key)
+    Process.delete(@registry_key)
     :ok
+  end
+
+  # ------------------------------------------------------------------
+  # Scenario envelope registry
+  #
+  # A scenario registers its top-level `tool.use(T)` envelopes (keyed by tool
+  # name) before running its body. `tool.call(T)` then pushes the matching
+  # envelope for the duration of the tool's execution: the nested envelope under
+  # the active tool when one applies, otherwise the registered top-level one.
+  # ------------------------------------------------------------------
+
+  @doc "Registers the scenario's tool envelopes (`%{tool_name => envelope}`)."
+  @spec register_envelopes(%{optional(String.t()) => envelope()}) :: :ok
+  def register_envelopes(map) when is_map(map) do
+    Process.put(@registry_key, map)
+    :ok
+  end
+
+  @doc "The registered top-level envelope for `tool_name`, if any."
+  @spec registered_envelope(String.t()) :: envelope() | nil
+  def registered_envelope(tool_name) when is_binary(tool_name) do
+    Process.get(@registry_key, %{}) |> Map.get(tool_name)
+  end
+
+  @doc """
+  Runs `fun` with the envelope for tool `name` pushed (nested envelope under the
+  active tool if present, else the registered top-level one). If no envelope
+  applies, runs `fun` unchanged — production `tool.call` is untouched.
+  """
+  @spec with_tool_envelope(String.t(), (-> result)) :: result when result: term()
+  def with_tool_envelope(name, fun) when is_binary(name) and is_function(fun, 0) do
+    case envelope_for(name) do
+      nil -> fun.()
+      envelope -> with_envelope(envelope, fun)
+    end
+  end
+
+  defp envelope_for(name) do
+    case current() do
+      %{nested: nested} when is_map(nested) ->
+        Map.get(nested, name) || registered_envelope(name)
+
+      _ ->
+        registered_envelope(name)
+    end
   end
 
   defp stack, do: Process.get(@key, [])

@@ -18,6 +18,7 @@ defmodule Skein.Runtime.Dependencies do
   freshly generated live value (recorded for future replay).
   """
 
+  alias Skein.Runtime.CapabilityStack
   alias Skein.Runtime.Replay
   alias Skein.Runtime.Stdlib
   alias Skein.Runtime.Trace
@@ -59,9 +60,18 @@ defmodule Skein.Runtime.Dependencies do
   # ------------------------------------------------------------------
 
   defp generate(kind) do
-    case override(kind) do
-      nil -> via_replay_or_live(kind)
-      generator -> generator.()
+    # Resolution order (#282): a scenario `implement` provider on the active
+    # capability stack wins; then the legacy process-dict override; then replay;
+    # then a live value.
+    case CapabilityStack.resolve(Atom.to_string(kind)) do
+      {:implement, provider} ->
+        provider.()
+
+      :no_provider ->
+        case override(kind) do
+          nil -> via_replay_or_live(kind)
+          generator -> generator.()
+        end
     end
   end
 
