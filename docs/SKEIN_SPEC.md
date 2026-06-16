@@ -596,9 +596,14 @@ http.put(url: String, json: Map) -> Result[HttpResponse, HttpError]
 http.patch(url: String, json: Map) -> Result[HttpResponse, HttpError]
 http.delete(url: String) -> Result[HttpResponse, HttpError]
 
+type HttpRequest  { method: String, url: String, headers: Map[String, String], body: Json }
 type HttpResponse { status: Int, body: Map, headers: Map[String, String] }
 enum HttpError { Timeout, ConnectionFailed, Status(code: Int, body: String) }
 ```
+
+`HttpRequest` is the provider contract type a scenario `implement` block receives when
+controlling `http.out` (§3.10). `Json` is an arbitrary JSON value (object/array/string/number/
+bool/null); it derives to the permissive JSON Schema `{}`.
 
 ### 6.2 Store
 
@@ -637,6 +642,9 @@ llm.stream(model: String, system: String, input: T) -> Result[String, LlmError]
 llm.stream(model: String, system: String, input: T, on_chunk) -> Result[String, LlmError]
 llm.embed(model: String, input: String) -> Result[List[Float], LlmError]
 
+type LlmRequest  { model: String, system: String, prompt: String }
+type LlmResponse { text: String }
+
 enum LlmError {
   ParseFailed(raw: String, expected_type: String, parse_error: String)
   Refused(reason: String)
@@ -647,6 +655,10 @@ enum LlmError {
   ProviderError(code: String, message: String)
 }
 ```
+
+`LlmRequest`/`LlmResponse` are the provider contract types a scenario `implement` block uses when
+controlling `model(...)` (§3.10). `LlmResponse.text` carries the raw completion; `llm.json[T]`
+decodes that text against the target schema, exactly as the live backend does.
 
 The optional `on_chunk` argument to `llm.stream` is a `&fn` reference to a
 one-parameter local function; it is invoked with each text chunk (a `String`)

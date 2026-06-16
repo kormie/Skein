@@ -159,6 +159,10 @@ defmodule Skein.CodeGen.SchemaGen do
       {"Url", []} ->
         %{"type" => "string", "format" => "uri"}
 
+      {"Json", []} ->
+        # An arbitrary JSON value: the empty schema permits anything (#274).
+        %{}
+
       {"List", [elem]} ->
         %{"type" => "array", "items" => type_to_schema(elem, env, seen)}
 

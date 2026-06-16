@@ -362,15 +362,25 @@ defmodule Skein.Analyzer do
     "Instant" => :instant,
     "Duration" => :duration,
     "Email" => :email,
-    "Url" => :url
+    "Url" => :url,
+    # An arbitrary JSON value (object/array/string/number/bool/null). Used for
+    # open-shaped HTTP bodies in the effect provider contract types (#274).
+    "Json" => :json
   }
 
   # Effect error/response types defined by the Effects API (spec section 6).
   # They are part of the language surface — Result[T, HttpError] in a fn
   # signature must not be an unknown-type error.
+  #
+  # The effect provider *contract* types (HttpRequest/HttpResponse/LlmRequest/
+  # LlmResponse, #274) are modeled concretely as built-in TypeDecls (see
+  # `builtin_type_decls/0`) so scenario `implement` blocks can construct and
+  # field-access them; they are injected into the type env and override the
+  # opaque `:builtin` entry.
   @effect_type_names ~w(
-    HttpResponse HttpError StoreError NotFound MemoryError LlmError
+    HttpError StoreError NotFound MemoryError LlmError
     ToolError ToolInfo ToolName PublishError
+    HttpRequest HttpResponse LlmRequest LlmResponse
   )
 
   @builtin_type_names Map.keys(@builtin_types) ++ @effect_type_names
@@ -1141,12 +1151,72 @@ defmodule Skein.Analyzer do
   # Environment construction
   # ------------------------------------------------------------------
 
+  @builtin_meta %{line: 0, col: 0, file: "<builtin>"}
+
+  # Effect provider contract types (#274), modeled as concrete TypeDecls so
+  # scenario `implement` blocks can construct/field-access them and so their
+  # JSON Schema derives through the normal type machinery. `HttpRequest.body`
+  # is `Json` (open-shaped); `HttpResponse.body` stays `Map` (spec §6).
+  defp builtin_type_decls do
+    %{
+      "HttpRequest" =>
+        type_decl("HttpRequest", [
+          field("method", "String"),
+          field("url", "String"),
+          field("headers", map_type("String", "String")),
+          field("body", "Json")
+        ]),
+      "HttpResponse" =>
+        type_decl("HttpResponse", [
+          field("status", "Int"),
+          field("body", "Map"),
+          field("headers", map_type("String", "String"))
+        ]),
+      "LlmRequest" =>
+        type_decl("LlmRequest", [
+          field("model", "String"),
+          field("system", "String"),
+          field("prompt", "String")
+        ]),
+      "LlmResponse" =>
+        type_decl("LlmResponse", [
+          field("text", "String")
+        ])
+    }
+  end
+
+  defp type_decl(name, fields) do
+    %AST.TypeDecl{name: name, fields: fields, meta: @builtin_meta}
+  end
+
+  defp field(name, %AST.TypeRef{} = type) do
+    %AST.Field{name: name, type: type, annotations: [], meta: @builtin_meta}
+  end
+
+  defp field(name, type_name) when is_binary(type_name) do
+    field(name, %AST.TypeRef{name: type_name, params: [], meta: @builtin_meta})
+  end
+
+  defp map_type(key, value) do
+    %AST.TypeRef{
+      name: "Map",
+      params: [
+        %AST.TypeRef{name: key, params: [], meta: @builtin_meta},
+        %AST.TypeRef{name: value, params: [], meta: @builtin_meta}
+      ],
+      meta: @builtin_meta
+    }
+  end
+
   defp build_initial_env(%AST.Module{name: module_name, declarations: declarations, meta: meta}) do
     file = Map.get(meta, :file, "unknown")
 
-    # Register all built-in types
+    # Register all built-in types, then upgrade the provider contract types from
+    # opaque `:builtin` names to concrete TypeDecls (#274).
     types =
-      Map.new(@builtin_type_names, fn name -> {name, :builtin} end)
+      @builtin_type_names
+      |> Map.new(fn name -> {name, :builtin} end)
+      |> Map.merge(builtin_type_decls())
 
     # Register parameterized built-in types
     types =
@@ -3293,6 +3363,9 @@ defmodule Skein.Analyzer do
 
   defp types_compatible?(:unknown, _), do: true
   defp types_compatible?(_, :unknown), do: true
+  # Json is any JSON value, so it unifies with any concrete value type (#274).
+  defp types_compatible?(:json, _), do: true
+  defp types_compatible?(_, :json), do: true
   defp types_compatible?(a, a), do: true
 
   # Parameterized types — recurse into inner types
@@ -3744,7 +3817,10 @@ defmodule Skein.Analyzer do
        }) do
     file = Map.get(meta, :file, "unknown")
 
-    types = Map.new(@builtin_type_names, fn name -> {name, :builtin} end)
+    types =
+      @builtin_type_names
+      |> Map.new(fn name -> {name, :builtin} end)
+      |> Map.merge(builtin_type_decls())
 
     types =
       types
@@ -4085,6 +4161,7 @@ defmodule Skein.Analyzer do
     end
   end
 
+  defp format_type(:json), do: "Json"
   defp format_type(:int), do: "Int"
   defp format_type(:float), do: "Float"
   defp format_type(:string), do: "String"
