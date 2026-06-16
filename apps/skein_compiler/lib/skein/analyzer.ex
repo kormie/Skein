@@ -37,6 +37,7 @@ defmodule Skein.Analyzer do
   - E0026: Invalid named argument (unknown/duplicate name, positional after named, callee without named-argument support)
   - E0027: Invalid guard expression (guards allow literals, bindings, field access, comparisons, boolean operators, and +/-/* arithmetic)
   - E0028: Scenario capability envelope is missing/incomplete (a called tool has no `tool.use(T)` envelope, or the envelope does not cover the tool's transitive effect summary)
+  - E0029: Effect call in a pure context (a `test` body, or a scenario `implement` provider block) — effects belong in a `scenario`, and providers must be pure
 
   ### Agent (E003x)
   - E0030: Invalid phase transition
@@ -430,6 +431,11 @@ defmodule Skein.Analyzer do
     # scenario calls must declare a tool.use(T) envelope covering the tool's
     # transitive effect summary.
     errors = errors ++ check_scenario_envelopes(ast.declarations, env)
+
+    # Pass 2g: Purity of `test` bodies and scenario `implement` providers (#273)
+    # — `test` is for pure unit tests (effects belong in `scenario`); provider
+    # `implement` blocks must be pure.
+    errors = errors ++ check_pure_contexts(ast.declarations, env)
 
     # Pass 2c: Scope-independent interpolation rules — uppercase
     # interpolation roots and interpolated string patterns. One generic
@@ -3826,6 +3832,136 @@ defmodule Skein.Analyzer do
   defp req_to_capability_decl("http.out"), do: "capability http.out(\"host\")"
   defp req_to_capability_decl("model"), do: "capability model(provider, model)"
   defp req_to_capability_decl(kind), do: "capability #{kind}"
+
+  # ------------------------------------------------------------------
+  # Pass 2g: Purity of `test` bodies and scenario `implement` providers (#273)
+  #
+  # `test` is for pure, module-level unit tests — effects belong in `scenario`.
+  # Scenario `implement` provider blocks must likewise be pure: they replace an
+  # effect, so they cannot themselves perform one. Both are E0029.
+  # ------------------------------------------------------------------
+
+  defp check_pure_contexts(declarations, env) do
+    test_errors =
+      declarations
+      |> Enum.filter(&match?(%AST.Test{}, &1))
+      |> Enum.flat_map(fn %AST.Test{body: body} ->
+        body
+        |> collect_effect_sites()
+        |> Enum.map(&effect_in_test_error(&1, env))
+      end)
+
+    provider_errors =
+      declarations
+      |> Enum.filter(&match?(%AST.Scenario{}, &1))
+      |> Enum.flat_map(fn %AST.Scenario{capabilities: caps} ->
+        caps
+        |> List.wrap()
+        |> Enum.flat_map(&collect_implement_bodies/1)
+        |> Enum.flat_map(fn body ->
+          body
+          |> collect_effect_sites()
+          |> Enum.map(&effect_in_provider_error(&1, env))
+        end)
+      end)
+
+    test_errors ++ provider_errors
+  end
+
+  # All `implement` provider bodies under a capability, including nested ones.
+  defp collect_implement_bodies(%AST.Capability{implement: implement, nested: nested}) do
+    own = if implement, do: [implement.body], else: []
+    own ++ Enum.flat_map(nested || [], &collect_implement_bodies/1)
+  end
+
+  defp collect_implement_bodies(_), do: []
+
+  # Capability-gated effect call sites in an expression (no transitivity — a
+  # pure context must not contain an effect call directly). `trace` is not gated
+  # and is therefore allowed. Returns `[{label, meta}]`.
+  defp collect_effect_sites(%AST.Call{
+         target: %AST.FieldAccess{subject: %AST.Identifier{name: "tool"}, field: method},
+         args: args,
+         meta: meta
+       })
+       when method in ["call", "schema"] do
+    [{"tool.#{method}", meta} | Enum.flat_map(args, &collect_effect_sites/1)]
+  end
+
+  defp collect_effect_sites(%AST.Call{
+         target: %AST.FieldAccess{subject: %AST.Identifier{name: namespace}, field: method},
+         args: args,
+         meta: meta
+       }) do
+    own =
+      if effect_namespace?(namespace) and effect_method?(namespace, method) and
+           Map.get(@effect_namespaces, namespace) != nil do
+        [{"#{namespace}.#{method}", meta}]
+      else
+        []
+      end
+
+    own ++ Enum.flat_map(args, &collect_effect_sites/1)
+  end
+
+  defp collect_effect_sites(%AST.Call{args: args}),
+    do: Enum.flat_map(args, &collect_effect_sites/1)
+
+  defp collect_effect_sites(%AST.Block{expressions: exprs}),
+    do: Enum.flat_map(exprs, &collect_effect_sites/1)
+
+  defp collect_effect_sites(%AST.Let{value: value}), do: collect_effect_sites(value)
+
+  defp collect_effect_sites(%AST.Match{subject: subject, arms: arms}) do
+    collect_effect_sites(subject) ++
+      Enum.flat_map(arms, fn %AST.MatchArm{body: body} -> collect_effect_sites(body) end)
+  end
+
+  defp collect_effect_sites(%AST.Pipe{left: left, right: right}),
+    do: collect_effect_sites(left) ++ collect_effect_sites(right)
+
+  defp collect_effect_sites(%AST.BinaryOp{left: left, right: right}),
+    do: collect_effect_sites(left) ++ collect_effect_sites(right)
+
+  defp collect_effect_sites(%AST.UnaryOp{operand: operand}), do: collect_effect_sites(operand)
+
+  defp collect_effect_sites(%AST.MapLit{entries: entries}),
+    do: Enum.flat_map(entries, fn {_k, v} -> collect_effect_sites(v) end)
+
+  defp collect_effect_sites(%AST.RecordLit{fields: fields}),
+    do: Enum.flat_map(fields, fn {_k, v} -> collect_effect_sites(v) end)
+
+  defp collect_effect_sites(%AST.ListLit{elements: elements}),
+    do: Enum.flat_map(elements, &collect_effect_sites/1)
+
+  defp collect_effect_sites(_), do: []
+
+  defp effect_in_test_error({label, meta}, env) do
+    %Error{
+      code: "E0029",
+      severity: :error,
+      message:
+        "Effect '#{label}' is not allowed in a 'test'; 'test' is for pure unit tests — use a 'scenario'",
+      location: location_from_meta(meta, env.file),
+      context: nil,
+      fix_hint:
+        "Move this effectful check into a 'scenario', where effects are declared and controlled",
+      fix_code: "scenario \"...\" { /* ... */ }"
+    }
+  end
+
+  defp effect_in_provider_error({label, meta}, env) do
+    %Error{
+      code: "E0029",
+      severity: :error,
+      message:
+        "Effect '#{label}' is not allowed in an 'implement' provider block; providers must be pure",
+      location: location_from_meta(meta, env.file),
+      context: nil,
+      fix_hint: "Return a value directly; a provider replaces an effect and cannot perform one",
+      fix_code: nil
+    }
+  end
 
   @doc false
   def effect_namespace?(namespace), do: Map.has_key?(@effect_namespaces, namespace)

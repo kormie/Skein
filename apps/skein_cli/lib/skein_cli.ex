@@ -515,15 +515,20 @@ defmodule Skein.CLI do
     module_name = module_name_from(name)
 
     """
-    -- Integration tests exercise src/ modules through their tools — the one
-    -- cross-module seam in Skein. `skein test` compiles and loads everything
-    -- in src/ before running these.
+    -- Integration scenarios exercise src/ modules through their tools — the one
+    -- cross-module seam in Skein. `skein test` compiles and loads everything in
+    -- src/ before running these. Effects live in `scenario` (not `test`); a
+    -- scenario declares the capability environment the tool may exercise. Greet
+    -- is pure, so a bare `tool.use` envelope is enough.
     module #{module_name}Test {
       capability tool.use(#{module_name}.Greet)
 
-      test "greets through the #{module_name}.Greet tool" {
-        let result = tool.call(#{module_name}.Greet, { name: "World" })!
-        assert result.greeting == "Hello, World!"
+      scenario "greets through the #{module_name}.Greet tool" {
+        capability tool.use(#{module_name}.Greet) { }
+        expect {
+          let result = tool.call(#{module_name}.Greet, { name: "World" })!
+          assert result.greeting == "Hello, World!"
+        }
       }
     }
     """

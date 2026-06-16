@@ -170,9 +170,12 @@ defmodule Skein.CLI.TestRunnerTest do
       module RunnerIntegrationTest {
         capability tool.use(Runner.Add)
 
-        test "calls the tool from src/" {
-          let result = tool.call(Runner.Add, { a: 2, b: 3 })!
-          assert result.sum == 5
+        scenario "calls the tool from src/" {
+          capability tool.use(Runner.Add) { }
+          expect {
+            let result = tool.call(Runner.Add, { a: 2, b: 3 })!
+            assert result.sum == 5
+          }
         }
       }
       """)

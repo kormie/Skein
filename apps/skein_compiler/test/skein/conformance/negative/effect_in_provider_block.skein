@@ -1,0 +1,25 @@
+-- expect: E0029
+-- #273: a scenario `implement` provider block must be pure — it replaces an
+-- effect, so it cannot perform one. Calling uuid.new() inside the provider is a
+-- compile error; the provider must return a value directly.
+module EffectInProvider {
+  capability tool.use(Ids.New)
+
+  tool Ids.New {
+    input { kind: String }
+    output { id: Uuid }
+    implement { { id: "static" } }
+  }
+
+  scenario "ids are controlled" {
+    capability tool.use(Ids.New) {
+      capability uuid {
+        implement() -> Uuid { uuid.new() }
+      }
+    }
+    expect {
+      let result = tool.call(Ids.New, { kind: "x" })!
+      assert true
+    }
+  }
+}

@@ -1,0 +1,11 @@
+-- expect: E0029
+-- #273: `test` is for pure unit tests. A capability-gated effect (here llm.chat)
+-- inside a `test` body must be a compile error — effects belong in a `scenario`.
+module EffectInTest {
+  capability model("anthropic", "claude-opus-4-8")
+
+  test "calls the model" {
+    let r = llm.chat("claude-opus-4-8", "sys", "hi")!
+    assert String.length(r) > 0
+  }
+}
