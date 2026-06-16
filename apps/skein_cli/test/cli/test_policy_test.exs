@@ -106,7 +106,9 @@ defmodule Skein.CLI.TestPolicyTest do
     """)
 
     assert {:ok, result} = CLI.test_all([tmp])
-    assert result.passed == 1, "expected deterministic uuid default, got: #{inspect(result.results)}"
+
+    assert result.passed == 1,
+           "expected deterministic uuid default, got: #{inspect(result.results)}"
   end
 
   test "an unknown --allow-live effect is a structured parse error", %{tmp_dir: tmp} do

@@ -696,6 +696,7 @@ defmodule Skein.CLI do
          project_dir = Path.expand(project_dir),
          :ok <- apply_env_profile(project_dir, opts) do
       allow_live = Keyword.get_values(opts, :allow_live)
+
       skein_files =
         (discover_skein_files(project_dir, "src") ++
            discover_skein_files(project_dir, "test"))
