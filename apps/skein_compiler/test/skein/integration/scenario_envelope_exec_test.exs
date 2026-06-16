@@ -66,4 +66,46 @@ defmodule Skein.Integration.ScenarioEnvelopeExecTest do
     # The envelope registration does not leak past the scenario body.
     assert CapabilityStack.depth() == 0
   end
+
+  test "a scenario http.out provider intercepts the tool's http.get end to end" do
+    mod =
+      compile!("""
+      module ScenarioHttp {
+        capability tool.use(Fetch.Get)
+        capability http.out("api.example.com")
+
+        tool Fetch.Get {
+          input { path: String }
+          output { status: Int }
+          implement {
+            match http.get("https://api.example.com/x") {
+              Ok(r) -> Ok({ status: r.status })
+              Err(_) -> Ok({ status: 0 })
+            }
+          }
+        }
+
+        scenario "controlled http" {
+          capability tool.use(Fetch.Get) {
+            capability http.out("api.example.com") {
+              implement(req: HttpRequest) -> Result[HttpResponse, HttpError] {
+                Ok(HttpResponse { status: 200, body: {}, headers: {} })
+              }
+            }
+          }
+          expect {
+            let res = tool.call(Fetch.Get, { path: "x" })!
+            assert res.status == 200
+          }
+        }
+      }
+      """)
+
+    Tool.register_module(mod)
+
+    # The tool's http.get resolves against the scenario's http.out provider
+    # (status 200), never the network. A live/blocked call would not yield 200.
+    assert mod.__test_0__() == :ok
+    assert CapabilityStack.depth() == 0
+  end
 end

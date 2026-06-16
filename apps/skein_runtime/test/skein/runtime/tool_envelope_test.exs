@@ -7,7 +7,7 @@ defmodule Skein.Runtime.ToolEnvelopeTest do
   """
   use ExUnit.Case, async: false
 
-  alias Skein.Runtime.{CapabilityStack, Nondeterminism, Tool}
+  alias Skein.Runtime.{CapabilityStack, Http, Nondeterminism, Tool}
 
   setup do
     Tool.clear_registry()
@@ -86,5 +86,47 @@ defmodule Skein.Runtime.ToolEnvelopeTest do
     caps = [%{kind: "tool.use", params: ["Outer.Run"]}]
     assert {:ok, %{inner_id: "NESTED-UUID"}} = Tool.call("Outer.Run", %{}, caps)
     assert CapabilityStack.depth() == 0
+  end
+
+  describe "http.out provider" do
+    @http_caps [%{kind: "http.out", params: []}]
+
+    test "an http.out provider intercepts http.get; no network call" do
+      provider = fn _req -> {:ok, %{status: 200, body: %{ok: true}, headers: %{}}} end
+
+      result =
+        CapabilityStack.with_envelope(
+          %{tool: "T", providers: %{"http.out" => provider}, nested: %{}},
+          fn -> Http.get("https://api.example.com/x", @http_caps) end
+        )
+
+      assert {:ok, %{status: 200, body: %{ok: true}}} = result
+    end
+
+    test "the provider receives the request method and url" do
+      provider = fn req ->
+        {:ok, %{status: 201, body: %{seen: req.method <> " " <> req.url}, headers: %{}}}
+      end
+
+      result =
+        CapabilityStack.with_envelope(
+          %{tool: "T", providers: %{"http.out" => provider}, nested: %{}},
+          fn -> Http.get("https://api.example.com/y", @http_caps) end
+        )
+
+      assert {:ok, %{status: 201, body: %{seen: "GET https://api.example.com/y"}}} = result
+    end
+
+    test "a provider can return an HttpError (Err) the caller matches on" do
+      provider = fn _req -> {:error, {:status, 400, "missing id header"}} end
+
+      result =
+        CapabilityStack.with_envelope(
+          %{tool: "T", providers: %{"http.out" => provider}, nested: %{}},
+          fn -> Http.get("https://api.example.com/z", @http_caps) end
+        )
+
+      assert {:error, {:status, 400, "missing id header"}} = result
+    end
   end
 end
