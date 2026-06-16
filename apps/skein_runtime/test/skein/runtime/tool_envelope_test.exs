@@ -7,7 +7,7 @@ defmodule Skein.Runtime.ToolEnvelopeTest do
   """
   use ExUnit.Case, async: false
 
-  alias Skein.Runtime.{CapabilityStack, Http, Nondeterminism, Tool}
+  alias Skein.Runtime.{CapabilityStack, Http, Llm, Nondeterminism, Tool}
 
   setup do
     Tool.clear_registry()
@@ -127,6 +127,47 @@ defmodule Skein.Runtime.ToolEnvelopeTest do
         )
 
       assert {:error, {:status, 400, "missing id header"}} = result
+    end
+  end
+
+  describe "model (llm) provider" do
+    @model_caps [%{kind: "model", params: ["anthropic", "claude-opus-4-8"]}]
+
+    test "a model provider serves llm.chat from LlmResponse.text" do
+      provider = fn _req -> {:ok, %{text: "PROVIDED ANSWER"}} end
+
+      result =
+        CapabilityStack.with_envelope(
+          %{tool: "T", providers: %{"model" => provider}, nested: %{}},
+          fn -> Llm.chat("claude-opus-4-8", "sys", "hi", @model_caps) end
+        )
+
+      assert {:ok, "PROVIDED ANSWER"} = result
+    end
+
+    test "a model provider's text is decoded for llm.json against the schema" do
+      provider = fn _req -> {:ok, %{text: ~s({"answer": "42"})}} end
+      schema = %{"type" => "object", "properties" => %{"answer" => %{"type" => "string"}}}
+
+      result =
+        CapabilityStack.with_envelope(
+          %{tool: "T", providers: %{"model" => provider}, nested: %{}},
+          fn -> Llm.json("claude-opus-4-8", "sys", "q", schema, @model_caps) end
+        )
+
+      assert {:ok, %{answer: "42"}} = result
+    end
+
+    test "the model provider receives an LlmRequest with model/system/prompt" do
+      provider = fn req -> {:ok, %{text: "#{req.model}|#{req.system}|#{req.prompt}"}} end
+
+      result =
+        CapabilityStack.with_envelope(
+          %{tool: "T", providers: %{"model" => provider}, nested: %{}},
+          fn -> Llm.chat("claude-opus-4-8", "be terse", "hello", @model_caps) end
+        )
+
+      assert {:ok, "claude-opus-4-8|be terse|hello"} = result
     end
   end
 end

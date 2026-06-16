@@ -19,6 +19,7 @@ defmodule Skein.Runtime.Llm do
   3. Returns `{:ok, result}` or `{:error, %Llm.Error{}}`
   """
 
+  alias Skein.Runtime.CapabilityStack
   alias Skein.Runtime.Llm.Error
   alias Skein.Runtime.Llm.Response
   alias Skein.Runtime.Replay
@@ -191,10 +192,20 @@ defmodule Skein.Runtime.Llm do
   # Internal
   # ------------------------------------------------------------------
 
-  # An active replay context overrides the configured backend so recorded
-  # responses are served instead of contacting a real provider.
+  # Resolution order (#282): a scenario `model` implement provider on the active
+  # capability stack wins; then an active replay context; then the configured
+  # live backend.
   defp resolve_backend do
-    if Replay.active?(), do: Skein.Runtime.Llm.ReplayBackend, else: get_backend()
+    cond do
+      match?({:implement, _}, CapabilityStack.resolve("model")) ->
+        Skein.Runtime.Llm.ProviderBackend
+
+      Replay.active?() ->
+        Skein.Runtime.Llm.ReplayBackend
+
+      true ->
+        get_backend()
+    end
   end
 
   # Span metadata identifying which backend (and base_url, for local

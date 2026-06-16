@@ -108,4 +108,46 @@ defmodule Skein.Integration.ScenarioEnvelopeExecTest do
     assert mod.__test_0__() == :ok
     assert CapabilityStack.depth() == 0
   end
+
+  test "a scenario model provider intercepts the tool's llm.chat end to end" do
+    mod =
+      compile!("""
+      module ScenarioLlm {
+        capability tool.use(Ask.Question)
+        capability model("anthropic", "claude-opus-4-8")
+
+        tool Ask.Question {
+          input { q: String }
+          output { answer: String }
+          implement {
+            match llm.chat("claude-opus-4-8", "sys", "q") {
+              Ok(text) -> Ok({ answer: text })
+              Err(_) -> Ok({ answer: "error" })
+            }
+          }
+        }
+
+        scenario "controlled llm" {
+          capability tool.use(Ask.Question) {
+            capability model("anthropic", "claude-opus-4-8") {
+              implement(req: LlmRequest) -> Result[LlmResponse, LlmError] {
+                Ok(LlmResponse { text: "PROVIDED" })
+              }
+            }
+          }
+          expect {
+            let res = tool.call(Ask.Question, { q: "hi" })!
+            assert res.answer == "PROVIDED"
+          }
+        }
+      }
+      """)
+
+    Tool.register_module(mod)
+
+    # The tool's llm.chat resolves against the scenario's model provider
+    # ("PROVIDED"), never a live backend.
+    assert mod.__test_0__() == :ok
+    assert CapabilityStack.depth() == 0
+  end
 end
