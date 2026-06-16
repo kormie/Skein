@@ -339,6 +339,22 @@ end
 
 Every runtime effect wrapper (HTTP, store, memory, LLM, tool) calls `Capability.check!/3` before executing.
 
+**Scenario-scoped capability environments (`Skein.Runtime.CapabilityStack`, #282).** A `scenario`
+that tests a tool declares the complete capability environment the tool may exercise, as a nested
+`capability tool.use(T) { capability <effect>(...) { implement(...) -> T { ... } } }` tree (replacing
+the superseded `via` design). The compiler lowers each `implement` provider block to a closure and
+the scenario test fn registers a per-tool envelope map (`CapabilityStack.register_envelopes/1`)
+before running its body. `Tool.call` then pushes the matching envelope (the nested envelope under the
+active tool, else the registered top-level one) for the duration of the tool's execution and pops it
+on return. Each nondeterministic/external effect resolves in order: **(1)** a scenario `implement`
+provider on the active stack → **(2)** replay (golden trace) → **(3)** the deterministic
+test-runner default (Wave 3) → **(4)** live (only if explicitly allowed) → **(5)** a structured
+failure. `uuid`/`instant` resolve through `Skein.Runtime.Nondeterminism` and `http` through
+`Skein.Runtime.Http`, both consulting the stack first; production callers (no registered envelope)
+are unaffected. The analyzer computes each tool's transitive effect summary and rejects a scenario
+whose envelope does not cover it (E0028); `implement` providers and `test` bodies must be pure
+(E0029). The earlier process-dictionary override (`Skein.Runtime.Dependencies`) is retired.
+
 **Scoped capability labels (spec §3.2):** for `process.spawn`, `timer`, and `event.log` the capability parameter names a scope label (pool/group/stream). Codegen threads the declared label into every generated runtime call as the first argument — `Process.spawn(pool, task, caps)`, `Timer.after(group, delay, task, caps)`, `EventStore.log(stream, name, data, caps)` — mirroring the `memory.kv` namespace threading. The shared `Capability.check_scoped/3` enforces the label: no capability of the kind blocks the call; a parameterless declaration is unscoped (presence-only); otherwise the call's label must exactly match a declared param (`nil` labels are blocked). The label is recorded on the trace span (`pool:`/`group:`) or stored event (`stream:`). The first declared capability of the kind wins; nested agents list their own capabilities before the module's, so an agent-level label overrides the module's inside the agent (E0017 forbids two declarations in one scope).
 
 ### 2.3 Unified Event Store (`Skein.Runtime.EventStore`)
