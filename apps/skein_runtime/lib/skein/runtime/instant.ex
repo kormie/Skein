@@ -3,9 +3,9 @@ defmodule Skein.Runtime.Instant do
   The `instant.now()` effect (#261).
 
   Reading the wall clock is nondeterministic, so it's a capability-gated effect,
-  not ambient stdlib: `instant.now()` requires `capability instant`. The value
-  comes from the controlled `Skein.Runtime.Dependencies` provider (live in
-  production, deterministic under test overrides, recorded/replayed under replay).
+  not ambient stdlib: `instant.now()` requires `capability instant`. The value is
+  resolved by `Skein.Runtime.Nondeterminism` (scenario `implement` provider →
+  replay → live).
 
   (The capability is `instant`, not `clock` — "clock" is the timer/scheduling
   concept, which Skein already exposes as the `timer` effect.)
@@ -16,7 +16,7 @@ defmodule Skein.Runtime.Instant do
   """
 
   alias Skein.Runtime.Capability
-  alias Skein.Runtime.Dependencies
+  alias Skein.Runtime.Nondeterminism
 
   @doc """
   Produces the current instant. Requires `capability instant`.
@@ -28,7 +28,7 @@ defmodule Skein.Runtime.Instant do
   @spec now([map()]) :: binary()
   def now(capabilities) when is_list(capabilities) do
     case Capability.check_scoped("instant", nil, capabilities) do
-      :ok -> Dependencies.instant()
+      :ok -> Nondeterminism.instant()
       {:error, reason} -> raise RuntimeError, reason
     end
   end

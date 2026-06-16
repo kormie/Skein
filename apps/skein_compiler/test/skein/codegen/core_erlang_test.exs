@@ -1395,7 +1395,7 @@ defmodule Skein.CodeGen.CoreErlangTest do
       assert {:ok, _, _} = DateTime.from_iso8601(now)
     end
 
-    test "uuid.new() inside a record literal is deterministic under an override" do
+    test "uuid.new() inside a record literal is deterministic under a capability envelope" do
       mod =
         compile!("""
         module RecordId {
@@ -1409,11 +1409,21 @@ defmodule Skein.CodeGen.CoreErlangTest do
         """)
 
       Skein.Runtime.Store.clear("items")
+      Skein.Runtime.CapabilityStack.clear()
+
+      counter = :counters.new(1, [])
+
+      incrementing = fn ->
+        n = :counters.get(counter, 1)
+        :counters.add(counter, 1, 1)
+        "00000000-0000-4000-8000-#{n |> Integer.to_string() |> String.pad_leading(12, "0")}"
+      end
 
       {stored1, stored2} =
-        Skein.Runtime.Dependencies.with_overrides([uuid: :incrementing], fn ->
-          {mod.save("a"), mod.save("b")}
-        end)
+        Skein.Runtime.CapabilityStack.with_envelope(
+          %{tool: "T", providers: %{"uuid" => incrementing}, nested: %{}},
+          fn -> {mod.save("a"), mod.save("b")} end
+        )
 
       assert {:ok, %{id: "00000000-0000-4000-8000-000000000000", name: "a"}} = stored1
       assert {:ok, %{id: "00000000-0000-4000-8000-000000000001", name: "b"}} = stored2

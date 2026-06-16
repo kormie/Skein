@@ -7,7 +7,7 @@ defmodule Skein.Runtime.ToolEnvelopeTest do
   """
   use ExUnit.Case, async: false
 
-  alias Skein.Runtime.{CapabilityStack, Dependencies, Tool}
+  alias Skein.Runtime.{CapabilityStack, Nondeterminism, Tool}
 
   setup do
     Tool.clear_registry()
@@ -19,7 +19,7 @@ defmodule Skein.Runtime.ToolEnvelopeTest do
   @caps [%{kind: "tool.use", params: ["Ids.New"]}]
 
   defp register_uuid_tool do
-    Tool.register("Ids.New", %{}, fn _input -> {:ok, %{id: Dependencies.uuid()}} end)
+    Tool.register("Ids.New", %{}, fn _input -> {:ok, %{id: Nondeterminism.uuid()}} end)
   end
 
   test "tool.call pushes the registered envelope; uuid resolves from the provider" do
@@ -61,7 +61,7 @@ defmodule Skein.Runtime.ToolEnvelopeTest do
   test "a nested tool envelope controls a nested tool.call's effects" do
     # Outer tool calls the inner tool; the inner tool mints a uuid. The nested
     # envelope under Outer controls Inner's uuid provider.
-    Tool.register("Inner.Make", %{}, fn _input -> {:ok, %{id: Dependencies.uuid()}} end)
+    Tool.register("Inner.Make", %{}, fn _input -> {:ok, %{id: Nondeterminism.uuid()}} end)
 
     Tool.register("Outer.Run", %{}, fn _input ->
       caps = [%{kind: "tool.use", params: ["Inner.Make"]}]
