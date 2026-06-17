@@ -105,6 +105,7 @@ export default defineConfig({
           label: 'Reference',
           items: [
             { label: 'Standard Library', slug: 'reference/stdlib' },
+            { label: 'JSON Output (--json)', slug: 'reference/json-output' },
             { label: 'API Reference (ExDoc)', link: '/api/' },
             { label: 'Agent Quick Reference', slug: 'reference/agent-quick-reference' },
             { label: 'Agent Primer', slug: 'reference/agent-primer' },

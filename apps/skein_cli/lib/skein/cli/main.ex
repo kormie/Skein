@@ -39,18 +39,13 @@ defmodule Skein.CLI.Main do
   """
   @spec dispatch([String.t()]) :: no_return()
   def dispatch(["compile" | rest]) do
-    case Skein.CLI.compile(rest) do
-      {:ok, mod, warnings} ->
-        for w <- warnings do
-          IO.puts(:stderr, "Warning: #{format_error(w)}")
-        end
+    {json?, rest} = take_json_flag(rest)
+    result = Skein.CLI.compile(rest)
 
-        IO.puts("Compiled: #{inspect(mod)}")
-        System.halt(0)
-
-      {:error, reason} ->
-        IO.puts(:stderr, "Error: #{format_error(reason)}")
-        System.halt(1)
+    if json? do
+      emit_json(Skein.CLI.Json.compile(result))
+    else
+      render_compile(result)
     end
   end
 
@@ -67,64 +62,24 @@ defmodule Skein.CLI.Main do
   end
 
   def dispatch(["build" | rest]) do
-    case Skein.CLI.build(rest) do
-      {:ok, result} ->
-        IO.puts("Build complete: #{result.compiled} compiled, #{result.errors} errors")
+    {json?, rest} = take_json_flag(rest)
+    result = Skein.CLI.build(rest)
 
-        if result.errors > 0 do
-          for f <- result.failed do
-            IO.puts(:stderr, format_error(f.errors))
-          end
-
-          System.halt(1)
-        else
-          System.halt(0)
-        end
-
-      {:error, reason} ->
-        IO.puts(:stderr, "Error: #{format_error(reason)}")
-        System.halt(1)
+    if json? do
+      emit_json(Skein.CLI.Json.build(result))
+    else
+      render_build(result)
     end
   end
 
   def dispatch(["test" | rest]) do
-    case Skein.CLI.test_all(rest) do
-      {:ok, result} ->
-        IO.puts("Tests: #{result.passed} passed, #{result.failed} failed (#{result.total} total)")
+    {json?, rest} = take_json_flag(rest)
+    result = Skein.CLI.test_all(rest)
 
-        for r <- result.results, r.status == :failed do
-          location =
-            case Map.get(r, :location) do
-              nil -> ""
-              loc -> " (#{loc})"
-            end
-
-          IO.puts(
-            :stderr,
-            "  FAIL: #{r.description}#{location} — #{Map.get(r, :error, "unknown")}"
-          )
-        end
-
-        if result.compile_errors > 0 do
-          IO.puts(
-            :stderr,
-            "#{result.compile_errors} file(s) failed to compile and were not tested:"
-          )
-
-          for f <- result.compile_failed do
-            IO.puts(:stderr, format_error(f.errors))
-          end
-        end
-
-        if result.failed > 0 or result.compile_errors > 0 do
-          System.halt(1)
-        else
-          System.halt(0)
-        end
-
-      {:error, reason} ->
-        IO.puts(:stderr, "Error: #{format_error(reason)}")
-        System.halt(1)
+    if json? do
+      emit_json(Skein.CLI.Json.test(result))
+    else
+      render_test(result)
     end
   end
 
@@ -141,16 +96,13 @@ defmodule Skein.CLI.Main do
   end
 
   def dispatch(["trace" | rest]) do
-    case Skein.CLI.trace(rest) do
-      {:ok, result} ->
-        # Plain, byte-stable rendering through the pure framework-neutral
-        # renderer (#284). MCP/LSP/non-TTY output never routes through a TUI.
-        IO.write(Skein.CLI.Render.trace(result))
-        System.halt(0)
+    {json?, rest} = take_json_flag(rest)
+    result = Skein.CLI.trace(rest)
 
-      {:error, reason} ->
-        IO.puts(:stderr, "Error: #{format_error(reason)}")
-        System.halt(1)
+    if json? do
+      emit_json(Skein.CLI.Json.trace(result))
+    else
+      render_trace(result)
     end
   end
 
@@ -231,6 +183,104 @@ defmodule Skein.CLI.Main do
     System.halt(0)
   end
 
+  # ------------------------------------------------------------------
+  # Output: plain (default) vs --json (#284)
+  # ------------------------------------------------------------------
+
+  # `--json` is presentation only: it never reaches the Skein.CLI command
+  # functions (which return structured results regardless), so the same result
+  # renders as either plain text or a versioned JSON envelope. The flag may
+  # appear anywhere in the command's argument list.
+  defp take_json_flag(args) do
+    {json_flags, rest} = Enum.split_with(args, &(&1 == "--json"))
+    {json_flags != [], rest}
+  end
+
+  # Write the JSON envelope to stdout and exit with the envelope's success
+  # signal mirrored into the process exit code (0 when ok, 1 otherwise).
+  defp emit_json(%{ok: ok?} = envelope) do
+    IO.write(Skein.CLI.Json.encode(envelope))
+    System.halt(if(ok?, do: 0, else: 1))
+  end
+
+  defp render_compile({:ok, mod, warnings}) do
+    for w <- warnings do
+      IO.puts(:stderr, "Warning: #{format_error(w)}")
+    end
+
+    IO.puts("Compiled: #{inspect(mod)}")
+    System.halt(0)
+  end
+
+  defp render_compile({:error, reason}) do
+    IO.puts(:stderr, "Error: #{format_error(reason)}")
+    System.halt(1)
+  end
+
+  defp render_build({:ok, result}) do
+    IO.puts("Build complete: #{result.compiled} compiled, #{result.errors} errors")
+
+    if result.errors > 0 do
+      for f <- result.failed do
+        IO.puts(:stderr, format_error(f.errors))
+      end
+
+      System.halt(1)
+    else
+      System.halt(0)
+    end
+  end
+
+  defp render_build({:error, reason}) do
+    IO.puts(:stderr, "Error: #{format_error(reason)}")
+    System.halt(1)
+  end
+
+  defp render_test({:ok, result}) do
+    IO.puts("Tests: #{result.passed} passed, #{result.failed} failed (#{result.total} total)")
+
+    for r <- result.results, r.status == :failed do
+      location =
+        case Map.get(r, :location) do
+          nil -> ""
+          loc -> " (#{loc})"
+        end
+
+      IO.puts(:stderr, "  FAIL: #{r.description}#{location} — #{Map.get(r, :error, "unknown")}")
+    end
+
+    if result.compile_errors > 0 do
+      IO.puts(:stderr, "#{result.compile_errors} file(s) failed to compile and were not tested:")
+
+      for f <- result.compile_failed do
+        IO.puts(:stderr, format_error(f.errors))
+      end
+    end
+
+    if result.failed > 0 or result.compile_errors > 0 do
+      System.halt(1)
+    else
+      System.halt(0)
+    end
+  end
+
+  defp render_test({:error, reason}) do
+    IO.puts(:stderr, "Error: #{format_error(reason)}")
+    System.halt(1)
+  end
+
+  defp render_trace({:ok, result}) do
+    # Plain, byte-stable rendering through the pure framework-neutral
+    # renderer (#284). MCP/LSP/non-TTY output never routes through a TUI.
+    IO.write(Skein.CLI.Render.trace(result))
+    System.halt(0)
+  end
+
+  defp render_trace({:error, reason}) do
+    IO.puts(:stderr, "Error: #{format_error(reason)}")
+    System.halt(1)
+  end
+
   defp print_usage do
     IO.puts(usage_text())
   end
@@ -269,6 +319,8 @@ defmodule Skein.CLI.Main do
       run --port <port>          Server port (default: 4000)
       trace --last <n>           Number of traces (default: 10)
       trace --kind <kind>        Filter by span kind
+      --json                     Machine-readable JSON output (compile, build,
+                                 test, trace) — a versioned, documented envelope
     """
   end
 
