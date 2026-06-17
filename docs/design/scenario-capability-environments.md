@@ -98,9 +98,10 @@ During scenario execution:
 ## 5. Compiler / runtime work
 
 > **Implementation status (2026-06-16):** parser/AST, effect-summary analysis, provider/test purity,
-> the provider contract types, and the runtime stack (uuid/instant/http + codegen of providers,
-> `Dependencies` retired) are **landed**. Remaining: `llm`/`model` provider routing, and the Wave 3
-> test-runner default policy (§6) + live-effect blocking.
+> the provider contract types, the runtime stack (uuid/instant/http/llm + codegen of providers,
+> `Dependencies` retired), **and the Wave 3 test-runner default policy (§6) + live-effect blocking**
+> are **landed**. Remaining: context propagation to spawned processes/tasks/timers, and `llm.embed`
+> provider support.
 
 **Parser / AST.** *(done — #280)* `scenario_item = capability_envelope | given_block | expect_block`.
 `AST.Capability` gained `nested` (`[Capability]`) and `implement` (`CapabilityImplement{params,
@@ -142,10 +143,23 @@ Remaining: `llm`/`model` routing and propagation to spawned processes/tasks/time
 | `timer.*` | deterministic or blocked until supported |
 | `event.log` | scenario-local event log |
 
-Live effects are opt-in and never accidental, e.g. `skein test --allow-live http.out:api.stripe.com`
-(exact flag syntax is an open decision — §8). Today there is **no** live-effect blocking and **no**
-`--allow-live` flag (`skein_cli.ex:689-738`), and golden bodies are not wrapped in replay
-(`core_erlang.ex:1384-1415`) — both are 1.0 gaps.
+Live effects are opt-in and never accidental. The escape hatch is the **repeatable**
+`skein test --allow-live <effect>[:<scope>]` flag (#283): `--allow-live http.out:api.stripe.com`
+permits exactly that host; a scopeless `--allow-live model` permits every model; only the outbound /
+nondeterministic effects are gatable (`http.out`, `model`, `uuid`, `instant`). An unknown effect is a
+structured parse error.
+
+The policy is `Skein.Runtime.TestPolicy`, a process-scoped context the `skein test` runner installs
+around each scenario/golden. It inserts the **test-default** step into effect resolution
+(`implement → replay → test-default → live`): `uuid`/`instant` get deterministic generators
+(incrementing UUID from `…001`; instant stepping +1 s from a fixed `2026-01-01T00:00:00Z` base, reset
+per test); `http.out`/`model` raise `Skein.Runtime.LiveEffectError` when they would go live unallowed
+(a raise, not an `Err`, so a program's own error handling cannot swallow the block); a deterministic
+LLM test backend stays allowed with no setup. Scenario-local `store`/`memory`/`event.log` state is
+reset before each test so it never leaks. Production (`skein run`, no policy active) is untouched.
+
+Golden bodies are wrapped in the replay context (`core_erlang.ex`), so a replayed test that exhausts
+or mismatches its trace is a structured error, never a silent live call.
 
 ## 7. Effect provider contracts
 
@@ -179,10 +193,13 @@ Use Skein `Ok(...)`/`Err(...)` — never ad-hoc Erlang tuple shapes, never magic
   - `LlmRequest { model: String, system: String, prompt: String }` (minimal)
   - `LlmResponse { text: String }` (minimal; `llm.json` decodes `text` against the target schema)
   - `Json` — a named type for an arbitrary JSON value (object/array/string/number/bool/null).
-
-### Still open
-
-- **CLI live-effect flag syntax** (`--allow-live <effect>:<scope>`) — Wave 3.
+- **CLI live-effect flag syntax — RESOLVED (#283):** repeatable `--allow-live <effect>[:<scope>]`,
+  effect tokens drawn from the capability kinds (`http.out`, `model`, `uuid`, `instant`); scope
+  optional (omit to allow all scopes), host-based for `http.out`. A blocked live effect raises
+  `Skein.Runtime.LiveEffectError` (fails the test) rather than returning a new `Err` variant.
+- **Deterministic test defaults — RESOLVED (#283):** `uuid` increments from
+  `00000000-0000-4000-8000-000000000001`; `instant` steps +1 s from `2026-01-01T00:00:00Z`. Counters
+  reset per test.
 
 ## 9. What moves to 1.1
 

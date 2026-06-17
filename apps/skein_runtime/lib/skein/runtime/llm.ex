@@ -20,9 +20,11 @@ defmodule Skein.Runtime.Llm do
   """
 
   alias Skein.Runtime.CapabilityStack
+  alias Skein.Runtime.LiveEffectError
   alias Skein.Runtime.Llm.Error
   alias Skein.Runtime.Llm.Response
   alias Skein.Runtime.Replay
+  alias Skein.Runtime.TestPolicy
   alias Skein.Runtime.Trace
 
   @default_truncate_length 200
@@ -36,7 +38,7 @@ defmodule Skein.Runtime.Llm do
           {:ok, String.t()} | {:error, Error.t()}
   def chat(model, system, input, capabilities)
       when is_binary(model) and is_binary(system) and is_list(capabilities) do
-    backend = resolve_backend()
+    backend = resolve_backend(model)
     span = Map.merge(%{kind: :llm, method: :chat, model: model}, backend_span_meta(backend))
 
     with_enriched_span(span, system, input, fn ->
@@ -62,7 +64,7 @@ defmodule Skein.Runtime.Llm do
           {:ok, map()} | {:error, Error.t()}
   def json(model, system, input, schema, capabilities)
       when is_binary(model) and is_binary(system) and is_map(schema) and is_list(capabilities) do
-    backend = resolve_backend()
+    backend = resolve_backend(model)
     span = Map.merge(%{kind: :llm, method: :json, model: model}, backend_span_meta(backend))
 
     with_enriched_span(span, system, input, fn ->
@@ -110,7 +112,7 @@ defmodule Skein.Runtime.Llm do
   def stream(model, system, input, on_chunk, capabilities)
       when is_binary(model) and is_binary(system) and is_function(on_chunk, 1) and
              is_list(capabilities) do
-    backend = resolve_backend()
+    backend = resolve_backend(model)
     span = Map.merge(%{kind: :llm, method: :stream, model: model}, backend_span_meta(backend))
 
     with_enriched_span(span, system, input, fn ->
@@ -141,7 +143,7 @@ defmodule Skein.Runtime.Llm do
           {:ok, [float()]} | {:error, Error.t()}
   def embed(model, input, capabilities)
       when is_binary(model) and is_binary(input) and is_list(capabilities) do
-    backend = resolve_backend()
+    backend = resolve_backend(model)
     span = Map.merge(%{kind: :llm, method: :embed, model: model}, backend_span_meta(backend))
 
     Trace.with_recorded_span(span, fn ->
@@ -192,10 +194,12 @@ defmodule Skein.Runtime.Llm do
   # Internal
   # ------------------------------------------------------------------
 
-  # Resolution order (#282): a scenario `model` implement provider on the active
-  # capability stack wins; then an active replay context; then the configured
-  # live backend.
-  defp resolve_backend do
+  # Resolution order (#282/#283): a scenario `model` implement provider on the
+  # active capability stack wins; then an active replay context; then the
+  # configured backend. Under `skein test` (TestPolicy active) a *live* backend
+  # is blocked unless the run opted in with `--allow-live model[:<model>]` — a
+  # deterministic test backend stays allowed so offline tests run without setup.
+  defp resolve_backend(model) do
     cond do
       match?({:implement, _}, CapabilityStack.resolve("model")) ->
         Skein.Runtime.Llm.ProviderBackend
@@ -204,9 +208,28 @@ defmodule Skein.Runtime.Llm do
         Skein.Runtime.Llm.ReplayBackend
 
       true ->
-        get_backend()
+        enforce_live_policy(get_backend(), model)
     end
   end
+
+  # Backends that never touch the network — safe under the test policy.
+  @offline_backends [
+    Skein.Runtime.Llm.TestBackend,
+    Skein.Runtime.Llm.StreamingTestBackend,
+    Skein.Runtime.Llm.ReplayBackend,
+    Skein.Runtime.Llm.ProviderBackend
+  ]
+
+  defp enforce_live_policy(backend, model) do
+    if live_backend?(backend) and TestPolicy.block_live?("model", model) do
+      raise LiveEffectError.new("model", model)
+    end
+
+    backend
+  end
+
+  defp live_backend?({module, _config}), do: live_backend?(module)
+  defp live_backend?(module) when is_atom(module), do: module not in @offline_backends
 
   # Span metadata identifying which backend (and base_url, for local
   # servers) serves the call — a trace should never leave you guessing

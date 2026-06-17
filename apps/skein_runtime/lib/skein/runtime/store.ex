@@ -170,6 +170,17 @@ defmodule Skein.Runtime.Store do
     :ok
   end
 
+  @doc """
+  Clears every table's records. The test runner calls this between scenarios so
+  store state never leaks from one test to the next (#283).
+  """
+  @spec clear_all() :: :ok
+  def clear_all do
+    ensure_table()
+    :ets.delete_all_objects(@table)
+    :ok
+  end
+
   # ------------------------------------------------------------------
   # Internal
   # ------------------------------------------------------------------

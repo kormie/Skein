@@ -188,6 +188,17 @@ defmodule Skein.Runtime.Memory do
   end
 
   @doc """
+  Clears every namespace's entries. The test runner calls this between scenarios
+  so memory state never leaks from one test to the next (#283).
+  """
+  @spec clear_all() :: :ok
+  def clear_all do
+    ensure_table()
+    :ets.delete_all_objects(@table)
+    :ok
+  end
+
+  @doc """
   Rebuilds memory state for a namespace from the unified event stream.
 
   Replays all `:state_change` events for the given namespace in chronological

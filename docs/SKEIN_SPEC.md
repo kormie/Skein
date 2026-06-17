@@ -281,7 +281,9 @@ max_restarts_decl = "max_restarts:" integer "per" integer "s"
 > computes each tool's transitive effect summary and rejects a scenario whose envelope does not cover
 > it (E0028, #281). Provider purity and the runtime resolution stack land in later work packages; the
 > superseded `via` design is **not** the 1.0 surface (and is a structured parse error). See
-> `docs/design/scenario-capability-environments.md` and `docs/ROADMAP.md` (Wave 2).
+> `docs/design/scenario-capability-environments.md` and `docs/ROADMAP.md` (Wave 2/3). The runtime
+> resolution stack (#282), provider purity (E0029), and the test-runner default policy + live-effect
+> blocking (#283) are landed.
 
 ```
 test_decl     = "test" string block
@@ -300,6 +302,26 @@ A nested capability with an `implement` block uses that controlled (test-only, p
 with no `implement` block falls through to the test-runner default policy. A capability envelope holds
 at most one `implement` block. `implement` reuses the keyword tool bodies already use. There is no
 `via` form — a `via` after a capability is rejected with a fix pointing at the envelope form.
+
+**Test-runner default policy.** `skein test` runs every `scenario`/`golden` under a conservative
+effect policy so offline tests are deterministic and never reach the network by accident. For an
+effect with no `implement` provider and no recorded trace, the resolution order is
+`implement → replay → test-default → live`:
+
+| Effect | Default under `skein test` |
+|---|---|
+| `uuid` | deterministic, incrementing from `00000000-0000-4000-8000-000000000001` |
+| `instant` | deterministic, stepping +1 s from `2026-01-01T00:00:00Z` |
+| `model` (LLM) | a deterministic test backend (or a golden replay); a *live* backend is blocked |
+| `http.out` | **blocked** |
+| `store` / `memory` / `event.log` | scenario-local state, reset before each test (never leaks) |
+
+A blocked live effect (`http.out`, or a live `model` backend) raises a structured error that fails
+the test — it is never returned as an `Err` a program could swallow. Live effects are opt-in via the
+repeatable CLI flag `skein test --allow-live <effect>[:<scope>]`: `--allow-live http.out:api.stripe.com`
+permits exactly that host, a scopeless `--allow-live model` permits every model, and the gatable
+effect tokens are `http.out`, `model`, `uuid`, `instant`. Outside `skein test` (i.e. `skein run` in
+production) no policy is active and effects resolve straight to live.
 
 ### 3.11 Expressions
 

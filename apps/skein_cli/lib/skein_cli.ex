@@ -692,9 +692,11 @@ defmodule Skein.CLI do
   """
   @spec test_all([String.t()]) :: {:ok, map()} | {:error, String.t()}
   def test_all(args) do
-    with {:ok, project_dir, opts} <- parse_project_args(args, env_flag_spec()),
+    with {:ok, project_dir, opts} <- parse_project_args(args, test_flag_spec()),
          project_dir = Path.expand(project_dir),
          :ok <- apply_env_profile(project_dir, opts) do
+      allow_live = Keyword.get_values(opts, :allow_live)
+
       skein_files =
         (discover_skein_files(project_dir, "src") ++
            discover_skein_files(project_dir, "test"))
@@ -722,7 +724,9 @@ defmodule Skein.CLI do
 
         # Phase 2: run tests for the modules that compiled
         all_results =
-          Enum.flat_map(compiled, fn {file, mod} -> run_tests_for_file(mod, file) end)
+          Enum.flat_map(compiled, fn {file, mod} ->
+            run_tests_for_file(mod, file, allow_live)
+          end)
 
         passed = Enum.count(all_results, &(&1.status == :passed))
         failed = Enum.count(all_results, &(&1.status == :failed))
@@ -844,6 +848,20 @@ defmodule Skein.CLI do
 
   defp env_flag_spec do
     %{"--env" => fn env_name -> {:ok, {:env, env_name}} end}
+  end
+
+  # `skein test` flags: env profile selection plus the repeatable live-effect
+  # escape hatch `--allow-live <effect>[:<scope>]` (#283). Each occurrence adds
+  # an allow entry; an unknown effect is a structured parse error.
+  defp test_flag_spec do
+    Map.merge(env_flag_spec(), %{
+      "--allow-live" => fn arg ->
+        case Skein.Runtime.TestPolicy.parse_allow_live(arg) do
+          {:ok, entry} -> {:ok, {:allow_live, entry}}
+          {:error, _message} = error -> error
+        end
+      end
+    })
   end
 
   # Resolves the active environment (--env flag, then SKEIN_ENV) and
@@ -1003,7 +1021,7 @@ defmodule Skein.CLI do
     end
   end
 
-  defp run_tests_for_module(mod) do
+  defp run_tests_for_module(mod, allow_live \\ []) do
     tests =
       if function_exported?(mod, :__tests__, 0) do
         mod.__tests__()
@@ -1011,20 +1029,7 @@ defmodule Skein.CLI do
         []
       end
 
-    results =
-      Enum.map(tests, fn test_meta ->
-        %{description: desc, fn: test_fn} = test_meta
-        kind = Map.get(test_meta, :kind, :test)
-
-        try do
-          apply(mod, test_fn, [])
-          %{description: desc, status: :passed, kind: kind}
-        rescue
-          e ->
-            %{description: desc, status: :failed, kind: kind, error: Exception.message(e)}
-            |> put_failure_location(e)
-        end
-      end)
+    results = Enum.map(tests, &execute_test(mod, &1, allow_live))
 
     passed = Enum.count(results, &(&1.status == :passed))
     failed = Enum.count(results, &(&1.status == :failed))
@@ -1032,7 +1037,7 @@ defmodule Skein.CLI do
     {:ok, %{total: length(results), passed: passed, failed: failed, results: results}}
   end
 
-  defp run_tests_for_file(mod, file) do
+  defp run_tests_for_file(mod, file, allow_live) do
     tests =
       if function_exported?(mod, :__tests__, 0) do
         mod.__tests__()
@@ -1041,24 +1046,31 @@ defmodule Skein.CLI do
       end
 
     Enum.map(tests, fn test_meta ->
-      %{description: desc, fn: test_fn} = test_meta
-      kind = Map.get(test_meta, :kind, :test)
-
-      try do
-        apply(mod, test_fn, [])
-        %{description: desc, status: :passed, file: file, kind: kind}
-      rescue
-        e ->
-          %{
-            description: desc,
-            status: :failed,
-            file: file,
-            kind: kind,
-            error: Exception.message(e)
-          }
-          |> put_failure_location(e)
-      end
+      mod
+      |> execute_test(test_meta, allow_live)
+      |> Map.put(:file, file)
     end)
+  end
+
+  # Run one test/scenario/golden under the conservative test-runner policy
+  # (#283): scenario-local store/memory/event state is reset first so it never
+  # leaks between tests, and the body runs with deterministic uuid/instant
+  # defaults and live http/llm blocked unless `--allow-live` opted in.
+  defp execute_test(mod, %{description: desc, fn: test_fn} = test_meta, allow_live) do
+    kind = Map.get(test_meta, :kind, :test)
+    Skein.Runtime.TestPolicy.reset_scenario_state()
+
+    try do
+      Skein.Runtime.TestPolicy.with_policy([allow_live: allow_live], fn ->
+        apply(mod, test_fn, [])
+      end)
+
+      %{description: desc, status: :passed, kind: kind}
+    rescue
+      e ->
+        %{description: desc, status: :failed, kind: kind, error: Exception.message(e)}
+        |> put_failure_location(e)
+    end
   end
 
   # Structured assertion failures carry their own file:line — surface it
