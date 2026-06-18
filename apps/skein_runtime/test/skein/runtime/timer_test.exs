@@ -1,15 +1,30 @@
 defmodule Skein.Runtime.TimerTest do
   use ExUnit.Case, async: false
 
+  alias Skein.Runtime.CapabilityStack
+  alias Skein.Runtime.TestPolicy
   alias Skein.Runtime.Timer
 
   setup do
-    on_exit(fn -> Timer.reset_all() end)
+    on_exit(fn ->
+      Timer.reset_all()
+      CapabilityStack.clear()
+      TestPolicy.clear()
+    end)
   end
 
   # Helper to call Timer.after/4 (reserved word in Elixir)
   defp timer_after(group \\ nil, delay_ms, callback, caps) do
     apply(Timer, :after, [group, delay_ms, callback, caps])
+  end
+
+  # Resolves the "uuid" effect through the active capability stack, returning the
+  # provider's value or :no_provider — used to observe envelope propagation.
+  defp resolve_uuid do
+    case CapabilityStack.resolve("uuid") do
+      {:implement, provider} -> provider.()
+      :no_provider -> :no_provider
+    end
   end
 
   describe "task bodies (after/5, interval/5)" do
@@ -77,6 +92,39 @@ defmodule Skein.Runtime.TimerTest do
                  fn -> :ok end,
                  [%{kind: "timer", params: ["maintenance"]}]
                ])
+    end
+  end
+
+  describe "scenario capability-context propagation to work bodies (#282)" do
+    test "after/5 work body inherits the active capability envelope" do
+      parent = self()
+      caps = [%{kind: "timer", params: []}]
+      envelope = %{tool: "T", providers: %{"uuid" => fn -> "FROM-ENVELOPE" end}}
+
+      CapabilityStack.with_envelope(envelope, fn ->
+        work = fn -> send(parent, {:resolved, resolve_uuid()}) end
+        assert {:ok, _ref} = apply(Timer, :after, [nil, 5, "notify", work, caps])
+      end)
+
+      assert_receive {:resolved, "FROM-ENVELOPE"}, 1000
+    end
+
+    test "interval/5 work body inherits the blocked-live test policy" do
+      parent = self()
+      caps = [%{kind: "timer", params: []}]
+
+      ref =
+        TestPolicy.with_policy([], fn ->
+          work = fn ->
+            send(parent, {:blocked, TestPolicy.block_live?("http.out", "api.stripe.com")})
+          end
+
+          assert {:ok, ref} = Timer.interval(nil, 10, "poll", work, caps)
+          ref
+        end)
+
+      assert_receive {:blocked, true}, 1000
+      Timer.cancel(nil, ref, caps)
     end
   end
 

@@ -9,6 +9,7 @@ defmodule Skein.Runtime.Process do
   use DynamicSupervisor
 
   alias Skein.Runtime.Capability
+  alias Skein.Runtime.SpawnContext
   alias Skein.Runtime.Trace
 
   @doc """
@@ -36,11 +37,14 @@ defmodule Skein.Runtime.Process do
     case check_capability(capabilities) do
       :ok ->
         ensure_started()
+        # Capture the scenario capability context here, in the spawning process,
+        # so the spawned body resolves effects identically to inline work (#282).
+        bound = SpawnContext.bind(fun)
 
         Trace.with_span(%{kind: :process, method: :spawn}, fn ->
           case DynamicSupervisor.start_child(__MODULE__, %{
                  id: make_ref(),
-                 start: {Task, :start_link, [fun]},
+                 start: {Task, :start_link, [bound]},
                  restart: :temporary
                }) do
             {:ok, pid} -> {:ok, pid}
@@ -94,11 +98,12 @@ defmodule Skein.Runtime.Process do
     case check_capability(capabilities) do
       :ok ->
         ensure_started()
+        bound = SpawnContext.bind(fn -> apply(fun, args) end)
 
         Trace.with_span(%{kind: :process, method: :spawn}, fn ->
           case DynamicSupervisor.start_child(__MODULE__, %{
                  id: make_ref(),
-                 start: {Task, :start_link, [fn -> apply(fun, args) end]},
+                 start: {Task, :start_link, [bound]},
                  restart: :temporary
                }) do
             {:ok, pid} -> {:ok, pid}
@@ -129,9 +134,12 @@ defmodule Skein.Runtime.Process do
     case Capability.check_scoped("process.spawn", pool, capabilities) do
       :ok ->
         ensure_started()
+        # Capture the scenario capability context here, in the spawning process,
+        # so the spawned body resolves effects identically to inline work (#282).
+        bound = SpawnContext.bind(fun)
 
         Trace.with_span(%{kind: :process, method: :spawn, task: task_name, pool: pool}, fn ->
-          start_supervised_task(fun)
+          start_supervised_task(bound)
         end)
 
       {:error, _reason} = error ->

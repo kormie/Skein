@@ -10,6 +10,7 @@ defmodule Skein.Runtime.Timer do
   use GenServer
 
   alias Skein.Runtime.Capability
+  alias Skein.Runtime.SpawnContext
   alias Skein.Runtime.Trace
 
   @table :skein_runtime_timers
@@ -76,7 +77,15 @@ defmodule Skein.Runtime.Timer do
   def unquote(:after)(group, delay_ms, task, work, capabilities)
       when (is_binary(group) or is_nil(group)) and is_integer(delay_ms) and delay_ms >= 0 and
              is_binary(task) and is_function(work, 0) do
-    apply(__MODULE__, :after, [group, delay_ms, {:named_work, task, work}, capabilities])
+    # Capture the scenario capability context here, at schedule time, so the body
+    # resolves effects under the scheduling scenario's envelope/policy when it
+    # later fires inside the timer manager — not in that manager's bare context (#282).
+    apply(__MODULE__, :after, [
+      group,
+      delay_ms,
+      {:named_work, task, SpawnContext.bind(work)},
+      capabilities
+    ])
   end
 
   @doc """
@@ -131,7 +140,9 @@ defmodule Skein.Runtime.Timer do
   def interval(group, interval_ms, task, work, capabilities)
       when (is_binary(group) or is_nil(group)) and is_integer(interval_ms) and interval_ms > 0 and
              is_binary(task) and is_function(work, 0) do
-    interval(group, interval_ms, {:named_work, task, work}, capabilities)
+    # Capture the scenario capability context at schedule time so every fire runs
+    # the body under the scheduling scenario's envelope/policy (#282).
+    interval(group, interval_ms, {:named_work, task, SpawnContext.bind(work)}, capabilities)
   end
 
   @doc """

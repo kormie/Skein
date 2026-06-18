@@ -1,10 +1,16 @@
 defmodule Skein.Runtime.ProcessTest do
   use ExUnit.Case, async: false
 
+  alias Skein.Runtime.CapabilityStack
   alias Skein.Runtime.Process, as: SpawnProcess
+  alias Skein.Runtime.TestPolicy
 
   setup do
-    on_exit(fn -> SpawnProcess.reset_all() end)
+    on_exit(fn ->
+      SpawnProcess.reset_all()
+      CapabilityStack.clear()
+      TestPolicy.clear()
+    end)
   end
 
   describe "spawn/3 with a pool and task name (compiled process.spawn(\"name\") calls)" do
@@ -250,6 +256,56 @@ defmodule Skein.Runtime.ProcessTest do
 
       # After reset, should have no children if we restart
       # (reset_all terminates children but doesn't stop supervisor)
+    end
+  end
+
+  describe "scenario capability-context propagation to spawned work (#282)" do
+    test "spawn/4 work body inherits the active capability envelope" do
+      parent = self()
+      caps = [%{kind: "process.spawn", params: []}]
+      envelope = %{tool: "T", providers: %{"uuid" => fn -> "FROM-ENVELOPE" end}}
+
+      CapabilityStack.with_envelope(envelope, fn ->
+        work = fn -> send(parent, {:resolved, resolve_uuid()}) end
+        assert {:ok, _pid} = SpawnProcess.spawn(nil, "task", work, caps)
+      end)
+
+      assert_receive {:resolved, "FROM-ENVELOPE"}, 1000
+    end
+
+    test "spawn/4 work body inherits the blocked-live test policy" do
+      parent = self()
+      caps = [%{kind: "process.spawn", params: []}]
+
+      TestPolicy.with_policy([], fn ->
+        work = fn ->
+          send(parent, {:blocked, TestPolicy.block_live?("http.out", "api.stripe.com")})
+        end
+
+        assert {:ok, _pid} = SpawnProcess.spawn(nil, "task", work, caps)
+      end)
+
+      assert_receive {:blocked, true}, 1000
+    end
+
+    test "spawn/2 work body inherits the test policy" do
+      parent = self()
+
+      TestPolicy.with_policy([], fn ->
+        work = fn -> send(parent, {:active, TestPolicy.active?()}) end
+        assert {:ok, _pid} = SpawnProcess.spawn(work, [%{kind: "process.spawn", params: []}])
+      end)
+
+      assert_receive {:active, true}, 1000
+    end
+  end
+
+  # Resolves the "uuid" effect through the active capability stack, returning the
+  # provider's value or :no_provider — used to observe envelope propagation.
+  defp resolve_uuid do
+    case CapabilityStack.resolve("uuid") do
+      {:implement, provider} -> provider.()
+      :no_provider -> :no_provider
     end
   end
 end
