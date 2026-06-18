@@ -22,8 +22,9 @@ defmodule Skein.Runtime.CapabilityStack do
       }
 
   The stack is process-scoped. Propagating it to spawned processes/tasks/timers
-  is handled where work is spawned (a later #282 step); `snapshot/0` and
-  `restore/1` exist for that hand-off.
+  is handled where work is spawned (`Skein.Runtime.SpawnContext`, #282), which
+  captures the stack with `snapshot/0` and reinstalls it with `restore/1` inside
+  the spawned process.
   """
 
   @key {__MODULE__, :stack}
@@ -144,6 +145,20 @@ defmodule Skein.Runtime.CapabilityStack do
   @spec registered_envelope(String.t()) :: envelope() | nil
   def registered_envelope(tool_name) when is_binary(tool_name) do
     Process.get(@registry_key, %{}) |> Map.get(tool_name)
+  end
+
+  @doc """
+  Captures the registered scenario envelopes for hand-off to spawned work, so a
+  top-level `tool.call` from a spawned body still resolves its envelope (#282).
+  """
+  @spec snapshot_registry() :: %{optional(String.t()) => envelope()}
+  def snapshot_registry, do: Process.get(@registry_key, %{})
+
+  @doc "Installs captured scenario envelopes in the calling process (e.g. spawned work)."
+  @spec restore_registry(%{optional(String.t()) => envelope()}) :: :ok
+  def restore_registry(map) when is_map(map) do
+    Process.put(@registry_key, map)
+    :ok
   end
 
   @doc """

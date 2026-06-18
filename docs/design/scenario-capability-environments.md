@@ -97,11 +97,11 @@ During scenario execution:
 
 ## 5. Compiler / runtime work
 
-> **Implementation status (2026-06-16):** parser/AST, effect-summary analysis, provider/test purity,
+> **Implementation status (2026-06-18):** parser/AST, effect-summary analysis, provider/test purity,
 > the provider contract types, the runtime stack (uuid/instant/http/llm + codegen of providers,
-> `Dependencies` retired), **and the Wave 3 test-runner default policy (§6) + live-effect blocking**
-> are **landed**. Remaining: context propagation to spawned processes/tasks/timers, and `llm.embed`
-> provider support.
+> `Dependencies` retired), the Wave 3 test-runner default policy (§6) + live-effect blocking, **and
+> context propagation to spawned processes/tasks/timers** (`Skein.Runtime.SpawnContext`, #282) are
+> **landed**. Remaining: `llm.embed` provider support.
 
 **Parser / AST.** *(done — #280)* `scenario_item = capability_envelope | given_block | expect_block`.
 `AST.Capability` gained `nested` (`[Capability]`) and `implement` (`CapabilityImplement{params,
@@ -123,8 +123,12 @@ resolution order: (1) scenario `implement` provider → (2) replay (golden) → 
 test-runner default *(Wave 3)* → (4) live (only if allowed) → (5) structured failure. `uuid`,
 `instant`, and `http` resolve through the stack today (via `Skein.Runtime.Nondeterminism` /
 `Skein.Runtime.Http`); the process-dict override and `Skein.Runtime.Dependencies` are **retired**.
-Remaining: `llm`/`model` routing and propagation to spawned processes/tasks/timers
-(`CapabilityStack.snapshot/0`+`restore/1` exist for the hand-off).
+Propagation to spawned work is **done**: `Skein.Runtime.SpawnContext` captures the capability stack,
+the registered scenario envelopes, and the test policy in the spawning (or, for timers, the
+scheduling) process and reinstalls them inside the spawned body, so `process.spawn` and `timer` task
+bodies resolve effects identically to inline work. (Golden `Replay` is intentionally not propagated —
+its recorded-event cursor is consumed on read, so a concurrent copy would double-serve events.)
+Remaining: `llm`/`model` routing for `llm.embed`.
 
 ## 6. Test-runner default policy
 

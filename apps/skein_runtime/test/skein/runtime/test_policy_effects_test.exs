@@ -4,7 +4,11 @@ defmodule Skein.Runtime.TestPolicyEffectsTest do
   get deterministic defaults, http.out/model are blocked unless allowed, and
   production (no policy) is untouched.
   """
-  use ExUnit.Case, async: true
+  # async: false — the `llm` cases mutate the node-global LLM backend
+  # (`Llm.set_backend/1`, backed by `:persistent_term`), so this module must not
+  # run concurrently with other async tests, matching every other backend-mutating
+  # test file. Running async raced the global backend and flaked intermittently.
+  use ExUnit.Case, async: false
 
   alias Skein.Runtime.Http
   alias Skein.Runtime.LiveEffectError
