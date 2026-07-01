@@ -2544,13 +2544,36 @@ defmodule Skein.CodeGen.CoreErlang do
 
   # Record literal: same atom-keyed map representation as user-type values, so
   # field access (map_get) reads it back. The type name is analyzer-only.
-  defp generate_expr(%AST.RecordLit{fields: fields}, scope) do
+  # Constructed records are TOTAL (#294): the analyzer's Option-field plan
+  # (some_fields/none_fields) makes present Option fields `{:some, v}` and
+  # injects `:none` for absent ones — the identical representation JSON
+  # decode, the store read path, and tool outputs produce.
+  defp generate_expr(
+         %AST.RecordLit{fields: fields, some_fields: some_fields, none_fields: none_fields},
+         scope
+       ) do
+    some_fields = some_fields || []
+
     pairs =
       Enum.map(fields, fn {key, value} ->
-        :cerl.c_map_pair(:cerl.c_atom(String.to_atom(key)), generate_expr(value, scope))
+        value_expr = generate_expr(value, scope)
+
+        value_expr =
+          if key in some_fields do
+            :cerl.c_tuple([:cerl.c_atom(:some), value_expr])
+          else
+            value_expr
+          end
+
+        :cerl.c_map_pair(:cerl.c_atom(String.to_atom(key)), value_expr)
       end)
 
-    :cerl.c_map(pairs)
+    none_pairs =
+      Enum.map(none_fields || [], fn key ->
+        :cerl.c_map_pair(:cerl.c_atom(String.to_atom(key)), :cerl.c_atom(:none))
+      end)
+
+    :cerl.c_map(pairs ++ none_pairs)
   end
 
   # Identifier

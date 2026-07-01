@@ -1,0 +1,16 @@
+-- expect: E0020
+-- #294 (B5): a present Option field in a record literal takes the BARE
+-- inner value (presence implies Some, exactly like JSON decode; codegen
+-- wraps it). A wrong-typed inner value must be rejected — before B5 the
+-- runtime representation of optional fields was not checked at
+-- construction at all.
+module RecordOptionalFieldTypeMismatch {
+  type User {
+    name: String
+    nickname: Option[String]
+  }
+
+  fn bad() -> User {
+    User { name: "ada", nickname: 42 }
+  }
+}

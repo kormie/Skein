@@ -113,6 +113,53 @@ defmodule Skein.Runtime.ToolTest do
   end
 
   # ------------------------------------------------------------------
+  # Output Option coercion (#294 / B5)
+  # ------------------------------------------------------------------
+
+  describe "output Option coercion" do
+    setup do
+      # The shape register_module/1 stores: tool metadata whose
+      # :output_schema is the SchemaGen JSON Schema, with Option fields
+      # marked x-skein-optional and excluded from "required".
+      schema = %{
+        name: "Lookup",
+        output_schema: %{
+          "type" => "object",
+          "properties" => %{
+            "id" => %{"type" => "string"},
+            "note" => %{"type" => "string", "x-skein-optional" => true}
+          },
+          "required" => ["id"]
+        }
+      }
+
+      caps = [%{kind: "tool.use", params: ["Lookup"]}]
+      {:ok, schema: schema, caps: caps}
+    end
+
+    test "a present Option output field comes back as Some", %{schema: schema, caps: caps} do
+      Tool.register("Lookup", schema, fn _in -> {:ok, %{id: "r-1", note: "hi"}} end)
+
+      assert {:ok, result} = Tool.call("Lookup", %{}, caps)
+      assert result == %{id: "r-1", note: {:some, "hi"}}
+    end
+
+    test "an absent Option output field comes back as None", %{schema: schema, caps: caps} do
+      Tool.register("Lookup", schema, fn _in -> {:ok, %{id: "r-1"}} end)
+
+      assert {:ok, result} = Tool.call("Lookup", %{}, caps)
+      assert result == %{id: "r-1", note: :none}
+    end
+
+    test "tools without an output schema pass output through unchanged", %{caps: _} do
+      Tool.register("Raw", %{input: %{}, output: %{}}, fn _in -> {:ok, %{free: "form"}} end)
+      caps = [%{kind: "tool.use", params: ["Raw"]}]
+
+      assert {:ok, %{free: "form"}} = Tool.call("Raw", %{}, caps)
+    end
+  end
+
+  # ------------------------------------------------------------------
   # list/1
   # ------------------------------------------------------------------
 

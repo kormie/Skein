@@ -162,9 +162,14 @@ defmodule Skein.Runtime.MigrationGen do
       {:error, Exception.message(error)}
   end
 
-  # Generate a unique version number for the migration
+  # Generate a unique version number for the migration. Second granularity
+  # is NOT unique enough: migrating two tables within the same second gave
+  # both the same version, and Ecto.Migrator silently skipped the second as
+  # already-applied — its table was never created. Millisecond time keeps
+  # versions increasing across VM restarts; the unique-integer suffix
+  # disambiguates within one.
   defp unique_version do
-    System.system_time(:second)
+    System.system_time(:millisecond) * 1000 + rem(System.unique_integer([:positive]), 1000)
   end
 
   defp migration_module_name(table_name) do

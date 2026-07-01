@@ -113,6 +113,51 @@ defmodule Skein.Integration.RecordLiteralTest do
                """)
     end
 
+    test "a present Option field takes the bare inner value" do
+      # There is no `Some(...)` constructor: presence implies Some, exactly
+      # like JSON decode (#294 / B5). The literal supplies the inner value.
+      assert [] =
+               errors("""
+               module M {
+                 type User { name: String, nickname: Option[String] }
+                 fn make() -> User { User { name: "ada", nickname: "Bob" } }
+               }
+               """)
+    end
+
+    test "a present Option field with the wrong inner type is a structured error" do
+      errs =
+        errors("""
+        module M {
+          type User { name: String, nickname: Option[String] }
+          fn bad() -> User { User { name: "ada", nickname: 42 } }
+        }
+        """)
+
+      assert Enum.any?(errs, fn e ->
+               e.code == "E0020" and e.message =~ "Field 'nickname'"
+             end)
+    end
+
+    test "an already-Option-typed value cannot fill an Option field directly" do
+      # The field slot takes the bare inner value (codegen wraps it); an
+      # Option value must be matched/unwrapped first, or the runtime would
+      # double-wrap it.
+      errs =
+        errors("""
+        module M {
+          type User { name: String, nickname: Option[String] }
+          fn make(nick: Option[String]) -> User {
+            User { name: "ada", nickname: nick }
+          }
+        }
+        """)
+
+      assert Enum.any?(errs, fn e ->
+               e.code == "E0020" and e.message =~ "Field 'nickname'"
+             end)
+    end
+
     test "an unknown field is a structured error" do
       errs =
         errors("""
@@ -168,6 +213,66 @@ defmodule Skein.Integration.RecordLiteralTest do
 
       assert mod.make(3, 4) == %{x: 3, y: 4}
       assert mod.sum(3, 4) == 7
+    end
+
+    test "absent Option fields are constructed as None (total records, #294)" do
+      mod =
+        case Compiler.compile_string("""
+             module M {
+               type User { name: String, nickname: Option[String] }
+               fn make() -> User { User { name: "ada" } }
+             }
+             """) do
+          {:module, mod} -> mod
+          {:error, errs} -> flunk("compile failed: #{inspect(errs)}")
+        end
+
+      assert mod.make() == %{name: "ada", nickname: :none}
+    end
+
+    test "present Option fields are constructed as Some" do
+      mod =
+        case Compiler.compile_string("""
+             module M {
+               type User { name: String, nickname: Option[String] }
+               fn make(nick: String) -> User { User { name: "ada", nickname: nick } }
+             }
+             """) do
+          {:module, mod} -> mod
+          {:error, errs} -> flunk("compile failed: #{inspect(errs)}")
+        end
+
+      assert mod.make("Bob") == %{name: "ada", nickname: {:some, "Bob"}}
+    end
+
+    test "Some/None match on a constructed record's Option field" do
+      mod =
+        case Compiler.compile_string("""
+             module M {
+               type User { name: String, nickname: Option[String] }
+
+               fn greet(u: User) -> String {
+                 match u.nickname {
+                   Some(n) -> "hi ${n}"
+                   None -> "hi ${u.name}"
+                 }
+               }
+
+               fn greet_with(nick: String) -> String {
+                 greet(User { name: "ada", nickname: nick })
+               }
+
+               fn greet_without() -> String {
+                 greet(User { name: "ada" })
+               }
+             }
+             """) do
+          {:module, mod} -> mod
+          {:error, errs} -> flunk("compile failed: #{inspect(errs)}")
+        end
+
+      assert mod.greet_with("Bob") == "hi Bob"
+      assert mod.greet_without() == "hi ada"
     end
   end
 end

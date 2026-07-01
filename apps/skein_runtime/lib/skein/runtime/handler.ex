@@ -22,6 +22,7 @@ defmodule Skein.Runtime.Handler do
   - `:path` — Request path string
   """
 
+  alias Skein.Runtime.Options
   alias Skein.Runtime.Trace
 
   @doc """
@@ -146,12 +147,17 @@ defmodule Skein.Runtime.Handler do
     {:ok, error.status, body, :json}
   end
 
+  # Option-typed record fields are total in-language ({:some, v} / :none,
+  # #294); on the JSON wire they are bare values / absent keys — strip
+  # before encoding.
   defp encode_json(value) when is_binary(value), do: Jason.encode!(value)
   defp encode_json(value) when is_integer(value), do: Jason.encode!(value)
   defp encode_json(value) when is_float(value), do: Jason.encode!(value)
   defp encode_json(value) when is_boolean(value), do: Jason.encode!(value)
+  defp encode_json(:none), do: Jason.encode!(nil)
   defp encode_json(value) when is_atom(value), do: Jason.encode!(Atom.to_string(value))
-  defp encode_json(value) when is_map(value), do: Jason.encode!(value)
-  defp encode_json(value) when is_list(value), do: Jason.encode!(value)
+  defp encode_json(value) when is_map(value), do: Jason.encode!(Options.strip(value))
+  defp encode_json(value) when is_list(value), do: Jason.encode!(Options.strip(value))
+  defp encode_json({:some, value}), do: encode_json(value)
   defp encode_json(value), do: Jason.encode!(inspect(value))
 end

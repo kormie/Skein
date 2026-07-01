@@ -85,7 +85,12 @@ defmodule Skein.Runtime.StoreEcto do
     Trace.with_span(%{kind: :store, method: :put, table: table_name}, fn ->
       with :ok <- check_store_capability(table_name, capabilities),
            {:ok, schema_mod} <- require_schema(table_name) do
-        changeset = schema_mod.changeset(struct(schema_mod), atomize_keys(record))
+        params =
+          record
+          |> atomize_keys()
+          |> unwrap_options(schema_mod)
+
+        changeset = schema_mod.changeset(struct(schema_mod), params)
 
         case Skein.Runtime.Repo.insert(changeset,
                on_conflict: :replace_all,
@@ -195,6 +200,41 @@ defmodule Skein.Runtime.StoreEcto do
     struct
     |> Map.from_struct()
     |> Map.drop([:__meta__])
+    |> tag_options(struct.__struct__)
+  end
+
+  # Option-declared fields are total in-language (#294): a nullable column
+  # reads back as :none / {:some, v}, matching what nominal construction and
+  # JSON decode produce, so `match row.f { Some(v) -> ... None -> ... }`
+  # works on stored records. The write path is the exact inverse.
+  defp tag_options(map, schema_mod) do
+    Enum.reduce(option_fields(schema_mod), map, fn field, acc ->
+      case Map.fetch(acc, field) do
+        {:ok, nil} -> Map.put(acc, field, :none)
+        {:ok, :none} -> acc
+        {:ok, {:some, _}} -> acc
+        {:ok, value} -> Map.put(acc, field, {:some, value})
+        :error -> acc
+      end
+    end)
+  end
+
+  defp unwrap_options(params, schema_mod) do
+    Enum.reduce(option_fields(schema_mod), params, fn field, acc ->
+      case Map.fetch(acc, field) do
+        {:ok, {:some, value}} -> Map.put(acc, field, value)
+        {:ok, :none} -> Map.put(acc, field, nil)
+        _ -> acc
+      end
+    end)
+  end
+
+  defp option_fields(schema_mod) do
+    if function_exported?(schema_mod, :__skein_option_fields__, 0) do
+      schema_mod.__skein_option_fields__()
+    else
+      []
+    end
   end
 
   # Only fields declared on the schema may reach the dynamic

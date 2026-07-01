@@ -427,6 +427,11 @@ defmodule Skein.Analyzer do
     # Later passes and codegen only ever see positional arguments.
     {ast, errors} = resolve_named_args(ast, env)
 
+    # Pass 0b: Annotate record literals with their Option-field plan (#294),
+    # so codegen can wrap present Option fields in Some and inject None for
+    # absent ones — constructed records are total.
+    ast = annotate_record_literals(ast, env)
+
     nested_agents = Enum.filter(ast.declarations, &match?(%AST.Agent{}, &1))
 
     # Fn-shaped views of nested agent bodies, so module-level usage passes
@@ -517,6 +522,9 @@ defmodule Skein.Analyzer do
 
     # Pass 0a: Resolve named arguments into positional order (desugaring).
     {ast, errors} = resolve_named_args(ast, env)
+
+    # Pass 0b: Annotate record literals with their Option-field plan (#294).
+    ast = annotate_record_literals(ast, env)
 
     errors = errors ++ run_agent_passes(ast, env)
 
@@ -811,6 +819,60 @@ defmodule Skein.Analyzer do
       {call, []}
     end
   end
+
+  # ------------------------------------------------------------------
+  # Record-literal Option annotation (Pass 0b, #294)
+  #
+  # Walks the whole tree and fills each RecordLit's `some_fields` (present
+  # Option-declared fields — codegen wraps their value in Some) and
+  # `none_fields` (absent Option-declared fields — codegen injects None).
+  # Constructed records are total: every declared key exists at runtime,
+  # with the same Some/None representation JSON decode produces. Unknown
+  # type names are left unannotated (Pass 2 reports them as E0024).
+  # ------------------------------------------------------------------
+
+  defp annotate_record_literals(%AST.RecordLit{type_name: name, fields: fields} = lit, env) do
+    fields = Enum.map(fields, fn {key, value} -> {key, annotate_record_literals(value, env)} end)
+    lit = %{lit | fields: fields}
+
+    case Map.get(env.types, name) do
+      %AST.TypeDecl{fields: decl_fields} ->
+        provided = MapSet.new(fields, fn {key, _} -> key end)
+
+        optional_names =
+          for %AST.Field{name: fname} = f <- decl_fields, optional_field?(f, env), do: fname
+
+        %{
+          lit
+          | some_fields: Enum.filter(optional_names, &MapSet.member?(provided, &1)),
+            none_fields: Enum.reject(optional_names, &MapSet.member?(provided, &1))
+        }
+
+      _ ->
+        lit
+    end
+  end
+
+  defp annotate_record_literals(%_{} = node, env) do
+    node
+    |> Map.from_struct()
+    |> Enum.reduce(node, fn
+      {:meta, _value}, acc -> acc
+      {key, value}, acc -> Map.put(acc, key, annotate_record_literals(value, env))
+    end)
+  end
+
+  defp annotate_record_literals(nodes, env) when is_list(nodes) do
+    Enum.map(nodes, &annotate_record_literals(&1, env))
+  end
+
+  # Interpolation segments and map-literal entries carry expressions in
+  # their second slot.
+  defp annotate_record_literals({tag, value}, env) do
+    {tag, annotate_record_literals(value, env)}
+  end
+
+  defp annotate_record_literals(other, _env), do: other
 
   defp reorder_named_args(%AST.Call{args: args, meta: meta} = call, env) do
     {positional, named_section} = Enum.split_while(args, &(not match?(%AST.NamedArg{}, &1)))
@@ -1410,6 +1472,13 @@ defmodule Skein.Analyzer do
 
   @doc false
   @spec resolve_type(AST.TypeRef.t() | nil, map()) :: atom() | tuple()
+  # Bare `Map` (no type parameters — the HttpResponse `body` contract field):
+  # a structural map of unpinned shape, NOT a user type. Records are nominal
+  # (#294), so leaving this as {:user_type, "Map"} would reject every map.
+  def resolve_type(%AST.TypeRef{name: "Map", params: []}, _types) do
+    {:map, :dynamic, :dynamic}
+  end
+
   def resolve_type(%AST.TypeRef{name: name, params: []}, types) do
     case Map.get(@builtin_types, name) do
       nil ->
@@ -2834,7 +2903,16 @@ defmodule Skein.Analyzer do
           Enum.flat_map(field_results, fn {fname, {vtype, _}} ->
             case Map.get(decl_map, fname) do
               %AST.Field{type: ftype} ->
-                expected = resolve_type(ftype, env.types)
+                # A present Option[T] field takes the BARE inner value —
+                # presence implies Some, exactly like JSON decode, and
+                # codegen wraps it (#294). There is no Some(...) constructor,
+                # so an already-Option value must be matched/unwrapped first
+                # (accepting it too would make the runtime wrap ambiguous).
+                expected =
+                  case resolve_type(ftype, env.types) do
+                    {:option, inner} -> inner
+                    other -> other
+                  end
 
                 if types_compatible?(vtype, expected) do
                   []
@@ -3786,13 +3864,11 @@ defmodule Skein.Analyzer do
   defp types_compatible?({:map, k1, v1}, {:map, k2, v2}),
     do: types_compatible?(k1, k2) and types_compatible?(v1, v2)
 
-  # Records are constructed as map literals (spec §8: `Ok({ id: r.body.id, ...})`),
-  # so a structural map is compatible with a user type. This is NOT the deleted
-  # "user_type compatible with anything" hole — it is strictly map ~ user_type,
-  # the record-construction path. Field-level checking of the map against the
-  # record's declared fields is deferred inference (issue #253), not #259.
-  defp types_compatible?({:map, _, _}, {:user_type, _}), do: true
-  defp types_compatible?({:user_type, _}, {:map, _, _}), do: true
+  # Records are NOMINAL (#294 / B5): `TypeName { ... }` is the one
+  # construction form (field-checked at the literal), and a plain map is a
+  # Map, never a record. The former `map ~ user_type` wildcard let ANY map
+  # pass as ANY record with no field checking — the untagged-map hole the
+  # 2026-06-19 audit flagged. Only the sanctioned :dynamic seam crosses.
 
   # Variance is INVARIANT for 1.0 (issue #259): a named type is compatible only
   # with itself. `User` ~ `User`, `Status` ~ `Status` — both handled by the
