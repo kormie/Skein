@@ -2229,6 +2229,36 @@ defmodule Skein.Analyzer do
           ]
       end
 
+    # The propagated error must be compatible with the enclosing Result's
+    # error component (#290) — `?` must not smuggle an incompatible error
+    # type out of a function that "type-checked".
+    err_type_errors =
+      case {operand_type, env.current_fn_return_type} do
+        {{:result, _, propagated_err}, {:result, _, declared_err}} ->
+          if types_compatible?(propagated_err, declared_err) do
+            []
+          else
+            [
+              %Error{
+                code: "E0023",
+                severity: :error,
+                message:
+                  "Operator '?' propagates #{format_type(propagated_err)}, but the enclosing " <>
+                    "function returns Result[_, #{format_type(declared_err)}]",
+                location: location_from_meta(meta, env.file),
+                context: "the propagated error crosses the enclosing Result's error type",
+                fix_hint:
+                  "Convert the error before propagating (match and re-wrap it) or change the " <>
+                    "enclosing error type to #{format_type(propagated_err)}",
+                fix_code: "Result.map_err(value, &convert_error)"
+              }
+            ]
+          end
+
+        _ ->
+          []
+      end
+
     ok_type =
       case operand_type do
         {:result, ok, _} -> ok
@@ -2236,7 +2266,7 @@ defmodule Skein.Analyzer do
         _ -> :unknown
       end
 
-    {ok_type, operand_errors ++ type_errors ++ fn_return_errors}
+    {ok_type, operand_errors ++ type_errors ++ fn_return_errors ++ err_type_errors}
   end
 
   # Match expression

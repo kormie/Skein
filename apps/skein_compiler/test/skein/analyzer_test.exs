@@ -1062,6 +1062,64 @@ defmodule Skein.AnalyzerTest do
   end
 
   # ------------------------------------------------------------------
+  # ? propagated-error-type checking (#290 / B1)
+  # ------------------------------------------------------------------
+
+  describe "? propagated error type" do
+    test "an incompatible propagated error type is a structured E0023" do
+      errors =
+        analyze_errors("""
+        module M {
+          fn fetch() -> Result[String, HttpError] {
+            Ok("h")
+          }
+
+          fn caller() -> Result[String, StoreError] {
+            let body = fetch()?
+            Ok(body)
+          }
+        }
+        """)
+
+      assert [%Skein.Error{code: "E0023"} = error] = errors
+      assert error.message =~ "HttpError"
+      assert error.message =~ "StoreError"
+      assert error.fix_hint != nil
+      assert error.fix_code != nil
+    end
+
+    test "a matching propagated error type passes" do
+      assert {:ok, _} =
+               analyze("""
+               module M {
+                 fn fetch() -> Result[String, HttpError] {
+                   Ok("h")
+                 }
+
+                 fn caller() -> Result[String, HttpError] {
+                   let body = fetch()?
+                   Ok(body)
+                 }
+               }
+               """)
+    end
+
+    test "a dynamic effect error component still passes (C1 closes those)" do
+      assert {:ok, _} =
+               analyze("""
+               module M {
+                 capability http.out("api.example.com")
+
+                 fn fetch() -> Result[String, HttpError] {
+                   let resp = http.get("https://api.example.com/x")?
+                   Ok("ok")
+                 }
+               }
+               """)
+    end
+  end
+
+  # ------------------------------------------------------------------
   # Function call arity checking
   # ------------------------------------------------------------------
 

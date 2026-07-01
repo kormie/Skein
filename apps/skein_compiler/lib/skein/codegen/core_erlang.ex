@@ -21,6 +21,10 @@ defmodule Skein.CodeGen.CoreErlang do
   alias Skein.Error
   alias Skein.CodeGen.SchemaGen
 
+  # Marker thrown by `expr?` on Err and caught at the enclosing user-body
+  # boundary (#290). Namespaced so no user value can collide with it.
+  @propagate_tag :"$skein_propagate"
+
   # Known effect namespaces and their runtime modules
   # memory and llm have special codegen handlers below
   @effect_runtime_modules %{
@@ -532,7 +536,7 @@ defmodule Skein.CodeGen.CoreErlang do
     _ = body_with_bindings
 
     # Generate the body, wrapping param extractions as let bindings
-    inner_body = generate_agent_body(body, final_scope)
+    inner_body = wrap_propagate(body, generate_agent_body(body, final_scope))
 
     # Wrap with let bindings to extract params from the args map
     wrapped =
@@ -570,7 +574,7 @@ defmodule Skein.CodeGen.CoreErlang do
           |> Map.put(:__events_var__, :Events)
           |> Map.put(:__state_fields__, [])
 
-        phase_body = generate_agent_body(body, scope)
+        phase_body = wrap_propagate(body, generate_agent_body(body, scope))
 
         :cerl.c_clause(
           [:cerl.c_atom(phase_atom(phase_name))],
@@ -928,6 +932,88 @@ defmodule Skein.CodeGen.CoreErlang do
   # Function generation
   # ------------------------------------------------------------------
 
+  # ------------------------------------------------------------------
+  # `?` early-return boundary (#290)
+  # ------------------------------------------------------------------
+
+  # Wraps a generated user body in the try/catch that gives `expr?` its
+  # early-return semantics: a @propagate_tag throw from anywhere inside the
+  # body exits it immediately. `mode` decides what the boundary does with the
+  # propagated Err tuple:
+  #   :return — the body evaluates to the Err (fns, handlers, tool implements,
+  #             agent handlers, scenario providers)
+  #   :raise  — re-raise as an error so the test runner reports a FAILED test
+  #             (test/scenario/golden bodies return :ok on success and only
+  #             fail by raising — a returned Err would be a silent pass)
+  # Anything else that was thrown/raised inside the body is re-raised
+  # unchanged. Bodies without a `?` are left untouched.
+  defp wrap_propagate(ast_body, body_expr, mode \\ :return) do
+    if contains_propagate?(ast_body) do
+      val_var = :cerl.c_var(gen_var())
+      class_var = :cerl.c_var(gen_var())
+      reason_var = :cerl.c_var(gen_var())
+      stack_var = :cerl.c_var(gen_var())
+      err_var = :cerl.c_var(gen_var())
+
+      on_err =
+        case mode do
+          :return ->
+            err_var
+
+          :raise ->
+            :cerl.c_call(:cerl.c_atom(:erlang), :cerl.c_atom(:error), [
+              :cerl.c_tuple([:cerl.c_atom(:unhandled_propagated_err), err_var])
+            ])
+        end
+
+      handler =
+        :cerl.c_case(
+          :cerl.c_tuple([class_var, reason_var]),
+          [
+            :cerl.c_clause(
+              [
+                :cerl.c_tuple([
+                  :cerl.c_atom(:throw),
+                  :cerl.c_tuple([:cerl.c_atom(@propagate_tag), err_var])
+                ])
+              ],
+              on_err
+            ),
+            :cerl.c_clause(
+              [:cerl.c_var(gen_var())],
+              :cerl.c_call(:cerl.c_atom(:erlang), :cerl.c_atom(:raise), [
+                class_var,
+                reason_var,
+                stack_var
+              ])
+            )
+          ]
+        )
+
+      :cerl.c_try(body_expr, [val_var], val_var, [class_var, reason_var, stack_var], handler)
+    else
+      body_expr
+    end
+  end
+
+  defp contains_propagate?(%AST.UnaryOp{op: :propagate}), do: true
+
+  defp contains_propagate?(%_{} = node) do
+    node |> Map.from_struct() |> Map.values() |> Enum.any?(&contains_propagate?/1)
+  end
+
+  defp contains_propagate?(list) when is_list(list), do: Enum.any?(list, &contains_propagate?/1)
+
+  defp contains_propagate?(tuple) when is_tuple(tuple) do
+    tuple |> Tuple.to_list() |> Enum.any?(&contains_propagate?/1)
+  end
+
+  defp contains_propagate?(%{} = map) do
+    map |> Map.values() |> Enum.any?(&contains_propagate?/1)
+  end
+
+  defp contains_propagate?(_other), do: false
+
   defp generate_fn(%AST.Fn{params: params, body: body}, capabilities, fn_arities, type_decls) do
     # Create variable bindings for params
     param_vars = Enum.map(params, fn %AST.Field{name: name} -> :cerl.c_var(var_name(name)) end)
@@ -941,7 +1027,7 @@ defmodule Skein.CodeGen.CoreErlang do
       |> Map.put(:__fn_arities__, fn_arities)
       |> Map.put(:__type_decls__, type_decls)
 
-    body_expr = generate_expr(body, scope)
+    body_expr = wrap_propagate(body, generate_expr(body, scope))
     :cerl.c_fun(param_vars, body_expr)
   end
 
@@ -987,7 +1073,7 @@ defmodule Skein.CodeGen.CoreErlang do
           {var, scope}
       end
 
-    body_expr = generate_expr(body, scope)
+    body_expr = wrap_propagate(body, generate_expr(body, scope))
     :cerl.c_fun([req_var], body_expr)
   end
 
@@ -1195,7 +1281,7 @@ defmodule Skein.CodeGen.CoreErlang do
       |> Map.put(:__fn_arities__, fn_arities)
       |> Map.put(:__type_decls__, type_decls)
 
-    inner_body = generate_expr(body, scope)
+    inner_body = wrap_propagate(body, generate_expr(body, scope))
 
     wrapped =
       Enum.reduce(Enum.reverse(fields), inner_body, fn %AST.Field{name: name}, acc ->
@@ -1334,7 +1420,7 @@ defmodule Skein.CodeGen.CoreErlang do
       |> Map.put(:__fn_arities__, fn_arities)
       |> Map.put(:__type_decls__, type_decls)
 
-    body_expr = generate_expr(body, scope)
+    body_expr = wrap_propagate(body, generate_expr(body, scope), :raise)
 
     # Wrap: run body, then return :ok (body raises on assertion failure)
     discard_var = :cerl.c_var(gen_var())
@@ -1370,12 +1456,17 @@ defmodule Skein.CodeGen.CoreErlang do
     body_expr = generate_expr(expect_body, scope_with_given)
 
     # Wrap with let bindings for given vars (innermost first, so reverse)
-    wrapped =
+    lets_and_body =
       Enum.reduce(Enum.reverse(given_vars), body_expr, fn {name, value_ast}, acc ->
         vname = var_name(name)
         value_expr = generate_expr(value_ast, base_scope)
         :cerl.c_let([:cerl.c_var(vname)], value_expr, acc)
       end)
+
+    # A `?` Err anywhere in the expect body OR a given binding fails the
+    # scenario — the wrapper encloses the given lets too, so a propagate
+    # throw from a given value cannot escape uncaught.
+    wrapped = wrap_propagate([given_vars, expect_body], lets_and_body, :raise)
 
     # Discard the expect-body result, return :ok.
     discard_var = :cerl.c_var(gen_var())
@@ -1417,7 +1508,7 @@ defmodule Skein.CodeGen.CoreErlang do
         [:cerl.abstract(trace_file)]
       )
 
-    body_expr = generate_expr(body, scope)
+    body_expr = wrap_propagate(body, generate_expr(body, scope), :raise)
 
     # Run the body INSIDE a replay context so its effect calls intercept the
     # loaded trace instead of hitting live services (Wave 1 golden replay
@@ -1497,7 +1588,7 @@ defmodule Skein.CodeGen.CoreErlang do
       |> Map.new()
       |> then(&Map.merge(base_scope, &1))
 
-    :cerl.c_fun(param_vars, generate_expr(body, scope))
+    :cerl.c_fun(param_vars, wrap_propagate(body, generate_expr(body, scope)))
   end
 
   defp tool_use_cap_name(%AST.Capability{params: params}) do
@@ -1682,7 +1773,12 @@ defmodule Skein.CodeGen.CoreErlang do
   end
 
   defp generate_expr(%AST.UnaryOp{op: :propagate, operand: operand}, scope) do
-    # Propagate Result: pattern match, return error tuple on error
+    # Propagate Result (#290): on Ok the value flows on; on Err the whole
+    # ENCLOSING body exits immediately, returning the Err tuple. The Err
+    # branch throws the @propagate_tag marker, caught by the try wrapper
+    # every user-body boundary installs (wrap_propagate/2) — previously the
+    # Err tuple was merely the value of this local case and execution
+    # continued with `{:error, e}` bound where a success value was expected.
     result_var = :cerl.c_var(gen_var())
     result_expr = generate_expr(operand, scope)
 
@@ -1699,7 +1795,12 @@ defmodule Skein.CodeGen.CoreErlang do
     err_clause =
       :cerl.c_clause(
         [:cerl.c_tuple([:cerl.c_atom(:error), err_var])],
-        :cerl.c_tuple([:cerl.c_atom(:error), err_var])
+        :cerl.c_call(:cerl.c_atom(:erlang), :cerl.c_atom(:throw), [
+          :cerl.c_tuple([
+            :cerl.c_atom(@propagate_tag),
+            :cerl.c_tuple([:cerl.c_atom(:error), err_var])
+          ])
+        ])
       )
 
     :cerl.c_let(

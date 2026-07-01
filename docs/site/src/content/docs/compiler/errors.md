@@ -151,7 +151,7 @@ The `fix_code` field is especially useful for LLM agents -- it provides the exac
 | E0020 | error | Type mismatch (including wrong argument counts for fn, stdlib, and effect calls, and interpolation in string patterns) |
 | E0021 | warning | Non-exhaustive match |
 | E0022 | error | Invalid `!` on non-Result |
-| E0023 | error | Invalid `?` on non-Result (or enclosing fn doesn't return Result) |
+| E0023 | error | Invalid `?` on non-Result, enclosing fn doesn't return Result, or the propagated error type is incompatible with the enclosing Result's error type |
 | E0024 | error / warning | Unknown type name (error); non-exhaustive match on an enum, missing variant patterns (warning) |
 | E0025 | error | Constraint annotation on wrong type |
 | E0026 | error | Invalid named argument (unknown/duplicate name, positional after named, callee without named-argument support) |
