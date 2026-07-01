@@ -28,7 +28,7 @@ defmodule Skein.Analyzer do
   - E0017: Duplicate scoped capability declaration (memory.kv, event.log, process.spawn, timer)
 
   ### Type Checking (E002x)
-  - E0020: Type mismatch (return type, match arm types, operator types, arity, argument types for fn/stdlib/effect calls, wrong-shape callbacks in higher-order slots)
+  - E0020: Type mismatch (return type, match arm types, operator types, arity, argument types for fn/stdlib/effect calls, wrong-shape callbacks in higher-order slots, tool implement bodies vs the Result[output, error] contract, provider bodies vs their declared return)
   - E0021: Non-exhaustive match (warning)
   - E0022: Invalid `!` on non-Result type
   - E0023: Invalid `?` on non-Result type (or enclosing fn doesn't return Result)
@@ -37,7 +37,7 @@ defmodule Skein.Analyzer do
   - E0026: Invalid named argument (unknown/duplicate name, positional after named, callee without named-argument support)
   - E0027: Invalid guard expression (guards allow literals, bindings, field access, comparisons, boolean operators, and +/-/* arithmetic)
   - E0028: Scenario capability envelope is missing/incomplete (a called tool has no `tool.use(T)` envelope, or the envelope does not cover the tool's transitive effect summary)
-  - E0029: Effect call in a pure context (a `test` body, or a scenario `implement` provider block) — effects belong in a `scenario`, and providers must be pure
+  - E0029: Effect call in a pure context (a `test` body, or a scenario `implement` provider block), reached directly or transitively through local fn calls/references — effects belong in a `scenario`, and providers must be pure
 
   ### Agent (E003x)
   - E0030: Invalid phase transition
@@ -48,6 +48,7 @@ defmodule Skein.Analyzer do
   - E0035: `idempotent()` outside handler
   - E0036: `stop()` outside agent
   - E0037: Unverified type at a declared boundary (`:unknown` or an incompatible branch widening crossing a declared fn return)
+  - E0038: Provider contract violation (a scenario `implement` block whose signature does not match its capability's provider contract, or under a capability with no provider contract)
 
   ### Supervisor (E004x)
   - E0040: Invalid supervisor strategy
@@ -470,6 +471,12 @@ defmodule Skein.Analyzer do
     # — `test` is for pure unit tests (effects belong in `scenario`); provider
     # `implement` blocks must be pure.
     errors = errors ++ check_pure_contexts(ast.declarations, env)
+
+    # Pass 2h: Scenario provider contracts (#295 / B6) — every `implement`
+    # provider block is checked against its capability's canonical contract
+    # (arity, param types, return type) and its body is fully type-checked
+    # against the declared return type.
+    errors = errors ++ check_provider_contracts(ast.declarations, env)
 
     # Pass 2c: Scope-independent interpolation rules — uppercase
     # interpolation roots and interpolated string patterns. One generic
@@ -1956,22 +1963,145 @@ defmodule Skein.Analyzer do
   # Tool `implement` bodies are executable too — they bind effect results and
   # build the tool's output. Run full inference with the tool's input fields in
   # scope so effect misuse there is a compile error, not a runtime crash (#253).
+  #
+  # The body is also checked against the tool's contract (#295 / B6): it must
+  # evaluate to a Result — the runtime invokes it as `impl.(input)` and matches
+  # on `{:ok, _}` / `{:error, _}`, so a bare value is a runtime crash — and
+  # every `Ok({ ... })` construction is checked field-by-field against the
+  # declared `output { ... }` shape (see the Ok-constructor clause in
+  # `infer_type`, keyed off `env.tool_output`). The Err half stays the
+  # sanctioned :dynamic seam until the structured-error ABI lands (C2/#297).
   defp check_tool_implement_inference(declarations, env) do
     declarations
     |> Enum.filter(&match?(%AST.ToolDecl{implement: impl} when not is_nil(impl), &1))
-    |> Enum.flat_map(fn %AST.ToolDecl{input: input, implement: implement} ->
+    |> Enum.flat_map(fn %AST.ToolDecl{
+                          name: name,
+                          input: input,
+                          output: output,
+                          implement: implement,
+                          meta: meta
+                        } ->
       input_vars =
         (input || [])
-        |> Enum.map(fn %AST.Field{name: name, type: type} ->
-          {name, resolve_type(type, env.types)}
+        |> Enum.map(fn %AST.Field{name: param_name, type: type} ->
+          {param_name, resolve_type(type, env.types)}
         end)
         |> Map.new()
 
-      {_type, errors} =
-        infer_type(implement, %{env | variables: Map.merge(env.variables, input_vars)})
+      impl_env =
+        env
+        |> Map.put(:variables, Map.merge(env.variables, input_vars))
+        |> Map.put(:tool_output, %{tool: name, fields: output || []})
 
-      errors
+      {body_type, errors} = infer_type(implement, impl_env)
+
+      errors ++ tool_result_contract_errors(name, body_type, meta, env)
     end)
+  end
+
+  # The implement body must evaluate to Result[output, error]: the runtime tool
+  # dispatcher matches `impl.(input)` against `{:ok, _}` / `{:error, _}`, so a
+  # bare value that passed analysis would crash at call time.
+  defp tool_result_contract_errors(name, body_type, meta, env) do
+    if types_compatible?(body_type, {:result, :unknown, :unknown}) do
+      []
+    else
+      [
+        %Error{
+          code: "E0020",
+          severity: :error,
+          message:
+            "Tool '#{name}' implement body must return Result[output, error], got #{format_type(body_type)}",
+          location: location_from_meta(meta, env.file),
+          context: "the runtime invokes the implement body and matches on Ok/Err",
+          fix_hint: "Wrap the output shape in Ok(...), or return Err(...) for failures",
+          fix_code: "Ok({ ... })"
+        }
+      ]
+    end
+  end
+
+  # `Ok({ ... })` in a tool implement body constructs the tool's output —
+  # check the map literal field-by-field against the declared `output { ... }`
+  # shape, mirroring the nominal-record literal rules (#294): unknown fields,
+  # missing required (non-Option) fields, and per-field type mismatches are
+  # structured errors. A present Option[T] field takes the BARE inner value —
+  # the runtime output coercion tags it, exactly like JSON decode.
+  #
+  # Field values were already inferred by the enclosing MapLit inference, so
+  # the re-inference here keeps only the types and drops the (duplicate)
+  # errors.
+  defp tool_output_shape_errors(
+         %AST.MapLit{entries: entries, meta: meta},
+         tool,
+         fields,
+         _call_meta,
+         env
+       ) do
+    decl_map = Map.new(fields, fn %AST.Field{name: n} = f -> {n, f} end)
+    provided_names = MapSet.new(entries, fn {n, _} -> n end)
+
+    unknown_errors =
+      for {fname, _value} <- entries, not Map.has_key?(decl_map, fname) do
+        %Error{
+          code: "E0020",
+          severity: :error,
+          message: "Tool '#{tool}' output has no field '#{fname}'",
+          location: location_from_meta(meta, env.file),
+          fix_hint:
+            "'#{tool}' declares output fields: #{decl_map |> Map.keys() |> Enum.sort() |> Enum.join(", ")}",
+          fix_code: nil
+        }
+      end
+
+    missing_errors =
+      for {fname, %AST.Field{} = f} <- decl_map,
+          not MapSet.member?(provided_names, fname),
+          not optional_field?(f, env) do
+        %Error{
+          code: "E0020",
+          severity: :error,
+          message: "Missing required output field '#{fname}' in tool '#{tool}' implement result",
+          location: location_from_meta(meta, env.file),
+          fix_hint: "Add '#{fname}: ...' to the Ok(...) payload",
+          fix_code: "#{fname}: ..."
+        }
+      end
+
+    mismatch_errors =
+      Enum.flat_map(entries, fn {fname, value} ->
+        case Map.get(decl_map, fname) do
+          %AST.Field{type: ftype} ->
+            expected =
+              case resolve_type(ftype, env.types) do
+                {:option, inner} -> inner
+                other -> other
+              end
+
+            {vtype, _already_reported} = infer_type(value, env)
+
+            if types_compatible?(vtype, expected) do
+              []
+            else
+              [
+                %Error{
+                  code: "E0020",
+                  severity: :error,
+                  message:
+                    "Tool '#{tool}' output field '#{fname}' expects #{format_type(expected)}, got #{format_type(vtype)}",
+                  location: location_from_meta(meta, env.file),
+                  fix_hint: "Provide a #{format_type(expected)} for '#{fname}'",
+                  fix_code: nil
+                }
+              ]
+            end
+
+          nil ->
+            []
+        end
+      end)
+
+    unknown_errors ++ missing_errors ++ mismatch_errors
   end
 
   # ------------------------------------------------------------------
@@ -2702,7 +2832,19 @@ defmodule Skein.Analyzer do
                 _ -> :unknown
               end
 
-            {inferred, args_errors ++ arity_errors}
+            # Inside a tool `implement` body, `Ok({ ... })` constructs the
+            # tool's declared output — check the map literal against the
+            # `output { ... }` shape (#295 / B6).
+            shape_errors =
+              case {name, args, Map.get(env, :tool_output)} do
+                {"Ok", [%AST.MapLit{} = payload], %{tool: tool, fields: fields}} ->
+                  tool_output_shape_errors(payload, tool, fields, meta, env)
+
+                _ ->
+                  []
+              end
+
+            {inferred, args_errors ++ arity_errors ++ shape_errors}
 
           true ->
             case find_enum_variant(name, env) do
@@ -4314,12 +4456,19 @@ defmodule Skein.Analyzer do
   # ------------------------------------------------------------------
 
   defp check_pure_contexts(declarations, env) do
+    # Local fn bodies, for the transitive walk (#295 / B6): an effect hidden
+    # behind a helper call poisons the pure context just like a direct one.
+    fns =
+      declarations
+      |> Enum.filter(&match?(%AST.Fn{}, &1))
+      |> Map.new(fn %AST.Fn{name: name, body: body} -> {name, body} end)
+
     test_errors =
       declarations
       |> Enum.filter(&match?(%AST.Test{}, &1))
       |> Enum.flat_map(fn %AST.Test{body: body} ->
         body
-        |> collect_effect_sites()
+        |> collect_effect_sites(fns, MapSet.new())
         |> Enum.map(&effect_in_test_error(&1, env))
       end)
 
@@ -4332,7 +4481,7 @@ defmodule Skein.Analyzer do
         |> Enum.flat_map(&collect_implement_bodies/1)
         |> Enum.flat_map(fn body ->
           body
-          |> collect_effect_sites()
+          |> collect_effect_sites(fns, MapSet.new())
           |> Enum.map(&effect_in_provider_error(&1, env))
         end)
       end)
@@ -4348,72 +4497,135 @@ defmodule Skein.Analyzer do
 
   defp collect_implement_bodies(_), do: []
 
-  # Capability-gated effect call sites in an expression (no transitivity — a
-  # pure context must not contain an effect call directly). `trace` is not gated
-  # and is therefore allowed. Returns `[{label, meta}]`.
-  defp collect_effect_sites(%AST.Call{
-         target: %AST.FieldAccess{subject: %AST.Identifier{name: "tool"}, field: method},
-         args: args,
-         meta: meta
-       })
+  # Capability-gated effect call sites in an expression, transitively through
+  # local fn calls and references (#295 / B6): a pure context must not reach an
+  # effect either directly or through a helper. `fns` maps local fn names to
+  # their bodies; `visited` guards recursion. `trace` is not gated and is
+  # therefore allowed. Returns `[{label, meta, via}]` where `via` is the local
+  # call chain ([] for a direct effect) and `meta` is the outermost call site —
+  # the location inside the pure context itself.
+  defp collect_effect_sites(
+         %AST.Call{
+           target: %AST.FieldAccess{subject: %AST.Identifier{name: "tool"}, field: method},
+           args: args,
+           meta: meta
+         },
+         fns,
+         visited
+       )
        when method in ["call", "schema"] do
-    [{"tool.#{method}", meta} | Enum.flat_map(args, &collect_effect_sites/1)]
+    [{"tool.#{method}", meta, []} | Enum.flat_map(args, &collect_effect_sites(&1, fns, visited))]
   end
 
-  defp collect_effect_sites(%AST.Call{
-         target: %AST.FieldAccess{subject: %AST.Identifier{name: namespace}, field: method},
-         args: args,
-         meta: meta
-       }) do
+  defp collect_effect_sites(
+         %AST.Call{
+           target: %AST.FieldAccess{subject: %AST.Identifier{name: namespace}, field: method},
+           args: args,
+           meta: meta
+         },
+         fns,
+         visited
+       ) do
     own =
       if effect_namespace?(namespace) and effect_method?(namespace, method) and
            Map.get(@effect_namespaces, namespace) != nil do
-        [{"#{namespace}.#{method}", meta}]
+        [{"#{namespace}.#{method}", meta, []}]
       else
         []
       end
 
-    own ++ Enum.flat_map(args, &collect_effect_sites/1)
+    own ++ Enum.flat_map(args, &collect_effect_sites(&1, fns, visited))
   end
 
-  defp collect_effect_sites(%AST.Call{args: args}),
-    do: Enum.flat_map(args, &collect_effect_sites/1)
-
-  defp collect_effect_sites(%AST.Block{expressions: exprs}),
-    do: Enum.flat_map(exprs, &collect_effect_sites/1)
-
-  defp collect_effect_sites(%AST.Let{value: value}), do: collect_effect_sites(value)
-
-  defp collect_effect_sites(%AST.Match{subject: subject, arms: arms}) do
-    collect_effect_sites(subject) ++
-      Enum.flat_map(arms, fn %AST.MatchArm{body: body} -> collect_effect_sites(body) end)
+  # A local fn call: the callee's effect sites poison this context too. The
+  # reported location stays the call site in the pure context; the callee (and
+  # any deeper hops) accumulate in the via chain.
+  defp collect_effect_sites(
+         %AST.Call{target: %AST.Identifier{name: fname}, args: args, meta: meta},
+         fns,
+         visited
+       ) do
+    Enum.flat_map(args, &collect_effect_sites(&1, fns, visited)) ++
+      callee_effect_sites(fname, meta, fns, visited)
   end
 
-  defp collect_effect_sites(%AST.Pipe{left: left, right: right}),
-    do: collect_effect_sites(left) ++ collect_effect_sites(right)
+  defp collect_effect_sites(%AST.Call{args: args}, fns, visited),
+    do: Enum.flat_map(args, &collect_effect_sites(&1, fns, visited))
 
-  defp collect_effect_sites(%AST.BinaryOp{left: left, right: right}),
-    do: collect_effect_sites(left) ++ collect_effect_sites(right)
+  # A reference to a local fn can be invoked by whatever receives it (stdlib
+  # callbacks, process.spawn under test), so it carries the fn's effects.
+  defp collect_effect_sites(%AST.FnRef{name: fname, meta: meta}, fns, visited),
+    do: callee_effect_sites(fname, meta, fns, visited)
 
-  defp collect_effect_sites(%AST.UnaryOp{operand: operand}), do: collect_effect_sites(operand)
+  defp collect_effect_sites(%AST.Block{expressions: exprs}, fns, visited),
+    do: Enum.flat_map(exprs, &collect_effect_sites(&1, fns, visited))
 
-  defp collect_effect_sites(%AST.MapLit{entries: entries}),
-    do: Enum.flat_map(entries, fn {_k, v} -> collect_effect_sites(v) end)
+  defp collect_effect_sites(%AST.Let{value: value}, fns, visited),
+    do: collect_effect_sites(value, fns, visited)
 
-  defp collect_effect_sites(%AST.RecordLit{fields: fields}),
-    do: Enum.flat_map(fields, fn {_k, v} -> collect_effect_sites(v) end)
+  defp collect_effect_sites(%AST.Match{subject: subject, arms: arms}, fns, visited) do
+    collect_effect_sites(subject, fns, visited) ++
+      Enum.flat_map(arms, fn %AST.MatchArm{body: body} ->
+        collect_effect_sites(body, fns, visited)
+      end)
+  end
 
-  defp collect_effect_sites(%AST.ListLit{elements: elements}),
-    do: Enum.flat_map(elements, &collect_effect_sites/1)
+  defp collect_effect_sites(%AST.Pipe{left: left, right: right}, fns, visited),
+    do: collect_effect_sites(left, fns, visited) ++ collect_effect_sites(right, fns, visited)
 
-  defp collect_effect_sites(_), do: []
+  defp collect_effect_sites(%AST.BinaryOp{left: left, right: right}, fns, visited),
+    do: collect_effect_sites(left, fns, visited) ++ collect_effect_sites(right, fns, visited)
 
-  defp effect_in_test_error({label, meta}, env) do
+  defp collect_effect_sites(%AST.UnaryOp{operand: operand}, fns, visited),
+    do: collect_effect_sites(operand, fns, visited)
+
+  defp collect_effect_sites(%AST.FieldAccess{subject: subject}, fns, visited),
+    do: collect_effect_sites(subject, fns, visited)
+
+  defp collect_effect_sites(%AST.StringLit{segments: segments}, fns, visited) do
+    Enum.flat_map(segments, fn
+      {:interpolation, expr} -> collect_effect_sites(expr, fns, visited)
+      {:literal, _} -> []
+    end)
+  end
+
+  defp collect_effect_sites(%AST.MapLit{entries: entries}, fns, visited),
+    do: Enum.flat_map(entries, fn {_k, v} -> collect_effect_sites(v, fns, visited) end)
+
+  defp collect_effect_sites(%AST.RecordLit{fields: fields}, fns, visited),
+    do: Enum.flat_map(fields, fn {_k, v} -> collect_effect_sites(v, fns, visited) end)
+
+  defp collect_effect_sites(%AST.ListLit{elements: elements}, fns, visited),
+    do: Enum.flat_map(elements, &collect_effect_sites(&1, fns, visited))
+
+  defp collect_effect_sites(_, _fns, _visited), do: []
+
+  defp callee_effect_sites(fname, meta, fns, visited) do
+    case Map.get(fns, fname) do
+      nil ->
+        []
+
+      body ->
+        if MapSet.member?(visited, fname) do
+          []
+        else
+          body
+          |> collect_effect_sites(fns, MapSet.put(visited, fname))
+          |> Enum.map(fn {label, _inner_meta, via} -> {label, meta, [fname | via]} end)
+        end
+    end
+  end
+
+  defp via_suffix([]), do: ""
+  defp via_suffix(via), do: " (reached via #{Enum.join(via, " -> ")})"
+
+  defp effect_in_test_error({label, meta, via}, env) do
     %Error{
       code: "E0029",
       severity: :error,
       message:
-        "Effect '#{label}' is not allowed in a 'test'; 'test' is for pure unit tests — use a 'scenario'",
+        "Effect '#{label}' is not allowed in a 'test'; 'test' is for pure unit tests — use a 'scenario'" <>
+          via_suffix(via),
       location: location_from_meta(meta, env.file),
       context: nil,
       fix_hint:
@@ -4422,17 +4634,166 @@ defmodule Skein.Analyzer do
     }
   end
 
-  defp effect_in_provider_error({label, meta}, env) do
+  defp effect_in_provider_error({label, meta, via}, env) do
     %Error{
       code: "E0029",
       severity: :error,
       message:
-        "Effect '#{label}' is not allowed in an 'implement' provider block; providers must be pure",
+        "Effect '#{label}' is not allowed in an 'implement' provider block; providers must be pure" <>
+          via_suffix(via),
       location: location_from_meta(meta, env.file),
       context: nil,
       fix_hint: "Return a value directly; a provider replaces an effect and cannot perform one",
       fix_code: nil
     }
+  end
+
+  # ------------------------------------------------------------------
+  # Pass 2h: Scenario provider contracts (#295 / B6)
+  #
+  # A provider replaces a specific effect, so its signature is fixed by the
+  # capability it controls — the runtime invokes it positionally with exactly
+  # these argument and result shapes. Mirrors the runtime resolution sites
+  # (`Skein.Runtime.Nondeterminism`, `Skein.Runtime.Http.dispatch/3`,
+  # `Skein.Runtime.Llm.ProviderBackend`). A capability kind outside this table
+  # has no runtime resolution point, so an `implement` block under it would be
+  # silently dead — that is a contract error, not a no-op.
+  # ------------------------------------------------------------------
+
+  @provider_contracts %{
+    "uuid" => %{
+      params: [],
+      return: :uuid,
+      signature: "implement() -> Uuid"
+    },
+    "instant" => %{
+      params: [],
+      return: :instant,
+      signature: "implement() -> Instant"
+    },
+    "http.out" => %{
+      params: [{:user_type, "HttpRequest"}],
+      return: {:result, {:user_type, "HttpResponse"}, {:user_type, "HttpError"}},
+      signature: "implement(req: HttpRequest) -> Result[HttpResponse, HttpError]"
+    },
+    "model" => %{
+      params: [{:user_type, "LlmRequest"}],
+      return: {:result, {:user_type, "LlmResponse"}, {:user_type, "LlmError"}},
+      signature: "implement(req: LlmRequest) -> Result[LlmResponse, LlmError]"
+    }
+  }
+
+  defp check_provider_contracts(declarations, env) do
+    declarations
+    |> Enum.filter(&match?(%AST.Scenario{}, &1))
+    |> Enum.flat_map(fn %AST.Scenario{capabilities: caps} ->
+      caps |> List.wrap() |> Enum.flat_map(&check_envelope_providers(&1, env))
+    end)
+  end
+
+  defp check_envelope_providers(
+         %AST.Capability{kind: kind, implement: implement, nested: nested},
+         env
+       ) do
+    own = if implement, do: check_provider(kind, implement, env), else: []
+    own ++ Enum.flat_map(nested || [], &check_envelope_providers(&1, env))
+  end
+
+  defp check_envelope_providers(_, _env), do: []
+
+  defp check_provider(kind, %AST.CapabilityImplement{} = implement, env) do
+    case Map.get(@provider_contracts, kind) do
+      nil ->
+        [unsupported_provider_error(kind, implement, env)]
+
+      contract ->
+        provider_signature_errors(kind, contract, implement, env) ++
+          provider_body_errors(implement, env)
+    end
+  end
+
+  defp provider_signature_errors(kind, contract, %AST.CapabilityImplement{} = implement, env) do
+    declared_params =
+      Enum.map(implement.params, fn %AST.Field{type: type} -> resolve_type(type, env.types) end)
+
+    declared_return = resolve_type(implement.return_type, env.types)
+
+    if declared_params == contract.params and declared_return == contract.return do
+      []
+    else
+      [
+        %Error{
+          code: "E0038",
+          severity: :error,
+          message:
+            "Provider for capability '#{kind}' must be '#{contract.signature}', got 'implement(#{format_provider_params(implement.params, env)}) -> #{format_type(declared_return)}'",
+          location: location_from_meta(implement.meta, env.file),
+          context: "the runtime invokes the provider with exactly this contract",
+          fix_hint: "Match the provider contract for '#{kind}' exactly",
+          fix_code: contract.signature
+        }
+      ]
+    end
+  end
+
+  defp unsupported_provider_error(kind, %AST.CapabilityImplement{meta: meta}, env) do
+    supported = @provider_contracts |> Map.keys() |> Enum.sort() |> Enum.join(", ")
+
+    %Error{
+      code: "E0038",
+      severity: :error,
+      message: "Capability '#{kind}' does not support an 'implement' provider",
+      location: location_from_meta(meta, env.file),
+      context: "no runtime resolution point exists for '#{kind}', so this provider would be dead",
+      fix_hint:
+        "Providers exist for: #{supported}. Other effects are controlled by replay or the test-runner default policy",
+      fix_code: nil
+    }
+  end
+
+  # The provider body is executable and typed: run full inference with the
+  # declared params in scope and hold the body to the declared return type,
+  # exactly like a named fn body (E0020 + the #291 boundary guard).
+  defp provider_body_errors(
+         %AST.CapabilityImplement{params: params, return_type: ret, body: body, meta: meta},
+         env
+       ) do
+    declared_return = resolve_type(ret, env.types)
+
+    vars =
+      Map.new(params, fn %AST.Field{name: name, type: type} ->
+        {name, resolve_type(type, env.types)}
+      end)
+
+    body_env = %{env | variables: vars, current_fn_return_type: declared_return}
+    {actual_return, errors} = infer_type(body, body_env)
+
+    return_errors =
+      if types_compatible?(actual_return, declared_return) do
+        boundary_type_errors(actual_return, declared_return, meta, env)
+      else
+        [
+          %Error{
+            code: "E0020",
+            severity: :error,
+            message:
+              "Provider return type mismatch: expected #{format_type(declared_return)}, got #{format_type(actual_return)}",
+            location: location_from_meta(meta, env.file),
+            fix_hint: "Make the provider body produce #{format_type(declared_return)}",
+            fix_code: nil
+          }
+        ]
+      end
+
+    errors ++ return_errors
+  end
+
+  defp format_provider_params(params, env) do
+    params
+    |> Enum.map(fn %AST.Field{name: name, type: type} ->
+      "#{name}: #{format_type(resolve_type(type, env.types))}"
+    end)
+    |> Enum.join(", ")
   end
 
   @doc false

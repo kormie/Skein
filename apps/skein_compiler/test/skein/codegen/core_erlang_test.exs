@@ -2297,7 +2297,7 @@ defmodule Skein.CodeGen.CoreErlangTest do
           tool MyTool {
             input { amount: Int }
             output { id: String }
-            implement { "ok" }
+            implement { Ok({ id: "ok" }) }
           }
         }
         """)
@@ -2312,7 +2312,7 @@ defmodule Skein.CodeGen.CoreErlangTest do
           tool CreateRefund {
             input { amount: Int }
             output { id: String }
-            implement { "ok" }
+            implement { Ok({ id: "ok" }) }
           }
         }
         """)
@@ -2339,7 +2339,7 @@ defmodule Skein.CodeGen.CoreErlangTest do
               id: String
               status: String
             }
-            implement { "ok" }
+            implement { Ok({ id: "ok", status: "ok" }) }
           }
         }
         """)
@@ -2362,13 +2362,13 @@ defmodule Skein.CodeGen.CoreErlangTest do
           tool ToolA {
             input { x: Int }
             output { y: Int }
-            implement { 42 }
+            implement { Ok({ y: 42 }) }
           }
 
           tool ToolB {
             input { name: String }
             output { result: String }
-            implement { "ok" }
+            implement { Ok({ result: "ok" }) }
           }
         }
         """)
@@ -2387,7 +2387,7 @@ defmodule Skein.CodeGen.CoreErlangTest do
           tool Stripe.CreateRefund {
             input { amount: Int }
             output { id: String }
-            implement { "ok" }
+            implement { Ok({ id: "ok" }) }
           }
         }
         """)
@@ -2404,7 +2404,7 @@ defmodule Skein.CodeGen.CoreErlangTest do
             description: "A helpful tool"
             input { x: Int }
             output { y: Int }
-            implement { 42 }
+            implement { Ok({ y: 42 }) }
           }
         }
         """)

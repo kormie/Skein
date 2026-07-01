@@ -15,7 +15,7 @@ module ScenarioEnvelopeIncomplete {
     output { status: String }
     implement {
       let r = charge()!
-      { status: "ok" }
+      Ok({ status: "ok" })
     }
   }
 

@@ -2479,7 +2479,7 @@ defmodule Skein.AnalyzerTest do
                  tool MyTool {
                    input { amount: Int }
                    output { id: String }
-                   implement { "ok" }
+                   implement { Ok({ id: "ok" }) }
                  }
                }
                """)
@@ -2529,7 +2529,7 @@ defmodule Skein.AnalyzerTest do
                  tool MyTool {
                    input { amount: Int }
                    output { id: String }
-                   implement { "ok" }
+                   implement { Ok({ id: "ok" }) }
                  }
                }
                """)
@@ -2542,7 +2542,7 @@ defmodule Skein.AnalyzerTest do
                  tool MyTool {
                    input { items: List[String] }
                    output { results: List[Int] }
-                   implement { "ok" }
+                   implement { Ok({ results: [1] }) }
                  }
                }
                """)
@@ -5528,7 +5528,7 @@ defmodule Skein.AnalyzerTest do
             input { x: String }
             output { y: String }
             errors { SearchError }
-            implement { "ok" }
+            implement { Ok({ y: x }) }
           }
 
           fn f(e: String) -> String {

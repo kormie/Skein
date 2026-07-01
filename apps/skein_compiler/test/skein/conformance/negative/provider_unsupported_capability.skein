@@ -1,0 +1,30 @@
+-- expect: E0038
+-- #295 (B6): only capabilities with a runtime provider resolution point
+-- (uuid, instant, http.out, model) accept an `implement` provider. A provider
+-- under any other capability kind would be silently dead at runtime — that is
+-- a contract error, not a no-op.
+module ProviderUnsupportedCapability {
+  capability tool.use(Ids.New)
+  capability uuid
+
+  tool Ids.New {
+    input { kind: String }
+    output { id: Uuid }
+    implement { Ok({ id: uuid.new() }) }
+  }
+
+  scenario "ids are controlled" {
+    capability tool.use(Ids.New) {
+      capability uuid {
+        implement() -> Uuid { Uuid.parse("00000000-0000-4000-8000-000000000001")! }
+      }
+      capability store {
+        implement() -> String { "dead provider" }
+      }
+    }
+    expect {
+      let result = tool.call(Ids.New, { kind: "x" })!
+      assert true
+    }
+  }
+}

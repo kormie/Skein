@@ -26,8 +26,13 @@ module PaymentService {
       status: String
     }
 
+    errors { RefundError }
+
     implement {
-      http.post("https://api.stripe.com/v1/refunds", customer_id)
+      match http.post("https://api.stripe.com/v1/refunds", customer_id) {
+        Ok(r) -> Ok({ id: r.body.id, status: r.body.status })
+        Err(e) -> Err(RefundError.from(e))
+      }
     }
   }
 }
@@ -55,6 +60,11 @@ tool <Name> {
 }
 ```
 
+The `implement` body must evaluate to `Result[output, error]` — the runtime
+invokes it and matches on `Ok`/`Err`, so a bare value is a compile error
+(`E0020`). `Ok({ ... })` payloads are checked field-by-field against the
+declared `output { ... }` shape.
+
 ### Dotted Names
 
 Tool names can use dots for namespacing:
@@ -77,7 +87,7 @@ tool CreateRefund {
     amount: Int @min(1) @max(100000)
   }
   output { id: String, status: String }
-  implement { "ok" }
+  implement { Ok({ id: "r1", status: "ok" }) }
 }
 ```
 

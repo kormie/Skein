@@ -1,0 +1,14 @@
+-- expect: E0020
+-- #295 (B6): a tool `implement` body must evaluate to Result[output, error] —
+-- the runtime invokes it and matches on Ok/Err, so a bare value that passed
+-- analysis would crash at call time. Returning the output map without Ok(...)
+-- is a compile error.
+module ToolImplementNotResult {
+  capability tool.use(Ping)
+
+  tool Ping {
+    input { q: String }
+    output { r: String }
+    implement { { r: "ok" } }
+  }
+}

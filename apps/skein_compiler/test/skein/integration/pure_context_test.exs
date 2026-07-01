@@ -89,7 +89,7 @@ defmodule Skein.Integration.PureContextTest do
           tool Ids.New {
             input { kind: String }
             output { id: Uuid }
-            implement { { id: uuid.new() } }
+            implement { Ok({ id: uuid.new() }) }
           }
 
           scenario "ids" {
@@ -117,8 +117,8 @@ defmodule Skein.Integration.PureContextTest do
 
                  tool Ids.New {
                    input { kind: String }
-                   output { id: Uuid }
-                   implement { { id: "static" } }
+                   output { id: String }
+                   implement { Ok({ id: "static" }) }
                  }
 
                  scenario "ids" {

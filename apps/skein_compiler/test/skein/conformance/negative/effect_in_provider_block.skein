@@ -7,8 +7,8 @@ module EffectInProvider {
 
   tool Ids.New {
     input { kind: String }
-    output { id: Uuid }
-    implement { { id: "static" } }
+    output { id: String }
+    implement { Ok({ id: "static" }) }
   }
 
   scenario "ids are controlled" {
