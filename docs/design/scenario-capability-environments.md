@@ -97,11 +97,22 @@ During scenario execution:
 
 ## 5. Compiler / runtime work
 
-> **Implementation status (2026-06-18):** parser/AST, effect-summary analysis, provider/test purity,
-> the provider contract types, the runtime stack (uuid/instant/http/llm + codegen of providers,
-> `Dependencies` retired), the Wave 3 test-runner default policy (§6) + live-effect blocking, **and
-> context propagation to spawned processes/tasks/timers** (`Skein.Runtime.SpawnContext`, #282) are
-> **landed**. Remaining: `llm.embed` provider support.
+> **Implementation status (re-baselined 2026-06-19 against source).** The **runtime side is landed and
+> contract-met** (verified by the 2026-06-19 audit): the dynamic capability stack with resolution
+> order `implement → replay → test-default → live → failure` (`capability_stack.ex`,
+> `nondeterminism.ex`, `http.ex`, `llm.ex`), the uncatchable `LiveEffectError` raise for blocked-live
+> effects, the Wave-3 `TestPolicy` defaults + live blocking, and `SpawnContext` propagation to
+> spawned processes/tasks/timers (#282) — and `Dependencies`/`with_overrides` are retired. Parser/AST
+> (#280), effect-summary analysis + E0028 (#281), and test-purity E0029 (#273) also landed.
+>
+> **NOT yet landed (1.0 blockers, tracked under #279 / Wave C4):** provider `implement` bodies are
+> **not type-checked against their effect contract** — `check_tool_implement_inference`
+> (`analyzer.ex:1698-1714`) discards the inferred result type, and there is **no `infer_type` pass over
+> scenario provider bodies** at all (arity, parameter names/types, result type, and error type are
+> unchecked). Provider **purity is non-transitive** — `collect_effect_sites` explicitly does not
+> follow local helper-fn calls (`analyzer.ex:3879-3880`), so a provider calling an effectful helper
+> passes E0029. Also remaining: `llm.embed` provider support. Do **not** describe provider contract
+> checking as done until these have negative fixtures and pass their gates.
 
 **Parser / AST.** *(done — #280)* `scenario_item = capability_envelope | given_block | expect_block`.
 `AST.Capability` gained `nested` (`[Capability]`) and `implement` (`CapabilityImplement{params,

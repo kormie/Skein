@@ -352,7 +352,9 @@ Every LLM call is capability-gated, type-checked, and automatically traced with 
 
 ## Project Status
 
-The compiler and runtime were built in phases — all complete. [docs/ROADMAP.md](docs/ROADMAP.md) tracks what's next:
+> **Release posture (2026-06-19): Skein is pre-1.0.** The version string (`1.0.0-rc.4`) is a holdover from a prematurely-tagged RC; **v1.0.0 GA is not imminent and the next release is a development release (`0.4.0`), not another RC.** A source-verified audit found that analyzer/codegen soundness is not yet established and the runtime effect/schema/store/EventStore contracts are drifted from the spec; nothing is "frozen" yet. The path to a sound, honest, dogfood-proven 1.0 is the contract-first wave plan in [docs/ROADMAP.md](docs/ROADMAP.md).
+
+The compilation pipeline was built in phases — the *pipeline* is complete end-to-end — but the soundness and runtime-contract hardening for a stable 1.0 is in progress. [docs/ROADMAP.md](docs/ROADMAP.md) tracks what's next:
 
 | Phase | Goal | Status |
 |-------|------|--------|
@@ -369,7 +371,7 @@ The compiler and runtime were built in phases — all complete. [docs/ROADMAP.md
 | **8e** | **Queue & schedule handlers** — event-driven and cron-triggered execution | Complete |
 | **8f** | **LLM streaming** — `llm.stream` with chunked responses and trace spans | Complete |
 | **8b** | **Storage backend** — Ecto/SQLite integration, schema + migration generation | Complete |
-| **9-10** | **Stdlib, error codes, unified event store** — 11 stdlib modules (101 functions), 24 aligned error/warning codes, single append-only event log | Complete |
+| **9-10** | **Stdlib, error codes, unified event store** — 11 stdlib modules (101 functions), the structured error/warning registry (spec §7 alignment is being reconciled — E0028/E0029 are implemented but not yet listed in the table), single append-only event log (ETS; SQLite persistence is opt-in and currently not on the ordinary append path) | Pipeline complete; contracts hardening |
 
 The full test suite (unit, property-based, and integration) runs green in CI on every change — see the CI badge above for current totals. The compilation pipeline works end-to-end — from `.skein` source to running BEAM bytecode with real LLM calls and database storage. See [`examples/`](examples/README.md) for sixteen working programs, all covered by integration tests, and [docs/ROADMAP.md](docs/ROADMAP.md) for what's next.
 
@@ -403,7 +405,7 @@ See [ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full picture.
 | [Language Specification](docs/SKEIN_SPEC.md) | Every syntax rule, type rule, and standard library function |
 | [Architecture](docs/ARCHITECTURE.md) | Compiler pipeline, runtime design, supervision tree |
 | [Roadmap](docs/ROADMAP.md) | Prioritized work list and current limitations |
-| [Examples](examples/README.md) | Fourteen working programs, from hello-world to a multi-file agent system |
+| [Examples](examples/README.md) | Sixteen working programs, from hello-world to a multi-file agent system |
 | [Design Rationale](docs/skein_first_principles.md) | First principles and the "why" behind every decision |
 | [Documentation Site](https://kormie.github.io/Skein/) | Published docs with LLM-friendly endpoints |
 

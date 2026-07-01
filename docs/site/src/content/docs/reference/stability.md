@@ -3,7 +3,12 @@ title: Stability & Versioning
 description: What semver means for Skein at 1.0 — the stability class of every public surface, release cadence, spec versioning, and the deprecation policy.
 ---
 
-**Status:** applies from v1.0.0 onward.
+**Status:** this policy applies **from v1.0.0 onward**. v1.0.0 has **not** been
+released yet — Skein is currently **pre-1.0**, and the language, runtime, CLI,
+diagnostics, derived schemas, and persisted shapes described below **may still
+change** before the freeze gate (`v1.0.0-rc.2`). Nothing here is frozen yet. See
+the [roadmap](/roadmap/overview/) for the path to a sound, honest, dogfood-proven
+1.0 and the current release posture.
 
 Skein is a language, a runtime, and a toolchain that ship together as one
 versioned artifact. "Semver" therefore means more here than it does for a

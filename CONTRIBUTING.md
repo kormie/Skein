@@ -29,10 +29,13 @@ automatically; a maintainer then sets priority and milestone and removes the tri
 
 ## Milestones
 
-- **v0.4.0 — Soundness & scenario capability environments** — the active gate (Waves 0–2): docs truth,
-  type/runtime soundness, and scenario-scoped capability environments.
-- **v0.5.0 — Observability, canonical substrate & conformance** — next (Waves 3–6).
-- **v1.0.0-rc.2 — True release candidate** — cut only when every 1.0 blocker is green.
+- **v0.4.0 — Truth & Soundness** — the active gate (Wave A truth reset + Wave B analyzer/codegen
+  soundness, B1–B6). The 2026-06-19 audit found soundness is **not** yet established.
+- **v0.5.0 — Runtime Contract & Dogfood** — next (Wave C effect-ABI/structured-error/schema/store/
+  EventStore honesty, C1–C6 + scenario-provider analyzer soundness; Wave D continuous dogfood gate).
+- **v0.6.0 — Canonical Substrate** *(conditional)* — created **only if** the FablePool-capable promise
+  is kept (open decision); otherwise this work stays in v1.1.
+- **v1.0.0-rc.2 — True release candidate** — cut only when every 1.0 blocker is green; no feature work.
 - **v1.0.0 Release** — GA, after rc.2 soaks (not imminent).
 - **v1.1: Hardening & Language** / **v1.2: Interop & Agent Workflows** / **Future: Platform** —
   the post-1.0 backlog, in priority order.

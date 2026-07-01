@@ -1,6 +1,6 @@
 # SKEIN_SPEC.md — Complete Language Specification
 
-**Version 1.0 — June 2026** (frozen for the 1.0 release)
+**Version 1.0 — draft (pre-release; NOT yet frozen).** v1.0.0 has not been released. The grammar, effects, diagnostics, derived schemas, CLI/config, and persisted EventStore shapes are still **pre-1.0 and may change** until the freeze gate (`v1.0.0-rc.2`); see `docs/STABILITY.md` and `docs/ROADMAP.md`. Sections describing the scenario-testing surface (§3.10), the effect/error ABI (§6), the error registry (§7), the store contract (§6.2), and EventStore durability are under active soundness/contract work (2026-06-19 audit) and are not authoritative until their release gates are green.
 
 This document is the single-file specification for Skein. It is designed to fit within an LLM context window alongside task-specific code and instructions.
 
