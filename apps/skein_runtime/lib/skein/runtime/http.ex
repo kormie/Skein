@@ -127,7 +127,9 @@ defmodule Skein.Runtime.Http do
   end
 
   defp with_encoded_body(body, request_fn) do
-    case Jason.encode(body) do
+    # Option-typed record fields are {:some, v} / :none in-language (#294);
+    # on the wire they are bare values / absent keys.
+    case Jason.encode(Skein.Runtime.Options.strip(body)) do
       {:ok, json} -> request_fn.(json)
       {:error, reason} -> {:error, "Cannot encode request body as JSON: #{inspect(reason)}"}
     end

@@ -92,6 +92,15 @@ defmodule Skein.Runtime.EctoSchema do
       fields
       |> Enum.map(fn f -> String.to_atom(f.name) end)
 
+    # Option[...]-declared fields, exposed as module metadata so the store
+    # can convert between the total in-language representation ({:some, v} /
+    # :none) and the nullable column (value / NULL) on both sides of the
+    # round trip (#294).
+    option_field_atoms =
+      fields
+      |> Enum.filter(fn f -> String.starts_with?(f.type, "Option[") end)
+      |> Enum.map(fn f -> String.to_atom(f.name) end)
+
     # Build the module dynamically
     contents =
       quote do
@@ -112,6 +121,10 @@ defmodule Skein.Runtime.EctoSchema do
         def changeset(struct, params) do
           struct
           |> Ecto.Changeset.cast(params, unquote(all_field_atoms))
+        end
+
+        def __skein_option_fields__ do
+          unquote(option_field_atoms)
         end
       end
 

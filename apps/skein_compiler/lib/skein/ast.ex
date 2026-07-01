@@ -492,10 +492,16 @@ defmodule Skein.AST do
     @type t :: %__MODULE__{
             type_name: String.t(),
             fields: [{String.t(), Skein.AST.expr()}],
+            some_fields: [String.t()] | nil,
+            none_fields: [String.t()] | nil,
             meta: Skein.AST.meta()
           }
 
-    defstruct [:type_name, :fields, :meta]
+    # `some_fields`/`none_fields` are the analyzer's Option-field plan (#294):
+    # present Option-declared fields (codegen wraps their value in Some) and
+    # absent ones (codegen injects None so constructed records are total).
+    # The parser leaves them nil; the analyzer's annotation pass fills them.
+    defstruct [:type_name, :fields, :some_fields, :none_fields, :meta]
   end
 
   defmodule Block do

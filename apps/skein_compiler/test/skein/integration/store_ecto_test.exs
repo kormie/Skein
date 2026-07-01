@@ -172,6 +172,68 @@ defmodule Skein.Integration.StoreEctoTest do
       assert :query in methods
     end
 
+    test "Option fields round-trip through the store as Some/None (#294)" do
+      # Construct in Skein (codegen tags optional fields), write through the
+      # store (tags unwrap to nullable columns), read back (columns re-tag) —
+      # the representation must be identical on both sides of the trip.
+      mod =
+        compile!("""
+        module ProfileService {
+          capability store.table("integration_profiles")
+
+          type Profile {
+            id: String @primary
+            name: String
+            nickname: Option[String]
+          }
+
+          fn with_nick(id: String, nick: String) -> Profile {
+            Profile { id: id, name: "ada", nickname: nick }
+          }
+
+          fn without_nick(id: String) -> Profile {
+            Profile { id: id, name: "ada" }
+          }
+        }
+        """)
+
+      profile_fields = [
+        %{name: "id", type: "String", annotations: ["primary"]},
+        %{name: "name", type: "String", annotations: []},
+        %{name: "nickname", type: "Option[String]", annotations: []}
+      ]
+
+      {:ok, migration_mod} = MigrationGen.build_migration("integration_profiles", profile_fields)
+      :ok = MigrationGen.run_migration(Skein.Runtime.Repo, migration_mod)
+
+      {:ok, schema_mod} = EctoSchema.build_schema("integration_profiles", profile_fields)
+      StoreEcto.register_schema("integration_profiles", schema_mod)
+
+      caps_list = [%{kind: "store.table", params: ["integration_profiles"]}]
+
+      # A constructed record carries {:some, v} — the write path must
+      # unwrap it into the nullable column, and the read path re-tags.
+      some_profile = mod.with_nick("p-1", "Bob")
+      assert some_profile.nickname == {:some, "Bob"}
+
+      {:ok, _} = StoreEcto.put("integration_profiles", some_profile, caps_list)
+      {:ok, fetched} = StoreEcto.get("integration_profiles", "p-1", caps_list)
+      assert fetched.nickname == {:some, "Bob"}
+
+      # An absent optional field is :none on both sides of the trip.
+      none_profile = mod.without_nick("p-2")
+      assert none_profile.nickname == :none
+
+      {:ok, _} = StoreEcto.put("integration_profiles", none_profile, caps_list)
+      {:ok, fetched_none} = StoreEcto.get("integration_profiles", "p-2", caps_list)
+      assert fetched_none.nickname == :none
+
+      # query results coerce the same way as get
+      {:ok, results} = StoreEcto.query("integration_profiles", %{name: "ada"}, caps_list)
+      nicknames = results |> Enum.map(& &1.nickname) |> Enum.sort()
+      assert nicknames == [:none, {:some, "Bob"}]
+    end
+
     test "capability enforcement blocks unauthorized tables" do
       caps_list = [%{kind: "store.table", params: ["integration_users"]}]
 

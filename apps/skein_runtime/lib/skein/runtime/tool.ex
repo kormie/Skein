@@ -281,11 +281,8 @@ defmodule Skein.Runtime.Tool do
         case validate_input(name, input, schema) do
           :ok ->
             case impl.(input) do
-              {:ok, result} when is_map(result) ->
-                {:ok, result}
-
               {:ok, result} ->
-                {:ok, result}
+                {:ok, coerce_output(result, schema)}
 
               {:error, reason} ->
                 {:error, Error.execution_error(name, inspect(reason))}
@@ -299,6 +296,23 @@ defmodule Skein.Runtime.Tool do
         {:error, Error.not_found(name)}
     end
   end
+
+  # Tool output crosses a declared boundary: Option-declared output fields
+  # come back total — {:some, v} when present, :none injected when absent —
+  # identically to JSON decode and store reads (#294). Tools registered
+  # without an output schema (hand-registered test doubles) pass through.
+  defp coerce_output(result, schema) when is_map(result) do
+    case output_schema(schema) do
+      nil -> result
+      out_schema -> Skein.Runtime.JsonSchema.atomize(result, out_schema)
+    end
+  end
+
+  defp coerce_output(result, _schema), do: result
+
+  defp output_schema(%{output_schema: %{"type" => "object"} = out}), do: out
+  defp output_schema(%{"output_schema" => %{"type" => "object"} = out}), do: out
+  defp output_schema(_), do: nil
 
   @doc """
   Validates tool input against the tool's declared input schema.

@@ -141,7 +141,7 @@ defmodule Skein.Runtime.Router do
 
     conn
     |> Plug.Conn.put_resp_content_type("application/json")
-    |> Plug.Conn.send_resp(200, Jason.encode!(traces_json))
+    |> Plug.Conn.send_resp(200, Jason.encode!(Skein.Runtime.Options.strip(traces_json)))
   end
 
   # ------------------------------------------------------------------

@@ -328,7 +328,7 @@ production) no policy is active and effects resolve straight to live.
 ```
 expr        = let_expr | match_expr | pipe_expr | emit_expr
             | transition_expr | lifecycle_expr | respond_expr | call_expr
-            | binary_op | unary_op | field_access | literal
+            | binary_op | unary_op | field_access | literal | record_lit
             | ident | fn_ref | block
 
 let_expr      = "let" pattern "=" expr
@@ -340,6 +340,7 @@ transition_expr = "transition" "(" expr ")"
 lifecycle_expr  = "stop" "(" ")" | "suspend" "(" expr ")"
               | "idempotent" "(" expr ")"      -- handlers only (§6.9)
 respond_expr  = "respond" "." lower_ident "(" expr* ")"
+record_lit    = UpperIdent "{" (lower_ident ":" expr)* "}"
 call_expr     = (ident | field_access) "(" args ")"
 binary_op     = expr op expr
 unary_op      = ("-" | "!") expr | expr ("!" | "?")
@@ -353,6 +354,17 @@ pattern       = ident | pattern_literal | UpperIdent ["(" pattern* ")"]
              | "_"                               -- wildcard
 pattern_literal = int_literal | string_literal | "true" | "false"
 ```
+
+Records are **nominal** and `TypeName { field: expr, ... }` is the one way to
+construct them. The literal is checked against the type's declaration: unknown
+fields, missing required fields, and per-field type mismatches are compile
+errors (`E0020`; an unknown type name is `E0024`). A plain `{ ... }` literal
+is a `Map`, never a record — it does not coerce to a nominal type. `Option`
+fields may be omitted (the constructed field is `None`); a present `Option[T]`
+field takes the bare inner `T` value, and presence implies `Some` — exactly as
+JSON decode treats a present optional field. There is no `Some(...)`
+constructor: an existing `Option` value must be matched (or unwrapped) before
+it can fill an optional field.
 
 Float literals are deliberately **not** patterns: matching on exact float
 equality is a reliability trap (computed floats rarely equal a literal
@@ -444,6 +456,8 @@ at runtime a `match` where every arm's guard fails raises `case_clause`.
 7. `Option[T]` fields are not included in the `required` list of generated JSON schemas.
 8. Pipe `|>` threads the left expression as the first argument to the right function call.
 9. Call arguments are type-checked against the callee's declared parameters — local `fn` calls, stdlib calls, and the documented effect signatures (§6) alike; a wrong-typed argument is `E0020`. A `&fn` reference carries the referenced signature as a callable type, so a higher-order slot (`List.map`/`filter`/`reduce`, `process.spawn`/`timer` work bodies, ...) rejects a callback of the wrong arity, parameter type, or return type at compile time.
+10. Records are **nominal** (§3.11): `TypeName { ... }` is the one construction form, checked field-by-field, and a plain map literal never coerces to a record type (`E0020`).
+11. Records are **total**: every declared field exists at runtime. An absent `Option` field is `None` and a present one is `Some(value)` — identically for nominal construction, `req.json[T]`/`llm.json[T]` decode, store round-trips, and tool outputs, so `Some`/`None` matches behave the same wherever the record came from. On the JSON wire (handler responses, `http.*` request bodies) the conversion inverts: `Some(v)` serializes as the bare `v` and `None` fields are omitted.
 
 ---
 

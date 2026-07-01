@@ -1,0 +1,16 @@
+-- expect: E0020
+-- #294 (B5): records are nominal. A plain map literal is a Map, never a
+-- record — before B5 `map ~ user_type` was universally true, so any map
+-- passed as any record with no field checking at all (a wrong-shaped map
+-- compiled and crashed on field access at runtime). Construction goes
+-- through `TypeName { ... }`, which checks every field.
+module MapLiteralAsRecord {
+  type Point {
+    x: Int
+    y: Int
+  }
+
+  fn origin() -> Point {
+    { x: 0, y: 0 }
+  }
+}

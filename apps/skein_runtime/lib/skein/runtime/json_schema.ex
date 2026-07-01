@@ -32,17 +32,21 @@ defmodule Skein.Runtime.JsonSchema do
     # Atomize the present, schema-declared keys (coercing Option fields to
     # Some(v)), pass extra wire keys through unchanged, then inject None for
     # any absent Option-declared field so `match body.f { Some(s) -> ; None }`
-    # never hits a missing atom key (skein-testing#32).
+    # never hits a missing atom key (skein-testing#32). Keys may already be
+    # atoms when the map is internal rather than wire data — tool outputs
+    # coerce through the same walk (#294) — so property lookup accepts both.
     present =
       Map.new(value, fn {key, sub_value} ->
-        case Map.fetch(properties, key) do
+        case fetch_property(properties, key) do
           {:ok, sub_schema} -> {atom_key(key), coerce_field(sub_value, sub_schema)}
           :error -> {key, sub_value}
         end
       end)
 
+    present_names = MapSet.new(Map.keys(value), &key_name/1)
+
     Enum.reduce(properties, present, fn {field, sub_schema}, acc ->
-      if optional?(sub_schema) and not Map.has_key?(value, field) do
+      if optional?(sub_schema) and not MapSet.member?(present_names, field) do
         Map.put(acc, atom_key(field), :none)
       else
         acc
@@ -64,6 +68,11 @@ defmodule Skein.Runtime.JsonSchema do
 
   # A present field value: a declared Option field is wrapped in Some(v) (the
   # tuple {:some, _} the codegen matches), everything else recurses normally.
+  # Already-tagged values pass through — internal maps (tool outputs) may
+  # carry them, and wire JSON can never produce these tuples.
+  defp coerce_field({:some, _} = value, _sub_schema), do: value
+  defp coerce_field(:none, _sub_schema), do: :none
+
   defp coerce_field(value, sub_schema) do
     if optional?(sub_schema) do
       {:some, atomize(value, sub_schema)}
@@ -74,6 +83,14 @@ defmodule Skein.Runtime.JsonSchema do
 
   defp optional?(%{"x-skein-optional" => true}), do: true
   defp optional?(_), do: false
+
+  defp fetch_property(properties, key) when is_binary(key), do: Map.fetch(properties, key)
+
+  defp fetch_property(properties, key) when is_atom(key),
+    do: Map.fetch(properties, Atom.to_string(key))
+
+  defp key_name(key) when is_atom(key), do: Atom.to_string(key)
+  defp key_name(key), do: key
 
   # A field name is already an atom only when it survived a previous pass;
   # string keys from the wire are interned against the closed schema set.
