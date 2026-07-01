@@ -74,8 +74,8 @@ defmodule Skein.SpecExamplesTest do
          idempotent(msg.id)
 
          match msg.json[BillingEvent]()? {
-           BillingEvent.ChargeSucceeded(c) -> record_charge(c.charge_id, c.amount)
-           BillingEvent.DisputeCreated(d)  -> handle_dispute(d.dispute_id, d.charge_id)
+           BillingEvent.ChargeSucceeded(charge_id, amount)   -> record_charge(charge_id, amount)
+           BillingEvent.DisputeCreated(dispute_id, charge_id) -> handle_dispute(dispute_id, charge_id)
          }
        }
 

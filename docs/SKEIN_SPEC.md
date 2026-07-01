@@ -625,7 +625,10 @@ enum HttpError { Timeout, ConnectionFailed, Status(code: Int, body: String) }
 
 `HttpRequest` is the provider contract type a scenario `implement` block receives when
 controlling `http.out` (§3.10). `Json` is an arbitrary JSON value (object/array/string/number/
-bool/null); it derives to the permissive JSON Schema `{}`.
+bool/null); it derives to the permissive JSON Schema `{}`. `Json` is directional: any value may
+be used where `Json` is expected, but a `Json` value cannot flow into a concretely-typed
+position without an explicit decode (`req.json[T]` / `llm.json[T]`) — it is not a type-system
+wildcard.
 
 ### 6.2 Store
 
@@ -865,6 +868,7 @@ edits generically — no per-error-code logic.
 | E0034 | Agent | error | `suspend()` outside agent handlers |
 | E0035 | Agent | error | `idempotent()` outside handler bodies |
 | E0036 | Agent | error | `stop()` outside agent handlers |
+| E0037 | Type | error | Unverified type at a declared boundary: a value whose type is unknown, or whose branches produced incompatible types, cannot cross a declared fn return |
 | E0040 | Supervisor | error | Invalid supervisor strategy |
 | E0041 | Supervisor | error | Invalid `max_restarts` value |
 | E0042 | Supervisor | warning | Supervisor has no children |
@@ -953,8 +957,8 @@ module BillingWorker {
     idempotent(msg.id)
 
     match msg.json[BillingEvent]()? {
-      BillingEvent.ChargeSucceeded(c) -> record_charge(c.charge_id, c.amount)
-      BillingEvent.DisputeCreated(d)  -> handle_dispute(d.dispute_id, d.charge_id)
+      BillingEvent.ChargeSucceeded(charge_id, amount)   -> record_charge(charge_id, amount)
+      BillingEvent.DisputeCreated(dispute_id, charge_id) -> handle_dispute(dispute_id, charge_id)
     }
   }
 

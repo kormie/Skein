@@ -1,0 +1,21 @@
+-- expect: E0037
+-- #291 (B2): incompatible same-headed compounds must not silently widen
+-- through a declared boundary. The match arms return Result[String, HttpError]
+-- and Result[String, StoreError]; the divergent error component previously
+-- widened to :unknown and slipped through the declared return type.
+module MatchWidenedResultBoundary {
+  fn fetch() -> Result[String, HttpError] {
+    Ok("from http")
+  }
+
+  fn load() -> Result[String, StoreError] {
+    Ok("from store")
+  }
+
+  fn pick(use_http: Bool) -> Result[String, HttpError] {
+    match use_http {
+      true -> fetch()
+      false -> load()
+    }
+  }
+}

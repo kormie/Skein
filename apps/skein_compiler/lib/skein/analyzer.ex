@@ -47,6 +47,7 @@ defmodule Skein.Analyzer do
   - E0034: `suspend()` outside agent
   - E0035: `idempotent()` outside handler
   - E0036: `stop()` outside agent
+  - E0037: Unverified type at a declared boundary (`:unknown` or an incompatible branch widening crossing a declared fn return)
 
   ### Supervisor (E004x)
   - E0040: Invalid supervisor strategy
@@ -81,7 +82,10 @@ defmodule Skein.Analyzer do
           | {:set, skein_type}
           | {:user_type, String.t()}
           | {:enum, String.t()}
+          | :json
+          | :dynamic
           | :unknown
+          | {:widened, skein_type, skein_type}
 
   # Known effect namespaces and the capabilities they require
   # A nil value means no capability is required (e.g., trace is always available)
@@ -124,30 +128,33 @@ defmodule Skein.Analyzer do
 
   # Declared return types per effect method (spec §6). Effects return
   # `Result[T, E]`, so a missing `!`/`?` (or `match`) is a *compile* error
-  # rather than a runtime crash (skein-testing#1, #260). The error component is
-  # kept `:unknown` — it only ever binds in an `Err(e)` arm — while the success
-  # component carries the spec's type where doing so is cheap and does not break
-  # legitimate field access (e.g. an HTTP response body stays `:unknown`).
-  # `llm.json[T]` is resolved from its type parameter, not this table.
+  # rather than a runtime crash (skein-testing#1, #260). Generic/unspecified
+  # components are `:dynamic` — the spec-sanctioned dynamically-typed seams
+  # (payload `T` of the untyped store/memory/tool, error shapes pending the C1
+  # effect-ABI matrix). `:dynamic` may cross declared boundaries; `:unknown`
+  # (inference failure) may not (#291). The success component carries the
+  # spec's type where doing so is cheap and does not break legitimate field
+  # access (e.g. an HTTP response body stays `:dynamic`). `llm.json[T]` is
+  # resolved from its type parameter, not this table.
   @effect_return_types %{
-    {"http", "get"} => {:result, :unknown, :unknown},
-    {"http", "post"} => {:result, :unknown, :unknown},
-    {"http", "put"} => {:result, :unknown, :unknown},
-    {"http", "patch"} => {:result, :unknown, :unknown},
-    {"http", "delete"} => {:result, :unknown, :unknown},
-    {"memory", "put"} => {:result, :unknown, :unknown},
-    {"memory", "get"} => {:result, :unknown, :unknown},
-    {"memory", "delete"} => {:result, :string, :unknown},
+    {"http", "get"} => {:result, :dynamic, :dynamic},
+    {"http", "post"} => {:result, :dynamic, :dynamic},
+    {"http", "put"} => {:result, :dynamic, :dynamic},
+    {"http", "patch"} => {:result, :dynamic, :dynamic},
+    {"http", "delete"} => {:result, :dynamic, :dynamic},
+    {"memory", "put"} => {:result, :dynamic, :dynamic},
+    {"memory", "get"} => {:result, :dynamic, :dynamic},
+    {"memory", "delete"} => {:result, :string, :dynamic},
     {"memory", "list"} => {:list, :string},
-    {"llm", "chat"} => {:result, :string, :unknown},
-    {"llm", "stream"} => {:result, :string, :unknown},
-    {"llm", "embed"} => {:result, {:list, :float}, :unknown},
-    {"tool", "call"} => {:result, :unknown, :unknown},
-    {"tool", "list"} => {:result, {:list, :unknown}, :unknown},
-    {"tool", "schema"} => {:result, :unknown, :unknown},
-    {"topic", "publish"} => {:result, :string, :unknown},
-    {"queue", "publish"} => {:result, :string, :unknown},
-    {"process", "spawn"} => {:result, :unknown, :string},
+    {"llm", "chat"} => {:result, :string, :dynamic},
+    {"llm", "stream"} => {:result, :string, :dynamic},
+    {"llm", "embed"} => {:result, {:list, :float}, :dynamic},
+    {"tool", "call"} => {:result, :dynamic, :dynamic},
+    {"tool", "list"} => {:result, {:list, :dynamic}, :dynamic},
+    {"tool", "schema"} => {:result, :dynamic, :dynamic},
+    {"topic", "publish"} => {:result, :string, :dynamic},
+    {"queue", "publish"} => {:result, :string, :dynamic},
+    {"process", "spawn"} => {:result, :dynamic, :string},
     {"timer", "after"} => {:result, :string, :string},
     {"timer", "interval"} => {:result, :string, :string},
     {"timer", "cancel"} => {:result, :string, :string},
@@ -158,13 +165,13 @@ defmodule Skein.Analyzer do
   }
 
   # store.<table>.<method> return types (spec §6.2). The record type `T` is not
-  # tracked per table, so the success side stays `:unknown`; the Result wrapper
-  # is what forces `!`/`?`/`match`.
+  # tracked per table (the active store is dynamic — #255/C5), so the success
+  # side is `:dynamic`; the Result wrapper is what forces `!`/`?`/`match`.
   @store_return_types %{
-    "get" => {:result, :unknown, :unknown},
-    "put" => {:result, :unknown, :unknown},
-    "delete" => {:result, :unknown, :unknown},
-    "query" => {:result, {:list, :unknown}, :unknown}
+    "get" => {:result, :dynamic, :dynamic},
+    "put" => {:result, :dynamic, :dynamic},
+    "delete" => {:result, :dynamic, :dynamic},
+    "query" => {:result, {:list, :dynamic}, :dynamic}
   }
 
   # Control-flow keywords common in other languages that Skein deliberately
@@ -213,107 +220,107 @@ defmodule Skein.Analyzer do
       "floor" => %{params: [:float], return_type: :int}
     },
     "List" => %{
-      "length" => %{params: [{:list, :unknown}], return_type: :int},
-      "map" => %{params: [{:list, :unknown}, :unknown], return_type: {:list, :unknown}},
-      "filter" => %{params: [{:list, :unknown}, :unknown], return_type: {:list, :unknown}},
-      "reduce" => %{params: [{:list, :unknown}, :unknown, :unknown], return_type: :unknown},
-      "find" => %{params: [{:list, :unknown}, :unknown], return_type: {:option, :unknown}},
-      "first" => %{params: [{:list, :unknown}], return_type: {:option, :unknown}},
-      "last" => %{params: [{:list, :unknown}], return_type: {:option, :unknown}},
-      "head" => %{params: [{:list, :unknown}], return_type: {:option, :unknown}},
-      "tail" => %{params: [{:list, :unknown}], return_type: {:list, :unknown}},
-      "take" => %{params: [{:list, :unknown}, :int], return_type: {:list, :unknown}},
-      "drop" => %{params: [{:list, :unknown}, :int], return_type: {:list, :unknown}},
-      "sort" => %{params: [{:list, :unknown}], return_type: {:list, :unknown}},
-      "sort_by" => %{params: [{:list, :unknown}, :unknown], return_type: {:list, :unknown}},
-      "reverse" => %{params: [{:list, :unknown}], return_type: {:list, :unknown}},
-      "flatten" => %{params: [{:list, :unknown}], return_type: {:list, :unknown}},
+      "length" => %{params: [{:list, :dynamic}], return_type: :int},
+      "map" => %{params: [{:list, :dynamic}, :dynamic], return_type: {:list, :dynamic}},
+      "filter" => %{params: [{:list, :dynamic}, :dynamic], return_type: {:list, :dynamic}},
+      "reduce" => %{params: [{:list, :dynamic}, :dynamic, :dynamic], return_type: :dynamic},
+      "find" => %{params: [{:list, :dynamic}, :dynamic], return_type: {:option, :dynamic}},
+      "first" => %{params: [{:list, :dynamic}], return_type: {:option, :dynamic}},
+      "last" => %{params: [{:list, :dynamic}], return_type: {:option, :dynamic}},
+      "head" => %{params: [{:list, :dynamic}], return_type: {:option, :dynamic}},
+      "tail" => %{params: [{:list, :dynamic}], return_type: {:list, :dynamic}},
+      "take" => %{params: [{:list, :dynamic}, :int], return_type: {:list, :dynamic}},
+      "drop" => %{params: [{:list, :dynamic}, :int], return_type: {:list, :dynamic}},
+      "sort" => %{params: [{:list, :dynamic}], return_type: {:list, :dynamic}},
+      "sort_by" => %{params: [{:list, :dynamic}, :dynamic], return_type: {:list, :dynamic}},
+      "reverse" => %{params: [{:list, :dynamic}], return_type: {:list, :dynamic}},
+      "flatten" => %{params: [{:list, :dynamic}], return_type: {:list, :dynamic}},
       "concat" => %{
-        params: [{:list, :unknown}, {:list, :unknown}],
-        return_type: {:list, :unknown}
+        params: [{:list, :dynamic}, {:list, :dynamic}],
+        return_type: {:list, :dynamic}
       },
-      "contains" => %{params: [{:list, :unknown}, :unknown], return_type: :bool},
-      "any" => %{params: [{:list, :unknown}, :unknown], return_type: :bool},
-      "all" => %{params: [{:list, :unknown}, :unknown], return_type: :bool},
-      "none" => %{params: [{:list, :unknown}, :unknown], return_type: :bool},
-      "zip" => %{params: [{:list, :unknown}, {:list, :unknown}], return_type: {:list, :unknown}},
-      "uniq" => %{params: [{:list, :unknown}], return_type: {:list, :unknown}},
-      "count" => %{params: [{:list, :unknown}, :unknown], return_type: :int},
+      "contains" => %{params: [{:list, :dynamic}, :dynamic], return_type: :bool},
+      "any" => %{params: [{:list, :dynamic}, :dynamic], return_type: :bool},
+      "all" => %{params: [{:list, :dynamic}, :dynamic], return_type: :bool},
+      "none" => %{params: [{:list, :dynamic}, :dynamic], return_type: :bool},
+      "zip" => %{params: [{:list, :dynamic}, {:list, :dynamic}], return_type: {:list, :dynamic}},
+      "uniq" => %{params: [{:list, :dynamic}], return_type: {:list, :dynamic}},
+      "count" => %{params: [{:list, :dynamic}, :dynamic], return_type: :int},
       "group_by" => %{
-        params: [{:list, :unknown}, :unknown],
-        return_type: {:map, :unknown, {:list, :unknown}}
+        params: [{:list, :dynamic}, :dynamic],
+        return_type: {:map, :dynamic, {:list, :dynamic}}
       }
     },
     "Map" => %{
-      "get" => %{params: [{:map, :unknown, :unknown}, :unknown], return_type: {:option, :unknown}},
+      "get" => %{params: [{:map, :dynamic, :dynamic}, :dynamic], return_type: {:option, :dynamic}},
       "put" => %{
-        params: [{:map, :unknown, :unknown}, :unknown, :unknown],
-        return_type: {:map, :unknown, :unknown}
+        params: [{:map, :dynamic, :dynamic}, :dynamic, :dynamic],
+        return_type: {:map, :dynamic, :dynamic}
       },
       "delete" => %{
-        params: [{:map, :unknown, :unknown}, :unknown],
-        return_type: {:map, :unknown, :unknown}
+        params: [{:map, :dynamic, :dynamic}, :dynamic],
+        return_type: {:map, :dynamic, :dynamic}
       },
-      "keys" => %{params: [{:map, :unknown, :unknown}], return_type: {:list, :unknown}},
-      "values" => %{params: [{:map, :unknown, :unknown}], return_type: {:list, :unknown}},
-      "entries" => %{params: [{:map, :unknown, :unknown}], return_type: {:list, :unknown}},
-      "size" => %{params: [{:map, :unknown, :unknown}], return_type: :int},
-      "has" => %{params: [{:map, :unknown, :unknown}, :unknown], return_type: :bool},
+      "keys" => %{params: [{:map, :dynamic, :dynamic}], return_type: {:list, :dynamic}},
+      "values" => %{params: [{:map, :dynamic, :dynamic}], return_type: {:list, :dynamic}},
+      "entries" => %{params: [{:map, :dynamic, :dynamic}], return_type: {:list, :dynamic}},
+      "size" => %{params: [{:map, :dynamic, :dynamic}], return_type: :int},
+      "has" => %{params: [{:map, :dynamic, :dynamic}, :dynamic], return_type: :bool},
       "merge" => %{
-        params: [{:map, :unknown, :unknown}, {:map, :unknown, :unknown}],
-        return_type: {:map, :unknown, :unknown}
+        params: [{:map, :dynamic, :dynamic}, {:map, :dynamic, :dynamic}],
+        return_type: {:map, :dynamic, :dynamic}
       },
       "map_values" => %{
-        params: [{:map, :unknown, :unknown}, :unknown],
-        return_type: {:map, :unknown, :unknown}
+        params: [{:map, :dynamic, :dynamic}, :dynamic],
+        return_type: {:map, :dynamic, :dynamic}
       },
       "filter" => %{
-        params: [{:map, :unknown, :unknown}, :unknown],
-        return_type: {:map, :unknown, :unknown}
+        params: [{:map, :dynamic, :dynamic}, :dynamic],
+        return_type: {:map, :dynamic, :dynamic}
       }
     },
     "Set" => %{
-      "from" => %{params: [{:list, :unknown}], return_type: {:set, :unknown}},
-      "add" => %{params: [{:set, :unknown}, :unknown], return_type: {:set, :unknown}},
-      "remove" => %{params: [{:set, :unknown}, :unknown], return_type: {:set, :unknown}},
-      "contains" => %{params: [{:set, :unknown}, :unknown], return_type: :bool},
-      "size" => %{params: [{:set, :unknown}], return_type: :int},
-      "union" => %{params: [{:set, :unknown}, {:set, :unknown}], return_type: {:set, :unknown}},
+      "from" => %{params: [{:list, :dynamic}], return_type: {:set, :dynamic}},
+      "add" => %{params: [{:set, :dynamic}, :dynamic], return_type: {:set, :dynamic}},
+      "remove" => %{params: [{:set, :dynamic}, :dynamic], return_type: {:set, :dynamic}},
+      "contains" => %{params: [{:set, :dynamic}, :dynamic], return_type: :bool},
+      "size" => %{params: [{:set, :dynamic}], return_type: :int},
+      "union" => %{params: [{:set, :dynamic}, {:set, :dynamic}], return_type: {:set, :dynamic}},
       "intersection" => %{
-        params: [{:set, :unknown}, {:set, :unknown}],
-        return_type: {:set, :unknown}
+        params: [{:set, :dynamic}, {:set, :dynamic}],
+        return_type: {:set, :dynamic}
       },
       "difference" => %{
-        params: [{:set, :unknown}, {:set, :unknown}],
-        return_type: {:set, :unknown}
+        params: [{:set, :dynamic}, {:set, :dynamic}],
+        return_type: {:set, :dynamic}
       },
-      "to_list" => %{params: [{:set, :unknown}], return_type: {:list, :unknown}}
+      "to_list" => %{params: [{:set, :dynamic}], return_type: {:list, :dynamic}}
     },
     "Option" => %{
-      "unwrap" => %{params: [{:option, :unknown}, :unknown], return_type: :unknown},
-      "map" => %{params: [{:option, :unknown}, :unknown], return_type: {:option, :unknown}},
-      "flat_map" => %{params: [{:option, :unknown}, :unknown], return_type: {:option, :unknown}},
-      "is_some" => %{params: [{:option, :unknown}], return_type: :bool},
-      "is_none" => %{params: [{:option, :unknown}], return_type: :bool}
+      "unwrap" => %{params: [{:option, :dynamic}, :dynamic], return_type: :dynamic},
+      "map" => %{params: [{:option, :dynamic}, :dynamic], return_type: {:option, :dynamic}},
+      "flat_map" => %{params: [{:option, :dynamic}, :dynamic], return_type: {:option, :dynamic}},
+      "is_some" => %{params: [{:option, :dynamic}], return_type: :bool},
+      "is_none" => %{params: [{:option, :dynamic}], return_type: :bool}
     },
     "Result" => %{
-      "unwrap" => %{params: [{:result, :unknown, :unknown}, :unknown], return_type: :unknown},
+      "unwrap" => %{params: [{:result, :dynamic, :dynamic}, :dynamic], return_type: :dynamic},
       "map" => %{
-        params: [{:result, :unknown, :unknown}, :unknown],
-        return_type: {:result, :unknown, :unknown}
+        params: [{:result, :dynamic, :dynamic}, :dynamic],
+        return_type: {:result, :dynamic, :dynamic}
       },
       "map_err" => %{
-        params: [{:result, :unknown, :unknown}, :unknown],
-        return_type: {:result, :unknown, :unknown}
+        params: [{:result, :dynamic, :dynamic}, :dynamic],
+        return_type: {:result, :dynamic, :dynamic}
       },
       "flat_map" => %{
-        params: [{:result, :unknown, :unknown}, :unknown],
-        return_type: {:result, :unknown, :unknown}
+        params: [{:result, :dynamic, :dynamic}, :dynamic],
+        return_type: {:result, :dynamic, :dynamic}
       },
-      "is_ok" => %{params: [{:result, :unknown, :unknown}], return_type: :bool},
-      "is_err" => %{params: [{:result, :unknown, :unknown}], return_type: :bool},
-      "ok" => %{params: [:unknown], return_type: {:result, :unknown, :unknown}},
-      "err" => %{params: [:unknown], return_type: {:result, :unknown, :unknown}}
+      "is_ok" => %{params: [{:result, :dynamic, :dynamic}], return_type: :bool},
+      "is_err" => %{params: [{:result, :dynamic, :dynamic}], return_type: :bool},
+      "ok" => %{params: [:dynamic], return_type: {:result, :dynamic, :dynamic}},
+      "err" => %{params: [:dynamic], return_type: {:result, :dynamic, :dynamic}}
     },
     "Uuid" => %{
       # `new` is an effect now (uuid.new(), #261), not ambient stdlib.
@@ -917,14 +924,15 @@ defmodule Skein.Analyzer do
   # have their own checks and are skipped here.
   # The declared return type of an effect call (spec §6). `llm.json[T]` reads
   # its success type from the type parameter; everything else comes from the
-  # static table. Unmapped-but-known methods (e.g. the `!` forms, `memory.get!`)
-  # fall back to `:unknown`.
+  # static table. Unmapped-but-known methods (e.g. the `!` forms, `memory.get!`,
+  # event.log, trace.annotate) fall back to `:dynamic` — they are real runtime
+  # calls whose shape the table does not pin yet (C1), not inference failures.
   defp effect_call_return_type("llm", "json", %AST.TypeRef{} = type_param, env) do
-    {:result, resolve_type(type_param, env.types), :unknown}
+    {:result, resolve_type(type_param, env.types), :dynamic}
   end
 
   defp effect_call_return_type(namespace, method, _type_param, _env) do
-    Map.get(@effect_return_types, {namespace, method}, :unknown)
+    Map.get(@effect_return_types, {namespace, method}, :dynamic)
   end
 
   defp unknown_effect_method_error(namespace, method, meta, env) do
@@ -991,11 +999,11 @@ defmodule Skein.Analyzer do
         |> Map.new()
 
       # `state` is the runtime-provided instance state map; field access on it
-      # (`state.ticket_id`) stays permissive (:unknown) — it is the gen_statem
+      # (`state.ticket_id`) stays permissive (:dynamic) — it is the gen_statem
       # data, not a compile-time-typed record.
       variables =
         env.variables
-        |> Map.put("state", :unknown)
+        |> Map.put("state", :dynamic)
         |> Map.merge(param_vars)
 
       handler_env = %{env | variables: variables}
@@ -1655,10 +1663,12 @@ defmodule Skein.Analyzer do
 
     {actual_return, errors} = infer_type(body, fn_env)
 
-    # Check return type matches
+    # Check return type matches; when it does, apply the public-boundary
+    # guard (#291): an internal inference state (:unknown / widened) is not a
+    # verified type and must not cross the declared return boundary.
     return_errors =
       if types_compatible?(actual_return, declared_return) do
-        []
+        boundary_type_errors(actual_return, declared_return, meta, env)
       else
         [
           %Error{
@@ -1677,6 +1687,78 @@ defmodule Skein.Analyzer do
   end
 
   # ------------------------------------------------------------------
+  # Public-boundary guard (#291 / B2)
+  # ------------------------------------------------------------------
+
+  # `:unknown` is an internal inference state, never a public top type. A value
+  # whose type is (top-level) unknown, or that carries a `{:widened, a, b}`
+  # marker from an incompatible branch unification, has NOT had its type
+  # verified — letting it cross a declared boundary is how missing-`!` and
+  # wrong-error-type bugs hid (skein-testing#1, #259). Nested generic
+  # `:unknown` components (e.g. the store/memory success type the effect
+  # tables cannot know) stay permissive until the C1 effect-ABI matrix closes
+  # them — the load-bearing part for soundness is the verified shape.
+  defp boundary_type_errors(_actual, :unknown, _meta, _env), do: []
+
+  defp boundary_type_errors(:unknown, declared, meta, env) do
+    [
+      %Error{
+        code: "E0037",
+        severity: :error,
+        message:
+          "Declared return type #{format_type(declared)} cannot be verified: " <>
+            "the returned value's type is unknown at this public boundary",
+        location: location_from_meta(meta, env.file),
+        context:
+          "':unknown' is an internal inference state; it never crosses a declared boundary",
+        fix_hint:
+          "Convert the value to #{format_type(declared)} explicitly (parse it, or match on it and return a typed value)",
+        fix_code: "match value { Ok(v) -> v Err(e) -> ... }"
+      }
+    ]
+  end
+
+  defp boundary_type_errors(actual, declared, meta, env) do
+    case find_widened(actual) do
+      nil ->
+        []
+
+      {a, b} ->
+        [
+          %Error{
+            code: "E0037",
+            severity: :error,
+            message:
+              "Declared return type #{format_type(declared)} cannot be verified: " <>
+                "branches produced incompatible types #{format_type(a)} and #{format_type(b)}",
+            location: location_from_meta(meta, env.file),
+            context:
+              "incompatible branch types must not silently widen through a declared boundary",
+            fix_hint:
+              "Make every branch produce the same type, or convert the divergent value explicitly before returning",
+            fix_code: "Result.map_err(value, &convert_error)"
+          }
+        ]
+    end
+  end
+
+  # Internal inference states plus the sanctioned dynamic seam — the types
+  # that must not trip "wrong type" diagnostics mid-inference.
+  defp permissive_type?(:unknown), do: true
+  defp permissive_type?(:dynamic), do: true
+  defp permissive_type?({:widened, _, _}), do: true
+  defp permissive_type?(_), do: false
+
+  # First `{:widened, a, b}` marker inside an inferred type, if any.
+  defp find_widened({:widened, a, b}), do: {a, b}
+  defp find_widened({:list, t}), do: find_widened(t)
+  defp find_widened({:set, t}), do: find_widened(t)
+  defp find_widened({:option, t}), do: find_widened(t)
+  defp find_widened({:result, a, b}), do: find_widened(a) || find_widened(b)
+  defp find_widened({:map, k, v}), do: find_widened(k) || find_widened(v)
+  defp find_widened(_), do: nil
+
+  # ------------------------------------------------------------------
   # Pass 2b: Type-check handler bodies
   # ------------------------------------------------------------------
 
@@ -1686,8 +1768,8 @@ defmodule Skein.Analyzer do
   end
 
   defp check_handler(%AST.Handler{param: param, body: body}, env) do
-    # Add the request parameter to scope as :unknown (runtime-provided map)
-    handler_env = %{env | variables: Map.put(env.variables, param, :unknown)}
+    # Add the request parameter to scope as :dynamic (runtime-provided map)
+    handler_env = %{env | variables: Map.put(env.variables, param, :dynamic)}
     {_type, errors} = infer_type(body, handler_env)
     errors
   end
@@ -1874,8 +1956,9 @@ defmodule Skein.Analyzer do
     {right_type, right_errors} = infer_type(right, env)
 
     cond do
-      left_type == :unknown or right_type == :unknown ->
-        {:unknown, left_errors ++ right_errors}
+      permissive_type?(left_type) or permissive_type?(right_type) ->
+        result = if :unknown in [left_type, right_type], do: :unknown, else: :dynamic
+        {result, left_errors ++ right_errors}
 
       left_type in [:int, :float] and right_type in [:int, :float] ->
         result_type = if left_type == :float or right_type == :float, do: :float, else: :int
@@ -1922,11 +2005,15 @@ defmodule Skein.Analyzer do
     {right_type, right_errors} = infer_type(right, env)
 
     cond do
-      left_type == :unknown or right_type == :unknown ->
+      permissive_type?(left_type) or permissive_type?(right_type) ->
         {:bool, left_errors ++ right_errors}
 
-      # Equality can compare same types
-      op in [:==, :!=] and types_compatible?(left_type, right_type) ->
+      # Equality can compare same types (checked in both directions — the
+      # actual/expected convention of types_compatible? is directional for
+      # Json, but == has no expected side)
+      op in [:==, :!=] and
+          (types_compatible?(left_type, right_type) or
+             types_compatible?(right_type, left_type)) ->
         {:bool, left_errors ++ right_errors}
 
       # Ordering requires comparable types (numeric)
@@ -1959,7 +2046,7 @@ defmodule Skein.Analyzer do
 
     errors =
       cond do
-        left_type == :unknown or right_type == :unknown ->
+        permissive_type?(left_type) or permissive_type?(right_type) ->
           []
 
         left_type != :bool ->
@@ -1998,7 +2085,7 @@ defmodule Skein.Analyzer do
     {operand_type, operand_errors} = infer_type(operand, env)
 
     errors =
-      if operand_type in [:bool, :unknown] do
+      if operand_type in [:bool, :unknown, :dynamic] do
         []
       else
         [
@@ -2030,6 +2117,9 @@ defmodule Skein.Analyzer do
       :unknown ->
         {:unknown, operand_errors}
 
+      :dynamic ->
+        {:dynamic, operand_errors}
+
       other ->
         {:unknown,
          operand_errors ++
@@ -2058,6 +2148,12 @@ defmodule Skein.Analyzer do
       :unknown ->
         {:unknown, operand_errors}
 
+      :dynamic ->
+        {:dynamic, operand_errors}
+
+      {:widened, _, _} ->
+        {:unknown, operand_errors}
+
       other ->
         {:unknown,
          operand_errors ++
@@ -2084,6 +2180,12 @@ defmodule Skein.Analyzer do
           []
 
         :unknown ->
+          []
+
+        :dynamic ->
+          []
+
+        {:widened, _, _} ->
           []
 
         other ->
@@ -2130,6 +2232,7 @@ defmodule Skein.Analyzer do
     ok_type =
       case operand_type do
         {:result, ok, _} -> ok
+        :dynamic -> :dynamic
         _ -> :unknown
       end
 
@@ -2138,7 +2241,12 @@ defmodule Skein.Analyzer do
 
   # Match expression
   defp infer_type(%AST.Match{subject: subject, arms: arms, meta: meta}, env) do
-    {subject_type, subject_errors} = infer_type(subject, env)
+    {raw_subject_type, subject_errors} = infer_type(subject, env)
+
+    # Enum-typed params resolve as {:user_type, name}; normalize so variant
+    # arms bind their declared field types (not :unknown) and exhaustiveness
+    # sees an enum subject (#291 exposed the unbound-field-type gap).
+    subject_type = normalize_match_subject_type(raw_subject_type, env)
 
     # Infer types of all arms
     arm_results = Enum.map(arms, &infer_match_arm(&1, subject_type, env))
@@ -2147,9 +2255,10 @@ defmodule Skein.Analyzer do
 
     # Unify the arm types: the result type is their join, and arms that cannot
     # be unified produce an E0020. Same-headed compound types (Result/List/...)
-    # whose inner types diverge widen the divergent component to :unknown rather
-    # than erroring — e.g. a discarded handler match whose arms return
-    # Result[String, StoreError] and Result[String, HttpError] (spec §8.3).
+    # whose inner types diverge widen the divergent component to a `:widened`
+    # marker — legal while discarded, E0037 if it crosses a declared boundary
+    # (e.g. a discarded handler match whose arms return
+    # Result[String, StoreError] and Result[String, HttpError], spec §8.3).
     {result_type, consistency_errors} = unify_arm_types(arm_types, meta, env)
 
     # Check exhaustiveness (enum-typed params resolve as {:user_type, name};
@@ -2174,7 +2283,7 @@ defmodule Skein.Analyzer do
         field: method
       }
       when method in @store_methods ->
-        {Map.get(@store_return_types, method, :unknown), args_errors}
+        {Map.get(@store_return_types, method, :dynamic), args_errors}
 
       %AST.Identifier{name: name} when is_map_key(env.functions, name) ->
         fn_info = Map.get(env.functions, name)
@@ -2250,7 +2359,7 @@ defmodule Skein.Analyzer do
               if expected_arity == actual_arity do
                 Enum.zip([fn_info.params, arg_types, 0..max(actual_arity - 1, 0)//1])
                 |> Enum.flat_map(fn {expected, actual, _idx} ->
-                  if actual != :unknown and not types_compatible?(expected, actual) do
+                  if actual != :unknown and not types_compatible?(actual, expected) do
                     [
                       %Error{
                         code: "E0020",
@@ -2305,6 +2414,13 @@ defmodule Skein.Analyzer do
           # so bare use (no !/?) is a compile error like any other effect.
           fn_name == "json" and match?(%AST.TypeRef{}, type_param) ->
             {{:result, resolve_type(type_param, env.types), :unknown}, args_errors}
+
+          # Tool error construction (ErrName.from(cause)): the runtime shape is
+          # {:err_atom, cause} and there is no lattice type for tool error
+          # variants until the structured-error ABI lands (C2/#297) — the
+          # sanctioned :dynamic seam, not an inference failure.
+          mod_name in env.tool_error_names and fn_name == "from" ->
+            {:dynamic, args_errors}
 
           true ->
             {:unknown, args_errors}
@@ -2459,7 +2575,7 @@ defmodule Skein.Analyzer do
 
     homogeneity_errors =
       element_types
-      |> Enum.filter(fn t -> t != :unknown and not types_compatible?(canonical, t) end)
+      |> Enum.filter(fn t -> t != :unknown and not types_compatible?(t, canonical) end)
       |> Enum.map(fn t ->
         %Error{
           code: "E0020",
@@ -2531,7 +2647,7 @@ defmodule Skein.Analyzer do
               %AST.Field{type: ftype} ->
                 expected = resolve_type(ftype, env.types)
 
-                if types_compatible?(expected, vtype) do
+                if types_compatible?(vtype, expected) do
                   []
                 else
                   [
@@ -2600,6 +2716,11 @@ defmodule Skein.Analyzer do
     case subject_type do
       :unknown ->
         {:unknown, subject_errors}
+
+      # A dynamically-typed subject (untyped store/memory/tool payload) has
+      # dynamically-typed fields — the seam C1/C3/C5 close.
+      :dynamic ->
+        {:dynamic, subject_errors}
 
       {:user_type, type_name} ->
         case Map.get(env.types, type_name) do
@@ -2683,7 +2804,7 @@ defmodule Skein.Analyzer do
               |> Enum.flat_map(fn {%AST.Field{name: field_name, type: type_ref}, actual} ->
                 expected = resolve_type(type_ref, env.types)
 
-                if actual != :unknown and not types_compatible?(expected, actual) do
+                if actual != :unknown and not types_compatible?(actual, expected) do
                   [
                     %Error{
                       code: "E0020",
@@ -2794,11 +2915,51 @@ defmodule Skein.Analyzer do
          env
        ) do
     # Bind pattern variables into scope with type info from the subject
+    pattern_errors = check_pattern_arity(pattern, subject_type, env)
     new_env = bind_pattern(pattern, subject_type, env)
     guard_errors = check_guard(guard, new_env)
     {body_type, body_errors} = infer_type(body, new_env)
-    {body_type, guard_errors ++ body_errors}
+    {body_type, pattern_errors ++ guard_errors ++ body_errors}
   end
+
+  # A variant pattern must bind every declared field: the runtime value is a
+  # `{tag, field...}` tuple, so an under-/over-arity pattern lowers to a tuple
+  # pattern of the wrong size and can NEVER match — a silent dead arm that
+  # `:unknown` pattern binding used to hide (#291; the spec's own §8.3 example
+  # carried one).
+  defp check_pattern_arity(
+         %AST.Call{target: %AST.Identifier{name: name}, args: args, meta: meta},
+         {:enum, enum_name},
+         env
+       ) do
+    with %AST.EnumDecl{variants: variants} <- Map.get(env.enums, enum_name),
+         %AST.Variant{fields: fields} <-
+           Enum.find(variants, &(&1.name == strip_enum_prefix(name, enum_name))) do
+      if length(args) == length(fields) do
+        []
+      else
+        field_names = Enum.map_join(fields, ", ", & &1.name)
+
+        [
+          %Error{
+            code: "E0020",
+            severity: :error,
+            message:
+              "Pattern '#{name}' binds #{length(args)} value(s), but variant " <>
+                "'#{enum_name}.#{strip_enum_prefix(name, enum_name)}' has #{length(fields)} field(s) — this arm can never match",
+            location: location_from_meta(meta, env.file),
+            context: "variant patterns bind every declared field positionally",
+            fix_hint: "Bind each field: #{name}(#{field_names})",
+            fix_code: "#{name}(#{field_names})"
+          }
+        ]
+      end
+    else
+      _ -> []
+    end
+  end
+
+  defp check_pattern_arity(_pattern, _subject_type, _env), do: []
 
   # ------------------------------------------------------------------
   # Match guards
@@ -2817,7 +2978,7 @@ defmodule Skein.Analyzer do
     {guard_type, type_errors} = infer_type(guard, env)
 
     bool_errors =
-      if guard_type in [:bool, :unknown] do
+      if guard_type in [:bool, :unknown, :dynamic] do
         []
       else
         [
@@ -2942,17 +3103,26 @@ defmodule Skein.Analyzer do
          subject_type,
          env
        ) do
-    # Try to find enum variant and bind fields
+    # Try to find enum variant and bind fields. Dotted patterns parse as a
+    # single identifier ("Event.Charge"), so strip the enum prefix before the
+    # variant lookup — otherwise the fields silently bound :unknown (#291).
     case subject_type do
       {:enum, enum_name} ->
         case Map.get(env.enums, enum_name) do
           %AST.EnumDecl{variants: variants} ->
-            case Enum.find(variants, &(&1.name == variant_name)) do
-              %AST.Variant{fields: fields} ->
+            lookup_name = strip_enum_prefix(variant_name, enum_name)
+
+            case Enum.find(variants, &(&1.name == lookup_name)) do
+              %AST.Variant{fields: fields} when length(fields) == length(args) ->
                 Enum.zip(args, fields)
                 |> Enum.reduce(env, fn {arg, %AST.Field{type: type_ref}}, acc ->
                   bind_pattern(arg, resolve_type(type_ref, env.types), acc)
                 end)
+
+              # Arity mismatch: check_pattern_arity already reported the dead
+              # arm; bind loosely to avoid cascading field-access noise.
+              %AST.Variant{} ->
+                Enum.reduce(args, env, fn arg, acc -> bind_pattern(arg, :unknown, acc) end)
 
               nil ->
                 Enum.reduce(args, env, fn arg, acc -> bind_pattern(arg, :unknown, acc) end)
@@ -3311,10 +3481,17 @@ defmodule Skein.Analyzer do
 
   # Least-upper-bound of two inferred types for arm/branch unification. Returns
   # a unified type or :incompatible. :unknown is the top; same-headed compounds
-  # recurse, widening incompatible components to :unknown rather than failing.
+  # recurse, but incompatible components widen to a `{:widened, a, b}` marker
+  # (not plain :unknown) so the detected conflict cannot silently cross a
+  # declared boundary (#291) — a discarded widened value stays legal, a
+  # returned one is E0037.
   defp unify_types(t, t), do: t
   defp unify_types(:unknown, t), do: t
   defp unify_types(t, :unknown), do: t
+  defp unify_types(:dynamic, t), do: t
+  defp unify_types(t, :dynamic), do: t
+  defp unify_types({:widened, _, _} = widened, _), do: widened
+  defp unify_types(_, {:widened, _, _} = widened), do: widened
   defp unify_types({:list, a}, {:list, b}), do: {:list, unify_or_unknown(a, b)}
   defp unify_types({:set, a}, {:set, b}), do: {:set, unify_or_unknown(a, b)}
   defp unify_types({:option, a}, {:option, b}), do: {:option, unify_or_unknown(a, b)}
@@ -3329,7 +3506,7 @@ defmodule Skein.Analyzer do
 
   defp unify_or_unknown(a, b) do
     case unify_types(a, b) do
-      :incompatible -> :unknown
+      :incompatible -> {:widened, a, b}
       unified -> unified
     end
   end
@@ -3373,10 +3550,26 @@ defmodule Skein.Analyzer do
   # Type compatibility
   # ------------------------------------------------------------------
 
+  # Argument convention: types_compatible?(actual, expected) — "may a value of
+  # type `actual` flow into a position declared as `expected`?". `:unknown` and
+  # `{:widened, _, _}` are internal inference states: permissive here so partial
+  # knowledge doesn't cascade into noise, but neither may cross a declared
+  # public boundary — boundary_type_errors/4 in check_function rejects them
+  # (#291 / B2; this is the guard the old comment below claimed existed).
+  # `:dynamic` is different: it marks the spec-sanctioned dynamically-typed
+  # seams (the generic `T` of the untyped store/memory/tool payloads, spec §6)
+  # and is allowed across boundaries until C1/C3/C5 type those seams.
   defp types_compatible?(:unknown, _), do: true
   defp types_compatible?(_, :unknown), do: true
-  # Json is any JSON value, so it unifies with any concrete value type (#274).
-  defp types_compatible?(:json, _), do: true
+  defp types_compatible?(:dynamic, _), do: true
+  defp types_compatible?(_, :dynamic), do: true
+  defp types_compatible?({:widened, _, _}, _), do: true
+  defp types_compatible?(_, {:widened, _, _}), do: true
+  # Json accepts any value (#291): every Skein value is a JSON value, so any
+  # type may flow INTO a Json-typed position. The reverse is deliberately
+  # false — a Json value cannot flow into a concrete type without an explicit
+  # decode (req.json[T] / llm.json[T]). The old `(:json, _) -> true` clause
+  # made Json a second universal top type (#274's hatch); it is gone.
   defp types_compatible?(_, :json), do: true
   defp types_compatible?(a, a), do: true
 
@@ -3403,9 +3596,10 @@ defmodule Skein.Analyzer do
   # with itself. `User` ~ `User`, `Status` ~ `Status` — both handled by the
   # `a, a` clause above. Crucially there is NO "user_type/enum compatible with
   # anything" escape hatch: that hole let every ill-typed program touching a
-  # user type, enum, list literal, or Ok/Err slip through. :unknown remains the
-  # only permissive type, and only because it is a transient inference marker
-  # (see check_function / the public-boundary :unknown guard).
+  # user type, enum, list literal, or Ok/Err slip through. :unknown and
+  # {:widened, _, _} remain the only permissive types, and only because they
+  # are transient inference markers that boundary_type_errors/4 rejects at
+  # every declared fn-return boundary (#291).
   defp types_compatible?(_, _), do: false
 
   # ------------------------------------------------------------------
@@ -4603,6 +4797,8 @@ defmodule Skein.Analyzer do
   defp format_type({:user_type, name}), do: name
   defp format_type({:enum, name}), do: name
   defp format_type(:unknown), do: "<unknown>"
+  defp format_type(:dynamic), do: "<dynamic>"
+  defp format_type({:widened, a, b}), do: "#{format_type(a)} | #{format_type(b)}"
   defp format_type(other), do: inspect(other)
 
   defp location_from_meta(%{line: line, col: col, file: file}, _default_file) do

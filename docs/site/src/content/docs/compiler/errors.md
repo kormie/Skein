@@ -156,6 +156,7 @@ The `fix_code` field is especially useful for LLM agents -- it provides the exac
 | E0025 | error | Constraint annotation on wrong type |
 | E0026 | error | Invalid named argument (unknown/duplicate name, positional after named, callee without named-argument support) |
 | E0027 | error | Invalid guard expression (guards allow literals, bindings, field access, comparisons, boolean operators, and `+`/`-`/`*` arithmetic) |
+| E0037 | error | Unverified type at a declared boundary: a value whose type is unknown, or whose branches produced incompatible types, cannot cross a declared fn return |
 
 ### Agent Errors
 

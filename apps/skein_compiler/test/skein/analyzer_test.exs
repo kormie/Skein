@@ -1045,11 +1045,12 @@ defmodule Skein.AnalyzerTest do
   # ------------------------------------------------------------------
 
   describe "! operator validation" do
-    test "! on function call is accepted (no type info to verify at call site)" do
-      # The ! operator on a call site can't be fully validated without knowing
-      # the callee's return type - which for external/unresolved calls we skip.
-      # This tests that the analyzer doesn't crash on ! usage.
-      assert {:ok, _} =
+    test "! on an unresolved call cannot cross a declared boundary (#291)" do
+      # `get_value` is undefined, so the call (and its unwrap) infers :unknown.
+      # Pre-B2 this was silently accepted; now the unverified value is rejected
+      # at the declared Int return boundary. (B4/#293 will make the unknown
+      # call itself a structured error.)
+      assert {:error, [%Skein.Error{code: "E0037"}]} =
                analyze("""
                module M {
                  fn wrapper() -> Int {
