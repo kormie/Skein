@@ -151,11 +151,18 @@ defmodule Skein.Runtime.TopicTest do
       Topic.subscribe_fn("a", fn _ -> :ok end)
       Topic.subscribe_fn("b", fn _ -> :ok end)
 
-      assert length(Topic.list_topics()) == 2
+      # The Topic registry is app-global and async suites run concurrently,
+      # so assert membership rather than a global count — a topic leaking in
+      # from another suite must not flake this test.
+      topics = Topic.list_topics()
+      assert "a" in topics
+      assert "b" in topics
 
       Topic.reset_all()
 
-      assert Topic.list_topics() == []
+      topics_after = Topic.list_topics()
+      refute "a" in topics_after
+      refute "b" in topics_after
     end
   end
 end

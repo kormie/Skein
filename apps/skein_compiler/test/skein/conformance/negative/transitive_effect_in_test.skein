@@ -1,0 +1,15 @@
+-- expect: E0029
+-- #295 (B6): purity is transitive — an effect reached through a local helper
+-- fn poisons a `test` body exactly like a direct call. Before B6 the purity
+-- walk stopped at the call boundary, so this compiled and minted a live UUID
+-- inside a "pure" test.
+module TransitiveEffectInTest {
+  capability uuid
+
+  fn mint() -> Uuid { uuid.new() }
+
+  test "ids are deterministic" {
+    let id = mint()
+    assert true
+  }
+}

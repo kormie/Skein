@@ -1,0 +1,28 @@
+-- expect: E0029
+-- #295 (B6): a scenario `implement` provider must be pure, transitively — a
+-- provider that reaches uuid.new() through a helper fn is re-introducing the
+-- exact nondeterminism the envelope exists to control.
+module TransitiveEffectInProvider {
+  capability tool.use(Ids.New)
+  capability uuid
+
+  fn sneak() -> Uuid { uuid.new() }
+
+  tool Ids.New {
+    input { kind: String }
+    output { id: Uuid }
+    implement { Ok({ id: uuid.new() }) }
+  }
+
+  scenario "ids are controlled" {
+    capability tool.use(Ids.New) {
+      capability uuid {
+        implement() -> Uuid { sneak() }
+      }
+    }
+    expect {
+      let result = tool.call(Ids.New, { kind: "x" })!
+      assert true
+    }
+  }
+}

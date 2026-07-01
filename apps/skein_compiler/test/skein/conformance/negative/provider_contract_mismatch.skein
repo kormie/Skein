@@ -1,0 +1,27 @@
+-- expect: E0038
+-- #295 (B6): a scenario `implement` provider replaces a specific effect, so
+-- its signature is fixed by the capability it controls. The `uuid` provider
+-- contract is `implement() -> Uuid`; declaring `-> String` is a compile error,
+-- not a runtime surprise.
+module ProviderContractMismatch {
+  capability tool.use(Ids.New)
+  capability uuid
+
+  tool Ids.New {
+    input { kind: String }
+    output { id: Uuid }
+    implement { Ok({ id: uuid.new() }) }
+  }
+
+  scenario "ids are controlled" {
+    capability tool.use(Ids.New) {
+      capability uuid {
+        implement() -> String { "not-a-uuid" }
+      }
+    }
+    expect {
+      let result = tool.call(Ids.New, { kind: "x" })!
+      assert true
+    }
+  }
+}

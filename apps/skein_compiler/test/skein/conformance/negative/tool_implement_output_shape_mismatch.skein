@@ -1,0 +1,17 @@
+-- expect: E0020
+-- #295 (B6): `Ok({ ... })` in a tool `implement` body constructs the tool's
+-- declared output, so the payload is checked field-by-field against the
+-- `output { ... }` shape. Here the payload misses the required field `status`
+-- and invents `state`, which the output does not declare.
+module ToolOutputShapeMismatch {
+  capability tool.use(Refund)
+
+  tool Refund {
+    input { ticket_id: String }
+    output {
+      id: String
+      status: String
+    }
+    implement { Ok({ id: "r1", state: "done" }) }
+  }
+}

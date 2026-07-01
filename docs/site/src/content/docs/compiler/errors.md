@@ -148,7 +148,7 @@ The `fix_code` field is especially useful for LLM agents -- it provides the exac
 
 | Code | Severity | Description |
 |------|----------|-------------|
-| E0020 | error | Type mismatch (including wrong argument counts or types for fn, stdlib, and effect calls, wrong-shape callbacks in higher-order slots, and interpolation in string patterns) |
+| E0020 | error | Type mismatch (including wrong argument counts or types for fn, stdlib, and effect calls, wrong-shape callbacks in higher-order slots, interpolation in string patterns, tool `implement` bodies vs the `Result[output, error]` contract, and provider bodies vs their declared return) |
 | E0021 | warning | Non-exhaustive match |
 | E0022 | error | Invalid `!` on non-Result |
 | E0023 | error | Invalid `?` on non-Result, enclosing fn doesn't return Result, or the propagated error type is incompatible with the enclosing Result's error type |
@@ -157,6 +157,7 @@ The `fix_code` field is especially useful for LLM agents -- it provides the exac
 | E0026 | error | Invalid named argument (unknown/duplicate name, positional after named, callee without named-argument support) |
 | E0027 | error | Invalid guard expression (guards allow literals, bindings, field access, comparisons, boolean operators, and `+`/`-`/`*` arithmetic) |
 | E0037 | error | Unverified type at a declared boundary: a value whose type is unknown, or whose branches produced incompatible types, cannot cross a declared fn return |
+| E0038 | error | Provider contract violation: a scenario `implement` block whose signature does not match its capability's provider contract, or an `implement` under a capability with no provider contract |
 
 ### Agent Errors
 

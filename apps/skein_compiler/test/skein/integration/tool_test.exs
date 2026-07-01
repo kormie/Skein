@@ -46,7 +46,7 @@ defmodule Skein.Integration.ToolTest do
             }
 
             implement {
-              "refund_impl"
+              Ok({ id: "refund_impl", status: "ok" })
             }
           }
         }
@@ -77,13 +77,13 @@ defmodule Skein.Integration.ToolTest do
           tool Stripe.CreateRefund {
             input { amount: Int }
             output { id: String }
-            implement { "ok" }
+            implement { Ok({ id: "ok" }) }
           }
 
           tool Stripe.GetBalance {
             input { account_id: String }
             output { balance: Int }
-            implement { 0 }
+            implement { Ok({ balance: 0 }) }
           }
         }
         """)
@@ -101,7 +101,7 @@ defmodule Skein.Integration.ToolTest do
           tool ProcessItems {
             input { items: List[String] }
             output { results: List[Int] }
-            implement { "ok" }
+            implement { Ok({ results: [1] }) }
           }
         }
         """)
@@ -281,7 +281,7 @@ defmodule Skein.Integration.ToolTest do
             }
 
             implement {
-              "ok"
+              Ok({ id: "ok", status: "ok" })
             }
           }
         }
@@ -307,7 +307,7 @@ defmodule Skein.Integration.ToolTest do
               currency: String
             }
 
-            implement { "ok" }
+            implement { Ok({ balance: 0, currency: "usd" }) }
           }
         }
         """)
@@ -330,7 +330,7 @@ defmodule Skein.Integration.ToolTest do
 
             output { id: String }
 
-            implement { "ok" }
+            implement { Ok({ id: "ok" }) }
           }
         }
         """)
@@ -365,7 +365,7 @@ defmodule Skein.Integration.ToolTest do
           tool Compute {
             input { value: Int }
             output { result: String }
-            implement { "computed" }
+            implement { Ok({ result: "computed" }) }
           }
 
           handler http GET "/health" (req) -> {
@@ -832,7 +832,7 @@ defmodule Skein.Integration.ToolTest do
           tool Compute {
             input { value: Int }
             output { result: String }
-            implement { "computed" }
+            implement { Ok({ result: "computed" }) }
           }
 
           fn invoke(x: String) -> Result[String, String] {

@@ -303,6 +303,15 @@ with no `implement` block falls through to the test-runner default policy. A cap
 at most one `implement` block. `implement` reuses the keyword tool bodies already use. There is no
 `via` form — a `via` after a capability is rejected with a fix pointing at the envelope form.
 
+A provider replaces a specific effect, so its signature is fixed by the capability it controls and is
+checked at compile time (`E0038`, §4.3 rule 13): `uuid` providers are `implement() -> Uuid`, `instant`
+providers `implement() -> Instant`, `http.out` providers
+`implement(req: HttpRequest) -> Result[HttpResponse, HttpError]`, and `model` providers
+`implement(req: LlmRequest) -> Result[LlmResponse, LlmError]`. These four are the only capabilities
+with a provider resolution point — an `implement` under any other capability kind would be silently
+dead at runtime and is rejected. Provider bodies are typed like fn bodies and must be pure,
+transitively: an effect reached through a local helper fn is the same `E0029` as a direct call.
+
 **Test-runner default policy.** `skein test` runs every `scenario`/`golden` under a conservative
 effect policy so offline tests are deterministic and never reach the network by accident. For an
 effect with no `implement` provider and no recorded trace, the resolution order is
@@ -458,6 +467,8 @@ at runtime a `match` where every arm's guard fails raises `case_clause`.
 9. Call arguments are type-checked against the callee's declared parameters — local `fn` calls, stdlib calls, and the documented effect signatures (§6) alike; a wrong-typed argument is `E0020`. A `&fn` reference carries the referenced signature as a callable type, so a higher-order slot (`List.map`/`filter`/`reduce`, `process.spawn`/`timer` work bodies, ...) rejects a callback of the wrong arity, parameter type, or return type at compile time.
 10. Records are **nominal** (§3.11): `TypeName { ... }` is the one construction form, checked field-by-field, and a plain map literal never coerces to a record type (`E0020`).
 11. Records are **total**: every declared field exists at runtime. An absent `Option` field is `None` and a present one is `Some(value)` — identically for nominal construction, `req.json[T]`/`llm.json[T]` decode, store round-trips, and tool outputs, so `Some`/`None` matches behave the same wherever the record came from. On the JSON wire (handler responses, `http.*` request bodies) the conversion inverts: `Some(v)` serializes as the bare `v` and `None` fields are omitted.
+12. A tool `implement` body must evaluate to `Result[output, error]` — the runtime invokes it and matches on `Ok`/`Err`, so a bare value is `E0020`. `Ok({ ... })` inside an implement body constructs the tool's declared output and is checked field-by-field against the `output { ... }` shape (unknown fields, missing required fields, and per-field type mismatches are `E0020`; a present `Option` field takes the bare inner value, as in rule 11).
+13. A scenario `implement` provider must match its capability's provider contract exactly — `uuid`: `implement() -> Uuid`, `instant`: `implement() -> Instant`, `http.out`: `implement(req: HttpRequest) -> Result[HttpResponse, HttpError]`, `model`: `implement(req: LlmRequest) -> Result[LlmResponse, LlmError]`; any other signature, or an `implement` under a capability with no provider contract, is `E0038`. The provider body is fully type-checked against the declared return type (`E0020`). Purity of pure contexts (`test` bodies and providers, `E0029`) is transitive through local fn calls and `&fn` references.
 
 ---
 
@@ -868,7 +879,7 @@ edits generically — no per-error-code logic.
 | E0015 | Tool | error | Duplicate short tool name in `capability tool.use` params |
 | E0016 | Name | error | Cross-module function call (functions are module-private; expose a tool instead) |
 | E0017 | Capability | error | Duplicate scoped capability declaration (`memory.kv`, `event.log`, `process.spawn`, `timer` allow one per module or agent) |
-| E0020 | Type | error | Type mismatch (including wrong argument counts or types for fn, stdlib, and effect calls, wrong-shape callbacks in higher-order slots, and interpolation in string patterns) |
+| E0020 | Type | error | Type mismatch (including wrong argument counts or types for fn, stdlib, and effect calls, wrong-shape callbacks in higher-order slots, interpolation in string patterns, tool `implement` bodies vs the `Result[output, error]` contract, and provider bodies vs their declared return) |
 | E0021 | Type | error | Non-exhaustive match on a closed type (`Bool`, enum, `Result`, `Option`) with no `_` wildcard |
 | E0022 | Type | error | Invalid `!` on non-Result |
 | E0023 | Type | error | Invalid `?` on non-Result, enclosing fn doesn't return Result, or the propagated error type is incompatible with the enclosing Result's error type |
@@ -884,6 +895,7 @@ edits generically — no per-error-code logic.
 | E0035 | Agent | error | `idempotent()` outside handler bodies |
 | E0036 | Agent | error | `stop()` outside agent handlers |
 | E0037 | Type | error | Unverified type at a declared boundary: a value whose type is unknown, or whose branches produced incompatible types, cannot cross a declared fn return |
+| E0038 | Type | error | Provider contract violation: a scenario `implement` block whose signature does not match its capability's provider contract, or an `implement` under a capability with no provider contract (§4.3 rule 13) |
 | E0040 | Supervisor | error | Invalid supervisor strategy |
 | E0041 | Supervisor | error | Invalid `max_restarts` value |
 | E0042 | Supervisor | warning | Supervisor has no children |

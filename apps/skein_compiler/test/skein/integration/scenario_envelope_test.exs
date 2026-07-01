@@ -107,7 +107,7 @@ defmodule Skein.Integration.ScenarioEnvelopeTest do
           tool Billing.Refund {
             input { ticket_id: String }
             output { status: String }
-            implement { { status: "ok" } }
+            implement { Ok({ status: "ok" }) }
           }
 
           scenario "refund" {
@@ -133,7 +133,7 @@ defmodule Skein.Integration.ScenarioEnvelopeTest do
           tool Ids.New {
             input { kind: String }
             output { id: Uuid }
-            implement { { id: uuid.new() } }
+            implement { Ok({ id: uuid.new() }) }
           }
 
           scenario "ids" {
@@ -158,7 +158,7 @@ defmodule Skein.Integration.ScenarioEnvelopeTest do
                  tool Math.Add {
                    input { a: Int, b: Int }
                    output { sum: Int }
-                   implement { { sum: 1 } }
+                   implement { Ok({ sum: 1 }) }
                  }
 
                  scenario "add" {
@@ -201,7 +201,7 @@ defmodule Skein.Integration.ScenarioEnvelopeTest do
             input { x: Int }
             output { ok: Bool }
             implement { let _r = h1()
-              { ok: true } }
+              Ok({ ok: true }) }
           }
           scenario "deep" {
             capability tool.use(T.Deep) { }
