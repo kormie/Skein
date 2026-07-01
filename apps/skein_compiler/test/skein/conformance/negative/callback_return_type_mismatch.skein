@@ -1,0 +1,14 @@
+-- expect: E0020
+-- #292 (B3): List.filter keeps elements where the callback returns Bool.
+-- A String-returning callback previously compiled; at runtime every element
+-- was dropped (a non-`true` value is falsy to the runtime filter), silently
+-- producing an empty list instead of a compile error.
+module CallbackReturnTypeMismatch {
+  fn label(n: Int) -> String {
+    "item"
+  }
+
+  fn run(items: List[Int]) -> List[Int] {
+    List.filter(items, &label)
+  }
+}

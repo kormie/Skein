@@ -1,0 +1,13 @@
+-- expect: E0020
+-- #292 (B3): local calls type-check every argument against the declared
+-- parameter. Before B3 only arity was checked, so this compiled and crashed
+-- at runtime inside `+` with a String where an Int was promised.
+module LocalCallArgTypeMismatch {
+  fn add(a: Int, b: Int) -> Int {
+    a + b
+  }
+
+  fn run() -> Int {
+    add("one", 2)
+  }
+}
