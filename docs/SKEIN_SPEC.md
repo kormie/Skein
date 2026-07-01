@@ -440,7 +440,7 @@ at runtime a `match` where every arm's guard fails raises `case_clause`.
 3. `match` arms must all return the same type.
 4. `match` on a closed type — an enum, `Bool`, `Result` (`Ok`/`Err`), or `Option` (`Some`/`None`) — must cover every case or include a `_` wildcard; a non-exhaustive match is a compile error (`E0021`/`E0024`), not a runtime crash.
 5. `!` can only be applied to `Result[T, E]` — produces `T`.
-6. `?` can only be applied to `Result[T, E]` — enclosing function must return `Result[_, E]`.
+6. `?` can only be applied to `Result[T, E]` — the enclosing function must return `Result[_, E2]` with `E` compatible with `E2` (`E0023` otherwise). On `Ok(v)` the expression produces `v`; on `Err(e)` the **enclosing body exits immediately** with that `Err` — no following expression executes. In a `test`/`scenario`/`golden` body a propagated `Err` fails the test.
 7. `Option[T]` fields are not included in the `required` list of generated JSON schemas.
 8. Pipe `|>` threads the left expression as the first argument to the right function call.
 
@@ -856,7 +856,7 @@ edits generically — no per-error-code logic.
 | E0020 | Type | error | Type mismatch (including wrong argument counts for fn, stdlib, and effect calls, and interpolation in string patterns) |
 | E0021 | Type | error | Non-exhaustive match on a closed type (`Bool`, enum, `Result`, `Option`) with no `_` wildcard |
 | E0022 | Type | error | Invalid `!` on non-Result |
-| E0023 | Type | error | Invalid `?` on non-Result (or enclosing fn doesn't return Result) |
+| E0023 | Type | error | Invalid `?` on non-Result, enclosing fn doesn't return Result, or the propagated error type is incompatible with the enclosing Result's error type |
 | E0024 | Type | error | Unknown type name; or non-exhaustive match on an enum/`Result`/`Option` missing variant patterns (§3.11) |
 | E0025 | Type | error | Constraint annotation on wrong type |
 | E0026 | Type | error | Invalid named argument (unknown/duplicate name, positional after named, callee without named-argument support) |

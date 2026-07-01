@@ -1,0 +1,14 @@
+-- expect: E0023
+-- #290 (B1): `?` must not smuggle an incompatible error type out of a
+-- function that "type-checked". fetch() propagates HttpError, but the
+-- enclosing function declares Result[String, StoreError].
+module PropagateErrorTypeMismatch {
+  fn fetch() -> Result[String, HttpError] {
+    Ok("h")
+  }
+
+  fn caller() -> Result[String, StoreError] {
+    let body = fetch()?
+    Ok(body)
+  }
+}
