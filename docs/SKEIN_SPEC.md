@@ -443,6 +443,7 @@ at runtime a `match` where every arm's guard fails raises `case_clause`.
 6. `?` can only be applied to `Result[T, E]` — the enclosing function must return `Result[_, E2]` with `E` compatible with `E2` (`E0023` otherwise). On `Ok(v)` the expression produces `v`; on `Err(e)` the **enclosing body exits immediately** with that `Err` — no following expression executes. In a `test`/`scenario`/`golden` body a propagated `Err` fails the test.
 7. `Option[T]` fields are not included in the `required` list of generated JSON schemas.
 8. Pipe `|>` threads the left expression as the first argument to the right function call.
+9. Call arguments are type-checked against the callee's declared parameters — local `fn` calls, stdlib calls, and the documented effect signatures (§6) alike; a wrong-typed argument is `E0020`. A `&fn` reference carries the referenced signature as a callable type, so a higher-order slot (`List.map`/`filter`/`reduce`, `process.spawn`/`timer` work bodies, ...) rejects a callback of the wrong arity, parameter type, or return type at compile time.
 
 ---
 
@@ -853,7 +854,7 @@ edits generically — no per-error-code logic.
 | E0015 | Tool | error | Duplicate short tool name in `capability tool.use` params |
 | E0016 | Name | error | Cross-module function call (functions are module-private; expose a tool instead) |
 | E0017 | Capability | error | Duplicate scoped capability declaration (`memory.kv`, `event.log`, `process.spawn`, `timer` allow one per module or agent) |
-| E0020 | Type | error | Type mismatch (including wrong argument counts for fn, stdlib, and effect calls, and interpolation in string patterns) |
+| E0020 | Type | error | Type mismatch (including wrong argument counts or types for fn, stdlib, and effect calls, wrong-shape callbacks in higher-order slots, and interpolation in string patterns) |
 | E0021 | Type | error | Non-exhaustive match on a closed type (`Bool`, enum, `Result`, `Option`) with no `_` wildcard |
 | E0022 | Type | error | Invalid `!` on non-Result |
 | E0023 | Type | error | Invalid `?` on non-Result, enclosing fn doesn't return Result, or the propagated error type is incompatible with the enclosing Result's error type |

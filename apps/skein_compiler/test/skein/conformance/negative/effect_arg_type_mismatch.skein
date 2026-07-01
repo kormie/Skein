@@ -1,0 +1,11 @@
+-- expect: E0020
+-- #292 (B3): documented effect signatures (spec §6) type-check their source
+-- arguments. Before B3 only arity bounds were checked, so an Int url
+-- compiled and failed inside the HTTP runtime instead of at compile time.
+module EffectArgTypeMismatch {
+  capability http.out("api.example.com")
+
+  fn fetch() -> Result[String, HttpError] {
+    http.get(42)
+  }
+}

@@ -1,0 +1,13 @@
+-- expect: E0020
+-- #292 (B3): higher-order stdlib slots expect a callable of the right shape.
+-- List.map calls its callback with ONE element; a two-parameter fn reference
+-- previously compiled and crashed with badarity at runtime.
+module CallbackArityMismatch {
+  fn add(a: Int, b: Int) -> Int {
+    a + b
+  }
+
+  fn run(items: List[Int]) -> List[Int] {
+    List.map(items, &add)
+  }
+}

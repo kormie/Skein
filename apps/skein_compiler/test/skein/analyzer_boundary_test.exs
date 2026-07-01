@@ -34,15 +34,14 @@ defmodule Skein.AnalyzerBoundaryTest do
 
   describe "E0037 — :unknown rejected at declared fn-return boundary" do
     test "top-level :unknown returned where a concrete type is declared" do
+      # An unresolved bare call is the remaining :unknown producer at a
+      # declared boundary (a `&fn` reference carries a callable type since
+      # B3/#292 and fails as a concrete E0020 mismatch instead).
       errors =
         analyze_errors("""
         module M {
-          fn base() -> Int {
-            1
-          }
-
           fn get_base() -> Int {
-            &base
+            mystery()!
           }
         }
         """)

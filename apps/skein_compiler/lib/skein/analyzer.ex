@@ -28,7 +28,7 @@ defmodule Skein.Analyzer do
   - E0017: Duplicate scoped capability declaration (memory.kv, event.log, process.spawn, timer)
 
   ### Type Checking (E002x)
-  - E0020: Type mismatch (return type, match arm types, operator types, arity)
+  - E0020: Type mismatch (return type, match arm types, operator types, arity, argument types for fn/stdlib/effect calls, wrong-shape callbacks in higher-order slots)
   - E0021: Non-exhaustive match (warning)
   - E0022: Invalid `!` on non-Result type
   - E0023: Invalid `?` on non-Result type (or enclosing fn doesn't return Result)
@@ -82,6 +82,7 @@ defmodule Skein.Analyzer do
           | {:set, skein_type}
           | {:user_type, String.t()}
           | {:enum, String.t()}
+          | {:fn, [skein_type], skein_type}
           | :json
           | :dynamic
           | :unknown
@@ -221,10 +222,22 @@ defmodule Skein.Analyzer do
     },
     "List" => %{
       "length" => %{params: [{:list, :dynamic}], return_type: :int},
-      "map" => %{params: [{:list, :dynamic}, :dynamic], return_type: {:list, :dynamic}},
-      "filter" => %{params: [{:list, :dynamic}, :dynamic], return_type: {:list, :dynamic}},
-      "reduce" => %{params: [{:list, :dynamic}, :dynamic, :dynamic], return_type: :dynamic},
-      "find" => %{params: [{:list, :dynamic}, :dynamic], return_type: {:option, :dynamic}},
+      "map" => %{
+        params: [{:list, :dynamic}, {:fn, [:dynamic], :dynamic}],
+        return_type: {:list, :dynamic}
+      },
+      "filter" => %{
+        params: [{:list, :dynamic}, {:fn, [:dynamic], :bool}],
+        return_type: {:list, :dynamic}
+      },
+      "reduce" => %{
+        params: [{:list, :dynamic}, :dynamic, {:fn, [:dynamic, :dynamic], :dynamic}],
+        return_type: :dynamic
+      },
+      "find" => %{
+        params: [{:list, :dynamic}, {:fn, [:dynamic], :bool}],
+        return_type: {:option, :dynamic}
+      },
       "first" => %{params: [{:list, :dynamic}], return_type: {:option, :dynamic}},
       "last" => %{params: [{:list, :dynamic}], return_type: {:option, :dynamic}},
       "head" => %{params: [{:list, :dynamic}], return_type: {:option, :dynamic}},
@@ -232,7 +245,10 @@ defmodule Skein.Analyzer do
       "take" => %{params: [{:list, :dynamic}, :int], return_type: {:list, :dynamic}},
       "drop" => %{params: [{:list, :dynamic}, :int], return_type: {:list, :dynamic}},
       "sort" => %{params: [{:list, :dynamic}], return_type: {:list, :dynamic}},
-      "sort_by" => %{params: [{:list, :dynamic}, :dynamic], return_type: {:list, :dynamic}},
+      "sort_by" => %{
+        params: [{:list, :dynamic}, {:fn, [:dynamic], :dynamic}],
+        return_type: {:list, :dynamic}
+      },
       "reverse" => %{params: [{:list, :dynamic}], return_type: {:list, :dynamic}},
       "flatten" => %{params: [{:list, :dynamic}], return_type: {:list, :dynamic}},
       "concat" => %{
@@ -240,14 +256,14 @@ defmodule Skein.Analyzer do
         return_type: {:list, :dynamic}
       },
       "contains" => %{params: [{:list, :dynamic}, :dynamic], return_type: :bool},
-      "any" => %{params: [{:list, :dynamic}, :dynamic], return_type: :bool},
-      "all" => %{params: [{:list, :dynamic}, :dynamic], return_type: :bool},
-      "none" => %{params: [{:list, :dynamic}, :dynamic], return_type: :bool},
+      "any" => %{params: [{:list, :dynamic}, {:fn, [:dynamic], :bool}], return_type: :bool},
+      "all" => %{params: [{:list, :dynamic}, {:fn, [:dynamic], :bool}], return_type: :bool},
+      "none" => %{params: [{:list, :dynamic}, {:fn, [:dynamic], :bool}], return_type: :bool},
       "zip" => %{params: [{:list, :dynamic}, {:list, :dynamic}], return_type: {:list, :dynamic}},
       "uniq" => %{params: [{:list, :dynamic}], return_type: {:list, :dynamic}},
-      "count" => %{params: [{:list, :dynamic}, :dynamic], return_type: :int},
+      "count" => %{params: [{:list, :dynamic}, {:fn, [:dynamic], :bool}], return_type: :int},
       "group_by" => %{
-        params: [{:list, :dynamic}, :dynamic],
+        params: [{:list, :dynamic}, {:fn, [:dynamic], :dynamic}],
         return_type: {:map, :dynamic, {:list, :dynamic}}
       }
     },
@@ -271,11 +287,11 @@ defmodule Skein.Analyzer do
         return_type: {:map, :dynamic, :dynamic}
       },
       "map_values" => %{
-        params: [{:map, :dynamic, :dynamic}, :dynamic],
+        params: [{:map, :dynamic, :dynamic}, {:fn, [:dynamic], :dynamic}],
         return_type: {:map, :dynamic, :dynamic}
       },
       "filter" => %{
-        params: [{:map, :dynamic, :dynamic}, :dynamic],
+        params: [{:map, :dynamic, :dynamic}, {:fn, [:dynamic, :dynamic], :bool}],
         return_type: {:map, :dynamic, :dynamic}
       }
     },
@@ -298,23 +314,29 @@ defmodule Skein.Analyzer do
     },
     "Option" => %{
       "unwrap" => %{params: [{:option, :dynamic}, :dynamic], return_type: :dynamic},
-      "map" => %{params: [{:option, :dynamic}, :dynamic], return_type: {:option, :dynamic}},
-      "flat_map" => %{params: [{:option, :dynamic}, :dynamic], return_type: {:option, :dynamic}},
+      "map" => %{
+        params: [{:option, :dynamic}, {:fn, [:dynamic], :dynamic}],
+        return_type: {:option, :dynamic}
+      },
+      "flat_map" => %{
+        params: [{:option, :dynamic}, {:fn, [:dynamic], :dynamic}],
+        return_type: {:option, :dynamic}
+      },
       "is_some" => %{params: [{:option, :dynamic}], return_type: :bool},
       "is_none" => %{params: [{:option, :dynamic}], return_type: :bool}
     },
     "Result" => %{
       "unwrap" => %{params: [{:result, :dynamic, :dynamic}, :dynamic], return_type: :dynamic},
       "map" => %{
-        params: [{:result, :dynamic, :dynamic}, :dynamic],
+        params: [{:result, :dynamic, :dynamic}, {:fn, [:dynamic], :dynamic}],
         return_type: {:result, :dynamic, :dynamic}
       },
       "map_err" => %{
-        params: [{:result, :dynamic, :dynamic}, :dynamic],
+        params: [{:result, :dynamic, :dynamic}, {:fn, [:dynamic], :dynamic}],
         return_type: {:result, :dynamic, :dynamic}
       },
       "flat_map" => %{
-        params: [{:result, :dynamic, :dynamic}, :dynamic],
+        params: [{:result, :dynamic, :dynamic}, {:fn, [:dynamic], :dynamic}],
         return_type: {:result, :dynamic, :dynamic}
       },
       "is_ok" => %{params: [{:result, :dynamic, :dynamic}], return_type: :bool},
@@ -693,6 +715,39 @@ defmodule Skein.Analyzer do
     {"timer", "interval"} => ["work"]
   }
 
+  # Positional parameter types for the documented effect signatures (#292/B3),
+  # aligned index-for-index with @effect_param_names. `:dynamic` marks payload
+  # slots the spec types as Json/any — the C1 effect-ABI matrix owns tightening
+  # those. Work/callback slots are zero-arg callables: the runtime applies them
+  # with no arguments (Process.spawn/Timer task bodies), and llm.stream's
+  # on_chunk receives the chunk text.
+  @effect_param_types %{
+    {"http", "get"} => [:string],
+    {"http", "post"} => [:string, :dynamic],
+    {"http", "put"} => [:string, :dynamic],
+    {"http", "patch"} => [:string, :dynamic],
+    {"http", "delete"} => [:string],
+    {"memory", "put"} => [:string, :dynamic],
+    {"memory", "get"} => [:string],
+    {"memory", "get!"} => [:string],
+    {"memory", "delete"} => [:string],
+    {"memory", "list"} => [:string],
+    {"llm", "chat"} => [:string, :string, :dynamic],
+    {"llm", "json"} => [:string, :string, :dynamic],
+    {"llm", "stream"} => [:string, :string, :dynamic, {:fn, [:string], :dynamic}],
+    {"llm", "embed"} => [:string, :string],
+    {"topic", "publish"} => [:string, :dynamic],
+    {"queue", "publish"} => [:string, :dynamic],
+    {"trace", "annotate"} => [:string, :dynamic],
+    {"process", "spawn"} => [:string, {:fn, [], :dynamic}],
+    {"event", "log"} => [:string, :dynamic],
+    {"timer", "after"} => [:int, :string, {:fn, [], :dynamic}],
+    {"timer", "interval"} => [:int, :string, {:fn, [], :dynamic}],
+    {"timer", "cancel"} => [:dynamic],
+    {"uuid", "new"} => [],
+    {"instant", "now"} => []
+  }
+
   defp resolve_named_args(%AST.Call{} = call, env) do
     {target, target_errors} = resolve_named_args(call.target, env)
     {args, arg_errors} = resolve_named_args(call.args, env)
@@ -935,6 +990,24 @@ defmodule Skein.Analyzer do
     Map.get(@effect_return_types, {namespace, method}, :dynamic)
   end
 
+  # Sharper return types for higher-order stdlib calls (#292/B3): when the
+  # callback argument carries a concrete callable type, the collection result
+  # derives from the callback's return instead of staying :dynamic — so a
+  # mapped/reduced value is boundary-checked like any other typed value.
+  defp stdlib_return_type("List", "map", table_return, [_list, {:fn, _params, ret}]) do
+    if permissive_type?(ret), do: table_return, else: {:list, ret}
+  end
+
+  defp stdlib_return_type("List", "reduce", table_return, [_list, init, {:fn, _params, ret}]) do
+    cond do
+      not permissive_type?(ret) -> ret
+      not permissive_type?(init) -> init
+      true -> table_return
+    end
+  end
+
+  defp stdlib_return_type(_mod_name, _fn_name, table_return, _arg_types), do: table_return
+
   defp unknown_effect_method_error(namespace, method, meta, env) do
     known = Map.get(@effect_methods, namespace, [])
 
@@ -980,6 +1053,39 @@ defmodule Skein.Analyzer do
 
       :error ->
         []
+    end
+  end
+
+  # Type-check documented effect arguments against @effect_param_types
+  # (#292/B3). Effects without a table entry (tool.*, store.*) have their own
+  # checks and are skipped, as are surplus args already flagged by the arity
+  # check. Optional trailing params simply drop off the zip when omitted.
+  defp effect_call_type_errors(namespace, method, args_results, meta, env) do
+    with {:ok, expected_types} <- Map.fetch(@effect_param_types, {namespace, method}),
+         {:ok, names} <- Map.fetch(@effect_param_names, {namespace, method}) do
+      arg_types = Enum.map(args_results, &elem(&1, 0))
+
+      [names, expected_types, arg_types]
+      |> Enum.zip()
+      |> Enum.flat_map(fn {param_name, expected, actual} ->
+        if types_compatible?(actual, expected) do
+          []
+        else
+          [
+            %Error{
+              code: "E0020",
+              severity: :error,
+              message:
+                "Type mismatch in call to '#{namespace}.#{method}': argument '#{param_name}' expects #{format_type(expected)}, got #{format_type(actual)}",
+              location: location_from_meta(meta, env.file),
+              fix_hint: "Pass a #{format_type(expected)} value for '#{param_name}'",
+              fix_code: "#{namespace}.#{method}(#{param_name}: value)"
+            }
+          ]
+        end
+      end)
+    else
+      :error -> []
     end
   end
 
@@ -1756,6 +1862,10 @@ defmodule Skein.Analyzer do
   defp find_widened({:option, t}), do: find_widened(t)
   defp find_widened({:result, a, b}), do: find_widened(a) || find_widened(b)
   defp find_widened({:map, k, v}), do: find_widened(k) || find_widened(v)
+
+  defp find_widened({:fn, params, ret}),
+    do: Enum.find_value(params, &find_widened/1) || find_widened(ret)
+
   defp find_widened(_), do: nil
 
   # ------------------------------------------------------------------
@@ -2337,7 +2447,38 @@ defmodule Skein.Analyzer do
             []
           end
 
-        {fn_info.return_type, args_errors ++ arity_errors}
+        # Type-check every argument against the declared parameter (#292/B3).
+        # Before this, only arity was checked and a wrong-typed argument
+        # compiled straight through to a runtime crash.
+        arg_types = Enum.map(args_results, &elem(&1, 0))
+
+        type_errors =
+          if expected_arity == actual_arity do
+            Enum.zip(fn_info.params, arg_types)
+            |> Enum.flat_map(fn {%AST.Field{name: param_name, type: param_type}, actual} ->
+              expected = resolve_type(param_type, env.types)
+
+              if types_compatible?(actual, expected) do
+                []
+              else
+                [
+                  %Error{
+                    code: "E0020",
+                    severity: :error,
+                    message:
+                      "Type mismatch in call to '#{name}': parameter '#{param_name}' expects #{format_type(expected)}, got #{format_type(actual)}",
+                    location: location_from_meta(meta, env.file),
+                    fix_hint: "Pass a #{format_type(expected)} value for '#{param_name}'",
+                    fix_code: "#{name}(#{param_name}: value)"
+                  }
+                ]
+              end
+            end)
+          else
+            []
+          end
+
+        {fn_info.return_type, args_errors ++ arity_errors ++ type_errors}
 
       # Stdlib call: Module.function(args)
       %AST.FieldAccess{subject: %AST.Identifier{name: mod_name}, field: fn_name}
@@ -2409,7 +2550,9 @@ defmodule Skein.Analyzer do
                 []
               end
 
-            {fn_info.return_type, args_errors ++ arity_errors ++ type_errors}
+            return_type = stdlib_return_type(mod_name, fn_name, fn_info.return_type, arg_types)
+
+            {return_type, args_errors ++ arity_errors ++ type_errors}
         end
 
       # Qualified call with a non-stdlib UpperIdent head: either a variant
@@ -2432,7 +2575,9 @@ defmodule Skein.Analyzer do
 
           effect_namespace?(mod_name) and effect_method?(mod_name, fn_name) ->
             {effect_call_return_type(mod_name, fn_name, type_param, env),
-             args_errors ++ effect_call_arity_errors(mod_name, fn_name, args, meta, env)}
+             args_errors ++
+               effect_call_arity_errors(mod_name, fn_name, args, meta, env) ++
+               effect_call_type_errors(mod_name, fn_name, args_results, meta, env)}
 
           # A method that is not part of a known effect namespace's surface is a
           # structured error, not a silent :unknown that crashes in codegen
@@ -2582,9 +2727,23 @@ defmodule Skein.Analyzer do
     infer_field_access_type(subject, field, meta, env)
   end
 
-  # FnRef
-  defp infer_type(%AST.FnRef{}, _env) do
-    {:unknown, []}
+  # FnRef: `&name` carries the referenced fn's signature as a callable type
+  # (#292 / B3), so higher-order slots can check the callback's shape. An
+  # unresolved name stays :unknown — the boundary guard rejects it (E0037)
+  # until B4/#293 makes the unresolved reference itself a structured error.
+  defp infer_type(%AST.FnRef{name: name}, env) do
+    case Map.fetch(env.functions, name) do
+      {:ok, fn_info} ->
+        param_types =
+          Enum.map(fn_info.params, fn %AST.Field{type: type} ->
+            resolve_type(type, env.types)
+          end)
+
+        {{:fn, param_types, fn_info.return_type}, []}
+
+      :error ->
+        {:unknown, []}
+    end
   end
 
   # Let (standalone — shouldn't appear outside blocks, but handle gracefully)
@@ -3610,6 +3769,19 @@ defmodule Skein.Analyzer do
 
   defp types_compatible?({:result, a1, a2}, {:result, b1, b2}),
     do: types_compatible?(a1, b1) and types_compatible?(a2, b2)
+
+  # Callable types (#292 / B3): parameters check contravariantly (the value
+  # the CALLER will pass must flow into the callback's declared parameter),
+  # the return covariantly. Arity must match exactly — the runtime applies
+  # callbacks positionally, so a wrong-arity callable is always badarity.
+  defp types_compatible?({:fn, actual_params, actual_ret}, {:fn, expected_params, expected_ret}) do
+    length(actual_params) == length(expected_params) and
+      Enum.zip(actual_params, expected_params)
+      |> Enum.all?(fn {actual_param, expected_param} ->
+        types_compatible?(expected_param, actual_param)
+      end) and
+      types_compatible?(actual_ret, expected_ret)
+  end
 
   defp types_compatible?({:map, k1, v1}, {:map, k2, v2}),
     do: types_compatible?(k1, k2) and types_compatible?(v1, v2)
@@ -4826,6 +4998,10 @@ defmodule Skein.Analyzer do
   defp format_type({:set, elem}), do: "Set[#{format_type(elem)}]"
   defp format_type({:user_type, name}), do: name
   defp format_type({:enum, name}), do: name
+
+  defp format_type({:fn, params, ret}),
+    do: "fn(#{Enum.map_join(params, ", ", &format_type/1)}) -> #{format_type(ret)}"
+
   defp format_type(:unknown), do: "<unknown>"
   defp format_type(:dynamic), do: "<dynamic>"
   defp format_type({:widened, a, b}), do: "#{format_type(a)} | #{format_type(b)}"
