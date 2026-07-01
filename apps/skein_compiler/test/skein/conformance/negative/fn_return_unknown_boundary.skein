@@ -1,0 +1,15 @@
+-- expect: E0037
+-- #291 (B2): :unknown is an internal inference state, never a public top type.
+-- A &fn reference has no inferred type yet (callable types land with B3/#292);
+-- returning it where the fn declares Int previously compiled and loaded a
+-- lambda where an Int was promised. The boundary must reject what inference
+-- could not verify.
+module FnReturnUnknownBoundary {
+  fn base() -> Int {
+    1
+  }
+
+  fn get_base() -> Int {
+    &base
+  }
+}

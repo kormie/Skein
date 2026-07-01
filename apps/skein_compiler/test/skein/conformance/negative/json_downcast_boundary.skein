@@ -1,0 +1,9 @@
+-- expect: E0020
+-- #291 (B2): Json is a concrete type, not a universal wildcard. A Json value
+-- cannot silently flow into a String-typed position; the conversion must be
+-- explicit (e.g. decode via req.json[T] / llm.json[T]).
+module JsonDowncastBoundary {
+  fn as_string(payload: Json) -> String {
+    payload
+  }
+}

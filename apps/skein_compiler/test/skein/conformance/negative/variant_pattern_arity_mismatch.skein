@@ -1,0 +1,19 @@
+-- expect: E0020
+-- #291 (B2): a variant pattern must bind every declared field. The runtime
+-- value is a {tag, field...} tuple, so an under-arity pattern lowers to a
+-- tuple pattern of the wrong size and can NEVER match — previously a silent
+-- dead arm hidden by :unknown pattern binding (the spec's own §8.3 example
+-- carried one).
+module VariantPatternArityMismatch {
+  enum BillingEvent {
+    ChargeSucceeded(charge_id: String, amount: Int)
+    DisputeCreated(dispute_id: String, charge_id: String)
+  }
+
+  fn describe(e: BillingEvent) -> String {
+    match e {
+      BillingEvent.ChargeSucceeded(c) -> "charged"
+      BillingEvent.DisputeCreated(dispute_id, charge_id) -> "disputed"
+    }
+  }
+}
