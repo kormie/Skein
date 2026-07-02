@@ -92,9 +92,14 @@ defmodule Skein.Integration.C4RemainderTest do
     mod =
       compile!("""
       module Fixtures {
-        capability store.table("fixture_rows")
+        capability store.table("fixture_rows", Row)
         capability uuid
         capability tool.use(Count.Rows)
+
+        type Row {
+          id: Uuid @primary
+          label: String
+        }
 
         tool Count.Rows {
           description: "count the fixture rows"
@@ -114,8 +119,8 @@ defmodule Skein.Integration.C4RemainderTest do
             capability store.table("fixture_rows")
           }
           given {
-            first: store.fixture_rows.put({ id: uuid.new(), label: "one" })!
-            second: store.fixture_rows.put({ id: uuid.new(), label: "two" })!
+            first: store.fixture_rows.put(Row { id: uuid.new(), label: "one" })!
+            second: store.fixture_rows.put(Row { id: uuid.new(), label: "two" })!
           }
           expect {
             let r = tool.call(Count.Rows, { table: "fixture_rows" })!

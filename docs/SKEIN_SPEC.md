@@ -188,7 +188,8 @@ cap_kind    = "http.out" | "http.in" | "store.table" | "memory.kv"
             | "model" | "tool.use" | "process.spawn" | "timer"
 cap_params  = (string | identifier | named_arg) ("," (string | identifier | named_arg))*
               -- tool.use params are dotted identifiers: tool.use(Stripe.CreateRefund)
-              -- other capabilities use strings: store.table("users"), model("anthropic", "claude-opus-4-8")
+              -- store.table takes the table name AND its record type: store.table("users", User)
+              -- other capabilities use strings: model("anthropic", "claude-opus-4-8")
 named_arg   = lower_ident ":" expr
 identifier  = dotted_name
 ```
@@ -205,6 +206,11 @@ declaration is a compile error (E0017). A nested agent's declaration
 overrides the enclosing module's for calls inside the agent. Declaring
 the capability with no parameter leaves the effect unscoped
 (presence-only enforcement).
+
+**Typed store tables.** `store.table` takes two parameters: the table
+name and the record type it stores (`capability store.table("games", Game)`,
+§6.2). Both are required — a missing or unknown record type, or a type
+without exactly one `@primary` field, is `E0043`.
 
 ### 3.3 Functions
 
@@ -760,6 +766,18 @@ store.<table>.query(filters: Map) -> Result[List[T], StoreError]
 enum StoreError { NotFound Failed(reason: String) Denied(reason: String) }
 ```
 
+**Store tables are typed** (C5, #255): the capability names both the table and
+its record type — `capability store.table("games", Game)` — where the record
+type is a declared `type` with exactly one `@primary` field (any scalar key
+type; `Uuid` and `String` are the common choices). `T` in the signatures above
+is that type: `put` takes a `Game` (nominally constructed, argument-checked at
+compile time), `get`/`delete` take the `@primary` field's type, and
+`get`/`query` return `Game` values. A declaration missing the record type, or
+naming an unknown type, or whose type does not have exactly one `@primary`
+field, is `E0043`. At runtime every `put` is additionally schema-checked
+against the record type's derived JSON Schema — a violating write is
+`Err(StoreError.Failed(reason))`.
+
 There are no separate `get!`/`put!` methods (#268): the postfix `!`/`?`
 operators (§3.11) unwrap any `Result`-returning effect — `store.users.get(id)!`
 crashes on miss, `store.users.put(r)?` propagates the error.
@@ -1035,6 +1053,7 @@ edits generically — no per-error-code logic.
 | E0040 | Supervisor | error | Invalid supervisor strategy |
 | E0041 | Supervisor | error | Invalid `max_restarts` value |
 | E0042 | Supervisor | warning | Supervisor has no children |
+| E0043 | Store | error | Invalid `store.table` declaration — tables are typed: the capability must name a declared record type with exactly one `@primary` field (`capability store.table("games", Game)`) |
 | W0001 | Warning | warning | Unused binding |
 | W0002 | Warning | warning | Unused capability |
 | W0003 | Warning | warning | Unreachable code after `stop()` |
@@ -1063,7 +1082,7 @@ module Hello {
 ```
 module UserService {
   capability http.in
-  capability store.table("users")
+  capability store.table("users", User)
   capability uuid
   capability instant
 
@@ -1090,7 +1109,7 @@ module UserService {
 
   handler http POST "/users" (req) -> {
     let data = req.json[CreateUserInput]()?
-    let user = store.users.put({
+    let user = store.users.put(User {
       id: uuid.new(),
       email: data.email,
       name: data.name,
@@ -1107,9 +1126,16 @@ module UserService {
 module BillingWorker {
   capability queue.consume("billing.events")
   capability http.out("api.stripe.com")
-  capability store.table("transactions")
+  capability store.table("transactions", Transaction)
   capability uuid
   capability instant
+
+  type Transaction {
+    id: Uuid @primary
+    charge_id: String
+    amount: Int
+    created_at: Instant
+  }
 
   enum BillingEvent {
     ChargeSucceeded(charge_id: String, amount: Int)
@@ -1125,8 +1151,8 @@ module BillingWorker {
     }
   }
 
-  fn record_charge(charge_id: String, amount: Int) -> Result[String, StoreError] {
-    store.transactions.put({
+  fn record_charge(charge_id: String, amount: Int) -> Result[Transaction, StoreError] {
+    store.transactions.put(Transaction {
       id: uuid.new(),
       charge_id: charge_id,
       amount: amount,
@@ -1153,7 +1179,13 @@ compiles to its own BEAM module, `Skein.Agent.RefundService.RefundAgent`.
 module RefundService {
   capability model("anthropic", "claude-opus-4-8")
   capability tool.use(Stripe.CreateRefund)
-  capability store.table("tickets")
+  capability store.table("tickets", Ticket)
+
+  type Ticket {
+    id: String @primary
+    customer_id: String
+    subject: String
+  }
 
   type RefundDecision {
     action: String @one_of(["approve", "deny"])

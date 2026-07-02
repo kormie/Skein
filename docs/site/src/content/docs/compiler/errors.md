@@ -181,6 +181,7 @@ The `fix_code` field is especially useful for LLM agents -- it provides the exac
 | E0040 | error | Invalid supervisor strategy |
 | E0041 | error | Invalid `max_restarts` value |
 | E0042 | warning | Supervisor has no children |
+| E0043 | error | Invalid `store.table` declaration (typed tables: the capability names a declared record type with exactly one `@primary` field) |
 
 ### Warnings
 

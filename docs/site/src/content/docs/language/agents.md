@@ -212,7 +212,7 @@ Agents declare capabilities just like modules. Common agent capabilities:
 | `capability model("claude-opus-4-8")` | Use an LLM model |
 | `capability memory.kv("sessions")` | Scoped key-value storage |
 | `capability http.out("api.example.com")` | Make outbound HTTP calls |
-| `capability store.table("tickets")` | Database storage |
+| `capability store.table("tickets", Ticket)` | Database storage, typed by the `Ticket` record |
 | `capability tool.use(Stripe.CreateRefund)` | Call a declared tool |
 
 ```skein

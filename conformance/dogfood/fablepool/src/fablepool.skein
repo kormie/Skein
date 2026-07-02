@@ -960,7 +960,7 @@ module Fablepool {
   -- replay reconstructs ops from.
   -- ---------------------------------------------------------------------------
 
-  capability store.table("oplog")
+  capability store.table("oplog", StoredOp)
 
   type StoredOp {
     id: Uuid @primary
@@ -991,8 +991,8 @@ module Fablepool {
           Err(_)   -> 0
         }
         let e = mk_evidence("api-key", "service", n, data.source, "note", data.content, 1)
-        let row = { id: uuid.new(), op_id: e.id, body: canon(e),
-                    kind: "evidence", lamport: e.lamport }
+        let row = StoredOp { id: uuid.new(), op_id: e.id, body: canon(e),
+                             kind: "evidence", lamport: e.lamport }
         let saved = store.oplog.put(row)
         match saved {
           Ok(_)  -> respond.json(200, { op_id: e.id, lamport: e.lamport })

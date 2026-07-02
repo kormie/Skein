@@ -67,7 +67,7 @@ defmodule Skein.Integration.StoreEctoTest do
       mod =
         compile!("""
         module UserService {
-          capability store.table("integration_users")
+          capability store.table("integration_users", User)
 
           type User {
             id: Uuid @primary
@@ -179,7 +179,7 @@ defmodule Skein.Integration.StoreEctoTest do
       mod =
         compile!("""
         module ProfileService {
-          capability store.table("integration_profiles")
+          capability store.table("integration_profiles", Profile)
 
           type Profile {
             id: String @primary
@@ -246,8 +246,11 @@ defmodule Skein.Integration.StoreEctoTest do
       mod =
         compile!("""
         module MultiStore {
-          capability store.table("products")
-          capability store.table("orders")
+          capability store.table("products", Product)
+          capability store.table("orders", Order)
+
+          type Product { id: Uuid @primary }
+          type Order { id: Uuid @primary }
 
           fn x() -> Int { 1 }
         }

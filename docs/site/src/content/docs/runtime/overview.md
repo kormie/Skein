@@ -184,7 +184,7 @@ Features:
 
 ### `Skein.Runtime.Store`
 
-ETS-backed key-value storage that compiled `store.table` effect calls target — the only storage path compiled programs hit today (there is no backend-selection mechanism; typed tables are roadmap C5, #255).
+ETS-backed key-value storage that compiled `store.table` effect calls target — the only storage path compiled programs hit today (there is no backend-selection mechanism). Store tables are typed (C5, #255): the capability names the table's record type, the compiler type-checks every operation against it, and writes are schema-checked at runtime.
 
 **API:**
 

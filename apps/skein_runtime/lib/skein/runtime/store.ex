@@ -53,28 +53,59 @@ defmodule Skein.Runtime.Store do
 
   Returns `{:ok, record}` or `{:error, reason}`.
   """
-  @spec put(String.t(), map(), [map()]) :: {:ok, map()} | {:error, String.t()}
+  @spec put(String.t(), map(), [map()]) :: {:ok, map()} | {:error, tuple()}
   def put(table_name, record, capabilities)
       when is_binary(table_name) and is_map(record) and is_list(capabilities) do
+    put(table_name, record, nil, capabilities)
+  end
+
+  @doc """
+  Inserts or updates a record, schema-checking it first (C5/#255).
+
+  Compiled `store.<table>.put(record)` calls land here: the compiler
+  threads the table's derived JSON Schema (from the typed
+  `capability store.table("name", RecordType)` declaration) so every
+  write is validated — defense in depth behind the analyzer's record
+  typing, and a real gate for data that reached the record through
+  dynamic seams. A `nil` schema skips validation (direct Elixir callers).
+
+  A schema violation is `{:error, {:failed, reason}}` —
+  `StoreError.Failed(reason)` in Skein.
+  """
+  @spec put(String.t(), map(), map() | nil, [map()]) :: {:ok, map()} | {:error, tuple()}
+  def put(table_name, record, schema, capabilities)
+      when is_binary(table_name) and is_map(record) and is_list(capabilities) do
     Trace.with_span(%{kind: :store, method: :put, table: table_name}, fn ->
-      case check_store_capability(table_name, capabilities) do
-        :ok ->
-          ensure_table()
+      with :ok <- check_store_capability(table_name, capabilities) |> denied(),
+           :ok <- check_record_schema(record, schema) do
+        ensure_table()
 
-          case extract_id(record) do
-            nil ->
-              {:error, {:failed, "Record must have an :id or \"id\" field"}}
+        case extract_id(record) do
+          nil ->
+            {:error, {:failed, "Record must have an :id or \"id\" field"}}
 
-            id ->
-              :ets.insert(@table, {{table_name, id}, record})
-              {:ok, record}
-          end
-
-        {:error, reason} ->
-          # StoreError.Denied(reason) — the frozen ABI form (C2/#297).
-          {:error, {:denied, reason}}
+          id ->
+            :ets.insert(@table, {{table_name, id}, record})
+            {:ok, record}
+        end
       end
     end)
+  end
+
+  # StoreError.Denied(reason) — the frozen ABI form (C2/#297).
+  defp denied(:ok), do: :ok
+  defp denied({:error, reason}), do: {:error, {:denied, reason}}
+
+  defp check_record_schema(_record, nil), do: :ok
+
+  defp check_record_schema(record, schema) when is_map(schema) do
+    case Skein.Runtime.JsonSchema.validate(record, schema) do
+      :ok ->
+        :ok
+
+      {:error, violations} ->
+        {:error, {:failed, "record violates the table's schema: " <> Enum.join(violations, "; ")}}
+    end
   end
 
   @doc """

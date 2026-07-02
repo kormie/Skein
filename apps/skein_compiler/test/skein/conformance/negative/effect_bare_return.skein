@@ -2,9 +2,11 @@
 -- skein-testing#1: returning an effect Result from a fn declared to return the
 -- bare success type lies about the contract — the caller would crash.
 module EffectBareReturn {
-  capability store.table("users")
+  capability store.table("users", User)
 
-  fn find(id: Uuid) -> String {
+  type User { id: Uuid @primary, name: String }
+
+  fn find(id: Uuid) -> User {
     store.users.get(id)
   }
 }

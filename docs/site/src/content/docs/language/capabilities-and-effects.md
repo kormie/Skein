@@ -40,7 +40,7 @@ capability <namespace>.<kind>(<params>)
 |------------|---------|------------|
 | `http.out` | Outbound HTTP requests | Host allowlist (optional) |
 | `http.in` | Inbound HTTP handlers | Route prefix (optional) |
-| `store.table` | Database table access | Table name |
+| `store.table` | Database table access | Table name, record type (a declared `type` with one `@primary` field) |
 | `memory.kv` | Scoped KV memory | Namespace name |
 | `model` | LLM model access | Provider, model identifier |
 | `tool.use` | Tool execution | Tool name |

@@ -44,7 +44,7 @@ change. Read them — they are written for agents.
 -- A module: capabilities, types, functions, handlers, tools, tests
 module UserService {
   capability http.in
-  capability store.table("users")
+  capability store.table("users", User)
 
   type User {
     id: Uuid @primary
@@ -102,7 +102,7 @@ module or agent. There are no exceptions.
 |------------|--------|
 | `http.in` | Declaring `handler http ...` |
 | `http.out("host")` | `http.get/post/put/delete` to that host |
-| `store.table("name")` | `store.<name>.get/put/delete/query` |
+| `store.table("name", RecordType)` | `store.<name>.get/put/delete/query`, typed against `RecordType` (a declared `type` with exactly one `@primary` field) |
 | `memory.kv("namespace")` | `memory.put/get/delete/list` |
 | `model("provider", "model")` | `llm.chat/json/stream/embed` |
 | `tool.use(Mod.ToolName)` | `tool.call(Mod.ToolName, { ... })` |

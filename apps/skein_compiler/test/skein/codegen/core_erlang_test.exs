@@ -1204,7 +1204,9 @@ defmodule Skein.CodeGen.CoreErlangTest do
       mod =
         compile!("""
         module StoreCap {
-          capability store.table("users")
+          capability store.table("users", User)
+
+          type User { id: Uuid @primary }
 
           fn x() -> Int { 1 }
         }
@@ -1212,15 +1214,18 @@ defmodule Skein.CodeGen.CoreErlangTest do
 
       caps = mod.__capabilities__()
       assert length(caps) == 1
-      assert %{kind: "store.table", params: ["users"]} = hd(caps)
+      assert %{kind: "store.table", params: ["users", "User"]} = hd(caps)
     end
 
     test "module with multiple store.table capabilities returns all" do
       mod =
         compile!("""
         module StoreCapMulti {
-          capability store.table("users")
-          capability store.table("orders")
+          capability store.table("users", User)
+          capability store.table("orders", Order)
+
+          type User { id: Uuid @primary }
+          type Order { id: Uuid @primary }
 
           fn x() -> Int { 1 }
         }
@@ -1241,9 +1246,14 @@ defmodule Skein.CodeGen.CoreErlangTest do
       mod =
         compile!("""
         module StoreGet {
-          capability store.table("users")
+          capability store.table("users", User)
 
-          fn find(id: String) -> Result[String, StoreError] {
+          type User {
+            id: String @primary
+            name: String
+          }
+
+          fn find(id: String) -> Result[User, StoreError] {
             store.users.get(id)
           }
         }
@@ -1262,9 +1272,14 @@ defmodule Skein.CodeGen.CoreErlangTest do
       mod =
         compile!("""
         module StoreGetFound {
-          capability store.table("users")
+          capability store.table("users", User)
 
-          fn find(id: String) -> Result[String, StoreError] {
+          type User {
+            id: String @primary
+            name: String
+          }
+
+          fn find(id: String) -> Result[User, StoreError] {
             store.users.get(id)
           }
         }
@@ -1285,9 +1300,14 @@ defmodule Skein.CodeGen.CoreErlangTest do
       mod =
         compile!("""
         module StoreGetBang {
-          capability store.table("users")
+          capability store.table("users", User)
 
-          fn find(id: String) -> String {
+          type User {
+            id: String @primary
+            name: String
+          }
+
+          fn find(id: String) -> User {
             store.users.get(id)!
           }
         }
@@ -1305,10 +1325,15 @@ defmodule Skein.CodeGen.CoreErlangTest do
       mod =
         compile!("""
         module StorePutBang {
-          capability store.table("users")
+          capability store.table("users", User)
 
-          fn save(id: String) -> String {
-            store.users.put({ id: id, status: "active" })!
+          type User {
+            id: String @primary
+            status: String
+          }
+
+          fn save(id: String) -> User {
+            store.users.put(User { id: id, status: "active" })!
           }
         }
         """)
@@ -1323,9 +1348,14 @@ defmodule Skein.CodeGen.CoreErlangTest do
       mod =
         compile!("""
         module StorePut {
-          capability store.table("items")
+          capability store.table("items", Item)
 
-          fn save(record: String) -> Result[String, StoreError] {
+          type Item {
+            id: String @primary
+            name: String
+          }
+
+          fn save(record: Item) -> Result[Item, StoreError] {
             store.items.put(record)
           }
         }
@@ -1346,7 +1376,12 @@ defmodule Skein.CodeGen.CoreErlangTest do
       mod =
         compile!("""
         module StoreDelete {
-          capability store.table("items")
+          capability store.table("items", Item)
+
+          type Item {
+            id: String @primary
+            name: String
+          }
 
           fn remove(id: String) -> Result[String, StoreError] {
             store.items.delete(id)
@@ -1399,11 +1434,16 @@ defmodule Skein.CodeGen.CoreErlangTest do
       mod =
         compile!("""
         module RecordId {
-          capability store.table("items")
+          capability store.table("items", Item)
           capability uuid
 
-          fn save(name: String) -> Result[String, StoreError] {
-            store.items.put({ id: uuid.new(), name: name })
+          type Item {
+            id: Uuid @primary
+            name: String
+          }
+
+          fn save(name: String) -> Result[Item, StoreError] {
+            store.items.put(Item { id: uuid.new(), name: name })
           }
         }
         """)
@@ -1435,7 +1475,12 @@ defmodule Skein.CodeGen.CoreErlangTest do
       mod =
         compile!("""
         module StoreNotFound {
-          capability store.table("items")
+          capability store.table("items", Item)
+
+          type Item {
+            id: String @primary
+            name: String
+          }
 
           fn lookup(id: String) -> String {
             match store.items.get(id) {
@@ -1463,9 +1508,15 @@ defmodule Skein.CodeGen.CoreErlangTest do
       mod =
         compile!("""
         module StoreQuery {
-          capability store.table("users")
+          capability store.table("users", User)
 
-          fn search(filters: String) -> Result[List[String], StoreError] {
+          type User {
+            id: String @primary
+            name: String
+            role: String
+          }
+
+          fn search(filters: Json) -> Result[List[User], StoreError] {
             store.users.query(filters)
           }
         }
@@ -1492,9 +1543,14 @@ defmodule Skein.CodeGen.CoreErlangTest do
       mod =
         compile!("""
         module StoreTrace {
-          capability store.table("users")
+          capability store.table("users", User)
 
-          fn find(id: String) -> Result[String, StoreError] {
+          type User {
+            id: String @primary
+            name: String
+          }
+
+          fn find(id: String) -> Result[User, StoreError] {
             store.users.get(id)
           }
         }
@@ -1520,9 +1576,13 @@ defmodule Skein.CodeGen.CoreErlangTest do
       mod =
         compile!("""
         module StoreBlock {
-          capability store.table("orders")
+          capability store.table("orders", Order)
 
-          fn find(id: String) -> Result[String, StoreError] {
+          type Order {
+            id: String @primary
+          }
+
+          fn find(id: String) -> Result[Order, StoreError] {
             store.orders.get(id)
           }
         }
@@ -2827,7 +2887,7 @@ defmodule Skein.CodeGen.CoreErlangTest do
         module ResultShapes {
           capability queue.publish("jobs")
           capability topic.publish("events")
-          capability store.table("widgets")
+          capability store.table("widgets", Widget)
           type Widget { id: Uuid @primary  name: String  qty: Int }
 
           fn pub_queue() -> Bool { let r = queue.publish("jobs", { id: "x" })! true }

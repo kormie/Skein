@@ -1,0 +1,7 @@
+-- expect: E0043
+-- C5/#255: the store.table record type must be a declared type.
+module StoreTableUnknownType {
+  capability store.table("games", Ghost)
+
+  fn count() -> Int { 0 }
+}

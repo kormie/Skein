@@ -9,7 +9,7 @@
 -- an ANTHROPIC_API_KEY and the same code tells a real story.
 module Dungeon {
   capability http.in
-  capability store.table("games")
+  capability store.table("games", Game)
   capability model("anthropic", "claude-opus-4-8")
   capability uuid
 

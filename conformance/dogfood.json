@@ -3,12 +3,12 @@
   "projects": {
     "dungeon": {
       "repo": "kormie/skein-testing",
-      "rev": "0b7c2fdedb3e8249cc8b8dca302a619f51ea22f3",
+      "rev": "551a5f5eb78f6f3465a5cec3c928c9436026df51",
       "expected_tests": 5
     },
     "fablepool": {
       "repo": "kormie/FablePool-skein",
-      "rev": "38ed81fc549a351585e1e3daf0f71dab3bd90504",
+      "rev": "527509b299445f250ca02b41a9b200f12b106493",
       "expected_tests": 18
     }
   }

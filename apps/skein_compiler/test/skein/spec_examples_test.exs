@@ -19,7 +19,7 @@ defmodule Skein.SpecExamplesTest do
      """
      module UserService {
        capability http.in
-       capability store.table("users")
+       capability store.table("users", User)
        capability uuid
        capability instant
 
@@ -46,7 +46,7 @@ defmodule Skein.SpecExamplesTest do
 
        handler http POST "/users" (req) -> {
          let data = req.json[CreateUserInput]()?
-         let user = store.users.put({
+         let user = store.users.put(User {
            id: uuid.new(),
            email: data.email,
            name: data.name,
@@ -61,9 +61,16 @@ defmodule Skein.SpecExamplesTest do
      module BillingWorker {
        capability queue.consume("billing.events")
        capability http.out("api.stripe.com")
-       capability store.table("transactions")
+       capability store.table("transactions", Transaction)
        capability uuid
        capability instant
+
+       type Transaction {
+         id: Uuid @primary
+         charge_id: String
+         amount: Int
+         created_at: Instant
+       }
 
        enum BillingEvent {
          ChargeSucceeded(charge_id: String, amount: Int)
@@ -79,8 +86,8 @@ defmodule Skein.SpecExamplesTest do
          }
        }
 
-       fn record_charge(charge_id: String, amount: Int) -> Result[String, StoreError] {
-         store.transactions.put({
+       fn record_charge(charge_id: String, amount: Int) -> Result[Transaction, StoreError] {
+         store.transactions.put(Transaction {
            id: uuid.new(),
            charge_id: charge_id,
            amount: amount,
@@ -100,7 +107,13 @@ defmodule Skein.SpecExamplesTest do
      module RefundService {
        capability model("anthropic", "claude-opus-4-8")
        capability tool.use(Stripe.CreateRefund)
-       capability store.table("tickets")
+       capability store.table("tickets", Ticket)
+
+       type Ticket {
+         id: String @primary
+         customer_id: String
+         subject: String
+       }
 
        type RefundDecision {
          action: String @one_of(["approve", "deny"])

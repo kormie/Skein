@@ -13,7 +13,7 @@ Skein compiles to BEAM bytecode and runs on the Erlang VM — the same battle-te
 ```rust
 agent RefundAgent {
   capability model("anthropic", "claude-opus-4-8")
-  capability store.table("tickets")
+  capability store.table("tickets", Ticket)
 
   state {
     ticket_id: String
@@ -145,7 +145,7 @@ Annotations like `@min`, `@max`, and `@one_of` flow through to JSON Schema, vali
 module PaymentService {
   capability http.in
   capability http.out("api.stripe.com")
-  capability store.table("transactions")
+  capability store.table("transactions", Transaction)
   capability model("anthropic", "claude-opus-4-8")
 
   -- The compiler enforces these boundaries.

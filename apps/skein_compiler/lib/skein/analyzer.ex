@@ -55,6 +55,7 @@ defmodule Skein.Analyzer do
   - E0040: Invalid supervisor strategy
   - E0041: Invalid max_restarts value
   - E0042: Supervisor has no children (warning)
+  - E0043: Invalid store.table declaration (typed tables: missing/unknown record type, or not exactly one @primary field)
 
   ### Warnings (W000x)
   - W0001: Unused binding
@@ -928,6 +929,120 @@ defmodule Skein.Analyzer do
   # static table. Unmapped-but-known methods (e.g. event.log, trace.annotate)
   # fall back to `:dynamic` — they are real runtime calls whose shape the
   # table does not pin yet (C1), not inference failures.
+  # ------------------------------------------------------------------
+  # Typed store tables (C5/#255)
+  #
+  # `capability store.table("games", Game)` binds table "games" to record
+  # type Game; the analyzer types every store.<table>.<method> against it.
+  # Declaration-shape problems are E0043 (checked in
+  # `check_store_table_declarations`); here a table with no valid binding
+  # falls back to the registry's dynamic shapes so E0012/E0043 stay the
+  # single source of those reports.
+  # ------------------------------------------------------------------
+
+  defp store_tables(env) do
+    env.capabilities
+    |> Enum.filter(&match?(%AST.Capability{kind: "store.table"}, &1))
+    |> Enum.reduce(%{}, fn %AST.Capability{params: params}, acc ->
+      case params do
+        [%AST.StringLit{segments: [literal: table]}, %AST.Identifier{name: type_name} | _] ->
+          Map.put(acc, table, type_name)
+
+        _ ->
+          acc
+      end
+    end)
+  end
+
+  defp store_record_decl(table, env) do
+    with {:ok, type_name} <- Map.fetch(store_tables(env), table),
+         %AST.TypeDecl{} = decl <- Map.get(env.types, type_name) do
+      {:ok, type_name, decl}
+    else
+      _ -> :untyped
+    end
+  end
+
+  defp primary_key_type(%AST.TypeDecl{fields: fields}, env) do
+    case Enum.find(fields, fn %AST.Field{annotations: annotations} ->
+           Enum.any?(annotations || [], &match?(%AST.Annotation{name: "primary"}, &1))
+         end) do
+      %AST.Field{type: type} -> resolve_type(type, env.types)
+      nil -> :dynamic
+    end
+  end
+
+  defp store_call_type(table, method, args_results, meta, env) do
+    case store_record_decl(table, env) do
+      {:ok, type_name, decl} ->
+        record_type = {:user_type, type_name}
+        pk_type = primary_key_type(decl, env)
+
+        {return_type, expected_params} =
+          case method do
+            "get" ->
+              {{:result, record_type, {:enum, "StoreError"}}, [{"id", pk_type}]}
+
+            "put" ->
+              {{:result, record_type, {:enum, "StoreError"}}, [{"record", record_type}]}
+
+            "delete" ->
+              {{:result, pk_type, {:enum, "StoreError"}}, [{"id", pk_type}]}
+
+            "query" ->
+              {{:result, {:list, record_type}, {:enum, "StoreError"}}, [{"filters", :dynamic}]}
+          end
+
+        {return_type, store_arg_errors(table, method, expected_params, args_results, meta, env)}
+
+      :untyped ->
+        # No valid typed binding: the capability pass (E0012) or the
+        # declaration pass (E0043) reports; stay dynamic to avoid cascades.
+        {@store_return_types |> Map.get(method, :dynamic) |> normalize_enum_refs(env), []}
+    end
+  end
+
+  defp store_arg_errors(table, method, expected_params, args_results, meta, env) do
+    expected_arity = length(expected_params)
+    actual_arity = length(args_results)
+
+    if expected_arity != actual_arity do
+      [
+        %Error{
+          code: "E0020",
+          severity: :error,
+          message:
+            "store.#{table}.#{method} expects #{expected_arity} argument(s), got #{actual_arity}",
+          location: location_from_meta(meta, env.file),
+          fix_hint:
+            "Signature: store.#{table}.#{method}(#{Enum.map_join(expected_params, ", ", &elem(&1, 0))})",
+          fix_code: nil
+        }
+      ]
+    else
+      expected_params
+      |> Enum.zip(args_results)
+      |> Enum.flat_map(fn {{param_name, expected_type}, {actual_type, _}} ->
+        if types_compatible?(actual_type, expected_type) do
+          []
+        else
+          [
+            %Error{
+              code: "E0020",
+              severity: :error,
+              message:
+                "Type mismatch in store.#{table}.#{method}: parameter '#{param_name}' expects " <>
+                  "#{format_type(expected_type)}, got #{format_type(actual_type)}",
+              location: location_from_meta(meta, env.file),
+              fix_hint: "Pass a #{format_type(expected_type)} value for '#{param_name}'",
+              fix_code: nil
+            }
+          ]
+        end
+      end)
+    end
+  end
+
   defp effect_call_return_type("llm", "json", %AST.TypeRef{} = type_param, env) do
     {:result, resolve_type(type_param, env.types), {:enum, "LlmError"}}
   end
@@ -2585,14 +2700,18 @@ defmodule Skein.Analyzer do
 
     case target do
       # store.<table>.<method>(...) — typed as Result so a missing !/? is a
-      # compile error (spec §6.2, skein-testing#1).
+      # compile error (spec §6.2, skein-testing#1). Tables are TYPED (C5/#255):
+      # the capability's record type T flows into the method signatures
+      # (get/put -> Result[T, StoreError], delete -> Result[PK, StoreError],
+      # query -> Result[List[T], StoreError]) and arguments are checked
+      # against T / the @primary key type.
       %AST.FieldAccess{
-        subject: %AST.FieldAccess{subject: %AST.Identifier{name: "store"}, field: _table},
+        subject: %AST.FieldAccess{subject: %AST.Identifier{name: "store"}, field: table},
         field: method
       }
       when method in @store_methods ->
-        {@store_return_types |> Map.get(method, :dynamic) |> normalize_enum_refs(env),
-         args_errors}
+        {return_type, store_errors} = store_call_type(table, method, args_results, meta, env)
+        {return_type, args_errors ++ store_errors}
 
       %AST.Identifier{name: name} when is_map_key(env.functions, name) ->
         fn_info = Map.get(env.functions, name)
@@ -4196,7 +4315,8 @@ defmodule Skein.Analyzer do
     # and duplicate declarations of single-label (scoped) capability kinds
     dup_errors =
       check_duplicate_tool_short_names(env) ++
-        check_duplicate_scoped_capabilities(env)
+        check_duplicate_scoped_capabilities(env) ++
+        check_store_table_declarations(env)
 
     fn_errors =
       declarations
@@ -5162,6 +5282,88 @@ defmodule Skein.Analyzer do
   # §3.2). Two declarations of the same kind in one scope would make that
   # label ambiguous, so each module or agent may declare at most one.
   @scoped_capability_kinds ["memory.kv", "event.log", "process.spawn", "timer"]
+
+  # Typed store tables (C5/#255, E0043): every `capability store.table(...)`
+  # must name BOTH the table and its record type — a declared `type` with
+  # exactly one `@primary` field (the get/delete key). Checked per scope's
+  # own declarations (nested agents check their own).
+  defp check_store_table_declarations(env) do
+    env
+    |> Map.get(:own_capabilities, env.capabilities)
+    |> Enum.filter(&match?(%AST.Capability{kind: "store.table"}, &1))
+    |> Enum.flat_map(&store_table_declaration_errors(&1, env))
+  end
+
+  defp store_table_declaration_errors(%AST.Capability{params: params, meta: meta}, env) do
+    case params do
+      [%AST.StringLit{segments: [literal: table]}, %AST.Identifier{name: type_name}] ->
+        case Map.get(env.types, type_name) do
+          %AST.TypeDecl{} = decl ->
+            primary_count =
+              Enum.count(decl.fields, fn %AST.Field{annotations: annotations} ->
+                Enum.any?(annotations || [], &match?(%AST.Annotation{name: "primary"}, &1))
+              end)
+
+            if primary_count == 1 do
+              []
+            else
+              [
+                store_table_error(
+                  "Record type '#{type_name}' for store table \"#{table}\" must have exactly one @primary field, found #{primary_count}",
+                  "Annotate the primary-key field: id: Uuid @primary",
+                  nil,
+                  meta,
+                  env
+                )
+              ]
+            end
+
+          _ ->
+            [
+              store_table_error(
+                "Record type '#{type_name}' for store table \"#{table}\" is not a declared type",
+                "Declare the record type this table stores",
+                "type #{type_name} { id: Uuid @primary }",
+                meta,
+                env
+              )
+            ]
+        end
+
+      [%AST.StringLit{segments: [literal: table]} | _] ->
+        [
+          store_table_error(
+            "capability store.table(\"#{table}\") must also name the table's record type (store tables are typed)",
+            "Add the record type: capability store.table(\"#{table}\", RecordType)",
+            "capability store.table(\"#{table}\", RecordType)",
+            meta,
+            env
+          )
+        ]
+
+      _ ->
+        [
+          store_table_error(
+            "capability store.table requires a table name string and a record type",
+            "Declare as: capability store.table(\"table_name\", RecordType)",
+            "capability store.table(\"table_name\", RecordType)",
+            meta,
+            env
+          )
+        ]
+    end
+  end
+
+  defp store_table_error(message, fix_hint, fix_code, meta, env) do
+    %Error{
+      code: "E0043",
+      severity: :error,
+      message: message,
+      location: location_from_meta(meta, env.file),
+      fix_hint: fix_hint,
+      fix_code: fix_code
+    }
+  end
 
   defp check_duplicate_scoped_capabilities(env) do
     # A nested agent's env merges the enclosing module's capabilities;

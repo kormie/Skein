@@ -92,8 +92,12 @@ defmodule Skein.Integration.StructuredErrorABITest do
     mod =
       compile!("""
       module StoreMiss {
-        capability store.table("abi_things")
+        capability store.table("abi_things", Thing)
         capability uuid
+
+        type Thing {
+          id: Uuid @primary
+        }
 
         fn read_missing() -> String {
           match store.abi_things.get(uuid.new()) {

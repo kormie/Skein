@@ -5,9 +5,9 @@ description: How Skein's store.table operations execute against the ETS-backed r
 
 ## Overview
 
-Skein provides storage through the `store.table` capability. At runtime, every compiled `store.*` call executes against `Skein.Runtime.Store` — an ETS-backed key-value store (a single `:skein_store` table keyed by string table names) with capability enforcement and tracing. That is the only storage path compiled programs hit today.
+Skein provides storage through the `store.table` capability. Store tables are typed: every declaration names both the table and the record type it stores — `capability store.table("users", User)` — where the record type is a declared `type` in the same module with exactly one `@primary` field (the get/delete key). The analyzer type-checks every `store.<table>` operation against that record type, and writes are schema-checked at runtime. At runtime, every compiled `store.*` call executes against `Skein.Runtime.Store` — an ETS-backed key-value store (a single `:skein_store` table keyed by string table names) with capability enforcement and tracing. That is the only storage path compiled programs hit today.
 
-An Ecto/SQLite typed-table layer also exists in the codebase (`StoreEcto`, `EctoSchema`, `MigrationGen`, `Repo`), but it is **not wired into compilation or boot** — nothing registers schemas or runs migrations for compiled programs, and there is no backend-selection mechanism. It is library code exercised only by its own tests. Typed store tables are roadmap item C5 ([#255](https://github.com/kormie/Skein/issues/255)), targeted at v0.5.0.
+An Ecto/SQLite persistent-table layer also exists in the codebase (`StoreEcto`, `EctoSchema`, `MigrationGen`, `Repo`), but it is **not wired into compilation or boot** — nothing registers schemas or runs migrations for compiled programs, and there is no backend-selection mechanism. It is library code exercised only by its own tests. The compiler half of typed store tables is roadmap item C5 ([#255](https://github.com/kormie/Skein/issues/255)); wiring the persistence path remains future work.
 
 ## Architecture
 
@@ -104,7 +104,7 @@ Every operation:
 
 ```skein
 module UserService {
-  capability store.table("users")
+  capability store.table("users", User)
   capability http.in
 
   type User {
@@ -115,13 +115,15 @@ module UserService {
   }
 
   handler http GET "/users/:id" (req) -> {
-    let user = store.users.get(req.params.id)
-    respond.json(200, user)
+    match store.users.get(req.params.id) {
+      Ok(u)         -> respond.json(200, u)
+      Err(NotFound) -> respond.json(404, { error: "not found" })
+    }
   }
 
   handler http POST "/users" (req) -> {
-    let data = req.json[User]
-    let user = store.users.put(data)
+    let data = req.json[User]()?
+    let user = store.users.put(data)!
     respond.json(201, user)
   }
 }
