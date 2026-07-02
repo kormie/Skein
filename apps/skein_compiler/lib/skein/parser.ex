@@ -2280,24 +2280,16 @@ defmodule Skein.Parser do
     parse_unwrapped_call(expr, :propagate, {qline, qcol}, [lparen | rest], file)
   end
 
-  defp parse_postfix_chain(expr, [{:lparen, {line, col}} | rest], file) do
-    # Function call
-    case parse_args(rest, file, []) do
-      {:ok, args, rest} ->
-        # When the call target is tool.call or tool.schema, convert the
-        # first argument from Identifier/FieldAccess to a ToolRef node.
-        args = maybe_convert_tool_ref_arg(expr, args)
-
-        call = %AST.Call{
-          target: expr,
-          args: args,
-          meta: %{line: line, col: col, file: file}
-        }
-
-        parse_postfix_chain(call, rest, file)
-
-      {:error, _} = error ->
-        error
+  defp parse_postfix_chain(expr, [{:lparen, {line, _col}} | _] = tokens, file) do
+    # A call "(" must sit on the same line as the end of its target — a "("
+    # that starts a new line is the grouping paren of the NEXT expression,
+    # never a call of the previous one (#311). Identifier and FieldAccess
+    # metas carry exactly the last token of a target chain, so same-line is
+    # checkable without threading token positions.
+    if same_line_call_target?(expr, line) do
+      parse_call_continuation(expr, tokens, file)
+    else
+      {:ok, expr, tokens}
     end
   end
 
@@ -2328,8 +2320,9 @@ defmodule Skein.Parser do
     [{:lbracket, _} | rest] = tokens
 
     case parse_type_expr(rest, file) do
-      {:ok, type_ref, [{:rbracket, _}, {:lparen, {line, col}} | rest2]} ->
-        # Type-parameterized call: expr[T](args...)
+      {:ok, type_ref, [{:rbracket, {rb_line, _}}, {:lparen, {line, col}} | rest2]}
+      when rb_line == line ->
+        # Type-parameterized call: expr[T](args...) — same-line "(" only (#311)
         case parse_args(rest2, file, []) do
           {:ok, args, rest3} ->
             call = %AST.Call{
@@ -2364,6 +2357,39 @@ defmodule Skein.Parser do
 
   defp parse_postfix_chain(expr, rest, _file) do
     {:ok, expr, rest}
+  end
+
+  # Call targets are identifiers or dotted chains; their metas point at the
+  # final token of the chain (FieldAccess meta is the FIELD's position), so a
+  # legal call's "(" always shares that line. Any other node as a call target
+  # is an illegal expression-call anyway — refusing the continuation lets the
+  # paren group parse as the next expression instead.
+  defp same_line_call_target?(%AST.Identifier{meta: %{line: target_line}}, line),
+    do: target_line == line
+
+  defp same_line_call_target?(%AST.FieldAccess{meta: %{line: target_line}}, line),
+    do: target_line == line
+
+  defp same_line_call_target?(_expr, _line), do: false
+
+  defp parse_call_continuation(expr, [{:lparen, {line, col}} | rest], file) do
+    case parse_args(rest, file, []) do
+      {:ok, args, rest} ->
+        # When the call target is tool.call or tool.schema, convert the
+        # first argument from Identifier/FieldAccess to a ToolRef node.
+        args = maybe_convert_tool_ref_arg(expr, args)
+
+        call = %AST.Call{
+          target: expr,
+          args: args,
+          meta: %{line: line, col: col, file: file}
+        }
+
+        parse_postfix_chain(call, rest, file)
+
+      {:error, _} = error ->
+        error
+    end
   end
 
   # Shared body for `target!(args)` and `target?(args)`: parse the call,

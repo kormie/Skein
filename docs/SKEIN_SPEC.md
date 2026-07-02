@@ -359,6 +359,9 @@ lifecycle_expr  = "stop" "(" ")" | "suspend" "(" expr ")"
 respond_expr  = "respond" "." lower_ident "(" expr* ")"
 record_lit    = UpperIdent "{" (lower_ident ":" expr)* "}"
 call_expr     = (ident | field_access) "(" args ")"
+                -- the "(" must be on the same line as the callee's final
+                -- token; a "(" starting a new line begins a new expression
+                -- (grouping), never a call of the previous one
 binary_op     = expr op expr
 unary_op      = ("-" | "!") expr | expr ("!" | "?")
 field_access  = expr "." lower_ident
