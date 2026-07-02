@@ -361,7 +361,7 @@ Skein.Runtime.Request.json(req_map, json_schema)
 
 Unified append-only event log for the entire runtime. All trace spans, user events (`event.log`), memory state changes, and annotations flow through a single ETS ordered set (`:skein_events`).
 
-The in-memory log is size-bounded: once it grows past the configured maximum (`config :skein_runtime, :event_store_max_events`, default 100,000), the oldest events are evicted on append. Services that need full history should enable the SQLite backend (`Skein.Runtime.EventStore.SqliteBackend`), which persists every event.
+The in-memory log is size-bounded: once it grows past the configured maximum (`config :skein_runtime, :event_store_max_events`, default 100,000), the oldest events are evicted on append. The log is **in-memory only** — events older than the bound are gone and nothing survives a restart. A SQLite backend module exists but is not wired into the ordinary append path today; durable persistence is tracked by [#299](https://github.com/kormie/Skein/issues/299).
 
 **API:**
 
