@@ -783,7 +783,7 @@ wildcard.
 ### 6.2 Store
 
 ```
--- Requires: capability store.table(name)
+-- Requires: capability store.table(name, RecordType)
 store.<table>.get(id: Uuid) -> Result[T, StoreError]
 store.<table>.put(record: T) -> Result[T, StoreError]
 store.<table>.delete(id: Uuid) -> Result[Uuid, StoreError]
