@@ -52,7 +52,7 @@ defmodule Skein.Runtime.TimerPropertyTest do
 
   property "cancel always returns :ok regardless of ref" do
     check all(ref <- string(:alphanumeric, min_length: 1, max_length: 32)) do
-      assert :ok = Timer.cancel(nil, ref, [%{kind: "timer", params: []}])
+      assert {:ok, ^ref} = Timer.cancel(nil, ref, [%{kind: "timer", params: []}])
     end
   end
 end

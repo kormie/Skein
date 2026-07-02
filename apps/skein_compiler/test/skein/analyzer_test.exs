@@ -5050,7 +5050,7 @@ defmodule Skein.AnalyzerTest do
                  capability event.log("audit")
 
                  fn log_event() -> String {
-                   event.log("user.login", "data")
+                   event.log("user.login", "data")!
                  }
                }
                """)
@@ -5064,7 +5064,7 @@ defmodule Skein.AnalyzerTest do
 
                  fn handle_request() -> String {
                    event.log("request.start", "data")
-                   event.log("request.end", "data")
+                   event.log("request.end", "data")!
                  }
                }
                """)

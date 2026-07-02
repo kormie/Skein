@@ -72,20 +72,26 @@ defmodule Skein.Runtime.EventStore do
   (`nil` when the declaration is parameterless). Calls outside the declared
   stream are blocked; the stream is recorded on the stored event.
 
-  Returns `:ok`.
+  Returns `{:ok, event_name}` — the spec §6.10 contract is
+  `event.log(name, data) -> Result[String, String]` (C1/#296), so a
+  scope-label denial is an `Err` the program can see.
   """
-  @spec log(String.t() | nil, String.t(), term(), list()) :: :ok | {:error, String.t()}
+  @spec log(String.t() | nil, String.t(), term(), list()) ::
+          {:ok, String.t()} | {:error, String.t()}
   def log(stream, event_name, data, capabilities)
       when (is_binary(stream) or is_nil(stream)) and is_binary(event_name) do
     case Capability.check_scoped("event.log", stream, capabilities) do
       :ok ->
-        append(%{
-          kind: :user_event,
-          event: event_name,
-          stream: stream,
-          data: data,
-          wall_time: System.system_time(:microsecond)
-        })
+        :ok =
+          append(%{
+            kind: :user_event,
+            event: event_name,
+            stream: stream,
+            data: data,
+            wall_time: System.system_time(:microsecond)
+          })
+
+        {:ok, event_name}
 
       {:error, _reason} = error ->
         error

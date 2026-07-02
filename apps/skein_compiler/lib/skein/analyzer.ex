@@ -90,92 +90,36 @@ defmodule Skein.Analyzer do
           | :unknown
           | {:widened, skein_type, skein_type}
 
-  # Known effect namespaces and the capabilities they require
-  # A nil value means no capability is required (e.g., trace is always available)
-  @effect_namespaces %{
-    "http" => "http.out",
-    "memory" => "memory.kv",
-    "llm" => "model",
-    "tool" => "tool.use",
-    "topic" => "topic.publish",
-    "queue" => "queue.publish",
-    "trace" => nil,
-    "process" => "process.spawn",
-    "timer" => "timer",
-    "event" => "event.log",
-    # Nondeterministic generators are effects, not ambient stdlib (#261):
-    # uuid.new() needs `capability uuid`, instant.now() needs `capability instant`.
-    # ("clock" is deliberately NOT used — that's the timer/sleep concept.)
-    "uuid" => "uuid",
-    "instant" => "instant"
-  }
+  # ------------------------------------------------------------------
+  # Effect tables — DERIVED from the authoritative effect-ABI registry
+  # (`Skein.EffectABI`, C1/#296). Do not hand-edit shapes here: change the
+  # registry entry, and the spec §6 drift test + runtime ABI-matrix test
+  # will hold every copy to it.
+  # ------------------------------------------------------------------
 
-  # Known effect methods per namespace
-  @effect_methods %{
-    "http" => ["get", "post", "put", "patch", "delete"],
-    "memory" => ["put", "get", "delete", "list"],
-    "llm" => ["chat", "json", "stream", "embed"],
-    "tool" => ["call", "list", "schema"],
-    "topic" => ["publish"],
-    "queue" => ["publish"],
-    "trace" => ["annotate"],
-    "process" => ["spawn"],
-    "timer" => ["after", "interval", "cancel"],
-    "event" => ["log"],
-    "uuid" => ["new"],
-    "instant" => ["now"]
-  }
+  # namespace => required capability (nil = always available, e.g. trace)
+  @effect_namespaces Skein.EffectABI.effect_namespaces()
+
+  # namespace => known methods
+  @effect_methods Skein.EffectABI.effect_methods()
 
   # Store operations: store.<table>.<method>(...)
-  @store_methods ["get", "put", "delete", "query"]
+  @store_methods Skein.EffectABI.store_methods()
 
   # Declared return types per effect method (spec §6). Effects return
   # `Result[T, E]`, so a missing `!`/`?` (or `match`) is a *compile* error
   # rather than a runtime crash (skein-testing#1, #260). Generic/unspecified
   # components are `:dynamic` — the spec-sanctioned dynamically-typed seams
-  # (payload `T` of the untyped store/memory/tool, error shapes pending the C1
-  # effect-ABI matrix). `:dynamic` may cross declared boundaries; `:unknown`
-  # (inference failure) may not (#291). The success component carries the
-  # spec's type where doing so is cheap and does not break legitimate field
-  # access (e.g. an HTTP response body stays `:dynamic`). `llm.json[T]` is
-  # resolved from its type parameter, not this table.
-  @effect_return_types %{
-    {"http", "get"} => {:result, :dynamic, :dynamic},
-    {"http", "post"} => {:result, :dynamic, :dynamic},
-    {"http", "put"} => {:result, :dynamic, :dynamic},
-    {"http", "patch"} => {:result, :dynamic, :dynamic},
-    {"http", "delete"} => {:result, :dynamic, :dynamic},
-    {"memory", "put"} => {:result, :dynamic, :dynamic},
-    {"memory", "get"} => {:result, :dynamic, :dynamic},
-    {"memory", "delete"} => {:result, :string, :dynamic},
-    {"memory", "list"} => {:list, :string},
-    {"llm", "chat"} => {:result, :string, :dynamic},
-    {"llm", "stream"} => {:result, :string, :dynamic},
-    {"llm", "embed"} => {:result, {:list, :float}, :dynamic},
-    {"tool", "call"} => {:result, :dynamic, :dynamic},
-    {"tool", "list"} => {:result, {:list, :dynamic}, :dynamic},
-    {"tool", "schema"} => {:result, :dynamic, :dynamic},
-    {"topic", "publish"} => {:result, :string, :dynamic},
-    {"queue", "publish"} => {:result, :string, :dynamic},
-    {"process", "spawn"} => {:result, :dynamic, :string},
-    {"timer", "after"} => {:result, :string, :string},
-    {"timer", "interval"} => {:result, :string, :string},
-    {"timer", "cancel"} => {:result, :string, :string},
-    # Nondeterministic generators can't fail, so they return the bare value
-    # (no Result / no `!` needed) — just like memory.list.
-    {"uuid", "new"} => :uuid,
-    {"instant", "now"} => :instant
-  }
+  # (payload `T` of the untyped store/memory/tool, error shapes pending C2).
+  # `:dynamic` may cross declared boundaries; `:unknown` (inference failure)
+  # may not (#291). `llm.json[T]` is resolved from its type parameter, not
+  # this table.
+  @effect_return_types Skein.EffectABI.effect_return_types()
 
   # store.<table>.<method> return types (spec §6.2). The record type `T` is not
   # tracked per table (the active store is dynamic — #255/C5), so the success
   # side is `:dynamic`; the Result wrapper is what forces `!`/`?`/`match`.
-  @store_return_types %{
-    "get" => {:result, :dynamic, :dynamic},
-    "put" => {:result, :dynamic, :dynamic},
-    "delete" => {:result, :dynamic, :dynamic},
-    "query" => {:result, {:list, :dynamic}, :dynamic}
-  }
+  @store_return_types Skein.EffectABI.store_return_types()
 
   # Control-flow keywords common in other languages that Skein deliberately
   # does not have. When one appears where an expression is expected it's
@@ -674,76 +618,23 @@ defmodule Skein.Analyzer do
   # ------------------------------------------------------------------
 
   # Parameter names for effect calls, aligned with the Effects API
-  # signatures in SKEIN_SPEC.md section 6. Effects not listed here
-  # (tool.*, timer.*) do not support named arguments.
-  @effect_param_names %{
-    {"http", "get"} => ["url"],
-    {"http", "post"} => ["url", "json"],
-    {"http", "put"} => ["url", "json"],
-    {"http", "patch"} => ["url", "json"],
-    {"http", "delete"} => ["url"],
-    {"memory", "put"} => ["key", "value"],
-    {"memory", "get"} => ["key"],
-    {"memory", "delete"} => ["key"],
-    {"memory", "list"} => ["prefix"],
-    {"llm", "chat"} => ["model", "system", "input"],
-    {"llm", "json"} => ["model", "system", "input"],
-    {"llm", "stream"} => ["model", "system", "input", "on_chunk"],
-    {"llm", "embed"} => ["model", "input"],
-    {"topic", "publish"} => ["name", "data"],
-    {"queue", "publish"} => ["name", "data"],
-    {"trace", "annotate"} => ["key", "value"],
-    {"process", "spawn"} => ["task", "work"],
-    {"event", "log"} => ["name", "data"],
-    {"timer", "after"} => ["delay_ms", "task", "work"],
-    {"timer", "interval"} => ["every_ms", "task", "work"],
-    {"timer", "cancel"} => ["ref"],
-    {"uuid", "new"} => [],
-    {"instant", "now"} => []
-  }
+  # signatures in SKEIN_SPEC.md section 6 — derived from the effect-ABI
+  # registry (C1/#296). Effects without named-argument support (tool.*)
+  # are absent.
+  @effect_param_names Skein.EffectABI.effect_param_names()
 
   # Trailing effect parameters that may be omitted. `process.spawn(name)`
   # spawns a named no-op; the optional `work` fn reference attaches a task
   # body (spec §6.11). Only trailing parameters can be optional — omitting
-  # a middle parameter would shift the positional order.
-  @effect_optional_params %{
-    {"llm", "stream"} => ["on_chunk"],
-    {"process", "spawn"} => ["work"],
-    {"timer", "after"} => ["work"],
-    {"timer", "interval"} => ["work"]
-  }
+  # a middle parameter would shift the positional order (registry-enforced).
+  @effect_optional_params Skein.EffectABI.effect_optional_params()
 
   # Positional parameter types for the documented effect signatures (#292/B3),
   # aligned index-for-index with @effect_param_names. `:dynamic` marks payload
-  # slots the spec types as Json/any — the C1 effect-ABI matrix owns tightening
-  # those. Work/callback slots are zero-arg callables: the runtime applies them
-  # with no arguments (Process.spawn/Timer task bodies), and llm.stream's
-  # on_chunk receives the chunk text.
-  @effect_param_types %{
-    {"http", "get"} => [:string],
-    {"http", "post"} => [:string, :dynamic],
-    {"http", "put"} => [:string, :dynamic],
-    {"http", "patch"} => [:string, :dynamic],
-    {"http", "delete"} => [:string],
-    {"memory", "put"} => [:string, :dynamic],
-    {"memory", "get"} => [:string],
-    {"memory", "delete"} => [:string],
-    {"memory", "list"} => [:string],
-    {"llm", "chat"} => [:string, :string, :dynamic],
-    {"llm", "json"} => [:string, :string, :dynamic],
-    {"llm", "stream"} => [:string, :string, :dynamic, {:fn, [:string], :dynamic}],
-    {"llm", "embed"} => [:string, :string],
-    {"topic", "publish"} => [:string, :dynamic],
-    {"queue", "publish"} => [:string, :dynamic],
-    {"trace", "annotate"} => [:string, :dynamic],
-    {"process", "spawn"} => [:string, {:fn, [], :dynamic}],
-    {"event", "log"} => [:string, :dynamic],
-    {"timer", "after"} => [:int, :string, {:fn, [], :dynamic}],
-    {"timer", "interval"} => [:int, :string, {:fn, [], :dynamic}],
-    {"timer", "cancel"} => [:dynamic],
-    {"uuid", "new"} => [],
-    {"instant", "now"} => []
-  }
+  # slots the spec types as Json/any. Work/callback slots are zero-arg
+  # callables: the runtime applies them with no arguments (Process.spawn/Timer
+  # task bodies), and llm.stream's on_chunk receives the chunk text.
+  @effect_param_types Skein.EffectABI.effect_param_types()
 
   defp resolve_named_args(%AST.Call{} = call, env) do
     {target, target_errors} = resolve_named_args(call.target, env)
@@ -4863,28 +4754,8 @@ defmodule Skein.Analyzer do
   # silently dead — that is a contract error, not a no-op.
   # ------------------------------------------------------------------
 
-  @provider_contracts %{
-    "uuid" => %{
-      params: [],
-      return: :uuid,
-      signature: "implement() -> Uuid"
-    },
-    "instant" => %{
-      params: [],
-      return: :instant,
-      signature: "implement() -> Instant"
-    },
-    "http.out" => %{
-      params: [{:user_type, "HttpRequest"}],
-      return: {:result, {:user_type, "HttpResponse"}, {:user_type, "HttpError"}},
-      signature: "implement(req: HttpRequest) -> Result[HttpResponse, HttpError]"
-    },
-    "model" => %{
-      params: [{:user_type, "LlmRequest"}],
-      return: {:result, {:user_type, "LlmResponse"}, {:user_type, "LlmError"}},
-      signature: "implement(req: LlmRequest) -> Result[LlmResponse, LlmError]"
-    }
-  }
+  # Derived from the effect-ABI registry (C1/#296).
+  @provider_contracts Skein.EffectABI.provider_contracts()
 
   defp check_provider_contracts(declarations, env) do
     declarations

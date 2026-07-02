@@ -150,9 +150,13 @@ defmodule Skein.Runtime.Timer do
 
   The group is the scoped capability label (spec §3.2); see `after/4`.
 
-  Returns `:ok` regardless of whether the timer was found.
+  Cancellation is idempotent: an unknown or already-fired ref still
+  succeeds. Returns `{:ok, timer_ref}` — the spec §6.11 contract is
+  `timer.cancel(ref) -> Result[String, String]` (C1/#296); `Err` is a
+  scope-label denial.
   """
-  @spec cancel(String.t() | nil, String.t(), list()) :: :ok | {:error, String.t()}
+  @spec cancel(String.t() | nil, String.t(), list()) ::
+          {:ok, String.t()} | {:error, String.t()}
   def cancel(group, timer_ref, capabilities)
       when (is_binary(group) or is_nil(group)) and is_binary(timer_ref) do
     case Capability.check_scoped("timer", group, capabilities) do
@@ -177,7 +181,7 @@ defmodule Skein.Runtime.Timer do
           :ok
       end
 
-      :ok
+      {:ok, timer_ref}
     end)
   end
 

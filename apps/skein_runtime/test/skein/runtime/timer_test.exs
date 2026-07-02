@@ -257,7 +257,7 @@ defmodule Skein.Runtime.TimerTest do
           %{kind: "timer", params: []}
         ])
 
-      assert :ok = Timer.cancel(nil, ref, [%{kind: "timer", params: []}])
+      assert {:ok, ^ref} = Timer.cancel(nil, ref, [%{kind: "timer", params: []}])
       refute_receive :should_not_fire, 700
     end
 
@@ -271,7 +271,7 @@ defmodule Skein.Runtime.TimerTest do
       assert_receive :tick, 1000
 
       # Cancel it
-      assert :ok = Timer.cancel(nil, ref, [%{kind: "timer", params: []}])
+      assert {:ok, ^ref} = Timer.cancel(nil, ref, [%{kind: "timer", params: []}])
       Process.sleep(150)
 
       # Drain any remaining messages that were in-flight
@@ -285,7 +285,8 @@ defmodule Skein.Runtime.TimerTest do
     end
 
     test "cancelling a nonexistent ref returns :ok" do
-      assert :ok = Timer.cancel(nil, "nonexistent-ref", [%{kind: "timer", params: []}])
+      assert {:ok, "nonexistent-ref"} =
+               Timer.cancel(nil, "nonexistent-ref", [%{kind: "timer", params: []}])
     end
   end
 

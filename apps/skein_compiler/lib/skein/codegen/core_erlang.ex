@@ -25,31 +25,16 @@ defmodule Skein.CodeGen.CoreErlang do
   # boundary (#290). Namespaced so no user value can collide with it.
   @propagate_tag :"$skein_propagate"
 
-  # Known effect namespaces and their runtime modules
-  # memory and llm have special codegen handlers below
-  @effect_runtime_modules %{
-    "http" => :"Elixir.Skein.Runtime.Http",
-    "topic" => :"Elixir.Skein.Runtime.Topic",
-    "queue" => :"Elixir.Skein.Runtime.Queue",
-    "trace" => :"Elixir.Skein.Runtime.Trace",
-    "process" => :"Elixir.Skein.Runtime.Process",
-    "timer" => :"Elixir.Skein.Runtime.Timer",
-    "event" => :"Elixir.Skein.Runtime.EventStore",
-    # Nondeterministic generators are effects (#261): uuid.new()/instant.now()
-    # lower to capability-checked, replay-aware runtime calls.
-    "uuid" => :"Elixir.Skein.Runtime.Uuid",
-    "instant" => :"Elixir.Skein.Runtime.Instant"
-  }
+  # Known effect namespaces and their runtime modules — derived from the
+  # authoritative effect-ABI registry (C1/#296). Namespaces with dedicated
+  # codegen handlers below (memory/llm/tool) are absent by construction.
+  @effect_runtime_modules Skein.EffectABI.generic_runtime_modules()
 
   # Scoped capability labels (spec §3.2): for these namespaces the declared
   # capability parameter names a scope label (pool/group/stream) that is
   # threaded into every generated runtime call as the first argument,
-  # mirroring the memory.kv namespace threading.
-  @scoped_effect_capability_kinds %{
-    "process" => "process.spawn",
-    "timer" => "timer",
-    "event" => "event.log"
-  }
+  # mirroring the memory.kv namespace threading. Registry-derived (C1/#296).
+  @scoped_effect_capability_kinds Skein.EffectABI.scoped_label_capability_kinds()
 
   # Standard library module mapping: Skein module name -> Elixir runtime module
   @stdlib_modules %{

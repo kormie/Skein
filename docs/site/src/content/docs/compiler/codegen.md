@@ -511,7 +511,7 @@ namespace.method(arg1, arg2)
 call 'Elixir.Skein.Runtime.<Module>':'method'(Arg1, Arg2, Capabilities)
 ```
 
-This covers `process.spawn`, `timer.after`, `timer.interval`, `timer.cancel`, `trace.annotate`, `event.log`, `queue.publish`, and `topic.publish`.
+This covers `http.*`, `process.spawn`, `timer.after`, `timer.interval`, `timer.cancel`, `trace.annotate`, `event.log`, `queue.publish`, `topic.publish`, `uuid.new`, and `instant.now`. The namespace-to-module map is derived from the authoritative effect-ABI registry (`Skein.EffectABI`, #296) — the same registry that drives the analyzer's effect tables and the spec §6 signature drift test.
 
 ## Handler Generation
 

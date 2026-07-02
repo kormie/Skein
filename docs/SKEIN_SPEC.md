@@ -859,14 +859,17 @@ idempotent(key: String) -> ()   -- skip handler if key already processed
 All runtime events — effect spans, trace annotations, user-defined events (`event.log`), and memory state changes — are stored in a single unified event log. This enables querying, replay, and memory reconstruction from the event stream.
 
 ```
-trace.annotate(key: String, value: String) -> ()  -- add metadata to current span
-event.log(name: String, data: T) -> ()            -- record structured user event
+trace.annotate(key: String, value: String) -> ()             -- add metadata to current span
+event.log(name: String, data: T) -> Result[String, String]   -- record structured user event
 ```
 
-`trace.annotate` requires no capability. `event.log` requires
+`trace.annotate` requires no capability and cannot fail (`()` lowers to a
+bare value; no `!`/`?` applies). `event.log` requires
 `capability event.log(...)` — the capability parameter names the stream
 the events are recorded to (a scoped capability label, §3.2); the call
-carries only the event name and data.
+carries only the event name and data. Like the other scoped effects, a
+scope-label denial is an `Err` visible to the program (the `Ok` payload is
+the event name).
 
 Memory mutations (`memory.put`, `memory.delete`) automatically emit `:state_change` events, making memory state reconstructable from the event stream.
 
@@ -884,8 +887,12 @@ timer.after(delay_ms: Int, task: String) -> Result[String, String]           -- 
 timer.after(delay_ms: Int, task: String, work) -> Result[String, String]     -- one-shot with a task body
 timer.interval(every_ms: Int, task: String) -> Result[String, String]        -- repeating
 timer.interval(every_ms: Int, task: String, work) -> Result[String, String]  -- repeating with a task body
-timer.cancel(ref: String) -> ()
+timer.cancel(ref: String) -> Result[String, String]
 ```
+
+`timer.cancel` is idempotent: cancelling an unknown or already-fired ref
+still succeeds, and `Ok` carries the ref back. `Err` is a scope-label
+denial, exactly as for `timer.after`/`timer.interval`.
 
 The pool/group capability parameter is a scoped capability label (§3.2):
 the compiler threads it into each call and it appears on the trace span.

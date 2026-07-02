@@ -3670,7 +3670,7 @@ defmodule Skein.CodeGen.CoreErlangTest do
           capability event.log("audit")
 
           fn record_fire() -> String {
-            event.log("timer.fired", "body ran")
+            event.log("timer.fired", "body ran")!
           }
 
           fn schedule() -> Result[String, String] {
@@ -3707,7 +3707,7 @@ defmodule Skein.CodeGen.CoreErlangTest do
           capability event.log("audit")
 
           fn record_tick() -> String {
-            event.log("interval.tick", "tick")
+            event.log("interval.tick", "tick")!
           }
 
           fn schedule() -> Result[String, String] {
@@ -3739,7 +3739,7 @@ defmodule Skein.CodeGen.CoreErlangTest do
           capability event.log("audit")
 
           fn record_run() -> String {
-            event.log("task.ran", "background")
+            event.log("task.ran", "background")!
           }
 
           fn start_task() -> Result[String, String] {
@@ -3843,7 +3843,7 @@ defmodule Skein.CodeGen.CoreErlangTest do
           capability event.log("audit")
 
           fn log_event() -> String {
-            event.log("user.login", "data")
+            event.log("user.login", "data")!
           }
         }
         """)
@@ -3861,7 +3861,7 @@ defmodule Skein.CodeGen.CoreErlangTest do
           capability event.log("audit")
 
           fn log_it() -> String {
-            event.log("test.event", "payload")
+            event.log("test.event", "payload")!
           }
         }
         """)
@@ -3887,7 +3887,7 @@ defmodule Skein.CodeGen.CoreErlangTest do
 
           fn log_multiple() -> String {
             event.log("start", "begin")
-            event.log("end", "done")
+            event.log("end", "done")!
           }
         }
         """)
@@ -3913,7 +3913,7 @@ defmodule Skein.CodeGen.CoreErlangTest do
           capability event.log("audit")
 
           fn log_it() -> String {
-            event.log("test.event", "payload")
+            event.log("test.event", "payload")!
           }
         }
         """)
@@ -3937,7 +3937,7 @@ defmodule Skein.CodeGen.CoreErlangTest do
           capability event.log
 
           fn log_it() -> String {
-            event.log("test.event", "payload")
+            event.log("test.event", "payload")!
           }
         }
         """)

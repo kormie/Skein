@@ -376,7 +376,8 @@ Skein.Runtime.EventStore.append(%{kind: :http, method: :get, url: "/api"})
 # from the module's scoped capability event.log(stream) declaration
 # (nil when the declaration is parameterless).
 Skein.Runtime.EventStore.log(nil, "user.login", %{user: "alice"}, capabilities)
-#=> :ok
+#=> {:ok, "user.login"} (Skein contract: Result[String, String] — a
+#   scope-label denial is {:error, reason})
 
 # Query by kind or any field
 Skein.Runtime.EventStore.query(kind: :user_event)

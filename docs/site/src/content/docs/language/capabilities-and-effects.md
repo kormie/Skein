@@ -296,15 +296,15 @@ module TimerService {
 }
 ```
 
-- `timer.after(delay_ms, callback)` returns `{:ok, timer_ref}` -- a one-shot timer
-- `timer.interval(interval_ms, callback)` returns `{:ok, timer_ref}` -- a recurring timer
-- `timer.cancel(timer_ref)` returns `:ok` -- cancels any active timer
+- `timer.after(delay_ms, task)` returns `Result[String, String]` -- `Ok` carries the timer ref
+- `timer.interval(interval_ms, task)` returns `Result[String, String]` -- `Ok` carries the timer ref
+- `timer.cancel(timer_ref)` returns `Result[String, String]` -- idempotent; `Ok` carries the ref back, `Err` is a scope-label denial
 
 All three require a `capability timer(...)` declaration.
 
 ### Event Logging
 
-`event.log(name, data)` records a structured event to the event log. Events have automatic timestamps and unique IDs.
+`event.log(name, data)` records a structured event to the event log and returns `Result[String, String]` (`Ok` carries the event name; a scope-label denial is an `Err`). Events have automatic timestamps and unique IDs.
 
 ```skein
 module AuditService {
