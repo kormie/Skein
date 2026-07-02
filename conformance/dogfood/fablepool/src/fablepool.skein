@@ -1,0 +1,1194 @@
+-- FablePool — an open protocol for user-owned AI memory, ported to Skein.
+--
+-- Reference core: a signed, append-only operation log from which a derivation
+-- graph of claims about the user is materialized (with statuses, cascade
+-- invalidation and deterministic conflict resolution), inspected, refuted,
+-- shared via capability grants as evidence-free attestations, and revoked with
+-- a verifiable purge receipt.
+--
+-- Crypto is a deliberate, documented stub: Skein 1.0.0-rc.4 has no hash,
+-- signatures, byte type, or encoding (kormie/Skein#245,#246,#250). An op's
+-- content id and all commitments are deterministic canonical-string
+-- fingerprints; author/node keys are opaque string tags. This preserves the
+-- one property that matters — deterministic replay => convergence — and
+-- matches FablePool's own "not production-audited cryptography" non-goal.
+-- Real crypto becomes possible if Skein gains a crypto capability or FFI (#141).
+
+module Fablepool {
+
+  -- Serves the end-to-end demo and the inspection routes under `skein run`.
+  capability http.in
+
+  -- Surrogate primary keys for the durable op log (see StoredOp below).
+  capability uuid
+
+  -- ===========================================================================
+  -- Operation model — the 7 wire op types of FablePool FP/1
+  -- ===========================================================================
+
+  -- Skein enums are payload-free (kormie/Skein#247), so an Op is one wide record
+  -- discriminated by `kind`; fields irrelevant to a kind carry empty defaults.
+  enum OpKind {
+    Evidence Claim Refutation Grant Revocation Attestation Receipt
+  }
+
+  -- Confidence is an integer in basis points (0..10000), matching the reference
+  -- wire format and sidestepping Skein's thin Float surface.
+  type Op {
+    id: String                  -- content address: deterministic fingerprint
+    author: String              -- signing key tag (crypto stub)
+    node: String                -- human-meaningful origin label
+    lamport: Int                -- logical clock for deterministic ordering
+    prev: List[String]          -- causal predecessors (op ids)
+    kind: OpKind
+
+    -- evidence
+    source: String              -- adapter/source id, e.g. "notes:laptop"
+    content: String             -- raw imported fact
+    ekind: String               -- evidence kind tag: note | event | photo
+    sensitivity: Int            -- 0 normal .. 3 highly sensitive
+
+    -- claim / attestation
+    subject: String             -- usually "user"
+    predicate: String           -- e.g. "fitness.trains_for"
+    value: String               -- the claim object
+    confidence: Int             -- basis points 0..10000
+    derived_from: List[String]  -- evidence/claim op ids (provenance)
+    deriver: String             -- rule id, or "user" for a user assertion
+    rationale: String           -- human "why"
+    method: String              -- rule | statistical | user
+
+    -- refutation / revocation / attestation / receipt
+    target: String              -- op id (refute) / grant id (revoke/attest/receipt)
+
+    -- grant selector + delegation
+    delegate: String            -- audience key tag
+    scope: List[String]         -- predicate patterns ("fitness.*"); [] = any
+    subjects: List[String]      -- subject allow-list; [] = any
+    min_conf: Int               -- minimum confidence (bp) the grant exposes
+    expiry: Int                 -- lamport expiry; 0 = none
+
+    -- attestation provenance commitment / receipt state hash
+    commitment: String
+  }
+
+  -- Wire-format type strings (normative). kind_str doubles as the canonical tag.
+  fn kind_str(k: OpKind) -> String {
+    match k {
+      Evidence    -> "evidence"
+      Claim       -> "claim"
+      Refutation  -> "refutation"
+      Grant       -> "cap_grant"
+      Revocation  -> "cap_revoke"
+      Attestation -> "attestation"
+      Receipt     -> "purge_receipt"
+    }
+  }
+
+  -- ---------------------------------------------------------------------------
+  -- Canonicalization + content id (would be SHA-256 with real crypto)
+  -- ---------------------------------------------------------------------------
+
+  -- Deterministic pipe-join of a string list (no String.join in rc.4, #250).
+  -- NB: List.reduce passes (element, accumulator) at runtime (kormie/Skein#254),
+  -- so `x` is the element and `acc` the running string.
+  fn join(xs: List[String]) -> String {
+    List.reduce(xs, "", &join_step)
+  }
+  fn join_step(x: String, acc: String) -> String {
+    match acc == "" {
+      true  -> x
+      false -> "${acc},${x}"
+    }
+  }
+
+  -- Canonical body string: every field in a fixed order.
+  fn canon(o: Op) -> String {
+    let ks  = kind_str(o.kind)
+    let lc  = Int.to_string(o.lamport)
+    let pj  = join(o.prev)
+    let sn  = Int.to_string(o.sensitivity)
+    let cf  = Int.to_string(o.confidence)
+    let dj  = join(o.derived_from)
+    let scj = join(o.scope)
+    let suj = join(o.subjects)
+    let mc  = Int.to_string(o.min_conf)
+    let ex  = Int.to_string(o.expiry)
+    "v1|${ks}|au=${o.author}|nd=${o.node}|lc=${lc}|prev=[${pj}]|src=${o.source}|content=${o.content}|ek=${o.ekind}|sn=${sn}|subj=${o.subject}|pred=${o.predicate}|val=${o.value}|conf=${cf}|df=[${dj}]|deriver=${o.deriver}|why=${o.rationale}|m=${o.method}|target=${o.target}|del=${o.delegate}|scope=[${scj}]|subjects=[${suj}]|minc=${mc}|exp=${ex}|cmt=${o.commitment}"
+  }
+
+  -- With no hash available, the content id is the canonical body (prefixed).
+  fn content_id(b: String) -> String {
+    "fp1:${b}"
+  }
+
+  -- Central builder: assembles the full record once (no functional record
+  -- update in rc.4, #251), computes the id from the body, and returns the op.
+  fn mk(author: String, node: String, lamport: Int, prev: List[String], k: OpKind,
+        source: String, content: String, ekind: String, sensitivity: Int,
+        subject: String, predicate: String, value: String, confidence: Int,
+        derived_from: List[String], deriver: String, rationale: String, method: String,
+        target: String, delegate: String, scope: List[String], subjects: List[String],
+        min_conf: Int, expiry: Int, commitment: String) -> Op {
+    let draft = Op { id: "", author: author, node: node, lamport: lamport, prev: prev,
+      kind: k, source: source, content: content, ekind: ekind, sensitivity: sensitivity,
+      subject: subject, predicate: predicate, value: value, confidence: confidence,
+      derived_from: derived_from, deriver: deriver, rationale: rationale, method: method,
+      target: target, delegate: delegate, scope: scope, subjects: subjects,
+      min_conf: min_conf, expiry: expiry, commitment: commitment }
+    let id = content_id(canon(draft))
+    Op { id: id, author: author, node: node, lamport: lamport, prev: prev,
+      kind: k, source: source, content: content, ekind: ekind, sensitivity: sensitivity,
+      subject: subject, predicate: predicate, value: value, confidence: confidence,
+      derived_from: derived_from, deriver: deriver, rationale: rationale, method: method,
+      target: target, delegate: delegate, scope: scope, subjects: subjects,
+      min_conf: min_conf, expiry: expiry, commitment: commitment }
+  }
+
+  fn nil_op() -> Op {
+    mk("", "", 0, [], OpKind.Refutation, "", "", "", 0, "", "", "", 0, [], "", "", "",
+       "__nil__", "", [], [], 0, 0, "")
+  }
+
+  -- ---------------------------------------------------------------------------
+  -- Typed constructors (named args for readability over the wide arg list)
+  -- ---------------------------------------------------------------------------
+
+  fn mk_evidence(author: String, node: String, lamport: Int, source: String,
+                 ekind: String, content: String, sensitivity: Int) -> Op {
+    mk(author, node, lamport, [], OpKind.Evidence, source, content, ekind, sensitivity,
+       "", "", "", 0, [], "", "", "", "", "", [], [], 0, 0, "")
+  }
+
+  fn mk_claim(author: String, node: String, lamport: Int, subject: String,
+              predicate: String, value: String, confidence: Int,
+              derived_from: List[String], deriver: String, rationale: String,
+              method: String) -> Op {
+    mk(author, node, lamport, derived_from, OpKind.Claim, "", "", "", 0,
+       subject, predicate, value, confidence, derived_from, deriver, rationale, method,
+       "", "", [], [], 0, 0, "")
+  }
+
+  fn mk_refutation(author: String, node: String, lamport: Int, target: String) -> Op {
+    mk(author, node, lamport, [target], OpKind.Refutation, "", "", "", 0,
+       "", "", "", 0, [], "", "", "", target, "", [], [], 0, 0, "")
+  }
+
+  fn mk_grant(author: String, node: String, lamport: Int, delegate: String,
+              scope: List[String], subjects: List[String], min_conf: Int,
+              expiry: Int) -> Op {
+    mk(author, node, lamport, [], OpKind.Grant, "", "", "", 0, "", "", "", 0, [], "",
+       "", "", "", delegate, scope, subjects, min_conf, expiry, "")
+  }
+
+  fn mk_revocation(author: String, node: String, lamport: Int, grant_id: String) -> Op {
+    mk(author, node, lamport, [grant_id], OpKind.Revocation, "", "", "", 0, "", "", "",
+       0, [], "", "", "", grant_id, "", [], [], 0, 0, "")
+  }
+
+  -- An attestation is evidence-free by construction: it carries only the claim
+  -- summary plus a provenance commitment, never derived_from/content/source.
+  fn mk_attestation(author: String, node: String, lamport: Int, grant_id: String,
+                    delegate: String, subject: String, predicate: String,
+                    value: String, confidence: Int, commitment: String) -> Op {
+    mk(author, node, lamport, [grant_id], OpKind.Attestation, "", "", "", 0,
+       subject, predicate, value, confidence, [], "", "", "", grant_id, delegate,
+       [], [], 0, 0, commitment)
+  }
+
+  fn mk_receipt(author: String, node: String, lamport: Int, grant_id: String,
+                delegate: String, commitment: String) -> Op {
+    mk(author, node, lamport, [grant_id], OpKind.Receipt, "", "", "", 0, "", "", "", 0,
+       [], "", "", "", grant_id, delegate, [], [], 0, 0, commitment)
+  }
+
+  -- ---------------------------------------------------------------------------
+  -- Log helpers (explicit recursion — no closures in rc.4, #248)
+  -- ---------------------------------------------------------------------------
+
+  fn find_op(ops: List[Op], id: String) -> Op {
+    match List.head(ops) {
+      None -> nil_op()
+      Some(o) -> match o.id == id {
+        true  -> o
+        false -> find_op(List.tail(ops), id)
+      }
+    }
+  }
+
+  fn ids_of(ops: List[Op]) -> List[String] {
+    match List.head(ops) {
+      None -> []
+      Some(o) -> List.concat([o.id], ids_of(List.tail(ops)))
+    }
+  }
+
+  fn refuted_ids(ops: List[Op], acc: List[String]) -> List[String] {
+    match List.head(ops) {
+      None -> acc
+      Some(o) -> {
+        let rest = List.tail(ops)
+        match o.kind {
+          Refutation -> refuted_ids(rest, List.concat(acc, [o.target]))
+          _          -> refuted_ids(rest, acc)
+        }
+      }
+    }
+  }
+
+  -- ===========================================================================
+  -- Claim materialization: statuses, cascade invalidation, conflict resolution
+  -- ===========================================================================
+
+  -- Claim status as a value (enum, payload-free).
+  enum Status { Active Refuted Invalidated Superseded }
+
+  fn status_str(s: Status) -> String {
+    match s {
+      Active      -> "active"
+      Refuted     -> "refuted"
+      Invalidated -> "invalidated"
+      Superseded  -> "superseded"
+    }
+  }
+
+  type ClaimView {
+    claim_id: String
+    subject: String
+    predicate: String
+    value: String
+    confidence: Int
+    status: Status
+    deriver: String
+    rationale: String
+    support: Int        -- number of provenance items (count, not content)
+  }
+
+  -- An op is invalid if it is directly refuted, or it is a claim resting on any
+  -- invalid op. Deterministic and part of replay (cascade invalidation).
+  fn is_invalid(all: List[Op], refuted: List[String], id: String) -> Bool {
+    match List.contains(refuted, id) {
+      true  -> true
+      false -> {
+        let o = find_op(all, id)
+        match o.kind {
+          Claim -> any_invalid(all, refuted, o.derived_from)
+          _     -> false
+        }
+      }
+    }
+  }
+  fn any_invalid(all: List[Op], refuted: List[String], ids: List[String]) -> Bool {
+    match List.head(ids) {
+      None -> false
+      Some(id) -> match is_invalid(all, refuted, id) {
+        true  -> true
+        false -> any_invalid(all, refuted, List.tail(ids))
+      }
+    }
+  }
+
+  fn op_id_key(o: Op) -> String { o.id }
+  fn op_lc_key(o: Op) -> Int { o.lamport }
+
+  -- Deterministic total order (lamport asc, then id asc) via stable two-pass
+  -- sort (no compound sort key in rc.4).
+  fn order_ops(ops: List[Op]) -> List[Op] {
+    let by_id = List.sort_by(ops, &op_id_key)
+    List.sort_by(by_id, &op_lc_key)
+  }
+
+  fn claim_ops(ops: List[Op]) -> List[Op] {
+    match List.head(ops) {
+      None -> []
+      Some(o) -> {
+        let rest = claim_ops(List.tail(ops))
+        match o.kind {
+          Claim -> List.concat([o], rest)
+          _     -> rest
+        }
+      }
+    }
+  }
+
+  -- Materialize the claim view: apply refutation cascade, then resolve
+  -- (subject,predicate) conflicts deterministically — the highest (lamport,id)
+  -- active claim wins; earlier conflicting ones are Superseded. Identical
+  -- values are corroboration and all stay Active.
+  fn materialize(ops: List[Op]) -> List[ClaimView] {
+    let refuted = refuted_ids(ops, [])
+    let ordered = order_ops(claim_ops(ops))
+    -- ordered is ascending; the LAST active claim per (subject,predicate,value)
+    -- group with a distinct value wins. We process descending so the first seen
+    -- winner supersedes later (earlier-in-time) distinct values.
+    let desc = List.reverse(ordered)
+    build_views(ops, refuted, desc, [], [])
+  }
+
+  -- seen_keys: "${subject}|${predicate}" already won by some value
+  -- winners record (subject|predicate -> value) to treat identical values as
+  -- corroboration rather than supersession.
+  fn build_views(all: List[Op], refuted: List[String], desc: List[Op],
+                 won: List[String], acc: List[ClaimView]) -> List[ClaimView] {
+    match List.head(desc) {
+      None -> acc
+      Some(c) -> {
+        let rest = List.tail(desc)
+        let sp = "${c.subject}|${c.predicate}"
+        let spv = "${c.subject}|${c.predicate}|${c.value}"
+        let st = claim_status(all, refuted, c, won, sp, spv)
+        let view = ClaimView { claim_id: c.id, subject: c.subject, predicate: c.predicate,
+                     value: c.value, confidence: c.confidence, status: st,
+                     deriver: c.deriver, rationale: c.rationale,
+                     support: List.length(c.derived_from) }
+        let won2 = match st {
+          Active -> List.concat(won, [spv])
+          _      -> won
+        }
+        build_views(all, refuted, rest, won2, List.concat([view], acc))
+      }
+    }
+  }
+
+  fn claim_status(all: List[Op], refuted: List[String], c: Op, won: List[String],
+                  sp: String, spv: String) -> Status {
+    match List.contains(refuted, c.id) {
+      true  -> Refuted
+      false -> match any_invalid(all, refuted, c.derived_from) {
+        true  -> Invalidated
+        false -> conflict_status(won, sp, spv)
+      }
+    }
+  }
+
+  -- If a different value already won this (subject,predicate), we are superseded;
+  -- identical value is corroboration (Active).
+  fn conflict_status(won: List[String], sp: String, spv: String) -> Status {
+    match List.contains(won, spv) {
+      true  -> Active                 -- same value already active: corroboration
+      false -> match won_has_prefix(won, sp, spv) {
+        true  -> Superseded
+        false -> Active
+      }
+    }
+  }
+
+  -- Has any winning "${sp}|<value>" with a value different from this one?
+  fn won_has_prefix(won: List[String], sp: String, spv: String) -> Bool {
+    match List.head(won) {
+      None -> false
+      Some(w) -> {
+        let pref = "${sp}|"
+        match String.starts_with(w, pref) {
+          true  -> match w == spv {
+            true  -> won_has_prefix(List.tail(won), sp, spv)
+            false -> true
+          }
+          false -> won_has_prefix(List.tail(won), sp, spv)
+        }
+      }
+    }
+  }
+
+  -- Active claims only (the live view).
+  fn live_claims(ops: List[Op]) -> List[ClaimView] {
+    only_active(materialize(ops))
+  }
+  fn only_active(views: List[ClaimView]) -> List[ClaimView] {
+    match List.head(views) {
+      None -> []
+      Some(v) -> {
+        let rest = only_active(List.tail(views))
+        match v.status {
+          Active -> List.concat([v], rest)
+          _      -> rest
+        }
+      }
+    }
+  }
+
+  -- ---------------------------------------------------------------------------
+  -- Inspection: "why do you believe this?" — walk provenance to evidence
+  -- ---------------------------------------------------------------------------
+
+  fn why(ops: List[Op], claim_id: String) -> List[String] {
+    let o = find_op(ops, claim_id)
+    match o.kind {
+      Claim    -> why_many(ops, o.derived_from)
+      Evidence -> [o.content]
+      _        -> []
+    }
+  }
+  fn why_many(ops: List[Op], ids: List[String]) -> List[String] {
+    match List.head(ids) {
+      None -> []
+      Some(id) -> List.concat(why(ops, id), why_many(ops, List.tail(ids)))
+    }
+  }
+
+  -- ===========================================================================
+  -- Import adapters: parsed source items -> evidence ops (Milestone 3)
+  -- ===========================================================================
+
+  fn ingest(author: String, node: String, lamport: Int, source: String,
+            ekind: String, sensitivity: Int, items: List[String]) -> List[Op] {
+    match List.head(items) {
+      None -> []
+      Some(it) -> {
+        let e = mk_evidence(author, node, lamport, source, ekind, it, sensitivity)
+        let next = lamport + 1
+        List.concat([e], ingest(author, node, next, source, ekind, sensitivity,
+                                List.tail(items)))
+      }
+    }
+  }
+
+  fn adapt_notes(author: String, node: String, lamport: Int, lines: List[String]) -> List[Op] {
+    ingest(author, node, lamport, "notes", "note", 1, lines)
+  }
+  fn adapt_calendar(author: String, node: String, lamport: Int, events: List[String]) -> List[Op] {
+    ingest(author, node, lamport, "calendar", "event", 0, events)
+  }
+  fn adapt_photos(author: String, node: String, lamport: Int, captions: List[String]) -> List[Op] {
+    ingest(author, node, lamport, "photos", "photo", 0, captions)
+  }
+
+  -- ===========================================================================
+  -- Derivation: deterministic rules over evidence -> claims with provenance,
+  -- confidence (bp), rationale and method. Stable claim identity: identical
+  -- (subject,predicate,value) => identical content id => dedups on merge.
+  -- ===========================================================================
+
+  fn evidence_matching(ops: List[Op], needle: String, acc: List[Op]) -> List[Op] {
+    match List.head(ops) {
+      None -> List.reverse(acc)
+      Some(o) -> {
+        let rest = List.tail(ops)
+        let lc = String.downcase(o.content)
+        let hit = String.contains(lc, needle)
+        match o.kind {
+          Evidence -> match hit {
+            true  -> evidence_matching(rest, needle, List.concat([o], acc))
+            false -> evidence_matching(rest, needle, acc)
+          }
+          _ -> evidence_matching(rest, needle, acc)
+        }
+      }
+    }
+  }
+
+  -- Confidence grows (with diminishing returns) in the number of supporting
+  -- items: 6000 bp for one, +1500 per extra, capped at 9500.
+  fn confidence_for(n: Int) -> Int {
+    let raw = 6000 + (n - 1) * 1500
+    Int.clamp(raw, 6000, 9500)
+  }
+
+  fn derive_keyword(ops: List[Op], author: String, node: String, lamport: Int,
+                    needle: String, subject: String, predicate: String, value: String,
+                    rationale: String, deriver: String) -> List[Op] {
+    let hits = evidence_matching(ops, needle, [])
+    let n = List.length(hits)
+    match n {
+      0 -> []
+      _ -> {
+        let support = ids_of(hits)
+        let conf = confidence_for(n)
+        let c = mk_claim(author, node, lamport, subject, predicate, value, conf,
+                         support, deriver, rationale, "rule")
+        [c]
+      }
+    }
+  }
+
+  fn derive_all(ops: List[Op], author: String, node: String) -> List[Op] {
+    let c1 = derive_keyword(ops, author, node, 101, "marathon", "user",
+               "fitness.trains_for", "marathon",
+               "mentions of marathon training", "rule:routine")
+    let c2 = derive_keyword(ops, author, node, 102, "okafor", "user",
+               "health.provider", "Dr. Okafor",
+               "references to Dr. Okafor", "rule:relationship")
+    let c3 = derive_keyword(ops, author, node, 103, "lisbon", "user",
+               "travel.planning", "Lisbon",
+               "mentions of a Lisbon trip", "rule:place")
+    let c4 = derive_keyword(ops, author, node, 104, "long run", "user",
+               "fitness.activity", "running",
+               "repeated long-run entries", "rule:routine")
+    let c5 = derive_keyword(ops, author, node, 105, "vegetarian", "user",
+               "diet.preference", "vegetarian",
+               "mentions of vegetarian meals", "rule:preference")
+    List.concat(List.concat(c1, c2), List.concat(List.concat(c3, c4), c5))
+  }
+
+  -- ===========================================================================
+  -- Capabilities: selector match, evidence-free attestations, verifiable
+  -- revocation via purge receipts (Milestone 6)
+  -- ===========================================================================
+
+  -- Glob predicate match: "fitness.*" matches by prefix; otherwise exact.
+  fn pred_matches(pattern: String, predicate: String) -> Bool {
+    match String.ends_with(pattern, "*") {
+      true -> {
+        let plen = String.length(pattern)
+        let prefix = String.slice(pattern, 0, plen - 1)
+        String.starts_with(predicate, prefix)
+      }
+      false -> pattern == predicate
+    }
+  }
+  fn any_pred_match(patterns: List[String], predicate: String) -> Bool {
+    match List.head(patterns) {
+      None -> false
+      Some(p) -> match pred_matches(p, predicate) {
+        true  -> true
+        false -> any_pred_match(List.tail(patterns), predicate)
+      }
+    }
+  }
+
+  -- Selector fit: [] scope/subjects mean "any".
+  fn selector_fit(g: Op, v: ClaimView) -> Bool {
+    let pred_ok = match List.length(g.scope) {
+      0 -> true
+      _ -> any_pred_match(g.scope, v.predicate)
+    }
+    let subj_ok = match List.length(g.subjects) {
+      0 -> true
+      _ -> List.contains(g.subjects, v.subject)
+    }
+    let conf_ok = v.confidence >= g.min_conf
+    match pred_ok {
+      false -> false
+      true  -> match subj_ok {
+        false -> false
+        true  -> conf_ok
+      }
+    }
+  }
+
+  fn is_revoked(ops: List[Op], grant_id: String) -> Bool {
+    match List.head(ops) {
+      None -> false
+      Some(o) -> {
+        let rest = List.tail(ops)
+        match o.kind {
+          Revocation -> match o.target == grant_id {
+            true  -> true
+            false -> is_revoked(rest, grant_id)
+          }
+          _ -> is_revoked(rest, grant_id)
+        }
+      }
+    }
+  }
+
+  -- Provenance commitment: a salted (by grant id) fingerprint of the support
+  -- set. Would be a salted SHA-256 with real crypto; here a canonical string.
+  fn provenance_commitment(grant_id: String, support: List[String]) -> String {
+    let sj = join(support)
+    let body = "prov|${grant_id}|[${sj}]"
+    content_id(body)
+  }
+
+  -- Grantor issues one evidence-free attestation per live, in-scope claim.
+  fn issue_attestations(ops: List[Op], grant: Op, author: String, node: String,
+                        base_lamport: Int) -> List[Op] {
+    let live = live_claims(ops)
+    issue_go(ops, grant, author, node, base_lamport, live)
+  }
+  fn issue_go(ops: List[Op], grant: Op, author: String, node: String, lamport: Int,
+              views: List[ClaimView]) -> List[Op] {
+    match List.head(views) {
+      None -> []
+      Some(v) -> {
+        let rest = List.tail(views)
+        match selector_fit(grant, v) {
+          true -> {
+            let claim = find_op(ops, v.claim_id)
+            let cmt = provenance_commitment(grant.id, claim.derived_from)
+            let att = mk_attestation(author, node, lamport, grant.id, grant.delegate,
+                        v.subject, v.predicate, v.value, v.confidence, cmt)
+            List.concat([att], issue_go(ops, grant, author, node, lamport + 1, rest))
+          }
+          false -> issue_go(ops, grant, author, node, lamport, rest)
+        }
+      }
+    }
+  }
+
+  -- Attestation ops in the log for a grant (the delegate's holdings).
+  fn attestations_for(ops: List[Op], grant_id: String) -> List[Op] {
+    match List.head(ops) {
+      None -> []
+      Some(o) -> {
+        let rest = attestations_for(List.tail(ops), grant_id)
+        match o.kind {
+          Attestation -> match o.target == grant_id {
+            true  -> List.concat([o], rest)
+            false -> rest
+          }
+          _ -> rest
+        }
+      }
+    }
+  }
+
+  -- What a delegate may serve: in-scope attestations, or nothing once revoked.
+  fn delegate_view(ops: List[Op], grant: Op) -> List[Op] {
+    match is_revoked(ops, grant.id) {
+      true  -> []
+      false -> attestations_for(ops, grant.id)
+    }
+  }
+
+  -- Commitment to the set of attestations a delegate still holds for a grant.
+  fn state_hash(grant_id: String, remaining: List[String]) -> String {
+    let rj = join(remaining)
+    let body = "state|${grant_id}|remaining=[${rj}]"
+    content_id(body)
+  }
+
+  -- On revocation the delegate purges and emits a receipt committing to the
+  -- empty remaining set — this is what makes revocation *verifiable*.
+  fn make_purge_receipt(delegate: String, node: String, lamport: Int,
+                        grant_id: String) -> Op {
+    let cmt = state_hash(grant_id, [])
+    mk_receipt(delegate, node, lamport, grant_id, delegate, cmt)
+  }
+
+  -- A revocation is verifiably honored iff the grant is revoked AND a matching
+  -- purge receipt commits to the empty set.
+  fn revocation_honored(ops: List[Op], grant_id: String) -> Bool {
+    match is_revoked(ops, grant_id) {
+      false -> false
+      true  -> receipt_ok(ops, grant_id, state_hash(grant_id, []))
+    }
+  }
+  fn receipt_ok(ops: List[Op], grant_id: String, expected: String) -> Bool {
+    match List.head(ops) {
+      None -> false
+      Some(o) -> {
+        let rest = List.tail(ops)
+        match o.kind {
+          Receipt -> match o.target == grant_id {
+            true  -> match o.commitment == expected {
+              true  -> true
+              false -> receipt_ok(rest, grant_id, expected)
+            }
+            false -> receipt_ok(rest, grant_id, expected)
+          }
+          _ -> receipt_ok(rest, grant_id, expected)
+        }
+      }
+    }
+  }
+
+  -- ===========================================================================
+  -- Sync, convergence & equivocation detection (Milestone 6)
+  -- ===========================================================================
+
+  fn dedup(ops: List[Op]) -> List[Op] {
+    dedup_go(ops, [], [])
+  }
+  fn dedup_go(ops: List[Op], seen: List[String], acc: List[Op]) -> List[Op] {
+    match List.head(ops) {
+      None -> List.reverse(acc)
+      Some(o) -> {
+        let rest = List.tail(ops)
+        match List.contains(seen, o.id) {
+          true  -> dedup_go(rest, seen, acc)
+          false -> dedup_go(rest, List.concat(seen, [o.id]), List.concat([o], acc))
+        }
+      }
+    }
+  }
+
+  fn sync(a: List[Op], b: List[Op]) -> List[Op] {
+    order_ops(dedup(List.concat(a, b)))
+  }
+
+  fn log_fingerprint(ops: List[Op]) -> String {
+    join(ids_of(order_ops(ops)))
+  }
+
+  -- Equivocation: an author publishing two distinct ops at the same lamport is
+  -- a fork. We scan for an "${author}|${lamport}" seen twice with different ids.
+  fn has_equivocation(ops: List[Op]) -> Bool {
+    equiv_go(dedup(ops), [])
+  }
+  fn equiv_go(ops: List[Op], seen: List[String]) -> Bool {
+    match List.head(ops) {
+      None -> false
+      Some(o) -> {
+        let lc = Int.to_string(o.lamport)
+        let key = "${o.author}|${lc}"
+        match List.contains(seen, key) {
+          true  -> true
+          false -> equiv_go(List.tail(ops), List.concat(seen, [key]))
+        }
+      }
+    }
+  }
+
+  -- ---------------------------------------------------------------------------
+  -- View helpers
+  -- ---------------------------------------------------------------------------
+
+  fn nil_view() -> ClaimView {
+    ClaimView { claim_id: "", subject: "", predicate: "", value: "", confidence: 0,
+      status: Status.Invalidated, deriver: "", rationale: "", support: 0 }
+  }
+
+  fn find_view(views: List[ClaimView], predicate: String) -> ClaimView {
+    match List.head(views) {
+      None -> nil_view()
+      Some(v) -> match v.predicate == predicate {
+        true  -> v
+        false -> find_view(List.tail(views), predicate)
+      }
+    }
+  }
+
+  fn find_claim(ops: List[Op], predicate: String) -> Op {
+    match List.head(ops) {
+      None -> nil_op()
+      Some(o) -> match o.predicate == predicate {
+        true  -> o
+        false -> find_claim(List.tail(ops), predicate)
+      }
+    }
+  }
+
+  -- ===========================================================================
+  -- End-to-end demo (shared by the test and the /demo route)
+  -- ===========================================================================
+
+  -- The full demo log (all seven op types), used by the demo summary and the
+  -- inspection/export/audit routes. One pass builds the whole Milestone-6 story.
+  type DemoState { full: List[Op], grant: Op, converged: Bool }
+
+  fn demo_build() -> DemoState {
+    -- Act 1: two nodes import evidence.
+    let laptop = adapt_notes("laptop-key", "laptop", 1, [
+      "Marathon training plan week 6, long run 18km",
+      "Quarterly check-up with Dr. Okafor went well",
+      "Berlin trip ideas: museums and food"
+    ])
+    let phone = adapt_calendar("phone-key", "phone", 50, [
+      "Flights to Lisbon booked",
+      "Long run 20km Saturday"
+    ])
+    -- Act 5 (sync): order-independent convergence.
+    let evidence = sync(laptop, phone)
+    let conv = log_fingerprint(sync(laptop, phone)) == log_fingerprint(sync(phone, laptop))
+
+    -- Act 2: derive claims with provenance + confidence.
+    let claims = derive_all(evidence, "phone-key", "phone")
+    let log = List.concat(evidence, claims)
+
+    -- Act 4: refute the Lisbon evidence; travel.planning cascades to invalid.
+    let lisbon = evidence_matching(evidence, "lisbon", [])
+    let lisbon_id = Option.unwrap(List.head(lisbon), nil_op()).id
+    let refute = mk_refutation("phone-key", "phone", 300, lisbon_id)
+    let after_refute = List.concat(log, [refute])
+
+    -- Act 6: grant a coach a fitness-only, >=5000bp projection; issue
+    -- evidence-free attestations.
+    let grant = mk_grant("phone-key", "phone", 400, "coach-key", ["fitness.*"], [], 5000, 0)
+    let granted = List.concat(after_refute, [grant])
+    let atts = issue_attestations(granted, grant, "phone-key", "phone", 410)
+    let with_atts = List.concat(granted, atts)
+
+    -- Act 7: revoke; the delegate purges and emits a verifiable receipt.
+    let revoke = mk_revocation("phone-key", "phone", 500, grant.id)
+    let receipt = make_purge_receipt("coach-key", "coach", 510, grant.id)
+    let full = List.concat(List.concat(with_atts, [revoke]), [receipt])
+    DemoState { full: full, grant: grant, converged: conv }
+  }
+
+  fn demo_full_log() -> List[Op] { demo_build().full }
+
+  type DemoSummary {
+    evidence_count: Int
+    claims_count: Int
+    converged: Bool
+    live_after_refute: Int
+    coach_attestations: Int
+    coach_after_revoke: Int
+    revocation_verified: Bool
+    equivocation_free: Bool
+  }
+
+  fn run_demo() -> DemoSummary {
+    let s = demo_build()
+    let full = s.full
+    let grant = s.grant
+    let eqfree = match has_equivocation(full) { true -> false  false -> true }
+    DemoSummary { evidence_count: count_kind(full, OpKind.Evidence),
+      claims_count: count_kind(full, OpKind.Claim),
+      converged: s.converged,
+      live_after_refute: List.length(live_claims(full)),
+      coach_attestations: count_kind(full, OpKind.Attestation),
+      coach_after_revoke: List.length(delegate_view(full, grant)),
+      revocation_verified: revocation_honored(full, grant.id),
+      equivocation_free: eqfree }
+  }
+
+  -- ---------------------------------------------------------------------------
+  -- Export & audit (the inspection surface; Skein services expose HTTP, not a
+  -- CLI, so the reference `fablepool why/export/audit` commands are routes)
+  -- ---------------------------------------------------------------------------
+
+  fn count_kind(ops: List[Op], k: OpKind) -> Int {
+    match List.head(ops) {
+      None -> 0
+      Some(o) -> {
+        let rest = count_kind(List.tail(ops), k)
+        match kind_str(o.kind) == kind_str(k) {
+          true  -> 1 + rest
+          false -> rest
+        }
+      }
+    }
+  }
+
+  fn count_status(views: List[ClaimView], want: String) -> Int {
+    match List.head(views) {
+      None -> 0
+      Some(v) -> {
+        let rest = count_status(List.tail(views), want)
+        match status_str(v.status) == want {
+          true  -> 1 + rest
+          false -> rest
+        }
+      }
+    }
+  }
+
+  -- A JSON-friendly claim summary (status rendered as a string).
+  type ClaimSummary {
+    subject: String
+    predicate: String
+    value: String
+    confidence: Int
+    status: String
+    support: Int
+  }
+
+  fn summaries(views: List[ClaimView]) -> List[ClaimSummary] {
+    match List.head(views) {
+      None -> []
+      Some(v) -> {
+        let s = ClaimSummary { subject: v.subject, predicate: v.predicate, value: v.value,
+                  confidence: v.confidence, status: status_str(v.status),
+                  support: v.support }
+        List.concat([s], summaries(List.tail(views)))
+      }
+    }
+  }
+
+  -- Export: ordered canonical bodies — the deterministic dump a second
+  -- implementation replays to the identical state.
+  fn canon_bodies(ops: List[Op]) -> List[String] {
+    match List.head(ops) {
+      None -> []
+      Some(o) -> List.concat([canon(o)], canon_bodies(List.tail(ops)))
+    }
+  }
+
+  type ClaimsView { count: Int, claims: List[ClaimSummary] }
+  type ExportView { count: Int, fingerprint: String, bodies: List[String] }
+  type AuditView {
+    evidence: Int
+    claims: Int
+    refutations: Int
+    grants: Int
+    revocations: Int
+    attestations: Int
+    receipts: Int
+    active: Int
+    superseded: Int
+    invalidated: Int
+  }
+
+  fn audit(ops: List[Op]) -> AuditView {
+    let views = materialize(ops)
+    AuditView { evidence: count_kind(ops, OpKind.Evidence),
+      claims: count_kind(ops, OpKind.Claim),
+      refutations: count_kind(ops, OpKind.Refutation),
+      grants: count_kind(ops, OpKind.Grant),
+      revocations: count_kind(ops, OpKind.Revocation),
+      attestations: count_kind(ops, OpKind.Attestation),
+      receipts: count_kind(ops, OpKind.Receipt),
+      active: count_status(views, "active"),
+      superseded: count_status(views, "superseded"),
+      invalidated: count_status(views, "invalidated") }
+  }
+
+  -- ---------------------------------------------------------------------------
+  -- Routes (run with `skein run`)
+  -- ---------------------------------------------------------------------------
+
+  handler http GET "/demo" (req) -> {
+    let d = run_demo()
+    respond.json(200, d)
+  }
+
+  handler http GET "/claims" (req) -> {
+    let live = live_claims(demo_full_log())
+    let body = { count: List.length(live), claims: summaries(live) }
+    respond.json(200, body)
+  }
+
+  handler http GET "/audit" (req) -> {
+    respond.json(200, audit(demo_full_log()))
+  }
+
+  handler http GET "/export" (req) -> {
+    let full = demo_full_log()
+    let ordered = order_ops(full)
+    let body = { count: List.length(ordered), fingerprint: log_fingerprint(full),
+                 bodies: canon_bodies(ordered) }
+    respond.json(200, body)
+  }
+
+  -- ---------------------------------------------------------------------------
+  -- Durable append-only log via Skein's store. NB impedance: the store is
+  -- Uuid-keyed (kormie/Skein#255) while FablePool is content-addressed, so each
+  -- row carries a surrogate Uuid primary key plus the canonical body and the
+  -- content-address op_id. The canonical body string is the durable truth a
+  -- replay reconstructs ops from.
+  -- ---------------------------------------------------------------------------
+
+  capability store.table("oplog")
+
+  type StoredOp {
+    id: Uuid @primary
+    op_id: String @unique
+    body: String
+    kind: String
+    lamport: Int
+  }
+
+  type IngestReq { source: String, content: String }
+
+  fn row_op_ids(rows: List[StoredOp]) -> List[String] {
+    match List.head(rows) {
+      None -> []
+      Some(r) -> List.concat([r.op_id], row_op_ids(List.tail(rows)))
+    }
+  }
+
+  -- POST /ingest {"source": "...", "content": "..."} -> persists one evidence op.
+  handler http POST "/ingest" (req) -> {
+    let parsed = req.json[IngestReq]
+    match parsed {
+      Err(_) -> respond.json(400, { error: "expected {source, content}" })
+      Ok(data) -> {
+        let existing = store.oplog.query({})
+        let n = match existing {
+          Ok(rows) -> List.length(rows)
+          Err(_)   -> 0
+        }
+        let e = mk_evidence("api-key", "service", n, data.source, "note", data.content, 1)
+        let row = { id: uuid.new(), op_id: e.id, body: canon(e),
+                    kind: "evidence", lamport: e.lamport }
+        let saved = store.oplog.put(row)
+        match saved {
+          Ok(_)  -> respond.json(200, { op_id: e.id, lamport: e.lamport })
+          Err(_) -> respond.json(500, { error: "store write failed" })
+        }
+      }
+    }
+  }
+
+  -- GET /log -> the persisted op ids (durable across requests).
+  handler http GET "/log" (req) -> {
+    let rows = store.oplog.query({})
+    match rows {
+      Ok(rs) -> respond.json(200, { count: List.length(rs), op_ids: row_op_ids(rs) })
+      Err(_) -> respond.json(500, { error: "store query failed" })
+    }
+  }
+
+  -- ===========================================================================
+  -- Tests
+  -- ===========================================================================
+
+  test "content id is deterministic for identical evidence" {
+    let a = mk_evidence("phone", "p", 1, "notes", "note", "long run 20km", 1)
+    let b = mk_evidence("phone", "p", 1, "notes", "note", "long run 20km", 1)
+    assert a.id == b.id
+  }
+
+  test "a claim is Active when its evidence is untouched" {
+    let e = mk_evidence("p", "p", 1, "calendar", "event", "Marathon plan wk4", 0)
+    let c = mk_claim("p", "p", 2, "user", "fitness.trains_for", "marathon", 8000,
+                     [e.id], "rule:routine", "trains for a marathon", "rule")
+    let views = materialize([e, c])
+    assert List.length(views) == 1
+    assert status_str(find_view(views, "fitness.trains_for").status) == "active"
+  }
+
+  test "refuting evidence cascades the claim to Invalidated" {
+    let e = mk_evidence("p", "p", 1, "calendar", "event", "Marathon plan wk4", 0)
+    let c = mk_claim("p", "p", 2, "user", "fitness.trains_for", "marathon", 8000,
+                     [e.id], "rule:routine", "why", "rule")
+    let r = mk_refutation("p", "p", 3, e.id)
+    let views = materialize([e, c, r])
+    assert status_str(find_view(views, "fitness.trains_for").status) == "invalidated"
+    assert List.length(live_claims([e, c, r])) == 0
+  }
+
+  test "refuting a claim directly marks it Refuted" {
+    let e = mk_evidence("p", "p", 1, "calendar", "event", "Marathon plan", 0)
+    let c = mk_claim("p", "p", 2, "user", "fitness.trains_for", "marathon", 8000,
+                     [e.id], "rule", "why", "rule")
+    let r = mk_refutation("p", "p", 3, c.id)
+    let views = materialize([e, c, r])
+    assert status_str(find_view(views, "fitness.trains_for").status) == "refuted"
+  }
+
+  test "conflicting values: newest wins, older is Superseded" {
+    let e = mk_evidence("p", "p", 1, "notes", "note", "works at Acme then Globex", 0)
+    let c1 = mk_claim("p", "p", 2, "user", "work.employer", "Acme", 7000, [e.id],
+                      "rule", "older", "rule")
+    let c2 = mk_claim("p", "p", 5, "user", "work.employer", "Globex", 7000, [e.id],
+                      "rule", "newer", "rule")
+    let live = live_claims([e, c1, c2])
+    assert List.length(live) == 1
+    assert find_view(live, "work.employer").value == "Globex"
+  }
+
+  test "identical values from different provenance corroborate (both Active)" {
+    let e1 = mk_evidence("p", "p", 1, "notes", "note", "vegetarian meal", 0)
+    let e2 = mk_evidence("p", "p", 2, "notes", "note", "vegetarian recipe", 0)
+    let c1 = mk_claim("p", "p", 3, "user", "diet.preference", "vegetarian", 7000,
+                      [e1.id], "rule", "from e1", "rule")
+    let c2 = mk_claim("p", "p", 4, "user", "diet.preference", "vegetarian", 7000,
+                      [e2.id], "rule", "from e2", "rule")
+    assert List.length(live_claims([e1, e2, c1, c2])) == 2
+  }
+
+  test "why walks a claim back to its evidence" {
+    let e = mk_evidence("p", "p", 1, "calendar", "event", "Marathon plan wk4", 0)
+    let claims = derive_all([e], "p", "p")
+    let c = Option.unwrap(List.head(claims), nil_op())
+    let reasons = why([e, c], c.id)
+    assert List.contains(reasons, "Marathon plan wk4")
+  }
+
+  test "adapters ingest one evidence op per item" {
+    let ops = adapt_notes("p", "p", 1, ["a", "b", "c"])
+    assert List.length(ops) == 3
+  }
+
+  test "derivation confidence grows with supporting evidence" {
+    let one = adapt_notes("p", "p", 1, ["went for a long run"])
+    let two = adapt_notes("p", "p", 1, ["long run today", "another long run"])
+    let c1 = find_claim(derive_all(one, "p", "p"), "fitness.activity")
+    let c2 = find_claim(derive_all(two, "p", "p"), "fitness.activity")
+    assert c1.confidence == 6000
+    assert c2.confidence == 7500
+  }
+
+  test "selector: glob predicate + min confidence" {
+    let g = mk_grant("p", "p", 1, "coach", ["fitness.*"], [], 5000, 0)
+    let hit  = ClaimView { claim_id: "x", subject: "user", predicate: "fitness.activity",
+                 value: "running", confidence: 7500, status: Status.Active,
+                 deriver: "r", rationale: "", support: 1 }
+    let low  = ClaimView { claim_id: "y", subject: "user", predicate: "fitness.activity",
+                 value: "running", confidence: 4000, status: Status.Active,
+                 deriver: "r", rationale: "", support: 1 }
+    let off  = ClaimView { claim_id: "z", subject: "user", predicate: "health.provider",
+                 value: "Dr. X", confidence: 9000, status: Status.Active,
+                 deriver: "r", rationale: "", support: 1 }
+    assert selector_fit(g, hit) == true
+    assert selector_fit(g, low) == false
+    assert selector_fit(g, off) == false
+  }
+
+  test "attestations are evidence-free and in-scope only" {
+    let e1 = mk_evidence("p", "p", 1, "calendar", "event", "Marathon long run 18km", 0)
+    let e2 = mk_evidence("p", "p", 2, "notes", "note", "Visit with Dr. Okafor", 0)
+    let claims = derive_all([e1, e2], "p", "p")
+    let log = List.concat([e1, e2], claims)
+    let g = mk_grant("p", "p", 400, "coach", ["fitness.*"], [], 0, 0)
+    let atts = issue_attestations(List.concat(log, [g]), g, "p", "p", 410)
+    -- fitness.trains_for + fitness.activity match; health.provider does not
+    assert List.length(atts) == 2
+    let a0 = Option.unwrap(List.head(atts), nil_op())
+    assert List.length(a0.derived_from) == 0   -- no provenance leaks
+    assert a0.content == ""                      -- no evidence content leaks
+  }
+
+  test "revocation closes the view and is verifiable via a purge receipt" {
+    let e = mk_evidence("p", "p", 1, "calendar", "event", "Marathon long run", 0)
+    let claims = derive_all([e], "p", "p")
+    let g = mk_grant("p", "p", 400, "coach", ["fitness.*"], [], 0, 0)
+    let granted = List.concat(List.concat([e], claims), [g])
+    let atts = issue_attestations(granted, g, "p", "p", 410)
+    let with_atts = List.concat(granted, atts)
+    assert List.length(delegate_view(with_atts, g)) > 0
+
+    let revoke = mk_revocation("p", "p", 500, g.id)
+    let receipt = make_purge_receipt("coach", "coach", 510, g.id)
+    let full = List.concat(List.concat(with_atts, [revoke]), [receipt])
+    assert List.length(delegate_view(full, g)) == 0
+    assert revocation_honored(full, g.id) == true
+  }
+
+  test "sync is order-independent, converges, and dedups shared ops" {
+    let shared = adapt_notes("laptop", "laptop", 1, ["Marathon long run"])
+    let a = List.concat(shared, adapt_notes("laptop", "laptop", 2, ["Trip to Lisbon"]))
+    let b = List.concat(shared, adapt_calendar("phone", "phone", 10, ["Long run 20km"]))
+    assert log_fingerprint(sync(a, b)) == log_fingerprint(sync(b, a))
+    assert List.length(sync(a, b)) == 3
+  }
+
+  test "equivocation: same author + lamport, different ops, is detected" {
+    let clean = adapt_notes("laptop", "laptop", 1, ["a", "b"])
+    assert has_equivocation(clean) == false
+    let fork_a = mk_evidence("laptop", "laptop", 9, "notes", "note", "story A", 0)
+    let fork_b = mk_evidence("laptop", "laptop", 9, "notes", "note", "story B", 0)
+    assert has_equivocation([fork_a, fork_b]) == true
+  }
+
+  -- Conformance golden vectors: pin the byte-level (string-level)
+  -- canonicalization so a second implementation can validate against these.
+  test "conformance: canonical id of a fixed evidence op" {
+    let e = mk_evidence("k", "n", 7, "notes", "note", "hello world", 1)
+    assert e.id == "fp1:v1|evidence|au=k|nd=n|lc=7|prev=[]|src=notes|content=hello world|ek=note|sn=1|subj=|pred=|val=|conf=0|df=[]|deriver=|why=|m=|target=|del=|scope=[]|subjects=[]|minc=0|exp=0|cmt="
+  }
+
+  test "conformance: canonical id of a fixed user claim" {
+    let c = mk_claim("u", "n", 2, "user", "diet.preference", "vegetarian", 7000, [],
+                     "user", "asserted", "user")
+    assert c.id == "fp1:v1|claim|au=u|nd=n|lc=2|prev=[]|src=|content=|ek=|sn=0|subj=user|pred=diet.preference|val=vegetarian|conf=7000|df=[]|deriver=user|why=asserted|m=user|target=|del=|scope=[]|subjects=[]|minc=0|exp=0|cmt="
+  }
+
+  test "audit counts every op kind and claim status" {
+    let a = audit(demo_full_log())
+    assert a.evidence == 5
+    assert a.claims == 4
+    assert a.refutations == 1
+    assert a.grants == 1
+    assert a.revocations == 1
+    assert a.attestations == 2
+    assert a.receipts == 1
+    assert a.active == 3
+    assert a.invalidated == 1
+  }
+
+  test "end-to-end demo: import, converge, derive, refute, attest, revoke" {
+    let d = run_demo()
+    assert d.evidence_count == 5
+    assert d.claims_count == 4          -- trains_for, health, travel, activity
+    assert d.converged == true
+    assert d.live_after_refute == 3     -- refuting Lisbon drops travel.planning
+    assert d.coach_attestations == 2    -- fitness.* only (trains_for + activity)
+    assert d.coach_after_revoke == 0
+    assert d.revocation_verified == true
+    assert d.equivocation_free == true
+  }
+}

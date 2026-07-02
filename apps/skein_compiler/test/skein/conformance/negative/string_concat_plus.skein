@@ -1,4 +1,4 @@
--- expect: E0020
+-- expect: E0020, E0037
 -- #252: String + String type-checked then crashed at runtime. Arithmetic is
 -- numeric-only; strings are built with interpolation.
 module StringConcatPlus {

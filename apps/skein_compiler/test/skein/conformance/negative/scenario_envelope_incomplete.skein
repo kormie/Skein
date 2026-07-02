@@ -1,4 +1,4 @@
--- expect: E0028
+-- expect: E0012, E0028
 -- #281: a scenario that tests a tool must declare a tool.use(T) envelope that
 -- covers the tool's transitive effect summary. Here Billing.Refund reaches
 -- http.out through the `charge` helper, but the envelope only controls uuid —

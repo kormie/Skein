@@ -11,9 +11,14 @@ defmodule Skein.Conformance.NegativeCorpusTest do
       -- expect: E0020, E0022
 
   The runner compiles each fixture through the full `check_file` pipeline and
-  asserts (a) compilation is NOT clean and (b) every expected code is present.
-  This pins the soundness contract so a future change can't silently make one of
-  these crash-at-runtime programs compile again.
+  asserts (a) compilation is NOT clean, (b) the **complete** set of distinct
+  diagnostic codes exactly equals the `expect:` header (#262 — an unexpected
+  extra diagnostic is drift, not noise), and (c) every emitted error honors the
+  structured-diagnostic contract: populated code/severity/message/location and
+  JSON-serializability, with `fix_code` either applicable Skein or nil (never a
+  `//` placeholder). This pins the soundness contract so a future change can't
+  silently make one of these crash-at-runtime programs compile again, nor
+  degrade what an agent sees when they fail.
 
   Adding a fixture file (with an `expect:` header) automatically adds a test —
   no code change required.
@@ -49,14 +54,34 @@ defmodule Skein.Conformance.NegativeCorpusTest do
              "fixture #{unquote(name)} is missing an `-- expect: <CODE>` header"
 
       {:ok, %{errors: errors}} = Skein.Compiler.check_file(unquote(fixture))
-      codes = Enum.map(errors, & &1.code)
+      codes = errors |> Enum.map(& &1.code) |> Enum.uniq() |> Enum.sort()
 
       assert errors != [],
              "fixture #{unquote(name)} was expected to FAIL to compile, but it was accepted"
 
-      for code <- expected do
-        assert code in codes,
-               "fixture #{unquote(name)} expected diagnostic #{code}, got: #{Enum.join(codes, ", ")}"
+      assert codes == Enum.sort(expected),
+             "fixture #{unquote(name)} must emit exactly #{Enum.join(expected, ", ")}, " <>
+               "got: #{Enum.join(codes, ", ")} — update the `-- expect:` header if the " <>
+               "new diagnostic set is intentional"
+
+      # The structured-diagnostic contract (spec §7): agents consume these.
+      for error <- errors do
+        assert is_binary(error.code) and error.code =~ ~r/\A[EW]\d{4}\z/,
+               "fixture #{unquote(name)}: malformed diagnostic code #{inspect(error.code)}"
+
+        assert error.severity in [:error, :warning]
+        assert is_binary(error.message) and error.message != ""
+
+        assert %{file: _, line: line, col: col} = error.location
+        assert is_integer(line) and line >= 1
+        assert is_integer(col) and col >= 1
+
+        # fix_code is applicable Skein or nil — never a `//` placeholder (#313).
+        refute is_binary(error.fix_code) and error.fix_code =~ ~r|\A\s*//|,
+               "fixture #{unquote(name)}: placeholder fix_code #{inspect(error.fix_code)}"
+
+        assert {:ok, _} = Jason.encode(error),
+               "fixture #{unquote(name)}: diagnostic not JSON-serializable"
       end
     end
   end

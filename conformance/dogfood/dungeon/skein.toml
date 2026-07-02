@@ -1,0 +1,17 @@
+[project]
+name = "dungeon-master"
+version = "0.1.0"
+
+[build]
+src = "src"
+test = "test"
+
+# Deterministic built-in responses — no API key or model server needed,
+# so `skein test` and `skein run` work offline.
+# Switch to "anthropic" (and set ANTHROPIC_API_KEY) for real Claude narration.
+[llm]
+backend = "test"
+
+# For real traffic in dev:
+# [env.dev.llm]
+# backend = "anthropic"

@@ -124,7 +124,11 @@ const E2E_PROMPT =
   '3. Compile every canonical example: every file matched by `examples/*.skein` and ' +
   '`examples/market_research/*.skein`, each via `mix skein.compile <file>`. One gate entry ' +
   'per FAILING example (name the file); one summary entry for the ones that passed (count them).\n' +
-  '4. Clean up /tmp/skein_rc_smoke.\n' +
+  '4. Dogfood gate (#262): run `mix skein.test conformance/dogfood/<name>` for every project ' +
+  'directory under conformance/dogfood/ — each must report 0 failed and 0 compile failures, ' +
+  'and the total per project must equal its `expected_tests` in conformance/dogfood.json. ' +
+  'One gate entry per project. Release-readiness CANNOT report GO without these.\n' +
+  '5. Clean up /tmp/skein_rc_smoke.\n' +
   '\nStructured output only.'
 
 const INVENTORY_PROMPT =

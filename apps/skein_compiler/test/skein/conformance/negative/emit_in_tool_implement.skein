@@ -1,4 +1,4 @@
--- expect: E0039
+-- expect: E0010, E0039
 -- Tool implement bodies are module-path codegen: `emit` is agent-only
 -- there too (previously this walk skipped implement bodies entirely).
 module EmitInTool {

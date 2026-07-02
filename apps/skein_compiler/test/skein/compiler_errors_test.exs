@@ -67,6 +67,51 @@ defmodule Skein.CompilerErrorsTest do
     end
   end
 
+  describe "check_string/2" do
+    test "a clean module yields zero errors and zero warnings" do
+      assert {:ok, %{errors: [], warnings: []}} =
+               Compiler.check_string("""
+               module Clean {
+                 fn double(n: Int) -> Int { n * 2 }
+               }
+               """)
+    end
+
+    test "analyzer errors surface with the given virtual path" do
+      assert {:ok, %{errors: [error | _]}} =
+               Compiler.check_string(
+                 """
+                 module Bad {
+                   fn f() -> Int { "not an int" }
+                 }
+                 """,
+                 "docs/example.md"
+               )
+
+      assert error.code == "E0020"
+      assert error.location.file == "docs/example.md"
+    end
+
+    test "lexer/parser failures come back as structured check results" do
+      assert {:ok, %{errors: [error | _]}} = Compiler.check_string("module Broken {")
+      assert error.code =~ ~r/\AE\d{4}\z/
+    end
+
+    test "warnings split from errors" do
+      assert {:ok, %{errors: [], warnings: warnings}} =
+               Compiler.check_string("""
+               module Warny {
+                 fn f() -> Int {
+                   let unused = 1
+                   2
+                 }
+               }
+               """)
+
+      assert Enum.any?(warnings, &(&1.code == "W0001"))
+    end
+  end
+
   describe "check_file/1 reports agent-only calls in modules without raising" do
     test "transition() in a module fn is a structured error, not a crash", %{tmp_dir: tmp} do
       path = Path.join(tmp, "transition_outside.skein")

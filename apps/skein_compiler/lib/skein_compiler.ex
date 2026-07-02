@@ -77,8 +77,25 @@ defmodule Skein.Compiler do
           {:ok, %{errors: [Skein.Error.t()], warnings: [Skein.Error.t()]}}
           | {:error, String.t()}
   def check_file(path) do
-    with {:ok, source} <- read_source(path),
-         {:ok, tokens} <- tag_errors(Lexer.tokenize(source), path),
+    with {:ok, source} <- read_source(path) do
+      check_source(source, path)
+    end
+  end
+
+  @doc """
+  Checks a Skein source string through the full pipeline (without loading
+  it) and returns BOTH hard errors and warnings, split by severity — the
+  string counterpart of `check_file/1`. Diagnostics carry `path` (default
+  `"nofile"`) as their file.
+  """
+  @spec check_string(String.t(), String.t()) ::
+          {:ok, %{errors: [Skein.Error.t()], warnings: [Skein.Error.t()]}}
+  def check_string(source, path \\ "nofile") do
+    check_source(source, path)
+  end
+
+  defp check_source(source, path) do
+    with {:ok, tokens} <- tag_errors(Lexer.tokenize(source), path),
          {:ok, ast} <- Parser.parse(tokens, path) do
       case Analyzer.analyze(ast, source_text: source) do
         {:error, mixed} ->

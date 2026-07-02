@@ -1,0 +1,174 @@
+-- Skein Dungeon — an AI-narrated text adventure served over HTTP.
+--
+-- The Dungeon Master's *voice* comes from the LLM (llm.chat), but the
+-- *rules* — hit points, win/lose, turn pacing — are deterministic Skein
+-- code, so the game is fully testable without ever calling a model.
+--
+-- Runs out of the box on the "test" LLM backend (see skein.toml): narration
+-- is canned but every endpoint works. Point the backend at "anthropic" with
+-- an ANTHROPIC_API_KEY and the same code tells a real story.
+module Dungeon {
+  capability http.in
+  capability store.table("games")
+  capability model("anthropic", "claude-opus-4-8")
+  capability uuid
+
+  type Game {
+    id: Uuid @primary
+    hero: String
+    hp: Int
+    location: String
+    story: String
+    turns: Int
+    status: String      -- "playing" | "won" | "dead"
+  }
+
+  -- Result of mechanically resolving one player action.
+  type Turn {
+    hp: Int
+    status: String
+    flavor: String
+  }
+
+  -- ===== Deterministic game mechanics (pure, no effects) =====
+
+  fn clamp_hp(n: Int) -> Int {
+    Int.max(0, Int.min(100, n))
+  }
+
+  fn mentions(text: String, a: String, b: String) -> Bool {
+    match String.contains(text, a) {
+      true  -> true
+      false -> String.contains(text, b)
+    }
+  }
+
+  -- How much HP the action costs or restores, and a one-line stinger.
+  fn resolve(action: String, turns: Int) -> Turn {
+    let a = String.downcase(action)
+    match mentions(a, "rest", "potion") {
+      true  -> Turn { hp: 20,                  status: "playing", flavor: "You steady your breath; warmth returns to your limbs." }
+      false -> match mentions(a, "flee", "run") {
+        true  -> Turn { hp: 0,                 status: "playing", flavor: "You melt into the dark before the danger lands." }
+        false -> Turn { hp: 0 - (8 + turns * 2), status: "playing", flavor: "The dungeon answers in teeth and shadow." }
+      }
+    }
+  }
+
+  -- Apply an action to the hero's current HP and decide their fate.
+  fn play_turn(action: String, hp: Int, turns: Int) -> Turn {
+    let step = resolve(action, turns)
+    let new_hp = clamp_hp(hp + step.hp)
+    let found_exit = mentions(String.downcase(action), "treasure", "escape")
+    let fate = match new_hp <= 0 {
+      true  -> "dead"
+      false -> match found_exit {
+        true  -> "won"
+        false -> "playing"
+      }
+    }
+    Turn { hp: new_hp, status: fate, flavor: step.flavor }
+  }
+
+  fn dm_system() -> String {
+    "You are a terse, atmospheric dungeon master for a dark-fantasy text adventure. Narrate in second person, present tense, 2-3 vivid sentences. Never break character; never offer menus or lists."
+  }
+
+  -- ===== Cross-module seam: resolve a turn as a callable tool =====
+
+  tool Dungeon.PlayTurn {
+    description: "Resolve one turn of the dungeon from the player's action, current HP and turn count"
+
+    input {
+      action: String
+      hp: Int
+      turns: Int
+    }
+
+    output {
+      hp: Int
+      status: String
+      flavor: String
+    }
+
+    implement {
+      let t = play_turn(action, hp, turns)
+      Ok({ hp: t.hp, status: t.status, flavor: t.flavor })
+    }
+  }
+
+  -- ===== HTTP surface =====
+
+  -- Start a new adventure:  POST /games  { "hero": "Brunhilde" }
+  handler http POST "/games" (req) -> {
+    let body = req.json[Map[String, String]]!
+    let hero = match Map.get(body, "hero") {
+      Some(h) -> h
+      None    -> "a nameless wanderer"
+    }
+    let scene = llm.chat(
+      "claude-opus-4-8",
+      dm_system(),
+      "Open the adventure for ${hero}. Describe the dungeon's threshold and the first sign of danger."
+    )!
+    let game = Game {
+      id: uuid.new(),
+      hero: hero,
+      hp: 100,
+      location: "The Mossy Gate",
+      story: scene,
+      turns: 0,
+      status: "playing"
+    }
+    store.games.put(game)!
+    respond.json(201, game)
+  }
+
+  -- Inspect a game:  GET /games/:id
+  handler http GET "/games/:id" (req) -> {
+    match Uuid.parse(req.params.id) {
+      Ok(id) -> match store.games.get(id) {
+        Ok(g)  -> respond.json(200, g)
+        Err(_) -> respond.json(404, { error: "no such game" })
+      }
+      Err(_) -> respond.json(400, { error: "invalid game id" })
+    }
+  }
+
+  -- Take an action:  POST /games/:id/act  { "action": "attack the gargoyle" }
+  handler http POST "/games/:id/act" (req) -> {
+    let body = req.json[Map[String, String]]!
+    let action = match Map.get(body, "action") {
+      Some(x) -> x
+      None    -> "look around"
+    }
+    match Uuid.parse(req.params.id) {
+      Ok(id) -> match store.games.get(id) {
+        Ok(g) -> match g.status == "playing" {
+          false -> respond.json(409, { error: "this tale has already ended", status: g.status })
+          true  -> {
+            let t = play_turn(action, g.hp, g.turns)
+            let scene = llm.chat(
+              "claude-opus-4-8",
+              dm_system(),
+              "Hero ${g.hero} at ${g.location}, ${t.hp} HP, attempts: \"${action}\". ${t.flavor} Continue the story."
+            )!
+            let updated = Game {
+              id: g.id,
+              hero: g.hero,
+              hp: t.hp,
+              location: g.location,
+              story: scene,
+              turns: g.turns + 1,
+              status: t.status
+            }
+            store.games.put(updated)!
+            respond.json(200, updated)
+          }
+        }
+        Err(_) -> respond.json(404, { error: "no such game" })
+      }
+      Err(_) -> respond.json(400, { error: "invalid game id" })
+    }
+  }
+}

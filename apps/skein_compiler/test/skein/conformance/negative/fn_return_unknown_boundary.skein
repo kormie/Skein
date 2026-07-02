@@ -1,4 +1,4 @@
--- expect: E0037
+-- expect: E0010, E0037
 -- #291 (B2): :unknown is an internal inference state, never a public top type.
 -- A bare call to an unresolved name has no inferred type (B4/#293 turns the
 -- unresolved call itself into a structured error); returning it where the fn

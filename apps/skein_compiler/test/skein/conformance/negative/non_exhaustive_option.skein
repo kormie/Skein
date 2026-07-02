@@ -1,4 +1,4 @@
--- expect: E0024
+-- expect: E0024, E0037
 -- #261: a non-exhaustive match on Option (missing None) is a compile error.
 module NonExhaustiveOption {
   fn run(xs: List[String]) -> String {
