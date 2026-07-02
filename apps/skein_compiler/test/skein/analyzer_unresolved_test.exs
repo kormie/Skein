@@ -266,6 +266,83 @@ defmodule Skein.AnalyzerUnresolvedTest do
     end
   end
 
+  describe "bare Ok/Err as values (E0020, #309)" do
+    test "a bare Ok value binding is rejected with the constructor fix" do
+      errs =
+        errors("""
+        module M {
+          fn f() -> Int {
+            let _x = Ok
+            42
+          }
+        }
+        """)
+
+      refute_bridge_failure(errs)
+
+      assert Enum.any?(errs, fn e ->
+               e.code == "E0020" and e.message =~ "Ok" and e.fix_code == "Ok(value)"
+             end)
+    end
+
+    test "a bare Err in a test body is rejected (no boundary needed)" do
+      errs =
+        errors("""
+        module M {
+          fn f() -> Int { 1 }
+          test "t" {
+            let _x = Err
+            assert true
+          }
+        }
+        """)
+
+      refute_bridge_failure(errs)
+      assert Enum.any?(errs, fn e -> e.code == "E0020" and e.message =~ "Err" end)
+    end
+
+    test "a bare Ok flowing into a dynamic seam is rejected at the site" do
+      errs =
+        errors("""
+        module M {
+          capability memory.kv
+          fn f() -> Int {
+            let x = Ok
+            memory.put("k", x)
+            1
+          }
+        }
+        """)
+
+      refute_bridge_failure(errs)
+      assert Enum.any?(errs, fn e -> e.code == "E0020" and e.message =~ "Ok" end)
+    end
+
+    test "Ok/Err calls and patterns are unaffected" do
+      assert {:module, mod} =
+               Skein.Compiler.compile_string("""
+               module M {
+                 fn half(n: Int) -> Result[Int, String] {
+                   match n {
+                     0 -> Err("zero")
+                     _ -> Ok(n / 2)
+                   }
+                 }
+
+                 fn describe(n: Int) -> String {
+                   match half(n) {
+                     Ok(h) -> "half is ${h}"
+                     Err(reason) -> reason
+                   }
+                 }
+               }
+               """)
+
+      assert mod.describe(4) == "half is 2"
+      assert mod.describe(0) == "zero"
+    end
+  end
+
   describe "unknown store-table methods (E0010)" do
     test "store.<table>.<unknown>() is rejected with the method list" do
       errs =
