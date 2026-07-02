@@ -469,6 +469,7 @@ at runtime a `match` where every arm's guard fails raises `case_clause`.
 11. Records are **total**: every declared field exists at runtime. An absent `Option` field is `None` and a present one is `Some(value)` — identically for nominal construction, `req.json[T]`/`llm.json[T]` decode, store round-trips, and tool outputs, so `Some`/`None` matches behave the same wherever the record came from. On the JSON wire (handler responses, `http.*` request bodies) the conversion inverts: `Some(v)` serializes as the bare `v` and `None` fields are omitted.
 12. A tool `implement` body must evaluate to `Result[output, error]` — the runtime invokes it and matches on `Ok`/`Err`, so a bare value is `E0020`. `Ok({ ... })` inside an implement body constructs the tool's declared output and is checked field-by-field against the `output { ... }` shape (unknown fields, missing required fields, and per-field type mismatches are `E0020`; a present `Option` field takes the bare inner value, as in rule 11).
 13. A scenario `implement` provider must match its capability's provider contract exactly — `uuid`: `implement() -> Uuid`, `instant`: `implement() -> Instant`, `http.out`: `implement(req: HttpRequest) -> Result[HttpResponse, HttpError]`, `model`: `implement(req: LlmRequest) -> Result[LlmResponse, LlmError]`; any other signature, or an `implement` under a capability with no provider contract, is `E0038`. The provider body is fully type-checked against the declared return type (`E0020`). Purity of pure contexts (`test` bodies and providers, `E0029`) is transitive through local fn calls and `&fn` references.
+14. Every unresolved reference is an error **at the site itself**: an unknown identifier, an unknown `&fn` reference, a call to an undeclared fn, and an unknown store-table method are all `E0010`; a bare fn name used as a value (`&name` is the one reference form) and calling a non-function value are `E0020`. Calling a fn-typed binding (`let g = &f` then `g(...)`) is legal and checked like a local call (arity and argument types). The invariant this preserves: **a program the analyzer accepts always generates valid Core Erlang that BEAM-compiles and loads** — no accepted program reaches an unbound Core variable.
 
 ---
 
@@ -871,7 +872,7 @@ edits generically — no per-error-code logic.
 | E0001 | Syntax | error | Unexpected token |
 | E0002 | Syntax | error | Invalid string: unterminated string literal, an expression inside `${...}` interpolation (only an identifier with optional dot access is allowed), an empty interpolation (`${}`), or an unterminated interpolation |
 | E0003 | Syntax | error | Invalid number literal (e.g. underscore grouping in a float: `1_000.5`) |
-| E0010 | Name | error | Undefined identifier |
+| E0010 | Name | error | Undefined identifier, unknown `&fn` reference, call to an undeclared fn, or unknown store-table method (§4.3 rule 14) |
 | E0011 | Name | error | Duplicate definition |
 | E0012 | Capability | error | Missing capability declaration |
 | E0013 | Capability | — | Reserved: capability parameter mismatch (not yet emitted) |
@@ -879,7 +880,7 @@ edits generically — no per-error-code logic.
 | E0015 | Tool | error | Duplicate short tool name in `capability tool.use` params |
 | E0016 | Name | error | Cross-module function call (functions are module-private; expose a tool instead) |
 | E0017 | Capability | error | Duplicate scoped capability declaration (`memory.kv`, `event.log`, `process.spawn`, `timer` allow one per module or agent) |
-| E0020 | Type | error | Type mismatch (including wrong argument counts or types for fn, stdlib, and effect calls, wrong-shape callbacks in higher-order slots, interpolation in string patterns, tool `implement` bodies vs the `Result[output, error]` contract, and provider bodies vs their declared return) |
+| E0020 | Type | error | Type mismatch (including wrong argument counts or types for fn, stdlib, effect, and fn-typed-variable calls, wrong-shape callbacks in higher-order slots, interpolation in string patterns, tool `implement` bodies vs the `Result[output, error]` contract, provider bodies vs their declared return, a bare fn name used as a value, and calling a non-function value) |
 | E0021 | Type | error | Non-exhaustive match on a closed type (`Bool`, enum, `Result`, `Option`) with no `_` wildcard |
 | E0022 | Type | error | Invalid `!` on non-Result |
 | E0023 | Type | error | Invalid `?` on non-Result, enclosing fn doesn't return Result, or the propagated error type is incompatible with the enclosing Result's error type |

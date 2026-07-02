@@ -115,7 +115,7 @@ All error codes are aligned with the language specification. Agents can rely on 
 
 | Code | Severity | Description |
 |------|----------|-------------|
-| E0010 | error | Undefined identifier |
+| E0010 | error | Undefined identifier, unknown `&fn` reference, call to an undeclared fn, or unknown store-table method |
 | E0011 | error | Duplicate definition |
 | E0016 | error | Cross-module function call (functions are module-private; expose a tool instead) |
 
@@ -148,7 +148,7 @@ The `fix_code` field is especially useful for LLM agents -- it provides the exac
 
 | Code | Severity | Description |
 |------|----------|-------------|
-| E0020 | error | Type mismatch (including wrong argument counts or types for fn, stdlib, and effect calls, wrong-shape callbacks in higher-order slots, interpolation in string patterns, tool `implement` bodies vs the `Result[output, error]` contract, and provider bodies vs their declared return) |
+| E0020 | error | Type mismatch (including wrong argument counts or types for fn, stdlib, effect, and fn-typed-variable calls, wrong-shape callbacks in higher-order slots, interpolation in string patterns, tool `implement` bodies vs the `Result[output, error]` contract, provider bodies vs their declared return, a bare fn name used as a value, and calling a non-function value) |
 | E0021 | warning | Non-exhaustive match |
 | E0022 | error | Invalid `!` on non-Result |
 | E0023 | error | Invalid `?` on non-Result, enclosing fn doesn't return Result, or the propagated error type is incompatible with the enclosing Result's error type |

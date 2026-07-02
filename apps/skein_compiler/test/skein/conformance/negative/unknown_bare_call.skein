@@ -1,0 +1,11 @@
+-- expect: E0010
+-- #293 (B4): a call to an undeclared fn is an error at the call site, not
+-- only when its :unknown value happens to cross a declared boundary. Off the
+-- boundary path (a discarded let) this compiled and failed BEAM compilation
+-- with an unbound Core variable.
+module UnknownBareCall {
+  fn f() -> Int {
+    let _x = mystery()
+    1
+  }
+}

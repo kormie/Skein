@@ -1045,12 +1045,11 @@ defmodule Skein.AnalyzerTest do
   # ------------------------------------------------------------------
 
   describe "! operator validation" do
-    test "! on an unresolved call cannot cross a declared boundary (#291)" do
-      # `get_value` is undefined, so the call (and its unwrap) infers :unknown.
-      # Pre-B2 this was silently accepted; now the unverified value is rejected
-      # at the declared Int return boundary. (B4/#293 will make the unknown
-      # call itself a structured error.)
-      assert {:error, [%Skein.Error{code: "E0037"}]} =
+    test "! on an unresolved call is rejected at the call site and the boundary (#291, #293)" do
+      # `get_value` is undefined: B4 makes the unknown call itself a
+      # structured E0010 at the site, and the unverified :unknown value is
+      # still rejected at the declared Int return boundary (E0037).
+      assert {:error, errors} =
                analyze("""
                module M {
                  fn wrapper() -> Int {
@@ -1058,6 +1057,10 @@ defmodule Skein.AnalyzerTest do
                  }
                }
                """)
+
+      codes = Enum.map(errors, & &1.code)
+      assert "E0010" in codes
+      assert "E0037" in codes
     end
   end
 

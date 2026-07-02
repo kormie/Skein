@@ -1,0 +1,12 @@
+-- expect: E0020
+-- #293 (B4): a bare fn name is not a value — `&name` is the one reference
+-- form. Before B4 this inferred :unknown and codegen emitted an unbound Core
+-- variable for the name.
+module BareFnReference {
+  fn a() -> Int { 1 }
+
+  fn f() -> Int {
+    let _x = a
+    1
+  }
+}

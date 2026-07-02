@@ -34,9 +34,9 @@ defmodule Skein.AnalyzerBoundaryTest do
 
   describe "E0037 — :unknown rejected at declared fn-return boundary" do
     test "top-level :unknown returned where a concrete type is declared" do
-      # An unresolved bare call is the remaining :unknown producer at a
-      # declared boundary (a `&fn` reference carries a callable type since
-      # B3/#292 and fails as a concrete E0020 mismatch instead).
+      # An unresolved bare call errors at the site (E0010, B4/#293) AND its
+      # :unknown value is rejected at the declared boundary — the guard stays
+      # even when the producer is separately diagnosed.
       errors =
         analyze_errors("""
         module M {
@@ -46,7 +46,8 @@ defmodule Skein.AnalyzerBoundaryTest do
         }
         """)
 
-      assert [%Skein.Error{code: "E0037"} = error] = errors
+      assert Enum.any?(errors, &(&1.code == "E0010"))
+      assert [%Skein.Error{} = error] = Enum.filter(errors, &(&1.code == "E0037"))
       assert error.severity == :error
       assert error.message =~ "Int"
       assert error.message =~ "cannot be verified"

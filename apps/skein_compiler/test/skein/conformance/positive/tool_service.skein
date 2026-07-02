@@ -1,0 +1,27 @@
+-- Positive corpus (#293 / B4): a module mixing tools (Result-contract
+-- implement bodies), handlers, and fns must load; the pure fn must run.
+module ToolService {
+  capability http.in
+  capability tool.use(Math.Add)
+
+  tool Math.Add {
+    description: "Add two integers"
+
+    input {
+      a: Int
+      b: Int
+    }
+
+    output { sum: Int }
+
+    implement { Ok({ sum: a + b }) }
+  }
+
+  fn main() -> Int {
+    7 + 5
+  }
+
+  handler http GET "/health" (req) -> {
+    respond.json(200, "ok")
+  }
+}

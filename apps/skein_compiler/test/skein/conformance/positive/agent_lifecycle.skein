@@ -1,0 +1,34 @@
+-- Positive corpus (#293 / B4): an agent with phase transitions, memory, and
+-- a module-level fn called from a phase handler must compile and load.
+module AgentLifecycle {
+  fn double(n: Int) -> Int { n * 2 }
+
+  agent Doubler {
+    capability memory.kv
+
+    state {
+      value: Int
+    }
+
+    enum Phase {
+      Work -> [Done]
+      Done -> []
+    }
+
+    on start(n: Int) -> {
+      memory.put("n", n)
+      transition(Phase.Work)
+    }
+
+    on phase(Phase.Work) -> {
+      let n = memory.get!("n")
+      let d = double(2)
+      memory.put("doubled", d)
+      transition(Phase.Done)
+    }
+
+    on phase(Phase.Done) -> {
+      stop()
+    }
+  }
+}

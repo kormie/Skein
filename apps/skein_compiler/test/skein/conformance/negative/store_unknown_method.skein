@@ -1,0 +1,13 @@
+-- expect: E0010
+-- #293 (B4): a store-table call outside the store method surface is an error
+-- at the call site. The guarded store clause only types known methods, so an
+-- unknown one previously fell through to a silent :unknown and an unbound
+-- Core variable at BEAM compile.
+module StoreUnknownMethod {
+  capability store
+
+  fn f() -> Int {
+    let _x = store.users.frobnicate("k")
+    1
+  }
+}

@@ -1,0 +1,24 @@
+-- Positive corpus (#293 / B4): nominal records with total Option fields —
+-- construction, Some/None matching, and field access must load and run.
+module RecordsAndOption {
+  type User {
+    name: String
+    nickname: Option[String]
+    age: Int
+  }
+
+  fn display(user: User) -> String {
+    match user.nickname {
+      Some(nick) -> nick
+      None -> user.name
+    }
+  }
+
+  fn main() -> String {
+    let ada = User { name: "Ada", age: 36 }
+    let grace = User { name: "Grace", nickname: "Amazing Grace", age: 45 }
+    let first = display(ada)
+    let second = display(grace)
+    "${first} & ${second}"
+  }
+}
