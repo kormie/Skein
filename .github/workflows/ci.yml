@@ -62,9 +62,10 @@ jobs:
   # Wave D dogfood gate (#262). Always (blocking): execute the checked-in
   # dogfood corpus through the CLI path (`mix skein.test`), complementing the
   # ExUnit runner (dogfood_corpus_test.exs) that already runs inside the main
-  # job's `mix test`. Additionally, when the DOGFOOD_GITHUB_TOKEN secret is
-  # configured (a fine-grained PAT with read access to the two PRIVATE
-  # upstream dogfood repos), clone each upstream repo at its pinned revision
+  # job's `mix test`. Additionally, when a token secret with read access to
+  # the two PRIVATE upstream dogfood repos is configured (DOGFOOD_GITHUB_TOKEN,
+  # falling back to GH_PROJECTS_TOKEN — the owner's projects PAT has repo read
+  # on both), clone each upstream repo at its pinned revision
   # (conformance/dogfood.json) and EXECUTE its test suite against this Skein
   # revision — so API drift against the real external ports fails CI, not a
   # future release sweep.
@@ -111,13 +112,13 @@ jobs:
       - name: Check for the external-repo token
         id: token
         env:
-          DOGFOOD_GITHUB_TOKEN: ${{ secrets.DOGFOOD_GITHUB_TOKEN }}
+          DOGFOOD_GITHUB_TOKEN: ${{ secrets.DOGFOOD_GITHUB_TOKEN || secrets.GH_PROJECTS_TOKEN }}
         run: |
           if [ -n "$DOGFOOD_GITHUB_TOKEN" ]; then
             echo "have=true" >> "$GITHUB_OUTPUT"
           else
             echo "have=false" >> "$GITHUB_OUTPUT"
-            echo "::notice title=Dogfood external ports not checked::The upstream dogfood repos are private and no DOGFOOD_GITHUB_TOKEN secret is configured — only the checked-in corpus was executed. Add a fine-grained PAT with read access to kormie/skein-testing and kormie/FablePool-skein to enable the upstream check."
+            echo "::notice title=Dogfood external ports not checked::The upstream dogfood repos are private and neither the DOGFOOD_GITHUB_TOKEN nor the GH_PROJECTS_TOKEN secret is configured — only the checked-in corpus was executed. Add a PAT with read access to kormie/skein-testing and kormie/FablePool-skein under either name to enable the upstream check."
           fi
 
       - name: Read dogfood pins
@@ -136,7 +137,7 @@ jobs:
           repository: ${{ steps.pins.outputs.dungeon_repo }}
           ref: ${{ steps.pins.outputs.dungeon_rev }}
           path: dogfood-external/dungeon
-          token: ${{ secrets.DOGFOOD_GITHUB_TOKEN }}
+          token: ${{ secrets.DOGFOOD_GITHUB_TOKEN || secrets.GH_PROJECTS_TOKEN }}
 
       - name: Check out FablePool-skein at its pin
         if: steps.token.outputs.have == 'true'
@@ -145,7 +146,7 @@ jobs:
           repository: ${{ steps.pins.outputs.fablepool_repo }}
           ref: ${{ steps.pins.outputs.fablepool_rev }}
           path: dogfood-external/fablepool
-          token: ${{ secrets.DOGFOOD_GITHUB_TOKEN }}
+          token: ${{ secrets.DOGFOOD_GITHUB_TOKEN || secrets.GH_PROJECTS_TOKEN }}
 
       - name: Run skein-testing test suite
         if: steps.token.outputs.have == 'true'
