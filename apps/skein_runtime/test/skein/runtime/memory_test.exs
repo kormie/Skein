@@ -60,12 +60,12 @@ defmodule Skein.Runtime.MemoryTest do
     end
 
     test "rejects without capability" do
-      assert {:error, msg} = Memory.put("sessions", "key", "val", @no_capabilities)
+      assert {:error, {:denied, msg}} = Memory.put("sessions", "key", "val", @no_capabilities)
       assert msg =~ "memory.kv"
     end
 
     test "rejects with wrong namespace capability" do
-      assert {:error, msg} = Memory.put("sessions", "key", "val", @wrong_capabilities)
+      assert {:error, {:denied, msg}} = Memory.put("sessions", "key", "val", @wrong_capabilities)
       assert msg =~ "sessions"
     end
 
@@ -96,7 +96,7 @@ defmodule Skein.Runtime.MemoryTest do
     end
 
     test "rejects without capability" do
-      assert {:error, msg} = Memory.get("sessions", "key", @no_capabilities)
+      assert {:error, {:denied, msg}} = Memory.get("sessions", "key", @no_capabilities)
       assert msg =~ "memory.kv"
     end
 
@@ -126,7 +126,7 @@ defmodule Skein.Runtime.MemoryTest do
     end
 
     test "rejects without capability" do
-      assert {:error, msg} = Memory.delete("sessions", "key", @no_capabilities)
+      assert {:error, {:denied, msg}} = Memory.delete("sessions", "key", @no_capabilities)
       assert msg =~ "memory.kv"
     end
 
@@ -169,7 +169,7 @@ defmodule Skein.Runtime.MemoryTest do
     end
 
     test "rejects without capability" do
-      assert {:error, msg} = Memory.list("sessions", "", @no_capabilities)
+      assert {:error, {:denied, msg}} = Memory.list("sessions", "", @no_capabilities)
       assert msg =~ "memory.kv"
     end
   end
@@ -295,7 +295,7 @@ defmodule Skein.Runtime.MemoryTest do
       Process.put(:skein_agent_instance_id, "inst_cap1")
 
       no_caps = []
-      assert {:error, _} = Memory.put("sessions", "key", "val", no_caps)
+      assert {:error, {:denied, _}} = Memory.put("sessions", "key", "val", no_caps)
 
       Process.delete(:skein_agent_name)
       Process.delete(:skein_agent_instance_id)

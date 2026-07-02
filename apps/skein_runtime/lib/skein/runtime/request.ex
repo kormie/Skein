@@ -46,99 +46,15 @@ defmodule Skein.Runtime.Request do
   # Schema validation
   # ------------------------------------------------------------------
 
-  defp validate(parsed, schema) when map_size(schema) == 0 do
-    # Empty schema = no validation
-    {:ok, parsed}
-  end
-
+  # One recursive schema engine (C3/#298): `Skein.Runtime.JsonSchema`
+  # validates the full nested shape (required/types/constraints/formats/
+  # uniqueItems, recursively) and atomizes schema-declared keys (Option
+  # fields become Some/None) so compiled field access lands on atom keys —
+  # the same engine the llm.json[T] and tool input/output paths use.
   defp validate(parsed, schema) do
-    violations =
-      required_violations(parsed, schema) ++
-        type_violations(parsed, schema) ++
-        constraint_violations(parsed, schema)
-
-    case violations do
-      [] ->
-        # Coerce schema-declared keys to atoms (and Option fields to Some/None)
-        # so compiled field access (`body.hero` -> map_get(:hero, ...)) lands on
-        # the right key — the same coercion the llm.json[T] path performs
-        # (skein-testing #2 / #32).
-        {:ok, Skein.Runtime.JsonSchema.atomize(parsed, schema)}
-
-      violations ->
-        {:error, ValidationError.new(violations)}
+    case Skein.Runtime.JsonSchema.decode(parsed, schema) do
+      {:ok, decoded} -> {:ok, decoded}
+      {:error, violations} -> {:error, ValidationError.new(violations)}
     end
   end
-
-  defp required_violations(parsed, schema) do
-    schema
-    |> Map.get("required", [])
-    |> Enum.reject(&Map.has_key?(parsed, &1))
-    |> Enum.map(&"#{&1}: required field is missing")
-  end
-
-  defp type_violations(parsed, schema) do
-    each_present_field(parsed, schema, fn field, value, field_schema ->
-      case validate_type(value, field_schema) do
-        :ok -> []
-        {:error, reason} -> ["#{field}: #{reason}"]
-      end
-    end)
-  end
-
-  # Enforce the `@`-constraint annotations carried into the schema:
-  # @one_of -> "enum", @min -> "minimum", @max -> "maximum" (skein-testing#25).
-  defp constraint_violations(parsed, schema) do
-    each_present_field(parsed, schema, fn field, value, field_schema ->
-      Enum.flat_map(field_schema, fn
-        {"enum", allowed} ->
-          if value in allowed,
-            do: [],
-            else: ["#{field}: must be one of #{Enum.map_join(allowed, ", ", &inspect/1)}"]
-
-        {"minimum", min} when is_number(value) ->
-          if value >= min, do: [], else: ["#{field}: must be >= #{min}"]
-
-        {"maximum", max} when is_number(value) ->
-          if value <= max, do: [], else: ["#{field}: must be <= #{max}"]
-
-        _ ->
-          []
-      end)
-    end)
-  end
-
-  # Run `fun.(field, value, field_schema)` for every schema property present in
-  # the body, collecting the returned violation lists.
-  defp each_present_field(parsed, schema, fun) do
-    schema
-    |> Map.get("properties", %{})
-    |> Enum.flat_map(fn {field, field_schema} ->
-      case Map.get(parsed, field) do
-        nil -> []
-        value -> fun.(field, value, field_schema)
-      end
-    end)
-  end
-
-  defp validate_type(value, %{"type" => "string"}) when is_binary(value), do: :ok
-  defp validate_type(_value, %{"type" => "string"}), do: {:error, "expected string"}
-
-  defp validate_type(value, %{"type" => "integer"}) when is_integer(value), do: :ok
-  defp validate_type(_value, %{"type" => "integer"}), do: {:error, "expected integer"}
-
-  defp validate_type(value, %{"type" => "number"}) when is_number(value), do: :ok
-  defp validate_type(_value, %{"type" => "number"}), do: {:error, "expected number"}
-
-  defp validate_type(value, %{"type" => "boolean"}) when is_boolean(value), do: :ok
-  defp validate_type(_value, %{"type" => "boolean"}), do: {:error, "expected boolean"}
-
-  defp validate_type(value, %{"type" => "array"}) when is_list(value), do: :ok
-  defp validate_type(_value, %{"type" => "array"}), do: {:error, "expected array"}
-
-  defp validate_type(value, %{"type" => "object"}) when is_map(value), do: :ok
-  defp validate_type(_value, %{"type" => "object"}), do: {:error, "expected object"}
-
-  # No type specified — always valid
-  defp validate_type(_value, _schema), do: :ok
 end

@@ -138,10 +138,10 @@ All phases complete — MVP reached. The full compilation pipeline supports:
 - Type checking with inference, JSON schema derivation, constraint annotations
 - Capability-based security with compile-time and runtime enforcement
 - HTTP/queue/schedule handlers with route matching and path parameters
-- ETS-backed store operations with capability gating (the Ecto/SQLite typed-table path is unwired library code — roadmap C5, #255)
+- ETS-backed store operations with capability gating and typed tables (C5, #255) — `capability store.table("users", User)` names the record type, operations are type-checked, writes are schema-checked at runtime (the Ecto/SQLite path remains unwired library code)
 - Agent state machines with phase transitions, compile-time transition validation
 - Scoped KV memory with namespace isolation
-- LLM client with pluggable backends, schema-directed JSON decoding/atomization for `llm.json[T]` (schema validation is not yet enforced — C3, #298), and streaming
+- LLM client with pluggable backends, schema-validated JSON decoding for `llm.json[T]` (responses are recursively validated against the derived schema — C3, #298; violations are `Err(LlmError.InvalidSchema(violations))`), and streaming
 - Automatic trace recording for all effect calls
 - Full CLI tooling (new, build, test, run, trace)
 - VS Code extension with LSP (diagnostics, symbols, hover, completions, go-to-definition)

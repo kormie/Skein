@@ -25,31 +25,16 @@ defmodule Skein.CodeGen.CoreErlang do
   # boundary (#290). Namespaced so no user value can collide with it.
   @propagate_tag :"$skein_propagate"
 
-  # Known effect namespaces and their runtime modules
-  # memory and llm have special codegen handlers below
-  @effect_runtime_modules %{
-    "http" => :"Elixir.Skein.Runtime.Http",
-    "topic" => :"Elixir.Skein.Runtime.Topic",
-    "queue" => :"Elixir.Skein.Runtime.Queue",
-    "trace" => :"Elixir.Skein.Runtime.Trace",
-    "process" => :"Elixir.Skein.Runtime.Process",
-    "timer" => :"Elixir.Skein.Runtime.Timer",
-    "event" => :"Elixir.Skein.Runtime.EventStore",
-    # Nondeterministic generators are effects (#261): uuid.new()/instant.now()
-    # lower to capability-checked, replay-aware runtime calls.
-    "uuid" => :"Elixir.Skein.Runtime.Uuid",
-    "instant" => :"Elixir.Skein.Runtime.Instant"
-  }
+  # Known effect namespaces and their runtime modules — derived from the
+  # authoritative effect-ABI registry (C1/#296). Namespaces with dedicated
+  # codegen handlers below (memory/llm/tool) are absent by construction.
+  @effect_runtime_modules Skein.EffectABI.generic_runtime_modules()
 
   # Scoped capability labels (spec §3.2): for these namespaces the declared
   # capability parameter names a scope label (pool/group/stream) that is
   # threaded into every generated runtime call as the first argument,
-  # mirroring the memory.kv namespace threading.
-  @scoped_effect_capability_kinds %{
-    "process" => "process.spawn",
-    "timer" => "timer",
-    "event" => "event.log"
-  }
+  # mirroring the memory.kv namespace threading. Registry-derived (C1/#296).
+  @scoped_effect_capability_kinds Skein.EffectABI.scoped_label_capability_kinds()
 
   # Standard library module mapping: Skein module name -> Elixir runtime module
   @stdlib_modules %{
@@ -1972,11 +1957,21 @@ defmodule Skein.CodeGen.CoreErlang do
     capabilities = Map.get(scope, :__capabilities__, [])
     caps_expr = generate_capabilities_literal(capabilities)
 
-    # Call: Skein.Runtime.Store.method(table_name, args..., capabilities)
+    # Typed tables (C5/#255): `put` carries the table's derived JSON Schema
+    # so the runtime schema-checks every write (defense in depth behind the
+    # analyzer's record typing; also guards dynamic data that reached the
+    # record through Json seams).
+    extra_args =
+      case method do
+        "put" -> [:cerl.abstract(store_table_schema(table_name, scope))]
+        _ -> []
+      end
+
+    # Call: Skein.Runtime.Store.method(table_name, args..., [schema,] capabilities)
     :cerl.c_call(
       :cerl.c_atom(:"Elixir.Skein.Runtime.Store"),
       :cerl.c_atom(method_atom),
-      [:cerl.abstract(table_name) | args_exprs] ++ [caps_expr]
+      [:cerl.abstract(table_name) | args_exprs] ++ extra_args ++ [caps_expr]
     )
   end
 
@@ -2279,16 +2274,16 @@ defmodule Skein.CodeGen.CoreErlang do
     )
   end
 
-  # Assert expression: __assert__(expr) — raises a structured
+  # Assert expression: `assert expr` — raises a structured
   # Skein.Runtime.AssertionError on falsy (issue #105). Comparison asserts
   # bind both operands so the failure reports expected vs actual; every
   # assert carries the rendered expression and its source location.
   @comparison_ops [:==, :!=, :<, :>, :<=, :>=]
 
   defp generate_expr(
-         %AST.Call{
-           target: %AST.Identifier{name: "__assert__", meta: meta},
-           args: [%AST.BinaryOp{op: op, left: left, right: right} = expr]
+         %AST.Assert{
+           expr: %AST.BinaryOp{op: op, left: left, right: right} = expr,
+           meta: meta
          },
          scope
        )
@@ -2327,10 +2322,7 @@ defmodule Skein.CodeGen.CoreErlang do
     )
   end
 
-  defp generate_expr(
-         %AST.Call{target: %AST.Identifier{name: "__assert__", meta: meta}, args: [expr]},
-         scope
-       ) do
+  defp generate_expr(%AST.Assert{expr: expr, meta: meta}, scope) do
     expr_val = generate_expr(expr, scope)
     result_var = :cerl.c_var(gen_var())
 
@@ -2867,6 +2859,33 @@ defmodule Skein.CodeGen.CoreErlang do
   # inline nested record/enum-typed fields (rather than emitting a bare
   # `{"type": "object"}`); this is what lets the runtime coerce nested
   # objects to atom keys recursively for both req.json[T] and llm.json[T].
+  # The JSON Schema for a typed store table (C5/#255): resolve the
+  # capability's record-type param against the module's type declarations.
+  # nil when unresolvable — the analyzer (E0043) rejects such programs, so
+  # this is unreachable for accepted code; nil makes the runtime skip
+  # validation rather than crash if it ever regresses.
+  defp store_table_schema(table_name, scope) do
+    capabilities = Map.get(scope, :__capabilities__, [])
+    type_decls = Map.get(scope, :__type_decls__, %{})
+
+    with %AST.Capability{params: [_, %AST.Identifier{name: type_name} | _]} <-
+           Enum.find(capabilities, fn
+             %AST.Capability{
+               kind: "store.table",
+               params: [%AST.StringLit{segments: [literal: ^table_name]} | _]
+             } ->
+               true
+
+             _ ->
+               false
+           end),
+         %AST.TypeDecl{} <- Map.get(type_decls, type_name) do
+      json_schema_for(type_name, type_decls)
+    else
+      _ -> nil
+    end
+  end
+
   defp json_schema_for(type_name, type_decls) do
     env = schema_env(type_decls)
 

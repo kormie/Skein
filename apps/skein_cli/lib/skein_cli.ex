@@ -330,6 +330,7 @@ defmodule Skein.CLI do
         run)
           _arguments \\
             '--port[Server port (default 4000)]:port:' \\
+            '--no-persist[Skip SQLite event persistence]' \\
             '*:project directory:_directories'
           ;;
         test|agents)
@@ -753,8 +754,19 @@ defmodule Skein.CLI do
   @doc """
   Compiles a Skein project and starts an HTTP server for any handlers found.
 
+  Declared `supervisor` trees boot as real OTP supervisors under the
+  server (#325): each module's `__supervisors__/0` metadata is realized
+  by `Skein.Runtime.SupervisorHost`, with agent children restarted per
+  the declared strategy and intensity for as long as the service runs.
+
+  Event persistence is enabled by default (#299): every EventStore append
+  is also written to SQLite at `<project>/.skein/events.db`, and previously
+  persisted events are reloaded on startup so a restarted service sees its
+  history.
+
   Options:
   - `--port <n>` — Port to listen on (default: 4000)
+  - `--no-persist` — Skip SQLite event persistence (in-memory log only)
 
   Returns `{:ok, pid}` where `pid` is the server process.
   """
@@ -762,10 +774,27 @@ defmodule Skein.CLI do
   def run(args) do
     case run_config(args) do
       {:ok, config} ->
-        Skein.Runtime.Server.start_link(modules: config.modules, port: config.port)
+        with :ok <- maybe_enable_persistence(config) do
+          Skein.Runtime.Server.start_link(modules: config.modules, port: config.port)
+        end
 
       {:error, _} = err ->
         err
+    end
+  end
+
+  defp maybe_enable_persistence(%{persist: false}), do: :ok
+
+  defp maybe_enable_persistence(%{project_dir: project_dir}) do
+    db_path = Path.join([project_dir, ".skein", "events.db"])
+    File.mkdir_p!(Path.dirname(db_path))
+
+    case Skein.Runtime.EventStore.Persistence.enable(db_path) do
+      :ok ->
+        :ok
+
+      {:error, reason} ->
+        {:error, "Failed to enable event persistence at #{db_path}: #{inspect(reason)}"}
     end
   end
 
@@ -773,7 +802,8 @@ defmodule Skein.CLI do
   Parses run arguments and compiles the project, returning the config
   without starting the server. Useful for testing option parsing.
 
-  Returns `{:ok, %{module: mod, port: n}}` or `{:error, reason}`.
+  Returns `{:ok, %{modules: mods, module: mod, port: n, project_dir: dir,
+  persist: bool}}` or `{:error, reason}`.
   """
   @spec run_config([String.t()]) :: {:ok, map()} | {:error, String.t()}
   def run_config(args) do
@@ -785,13 +815,14 @@ defmodule Skein.CLI do
   defp do_run_config(project_dir, opts) do
     project_dir = Path.expand(project_dir)
     port = Keyword.get(opts, :port, 4000)
+    persist = Keyword.get(opts, :persist, true)
 
     with :ok <- apply_env_profile(project_dir, opts) do
-      do_run_config_compile(project_dir, port)
+      do_run_config_compile(project_dir, port, persist)
     end
   end
 
-  defp do_run_config_compile(project_dir, port) do
+  defp do_run_config_compile(project_dir, port, persist) do
     skein_files = discover_skein_files(project_dir, "src")
 
     if skein_files == [] do
@@ -812,27 +843,37 @@ defmodule Skein.CLI do
         # compile order, not the reversed accumulator
         |> Enum.reverse()
 
-      # Every module with handlers is mounted: HTTP routes are merged into
-      # one router and background (schedule/queue/topic) handlers register,
-      # rather than picking a single module and 404-ing the rest
-      # (skein-testing#21).
-      handler_modules =
+      # Every module with handlers OR supervisors is mounted: HTTP routes
+      # are merged into one router, background (schedule/queue/topic)
+      # handlers register, and declared supervision trees boot under the
+      # server (#325), rather than picking a single module and 404-ing
+      # the rest (skein-testing#21).
+      service_modules =
         Enum.filter(modules, fn mod ->
-          function_exported?(mod, :__handlers__, 0) and mod.__handlers__() != []
+          (function_exported?(mod, :__handlers__, 0) and mod.__handlers__() != []) or
+            (function_exported?(mod, :__supervisors__, 0) and mod.__supervisors__() != [])
         end)
 
-      case handler_modules do
+      case service_modules do
         [] ->
-          {:error, "No handlers found in compiled modules"}
+          {:error, "No handlers or supervisors found in compiled modules"}
 
         mods ->
-          {:ok, %{modules: mods, module: hd(mods), port: port}}
+          {:ok,
+           %{
+             modules: mods,
+             module: hd(mods),
+             port: port,
+             project_dir: project_dir,
+             persist: persist
+           }}
       end
     end
   end
 
   defp run_flag_spec do
     Map.merge(env_flag_spec(), %{
+      "--no-persist" => {:flag, {:persist, false}},
       "--port" => fn port_str ->
         case Integer.parse(port_str) do
           {port, ""} when port in 1..65535 ->
@@ -968,14 +1009,21 @@ defmodule Skein.CLI do
   defp do_parse_project_args([arg | rest], spec, dir, opts) do
     cond do
       Map.has_key?(spec, arg) ->
-        case rest do
-          [value | rest_after_value] ->
-            with {:ok, parsed} <- spec[arg].(value) do
-              do_parse_project_args(rest_after_value, spec, dir, [parsed | opts])
-            end
+        case spec[arg] do
+          # Boolean flag: consumes no value.
+          {:flag, parsed} ->
+            do_parse_project_args(rest, spec, dir, [parsed | opts])
 
-          [] ->
-            {:error, "Missing value for #{arg}"}
+          parse_value when is_function(parse_value, 1) ->
+            case rest do
+              [value | rest_after_value] ->
+                with {:ok, parsed} <- parse_value.(value) do
+                  do_parse_project_args(rest_after_value, spec, dir, [parsed | opts])
+                end
+
+              [] ->
+                {:error, "Missing value for #{arg}"}
+            end
         end
 
       String.starts_with?(arg, "-") ->

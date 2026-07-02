@@ -118,11 +118,12 @@ defmodule Skein.Runtime.Tool do
   @doc """
   Calls a registered tool by name with the given input.
 
-  Returns `{:ok, result_map}` or `{:error, %Tool.Error{}}`.
+  Returns `{:ok, result_map}` or `{:error, <ToolError ABI tuple>}` — the
+  frozen matchable form (C2/#297), e.g. `{:validation_error, tool, violations}`.
 
   Requires `tool.use` capability in the capabilities list.
   """
-  @spec call(String.t(), any(), [map()]) :: {:ok, any()} | {:error, Error.t()}
+  @spec call(String.t(), any(), [map()]) :: {:ok, any()} | {:error, Error.abi()}
   def call(name, input, capabilities)
       when is_binary(name) and is_list(capabilities) do
     Trace.with_recorded_span(%{kind: :tool, method: :call, name: name}, fn ->
@@ -137,6 +138,7 @@ defmodule Skein.Runtime.Tool do
           {{:error, Error.capability_error(reason)}, %{}}
       end
     end)
+    |> Error.to_abi_result()
   end
 
   # An active replay context serves recorded tool results instead of
@@ -173,7 +175,7 @@ defmodule Skein.Runtime.Tool do
 
   Requires `tool.use` capability.
   """
-  @spec list([map()]) :: {:ok, [map()]} | {:error, Error.t()}
+  @spec list([map()]) :: {:ok, [map()]} | {:error, Error.abi()}
   def list(capabilities) when is_list(capabilities) do
     Trace.with_span(%{kind: :tool, method: :list, name: "*"}, fn ->
       case check_tool_capability(capabilities) do
@@ -192,16 +194,17 @@ defmodule Skein.Runtime.Tool do
           {:error, Error.capability_error(reason)}
       end
     end)
+    |> Error.to_abi_result()
   end
 
   @doc """
   Returns the schema for a registered tool.
 
-  Returns `{:ok, schema_map}` or `{:error, %Tool.Error{}}`.
+  Returns `{:ok, schema_map}` or `{:error, <ToolError ABI tuple>}` (C2/#297).
 
   Requires `tool.use` capability.
   """
-  @spec schema(String.t(), [map()]) :: {:ok, map()} | {:error, Error.t()}
+  @spec schema(String.t(), [map()]) :: {:ok, map()} | {:error, Error.abi()}
   def schema(name, capabilities) when is_binary(name) and is_list(capabilities) do
     Trace.with_span(%{kind: :tool, method: :schema, name: name}, fn ->
       case check_tool_capability(capabilities, name) do
@@ -220,6 +223,7 @@ defmodule Skein.Runtime.Tool do
           {:error, Error.capability_error(reason)}
       end
     end)
+    |> Error.to_abi_result()
   end
 
   @doc """
@@ -282,7 +286,10 @@ defmodule Skein.Runtime.Tool do
           :ok ->
             case impl.(input) do
               {:ok, result} ->
-                {:ok, coerce_output(result, schema)}
+                validate_output(name, result, schema)
+
+              {:error, reason} when is_binary(reason) ->
+                {:error, Error.execution_error(name, reason)}
 
               {:error, reason} ->
                 {:error, Error.execution_error(name, inspect(reason))}
@@ -301,14 +308,28 @@ defmodule Skein.Runtime.Tool do
   # come back total — {:some, v} when present, :none injected when absent —
   # identically to JSON decode and store reads (#294). Tools registered
   # without an output schema (hand-registered test doubles) pass through.
-  defp coerce_output(result, schema) when is_map(result) do
+  # C3/#298: tool OUTPUT is now VALIDATED against the declared output
+  # schema (it was only coerced before) — a tool implementation returning
+  # a shape that violates its own declaration is a validation error naming
+  # the violations, not silent nonsense at the caller. Tools registered
+  # without an output schema (hand-registered test doubles) pass through.
+  defp validate_output(name, result, schema) when is_map(result) do
     case output_schema(schema) do
-      nil -> result
-      out_schema -> Skein.Runtime.JsonSchema.atomize(result, out_schema)
+      nil ->
+        {:ok, result}
+
+      out_schema ->
+        case Skein.Runtime.JsonSchema.decode(result, out_schema) do
+          {:ok, decoded} ->
+            {:ok, decoded}
+
+          {:error, violations} ->
+            {:error, Error.validation_error(name, Enum.map(violations, &"output: #{&1}"))}
+        end
     end
   end
 
-  defp coerce_output(result, _schema), do: result
+  defp validate_output(_name, result, _schema), do: {:ok, result}
 
   defp output_schema(%{output_schema: %{"type" => "object"} = out}), do: out
   defp output_schema(%{"output_schema" => %{"type" => "object"} = out}), do: out
@@ -361,27 +382,23 @@ defmodule Skein.Runtime.Tool do
     end
   end
 
+  # C3/#298: JSON-Schema-format tool inputs validate through the one shared
+  # recursive engine — nested shapes, formats, uniqueItems and constraints
+  # included — instead of the former shallow field walk. Missing-field
+  # messages keep the historical wording.
   defp check_fields(input, {:json_schema, schema}) do
-    properties = Map.get(schema, "properties", %{})
-    required = Map.get(schema, "required", [])
+    case Skein.Runtime.JsonSchema.validate(input, schema) do
+      :ok ->
+        []
 
-    missing =
-      required
-      |> Enum.reject(fn field_name ->
-        map_has_key_flex?(input, field_name)
-      end)
-      |> Enum.map(fn field -> "missing required field '#{field}'" end)
-
-    type_errors =
-      properties
-      |> Enum.flat_map(fn {field_name, prop_schema} ->
-        case map_get_flex(input, field_name) do
-          :missing -> []
-          {:found, value} -> check_json_schema_type(field_name, value, prop_schema)
-        end
-      end)
-
-    missing ++ type_errors
+      {:error, violations} ->
+        Enum.map(violations, fn violation ->
+          case Regex.run(~r/\Arequired field '([^']+)' is missing\z/, violation) do
+            [_, field] -> "missing required field '#{field}'"
+            nil -> violation
+          end
+        end)
+    end
   end
 
   defp check_fields(input, spec) when is_map(spec) and is_map(input) do
@@ -396,12 +413,6 @@ defmodule Skein.Runtime.Tool do
   defp check_fields(_input, _spec), do: []
 
   # Flexible map access: tries both string and atom keys
-  defp map_has_key_flex?(map, key) when is_map(map) do
-    Map.has_key?(map, key) or
-      (is_binary(key) and Map.has_key?(map, safe_to_atom(key))) or
-      (is_atom(key) and Map.has_key?(map, Atom.to_string(key)))
-  end
-
   defp map_get_flex(map, key) when is_map(map) do
     cond do
       Map.has_key?(map, key) ->
@@ -442,20 +453,6 @@ defmodule Skein.Runtime.Tool do
     do: ["field '#{field}' expected Bool, got #{inspect(value)}"]
 
   defp check_type(_field, _value, _type), do: []
-
-  defp check_json_schema_type(field, value, %{"type" => "string"}) when not is_binary(value),
-    do: ["field '#{field}' expected String, got #{inspect(value)}"]
-
-  defp check_json_schema_type(field, value, %{"type" => "integer"}) when not is_integer(value),
-    do: ["field '#{field}' expected Int, got #{inspect(value)}"]
-
-  defp check_json_schema_type(field, value, %{"type" => "number"}) when not is_number(value),
-    do: ["field '#{field}' expected Number, got #{inspect(value)}"]
-
-  defp check_json_schema_type(field, value, %{"type" => "boolean"}) when not is_boolean(value),
-    do: ["field '#{field}' expected Bool, got #{inspect(value)}"]
-
-  defp check_json_schema_type(_field, _value, _schema), do: []
 end
 
 defmodule Skein.Runtime.Tool.Error do
@@ -497,4 +494,40 @@ defmodule Skein.Runtime.Tool.Error do
   def validation_error(tool_name, violations) do
     %__MODULE__{kind: :validation_error, detail: %{tool: tool_name, violations: violations}}
   end
+
+  @typedoc """
+  The frozen structured-error ABI form (C2/#297): the tuple a Skein
+  `ToolError` variant pattern lowers to, so `Err(ToolError.NotFound(name))`
+  really matches. See `Skein.EffectABI.error_enums/0` and spec §6.5.
+  """
+  @type abi ::
+          {:not_found, String.t()}
+          | {:validation_error, String.t(), [String.t()]}
+          | {:execution_error, String.t(), String.t()}
+          | {:denied, String.t()}
+
+  @doc "Converts the internal error struct to its frozen ABI tuple (C2/#297)."
+  @spec to_abi(t() | abi()) :: abi()
+  def to_abi(%__MODULE__{kind: :not_found, detail: d}), do: {:not_found, d.name}
+
+  def to_abi(%__MODULE__{kind: :validation_error, detail: d}) do
+    {:validation_error, d.tool, d.violations}
+  end
+
+  def to_abi(%__MODULE__{kind: :execution_error, detail: d}) do
+    {:execution_error, d.tool, to_string_error(d.error)}
+  end
+
+  def to_abi(%__MODULE__{kind: :capability_error, detail: d}), do: {:denied, d.reason}
+  def to_abi(already_abi), do: already_abi
+
+  @doc "Applies `to_abi/1` to the error side of a result; success passes through."
+  @spec to_abi_result({:ok, any()} | {:error, t() | abi()}) :: {:ok, any()} | {:error, abi()}
+  def to_abi_result({:error, error}), do: {:error, to_abi(error)}
+  def to_abi_result(other), do: other
+
+  # Tool implement bodies return arbitrary Err payloads; render non-string
+  # reasons canonically so the ABI field stays a String.
+  defp to_string_error(error) when is_binary(error), do: error
+  defp to_string_error(error), do: inspect(error)
 end

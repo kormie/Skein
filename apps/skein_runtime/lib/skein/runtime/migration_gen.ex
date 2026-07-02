@@ -2,8 +2,8 @@ defmodule Skein.Runtime.MigrationGen do
   @moduledoc """
   Generates Ecto migrations from Skein type declarations.
 
-  When a Skein module declares `capability store.table("users")` and defines
-  a type for that table, the compiler extracts field information. This module
+  When a Skein module declares `capability store.table("users", User)` and defines
+  the `User` type for that table, the compiler extracts field information. This module
   turns that into runnable Ecto migrations that create and modify database tables.
 
   ## Annotations

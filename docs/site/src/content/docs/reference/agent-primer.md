@@ -44,7 +44,7 @@ change. Read them — they are written for agents.
 -- A module: capabilities, types, functions, handlers, tools, tests
 module UserService {
   capability http.in
-  capability store.table("users")
+  capability store.table("users", User)
 
   type User {
     id: Uuid @primary
@@ -102,7 +102,7 @@ module or agent. There are no exceptions.
 |------------|--------|
 | `http.in` | Declaring `handler http ...` |
 | `http.out("host")` | `http.get/post/put/delete` to that host |
-| `store.table("name")` | `store.<name>.get/put/delete/query` |
+| `store.table("name", RecordType)` | `store.<name>.get/put/delete/query`, typed against `RecordType` (a declared `type` with exactly one `@primary` field) |
 | `memory.kv("namespace")` | `memory.put/get/delete/list` |
 | `model("provider", "model")` | `llm.chat/json/stream/embed` |
 | `tool.use(Mod.ToolName)` | `tool.call(Mod.ToolName, { ... })` |
@@ -189,8 +189,9 @@ Memory keys are automatically scoped per agent instance.
   BEAM crash. This is the single most common trap.
 - **No `if`/`else`.** Conditionals are `match` on a `Bool`:
   `match cond { true -> ... false -> ... }`.
-- **`store.<t>.get` not-found is `Err(_)`**, not a named `NotFound`
-  variant — write `Err(_) -> ...`, not `Err(NotFound) -> ...`.
+- **`store.<t>.get` not-found is a named variant**: match it as
+  `Err(StoreError.NotFound) -> ...` (or the bare `Err(NotFound)`);
+  `Err(_)` still works as a catch-all.
 - `input` is a keyword — never use it as a parameter or binding name (use
   `ctx`, `data`, or a typed name).
 - `stop()` must be called with parentheses.

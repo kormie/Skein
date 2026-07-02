@@ -25,7 +25,7 @@ module Hello {
 }
 ```
 
-Module names must start with an uppercase letter (`[A-Z][a-zA-Z0-9]*`).
+Module names must start with an uppercase letter (`[A-Z][a-zA-Z0-9_]*`).
 
 ## Functions
 

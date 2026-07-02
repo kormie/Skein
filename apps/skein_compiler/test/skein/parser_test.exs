@@ -1761,7 +1761,7 @@ defmodule Skein.ParserTest do
       assert length(exprs) == 3
     end
 
-    test "parses assert as a call to __assert__" do
+    test "parses assert as an AST.Assert node" do
       source = """
       module M {
         test "truth" {
@@ -1771,12 +1771,12 @@ defmodule Skein.ParserTest do
       """
 
       assert {:ok, %AST.Module{declarations: [test_decl]}} = parse(source)
-      assert %AST.Block{expressions: [assert_call]} = test_decl.body
+      assert %AST.Block{expressions: [assert_node]} = test_decl.body
 
-      assert %AST.Call{
-               target: %AST.Identifier{name: "__assert__"},
-               args: [%AST.BoolLit{value: true}]
-             } = assert_call
+      assert %AST.Assert{
+               expr: %AST.BoolLit{value: true},
+               meta: %{line: 3}
+             } = assert_node
     end
 
     test "preserves source location on test" do

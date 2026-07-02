@@ -12,6 +12,8 @@ defmodule SkeinRuntime.Application do
       # First: owns all named ETS tables, so sibling init/1 callbacks (and
       # everything after app start) can request tables that outlive callers.
       Skein.Runtime.EtsTables,
+      # Owns the opt-in EventStore SQLite persistence lifecycle (#299).
+      Skein.Runtime.EventStore.Persistence,
       Skein.Runtime.Process,
       Skein.Runtime.Queue,
       Skein.Runtime.Topic,

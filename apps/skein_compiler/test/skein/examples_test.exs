@@ -102,12 +102,21 @@ defmodule Skein.ExamplesTest do
       assert {:respond_json, 200, "hello"} = result
     end
 
-    test "echo handler returns received" do
+    test "echo handler returns the request body" do
       {:module, mod} =
         Compiler.compile_file(Path.join(project_root(), "examples/hello_http.skein"))
 
       result = mod.__handler_2__(%{body: "test data"})
-      assert {:respond_json, 200, "received"} = result
+      assert {:respond_json, 200, "test data"} = result
+    end
+
+    test "classify handler classifies the path parameter" do
+      {:module, mod} =
+        Compiler.compile_file(Path.join(project_root(), "examples/hello_http.skein"))
+
+      assert {:respond_json, 200, "non-negative"} = mod.__handler_3__(%{params: %{n: "7"}})
+      assert {:respond_json, 200, "negative"} = mod.__handler_3__(%{params: %{n: "-3"}})
+      assert {:respond_json, 400, "not a number"} = mod.__handler_3__(%{params: %{n: "abc"}})
     end
 
     test "page handler returns HTML" do
@@ -961,22 +970,22 @@ defmodule Skein.ExamplesTest do
       # the runtime denies (the module declares no http.out capability) —
       # so the implement's Err arm wraps the denial in a SearchError.
       # A registration regression would surface as :not_found instead.
-      assert {:error, %Tool.Error{kind: :execution_error} = error} =
+      assert {:error, {:execution_error, "Research.SearchMarket", error}} =
                Tool.call(
                  "Research.SearchMarket",
                  %{topic: "AI chips", industry: "semiconductors"},
                  @tool_caps
                )
 
-      assert error.detail.error =~ "search_error"
-      assert error.detail.error =~ "http.out"
+      assert error =~ "search_error"
+      assert error =~ "http.out"
     end
 
     test "input validation applies to the registered tools" do
       {service, _agent} = compile_market_research()
       Tool.register_module(service)
 
-      assert {:error, %Tool.Error{kind: :validation_error}} =
+      assert {:error, {:validation_error, "Research.SearchMarket", _violations}} =
                Tool.call("Research.SearchMarket", %{topic: "AI chips"}, @tool_caps)
     end
 

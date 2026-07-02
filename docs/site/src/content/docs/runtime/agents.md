@@ -173,17 +173,34 @@ call __phase_handler__(phase, state, events)
 
 ### Querying Agent State
 
-```elixir
-{:ok, pid} = Skein.Agent.RefundBot.start_link(%{request_id: "abc", amount: 100})
+The query API works on agents that are still alive — one waiting in a phase
+(a handler that returns `keep`) or suspended for human review:
 
+```elixir
+# refund_agent.skein suspends on Phase.Failed instead of stopping,
+# so the process stays alive and can be inspected:
 Skein.Runtime.Agent.get_phase(pid)
-#=> :done
+#=> :failed
 
 Skein.Runtime.Agent.get_state(pid)
-#=> %{}  (RefundBot persists its data via memory.kv, not state fields)
+#=> %{}  (this agent persists its data via memory.kv, not state fields)
 
-Skein.Runtime.Agent.get_events(pid)
-#=> [%{event: "RefundApproved", amount: 100}]
+Skein.Runtime.Agent.is_suspended?(pid)
+#=> true
+```
+
+RefundBot above is different: it runs straight through to `Phase.Done`, whose
+handler calls `stop()`, so the process terminates on its own — calling
+`get_phase/1` on it exits with `:noproc`. Terminated agents leave their trail
+in the EventStore instead: every `emit` is flushed as a `:user_event` tagged
+with the agent name, instance id, and phase:
+
+```elixir
+{:ok, _pid} = Skein.Agent.RefundBot.start_link(%{request_id: "abc", amount: 100})
+
+Skein.Runtime.EventStore.query(kind: :user_event)
+#=> [%{kind: :user_event, event: "RefundDenied", data: %{amount: 100},
+#      agent: "RefundBot", instance_id: "...", phase: :denied, ...}]
 ```
 
 `start_link/1` takes a map keyed by the `on start(...)` parameter names.

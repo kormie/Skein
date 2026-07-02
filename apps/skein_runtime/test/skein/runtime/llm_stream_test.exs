@@ -65,7 +65,7 @@ defmodule Skein.Runtime.LlmStreamTest do
     test "rejects without model capability" do
       on_chunk = fn _chunk -> :ok end
 
-      assert {:error, %Llm.Error{kind: :capability_error}} =
+      assert {:error, {:denied, _reason}} =
                Llm.stream(
                  "claude-sonnet-4-5",
                  "system",
@@ -80,7 +80,7 @@ defmodule Skein.Runtime.LlmStreamTest do
 
       on_chunk = fn _chunk -> :ok end
 
-      assert {:error, %Llm.Error{kind: :provider_error}} =
+      assert {:error, {:provider_error, "500", "Stream failed"}} =
                Llm.stream(
                  "claude-sonnet-4-5",
                  "system",

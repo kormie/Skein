@@ -1,0 +1,55 @@
+-- These tests cover the deterministic heart of the game — no LLM required,
+-- so they pass identically on the "test" and "anthropic" backends.
+--
+-- `tool.call` is a controlled effect, so each check is a `scenario` whose
+-- envelope declares exactly the tool it exercises (`test` blocks are for
+-- pure code only). PlayTurn's implement is pure, so no providers are needed.
+module DungeonTest {
+  capability tool.use(Dungeon.PlayTurn)
+
+  -- Resting heals; the canonical hostile action hurts more as turns climb.
+  scenario "resting restores HP through the tool" {
+    capability tool.use(Dungeon.PlayTurn)
+    expect {
+      let r = tool.call(Dungeon.PlayTurn, { action: "rest by the fire", hp: 50, turns: 3 })!
+      assert r.hp == 70
+      assert r.status == "playing"
+    }
+  }
+
+  scenario "fighting hurts more the longer you linger" {
+    capability tool.use(Dungeon.PlayTurn)
+    expect {
+      let early = tool.call(Dungeon.PlayTurn, { action: "attack the gargoyle", hp: 100, turns: 0 })!
+      let late  = tool.call(Dungeon.PlayTurn, { action: "attack the gargoyle", hp: 100, turns: 5 })!
+      assert early.hp == 92
+      assert late.hp == 82
+    }
+  }
+
+  scenario "HP never drops below zero, and zero HP is death" {
+    capability tool.use(Dungeon.PlayTurn)
+    expect {
+      let r = tool.call(Dungeon.PlayTurn, { action: "charge the dragon", hp: 5, turns: 9 })!
+      assert r.hp == 0
+      assert r.status == "dead"
+    }
+  }
+
+  scenario "finding the treasure wins the game" {
+    capability tool.use(Dungeon.PlayTurn)
+    expect {
+      let r = tool.call(Dungeon.PlayTurn, { action: "grab the treasure and escape", hp: 80, turns: 1 })!
+      assert r.status == "won"
+    }
+  }
+
+  scenario "fleeing avoids all damage" {
+    capability tool.use(Dungeon.PlayTurn)
+    expect {
+      let r = tool.call(Dungeon.PlayTurn, { action: "flee down the corridor", hp: 40, turns: 7 })!
+      assert r.hp == 40
+      assert r.status == "playing"
+    }
+  }
+}

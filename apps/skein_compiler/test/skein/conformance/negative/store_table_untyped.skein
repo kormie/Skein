@@ -1,0 +1,12 @@
+-- expect: E0043
+-- C5/#255: store tables are TYPED — the capability must also name the
+-- record type the table stores.
+module StoreTableUntyped {
+  capability store.table("games")
+
+  type Game { id: Uuid @primary, name: String }
+
+  fn read(id: Uuid) -> Result[Game, StoreError] {
+    store.games.get(id)
+  }
+}

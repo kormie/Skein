@@ -1,4 +1,4 @@
--- expect: E0020
+-- expect: E0020, E0029
 -- #253: full inference now covers test bodies, so a missing `!` on an effect
 -- inside a test block is a compile error.
 module TestBlockMissingUnwrap {

@@ -37,7 +37,7 @@ A self-contained `skein` binary that bundles the compiler, runtime, and BEAM.
 - `burrito` (~> 1.5) added as a dependency of `skein_cli`
 - Release configured in root `mix.exs` with four targets: Linux x86_64, Linux ARM64, macOS x86_64, macOS ARM64
 - `Skein.CLI.Main` module implements the `Application` behaviour and dispatches subcommands via `Burrito.Util.Args.argv/0`
-- In release mode (Mix not available), the entry point reads args and routes to `compile`, `new`, `build`, `test`, `run`, `trace`, `version`, and `help` commands
+- In release mode (Mix not available), the entry point reads args and routes to `compile`, `new`, `build`, `test`, `run`, `trace`, `agents`, `mcp`, `lsp`, `completions`, `version`, and `help` commands
 - In dev mode, the existing Mix aliases continue to work as before
 
 **Building standalone binaries:**

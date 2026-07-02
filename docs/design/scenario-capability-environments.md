@@ -110,9 +110,11 @@ During scenario execution:
 > provider contract (`@provider_contracts`, E0038) with full `infer_type` + declared-return checking,
 > and purity IS transitive (`collect_effect_sites` follows local fn calls and `&fn` references),
 > pinned by the `provider_contract_mismatch` / `provider_unsupported_capability` /
-> `transitive_effect_in_provider` negative fixtures. **Still remaining (tracked by the narrowed
-> #279):** `llm.embed` provider support (the `model` contract covers chat/json shapes only) and the
-> `given`-grammar reconciliation (the spec grammar still lists `given_block`).
+> `transitive_effect_in_provider` negative fixtures. **Resolved 2026-07-02 (#279):** `llm.embed` under a scenario
+> `model` envelope resolves PAST the chat-shaped `implement` provider (replay → test-default →
+> live-blocked), staying deterministic offline — `LlmResponse` is text-only, so an embed provider
+> form does not exist; and `given` is reconciled per the signed-off decision below: it stays, as the
+> home for seed-only stateful fixtures (spec §3.10 documents evaluation order and scoping).
 
 **Parser / AST.** *(done — #280)* `scenario_item = capability_envelope | given_block | expect_block`.
 `AST.Capability` gained `nested` (`[Capability]`) and `implement` (`CapabilityImplement{params,

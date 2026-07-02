@@ -1,0 +1,11 @@
+-- expect: E0020
+-- C5/#255: store.get takes the record type's @primary key type (Uuid here).
+module StoreGetWrongKey {
+  capability store.table("games", Game)
+
+  type Game { id: Uuid @primary, name: String }
+
+  fn read() -> Result[Game, StoreError] {
+    store.games.get(42)
+  }
+}

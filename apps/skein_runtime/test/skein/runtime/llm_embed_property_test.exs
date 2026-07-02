@@ -59,7 +59,7 @@ defmodule Skein.Runtime.LlmEmbedPropertyTest do
 
   property "embed always fails without capabilities" do
     check all(input <- input_text_gen()) do
-      assert {:error, %Llm.Error{kind: :capability_error}} =
+      assert {:error, {:denied, _reason}} =
                Llm.embed("text-embedding-3-small", input, [])
     end
   end

@@ -64,7 +64,7 @@ defmodule Skein.Runtime.ToolPropertyTest do
           ) do
       caps = [%{kind: "tool.use", params: [name]}]
 
-      assert {:error, %Tool.Error{kind: :not_found}} =
+      assert {:error, {:not_found, ^name}} =
                Tool.call(name, input, caps)
     end
   end
@@ -76,7 +76,7 @@ defmodule Skein.Runtime.ToolPropertyTest do
           ) do
       Tool.register(name, %{}, fn _i -> {:ok, %{}} end)
 
-      assert {:error, %Tool.Error{kind: :capability_error}} =
+      assert {:error, {:denied, _reason}} =
                Tool.call(name, input, [])
     end
   end

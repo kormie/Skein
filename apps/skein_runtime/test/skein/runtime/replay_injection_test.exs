@@ -44,7 +44,7 @@ defmodule Skein.Runtime.ReplayInjectionTest do
     end
 
     test "chat outside replay still uses the configured backend" do
-      assert {:error, %Llm.Error{kind: :provider_error}} =
+      assert {:error, {:provider_error, "500", "Internal server error"}} =
                Llm.chat("test-model", "sys", "hi", @model_caps)
     end
 
@@ -54,11 +54,11 @@ defmodule Skein.Runtime.ReplayInjectionTest do
       ]
 
       Replay.with_replay(trace, fn ->
-        assert {:error, %Llm.Error{kind: :provider_error, detail: detail}} =
+        assert {:error, {:provider_error, "replay", message}} =
                  Llm.chat("test-model", "sys", "hi", @model_caps)
 
-        assert detail.message =~ "Replay mismatch"
-        assert detail.message =~ "other-model"
+        assert message =~ "Replay mismatch"
+        assert message =~ "other-model"
       end)
     end
 
@@ -68,10 +68,10 @@ defmodule Skein.Runtime.ReplayInjectionTest do
       ]
 
       Replay.with_replay(trace, fn ->
-        assert {:error, %Llm.Error{kind: :provider_error, detail: detail}} =
+        assert {:error, {:provider_error, "replay", message}} =
                  Llm.json("test-model", "sys", "hi", %{}, @model_caps)
 
-        assert detail.message =~ "Replay mismatch"
+        assert message =~ "Replay mismatch"
       end)
     end
 
@@ -83,10 +83,10 @@ defmodule Skein.Runtime.ReplayInjectionTest do
       Replay.with_replay(trace, fn ->
         assert {:ok, "only"} = Llm.chat("test-model", "sys", "hi", @model_caps)
 
-        assert {:error, %Llm.Error{kind: :provider_error, detail: detail}} =
+        assert {:error, {:provider_error, "replay", message}} =
                  Llm.chat("test-model", "sys", "hi again", @model_caps)
 
-        assert detail.message =~ "exhausted"
+        assert message =~ "exhausted"
       end)
     end
 
@@ -158,7 +158,7 @@ defmodule Skein.Runtime.ReplayInjectionTest do
       ]
 
       Replay.with_replay(trace, fn ->
-        assert {:error, %Llm.Error{kind: :capability_error}} =
+        assert {:error, {:denied, _reason}} =
                  Llm.chat("test-model", "sys", "hi", [])
 
         assert {:ok, "x"} = Llm.chat("test-model", "sys", "hi", @model_caps)
@@ -237,7 +237,7 @@ defmodule Skein.Runtime.ReplayInjectionTest do
       ]
 
       Replay.with_replay(trace, fn ->
-        assert {:error, message} = Http.get("http://localhost:1/a", @http_caps)
+        assert {:error, {:denied, message}} = Http.get("http://localhost:1/a", @http_caps)
         assert message =~ "Replay mismatch"
       end)
     end
@@ -254,7 +254,7 @@ defmodule Skein.Runtime.ReplayInjectionTest do
       ]
 
       Replay.with_replay(trace, fn ->
-        assert {:error, message} = Http.get("http://localhost:1/b", @http_caps)
+        assert {:error, {:denied, message}} = Http.get("http://localhost:1/b", @http_caps)
         assert message =~ "Replay mismatch"
         assert message =~ "http://localhost:1/a"
       end)
@@ -262,7 +262,7 @@ defmodule Skein.Runtime.ReplayInjectionTest do
 
     test "exhausted trace produces a clear error" do
       Replay.with_replay([], fn ->
-        assert {:error, message} = Http.get("http://localhost:1/a", @http_caps)
+        assert {:error, {:denied, message}} = Http.get("http://localhost:1/a", @http_caps)
         assert message =~ "exhausted"
       end)
     end
@@ -281,7 +281,7 @@ defmodule Skein.Runtime.ReplayInjectionTest do
       capabilities = [%{kind: "http.out", params: ["api.allowed.com"]}]
 
       Replay.with_replay(trace, fn ->
-        assert {:error, reason} = Http.get("https://api.blocked.com/x", capabilities)
+        assert {:error, {:denied, reason}} = Http.get("https://api.blocked.com/x", capabilities)
         assert reason =~ "not declared"
       end)
     end
@@ -342,11 +342,11 @@ defmodule Skein.Runtime.ReplayInjectionTest do
       ]
 
       Replay.with_replay(trace, fn ->
-        assert {:error, %Tool.Error{kind: :execution_error, detail: detail}} =
+        assert {:error, {:execution_error, "echo", error_message}} =
                  Tool.call("echo", %{}, @tool_caps)
 
-        assert detail.error =~ "Replay mismatch"
-        assert detail.error =~ "other_tool"
+        assert error_message =~ "Replay mismatch"
+        assert error_message =~ "other_tool"
       end)
 
       refute_received {:tool_executed, _}
@@ -354,10 +354,10 @@ defmodule Skein.Runtime.ReplayInjectionTest do
 
     test "exhausted trace produces a clear error" do
       Replay.with_replay([], fn ->
-        assert {:error, %Tool.Error{kind: :execution_error, detail: detail}} =
+        assert {:error, {:execution_error, "echo", error_message}} =
                  Tool.call("echo", %{}, @tool_caps)
 
-        assert detail.error =~ "exhausted"
+        assert error_message =~ "exhausted"
       end)
 
       refute_received {:tool_executed, _}

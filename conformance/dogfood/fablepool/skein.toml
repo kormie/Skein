@@ -1,0 +1,17 @@
+[project]
+name = "FablePool-skein"
+version = "0.1.0"
+
+[build]
+src = "src"
+test = "test"
+
+[llm]
+backend = "anthropic"
+
+# Serve llm.* calls from a local model server in dev
+# (SKEIN_ENV=dev skein test, or skein test --env dev):
+# [env.dev.llm]
+# backend = "openai_compatible"
+# base_url = "http://localhost:10240/v1"
+# model_map = { "claude-opus-4-8" = "your/local-model" }

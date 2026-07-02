@@ -5,6 +5,11 @@ defmodule Skein.Runtime.EventStore.SqliteBackend do
   Events are serialized to JSON and stored in a `skein_events` table.
   ETS remains the fast read path; this module handles persistence
   so events survive BEAM restarts.
+
+  Wired onto the ordinary append path by
+  `Skein.Runtime.EventStore.Persistence` (opt-in — `skein run` enables it
+  by default). See that module for the pinned persisted-and-reloaded
+  event shape.
   """
 
   alias Skein.Runtime.Repo
@@ -65,10 +70,21 @@ defmodule Skein.Runtime.EventStore.SqliteBackend do
     # Write to ETS
     :ets.insert(:skein_events, {key, enriched})
 
-    # Write to SQLite
+    # Write to SQLite (minus internal _key)
+    persist(Map.delete(enriched, :_key))
+  end
+
+  @doc """
+  Writes an already-enriched event (as produced by `EventStore.append/1`,
+  with `:id` and `:timestamp` set and the internal `:_key` dropped) to
+  SQLite only — ETS is not touched. This is the write path used by
+  `Skein.Runtime.EventStore.Persistence` for the ordinary append path.
+  """
+  @spec persist(map()) :: :ok
+  def persist(%{id: id, timestamp: timestamp} = event)
+      when is_binary(id) and is_integer(timestamp) do
     kind = to_string(Map.get(event, :kind, "unknown"))
-    # Store the full event as JSON (minus internal _key)
-    data = enriched |> Map.delete(:_key) |> encode_event()
+    data = event |> Map.delete(:_key) |> encode_event()
 
     Ecto.Adapters.SQL.query!(
       Repo,
@@ -109,16 +125,21 @@ defmodule Skein.Runtime.EventStore.SqliteBackend do
   end
 
   @doc """
-  Loads all SQLite events into the ETS cache.
+  Loads all SQLite events into the ETS cache, skipping events whose id is
+  already present (so repeated loads — e.g. an idempotent
+  `Persistence.enable/1` — never duplicate the log).
   Call on startup to restore state.
   """
   @spec load_into_ets() :: :ok
   def load_into_ets do
     EventStore.init()
 
-    events = load_all()
+    existing_ids =
+      :skein_events
+      |> :ets.tab2list()
+      |> MapSet.new(fn {_key, event} -> Map.get(event, :id) end)
 
-    for event <- events do
+    for event <- load_all(), not MapSet.member?(existing_ids, event.id) do
       key = {event.timestamp, System.unique_integer([:monotonic, :positive])}
       enriched = Map.put(event, :_key, key)
       :ets.insert(:skein_events, {key, enriched})
@@ -157,13 +178,15 @@ defmodule Skein.Runtime.EventStore.SqliteBackend do
     end)
   end
 
+  # nil and booleans are native JSON values — never stringify them.
+  defp stringify_value(v) when is_boolean(v) or is_nil(v), do: v
   defp stringify_value(v) when is_atom(v), do: Atom.to_string(v)
   defp stringify_value(v) when is_map(v), do: stringify_atoms(v)
   defp stringify_value(v) when is_list(v), do: Enum.map(v, &stringify_value/1)
   defp stringify_value(v), do: v
 
   # Convert known keys back to atoms
-  @atom_keys ~w(id kind timestamp method operation namespace key value event data order outcome duration_us wall_time)
+  @atom_keys ~w(id kind timestamp method operation namespace key value event stream data order outcome duration_us wall_time)
 
   defp atomize_event(map) when is_map(map) do
     map

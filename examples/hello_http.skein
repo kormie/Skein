@@ -19,12 +19,18 @@ module HelloHttp {
 
   -- Echo endpoint that returns the request body (JSON)
   handler http POST "/echo" (req) -> {
-    respond.json(200, "received")
+    respond.json(200, req.body)
   }
 
   -- Compute endpoint demonstrating logic in handlers (JSON)
   handler http GET "/classify/:n" (req) -> {
-    respond.json(200, "classified")
+    match Int.parse(req.params.n) {
+      Ok(n) -> match n >= 0 {
+        true  -> respond.json(200, "non-negative")
+        false -> respond.json(200, "negative")
+      }
+      Err(_) -> respond.json(400, "not a number")
+    }
   }
 
   -- HTML page endpoint

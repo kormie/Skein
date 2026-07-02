@@ -1,0 +1,15 @@
+{
+  "comment": "Machine-readable dogfood pins for the Wave D conformance gate (#262). Each entry pins the upstream revision the checked-in reduction under conformance/dogfood/<name>/ was taken from. CI executes the checked-in corpus on every PR (dogfood_corpus_test.exs) and additionally clones each upstream repo at its pinned rev and runs `mix skein.test` on it (ci.yml dogfood job). When Skein changes an API, fix the upstream port, bump the pin, and refresh the checked-in copy in the same PR.",
+  "projects": {
+    "dungeon": {
+      "repo": "kormie/skein-testing",
+      "rev": "551a5f5eb78f6f3465a5cec3c928c9436026df51",
+      "expected_tests": 5
+    },
+    "fablepool": {
+      "repo": "kormie/FablePool-skein",
+      "rev": "527509b299445f250ca02b41a9b200f12b106493",
+      "expected_tests": 18
+    }
+  }
+}

@@ -13,7 +13,7 @@ The Skein runtime (`skein_runtime`) provides the libraries that compiled Skein c
 - **Handler dispatch** -- routing HTTP requests to compiled handler functions
 - **Queue dispatch** -- subscribing to named queues and dispatching messages via `Skein.Runtime.Queue`
 - **Schedule dispatch** -- cron-based scheduling and handler triggering via `Skein.Runtime.Schedule`
-- **Store** -- pluggable storage with ETS (default) and Ecto/SQLite backends, capability enforcement
+- **Store** -- typed, schema-checked ETS-backed storage with capability enforcement (the Ecto/SQLite path is unwired library code)
 - **Memory** -- scoped KV storage with namespace isolation via `Skein.Runtime.Memory`
 - **LLM client** -- provider-agnostic LLM calls with schema-constrained JSON via `Skein.Runtime.Llm`
 - **HTTP server** -- Bandit + Plug HTTP server for serving Skein handlers
@@ -184,7 +184,7 @@ Features:
 
 ### `Skein.Runtime.Store`
 
-ETS-backed key-value storage that compiled `store.table` effect calls target — the only storage path compiled programs hit today (there is no backend-selection mechanism; typed tables are roadmap C5, #255).
+ETS-backed key-value storage that compiled `store.table` effect calls target — the only storage path compiled programs hit today (there is no backend-selection mechanism). Store tables are typed (C5, #255): the capability names the table's record type, the compiler type-checks every operation against it, and writes are schema-checked at runtime.
 
 **API:**
 
@@ -292,7 +292,7 @@ Every operation:
 3. For `json/5`, parses the response as JSON and validates structure
 4. For `stream/5`, delivers each chunk to the callback, then returns the assembled text
 5. Records a trace span with model, timing, and outcome
-6. Returns `{:ok, _}` or `{:error, %Llm.Error{}}`
+6. Returns `{:ok, _}` or `{:error, <LlmError ABI tuple>}` — the frozen matchable form (C2/#297), e.g. `{:provider_error, code, message}`; internal `%Llm.Error{}` structs are converted at the public boundary
 
 **Production backends** (selected via the `[llm]` profile in skein.toml):
 - `Skein.Runtime.Llm.AnthropicBackend` -- Anthropic Messages API (the production default)
@@ -309,18 +309,21 @@ Every operation:
 
 Custom backends implement the `Skein.Runtime.Llm.Backend` behaviour.
 
-**Error types (`Skein.Runtime.Llm.Error`):**
+**Error ABI (`LlmError`, C2/#297)** — what compiled Skein sees, matchable as `Err(LlmError.<Variant>(…))`:
 
-| Kind | Description |
-|------|-------------|
-| `:parse_failed` | Response couldn't be parsed as expected type |
-| `:refused` | LLM refused to generate a response |
-| `:rate_limit` | Rate limited (includes retry-after duration) |
-| `:timeout` | Request timed out |
-| `:content_filtered` | Response was filtered by content policy |
-| `:invalid_schema` | Response didn't match expected JSON schema |
-| `:provider_error` | Provider returned an error |
-| `:capability_error` | Missing capability declaration |
+| ABI form | Skein variant | Description |
+|------|------|-------------|
+| `{:parse_failed, raw, expected_type, parse_error}` | `ParseFailed` | Response couldn't be parsed as expected type |
+| `{:refused, reason}` | `Refused` | LLM refused to generate a response |
+| `{:rate_limit, retry_after_ms}` | `RateLimit` | Rate limited (retry-after in ms) |
+| `{:timeout, elapsed_ms}` | `Timeout` | Request timed out |
+| `{:content_filtered, filter}` | `ContentFiltered` | Response was filtered by content policy |
+| `{:invalid_schema, violations}` | `InvalidSchema` | Response didn't match expected JSON schema |
+| `{:provider_error, code, message}` | `ProviderError` | Provider returned an error |
+| `{:denied, reason}` | `Denied` | Capability/scope denial |
+
+Internally the backends use `Skein.Runtime.Llm.Error` structs; `Llm.Error.to_abi/1`
+converts at the public boundary.
 
 ### `Skein.Runtime.Server`
 
@@ -362,7 +365,9 @@ Skein.Runtime.Request.json(req_map, json_schema)
 
 Unified append-only event log for the entire runtime. All trace spans, user events (`event.log`), memory state changes, and annotations flow through a single ETS ordered set (`:skein_events`).
 
-The in-memory log is size-bounded: once it grows past the configured maximum (`config :skein_runtime, :event_store_max_events`, default 100,000), the oldest events are evicted on append. The log is **in-memory only** — events older than the bound are gone and nothing survives a restart. A SQLite backend module exists but is not wired into the ordinary append path today; durable persistence is tracked by [#299](https://github.com/kormie/Skein/issues/299).
+The in-memory log is size-bounded: once it grows past the configured maximum (`config :skein_runtime, :event_store_max_events`, default 100,000), the oldest events are evicted on append.
+
+Durable persistence is **opt-in** ([#299](https://github.com/kormie/Skein/issues/299)): `Skein.Runtime.EventStore.Persistence.enable(db_path)` — which `skein run` calls by default, writing to `<project>/.skein/events.db` (`skein run --no-persist` opts out) — makes every ordinary append also write the event asynchronously to SQLite and reloads previously persisted events into the ETS log on startup, so a restarted service sees its history. ETS eviction never deletes persisted rows: SQLite keeps the full history beyond the in-memory bound. Persisted events round-trip through JSON, so a reloaded event is not bit-identical to the original (unknown keys and non-`kind`-like atom values come back as strings); the exact reloaded shape is pinned in the `Persistence` moduledoc and stays Pre-stable until the Wave F freeze. Without `enable/1` the log is in-memory only and nothing survives a restart.
 
 **API:**
 
@@ -376,7 +381,8 @@ Skein.Runtime.EventStore.append(%{kind: :http, method: :get, url: "/api"})
 # from the module's scoped capability event.log(stream) declaration
 # (nil when the declaration is parameterless).
 Skein.Runtime.EventStore.log(nil, "user.login", %{user: "alice"}, capabilities)
-#=> :ok
+#=> {:ok, "user.login"} (Skein contract: Result[String, String] — a
+#   scope-label denial is {:error, reason})
 
 # Query by kind or any field
 Skein.Runtime.EventStore.query(kind: :user_event)
@@ -434,6 +440,20 @@ Skein.Runtime.Trace.record_span(%{kind: :http, method: :get, url: "/test"})
 - `{:ok, _}` -> outcome `:ok`
 - `{:error, _}` -> outcome `:error`
 - Exception -> outcome `:error` with message, then re-raises
+
+### Other Runtime Modules
+
+| Module | Purpose |
+|--------|---------|
+| `Skein.Runtime.Topic` | In-memory pub/sub topic dispatch — published messages fan out to **all** subscribers of a topic |
+| `Skein.Runtime.Timer` | One-shot (`after`) and recurring (`interval`) timers with cancellation, tracked in ETS |
+| `Skein.Runtime.Process` | `process.spawn` — short-lived tasks under a DynamicSupervisor with crash isolation and tracing |
+| `Skein.Runtime.Tool` | Tool registry and dispatch — `call/3` executes registered tools with schema-checked input/output |
+| `Skein.Runtime.Idempotent` | `idempotent(key)` guard — tracks processed keys in ETS so handlers skip duplicates |
+| `Skein.Runtime.Replay` | Replay engine for golden trace tests — deterministic playback of recorded event streams |
+| `Skein.Runtime.SupervisorHost` | Boots real OTP supervisors from compiled `supervisor` declarations ([#325](https://github.com/kormie/Skein/issues/325)) — restart policies, `max_restarts` intensity, `:child_started` events |
+| `Skein.Runtime.JsonSchema` | The one recursive schema validator/decoder (C3) shared by `req.json[T]`, `llm.json[T]`, and tool input/output |
+| `Skein.Runtime.EventStore.Persistence` | Opt-in SQLite write-through for the event log (C6) — enabled by default under `skein run` |
 
 ## How Compiled Code Uses the Runtime
 

@@ -100,7 +100,7 @@ defmodule Skein.Runtime.StoreEcto do
             {:ok, schema_to_map(inserted)}
 
           {:error, changeset} ->
-            {:error, "Insert failed: #{inspect(changeset.errors)}"}
+            {:error, {:failed, "Insert failed: #{inspect(changeset.errors)}"}}
         end
       end
     end)
@@ -192,7 +192,7 @@ defmodule Skein.Runtime.StoreEcto do
   defp require_schema(table_name) do
     case lookup_schema(table_name) do
       {:ok, _mod} = ok -> ok
-      :error -> {:error, "No Ecto schema registered for table '#{table_name}'"}
+      :error -> {:error, {:failed, "No Ecto schema registered for table '#{table_name}'"}}
     end
   end
 
@@ -256,7 +256,9 @@ defmodule Skein.Runtime.StoreEcto do
         nil ->
           allowed = Enum.map_join(schema_fields, ", ", &Atom.to_string/1)
 
-          {:halt, {:error, "Unknown filter field '#{key}' for query. Allowed fields: #{allowed}"}}
+          {:halt,
+           {:error,
+            {:failed, "Unknown filter field '#{key}' for query. Allowed fields: #{allowed}"}}}
 
         field ->
           {:cont, {:ok, [{field, value} | acc]}}
@@ -284,8 +286,9 @@ defmodule Skein.Runtime.StoreEcto do
     case store_caps do
       [] ->
         {:error,
-         "Store capability 'store.table(\"#{table_name}\")' not declared. " <>
-           "Store operations on '#{table_name}' blocked."}
+         {:denied,
+          "Store capability 'store.table(\"#{table_name}\")' not declared. " <>
+            "Store operations on '#{table_name}' blocked."}}
 
       caps ->
         allowed_tables =
@@ -296,8 +299,9 @@ defmodule Skein.Runtime.StoreEcto do
           :ok
         else
           {:error,
-           "Table '#{table_name}' not declared in store.table capabilities. " <>
-             "Allowed tables: #{Enum.join(allowed_tables, ", ")}"}
+           {:denied,
+            "Table '#{table_name}' not declared in store.table capabilities. " <>
+              "Allowed tables: #{Enum.join(allowed_tables, ", ")}"}}
         end
     end
   end

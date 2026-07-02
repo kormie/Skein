@@ -60,7 +60,7 @@ defmodule Skein.Runtime.EventStoreTest do
 
   describe "log/4" do
     test "permits a stream matching the declared label and records it on the event" do
-      assert :ok =
+      assert {:ok, "user.login"} =
                EventStore.log("audit", "user.login", %{user: "alice"}, [
                  %{kind: "event.log", params: ["audit"]}
                ])
@@ -89,10 +89,10 @@ defmodule Skein.Runtime.EventStoreTest do
     end
 
     test "unscoped declaration permits any stream" do
-      assert :ok =
+      assert {:ok, _} =
                EventStore.log("anything", "user.login", %{}, [%{kind: "event.log", params: []}])
 
-      assert :ok = EventStore.log(nil, "user.login", %{}, [%{kind: "event.log", params: []}])
+      assert {:ok, _} = EventStore.log(nil, "user.login", %{}, [%{kind: "event.log", params: []}])
     end
 
     test "blocks when no event.log capability is declared" do

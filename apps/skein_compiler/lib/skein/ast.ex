@@ -602,6 +602,24 @@ defmodule Skein.AST do
     defstruct [:event_name, :fields, :meta]
   end
 
+  defmodule Assert do
+    @moduledoc """
+    A test assertion: `assert expr`.
+
+    Raises a structured `Skein.Runtime.AssertionError` at runtime when the
+    expression is falsy (issue #105). A first-class node (not a parser
+    desugaring to a synthetic call) per the no-desugaring-in-the-parser
+    convention (#315).
+    """
+
+    @type t :: %__MODULE__{
+            expr: Skein.AST.expr(),
+            meta: Skein.AST.meta()
+          }
+
+    defstruct [:expr, :meta]
+  end
+
   defmodule Respond do
     @moduledoc "A respond expression (json, text, or html)."
 

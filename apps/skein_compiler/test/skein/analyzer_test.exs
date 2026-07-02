@@ -707,7 +707,12 @@ defmodule Skein.AnalyzerTest do
                analyze("""
                module M {
                  capability http.in
-                 capability store.table("users")
+                 capability store.table("users", User)
+
+                 type User {
+                   id: String @primary
+                   name: String
+                 }
 
                  handler http GET "/u/:id" (req) -> {
                    match store.users.get(req.params.id) {
@@ -1694,7 +1699,11 @@ defmodule Skein.AnalyzerTest do
       errors =
         analyze_errors("""
         module M {
-          capability store.table("users")
+          capability store.table("users", User)
+
+          type User {
+            id: Uuid @primary
+          }
 
           fn find(id: Uuid) -> String {
             store.orders.get(id)!
@@ -1713,9 +1722,14 @@ defmodule Skein.AnalyzerTest do
       assert {:ok, _} =
                analyze("""
                module M {
-                 capability store.table("users")
+                 capability store.table("users", User)
 
-                 fn find(id: Uuid) -> String {
+                 type User {
+                   id: Uuid @primary
+                   name: String
+                 }
+
+                 fn find(id: Uuid) -> User {
                    store.users.get(id)!
                  }
                }
@@ -1726,9 +1740,14 @@ defmodule Skein.AnalyzerTest do
       assert {:ok, _} =
                analyze("""
                module M {
-                 capability store.table("users")
+                 capability store.table("users", User)
 
-                 fn save(record: String) -> String {
+                 type User {
+                   id: Uuid @primary
+                   name: String
+                 }
+
+                 fn save(record: User) -> User {
                    store.users.put(record)!
                  }
                }
@@ -1739,14 +1758,22 @@ defmodule Skein.AnalyzerTest do
       assert {:ok, _} =
                analyze("""
                module M {
-                 capability store.table("users")
-                 capability store.table("orders")
+                 capability store.table("users", User)
+                 capability store.table("orders", Order)
 
-                 fn find_user(id: Uuid) -> String {
+                 type User {
+                   id: Uuid @primary
+                 }
+
+                 type Order {
+                   id: Uuid @primary
+                 }
+
+                 fn find_user(id: Uuid) -> User {
                    store.users.get(id)!
                  }
 
-                 fn find_order(id: Uuid) -> String {
+                 fn find_order(id: Uuid) -> Order {
                    store.orders.get(id)!
                  }
                }
@@ -1757,13 +1784,18 @@ defmodule Skein.AnalyzerTest do
       assert {:ok, _} =
                analyze("""
                module M {
-                 capability store.table("items")
+                 capability store.table("items", Item)
 
-                 fn crud(id: Uuid) -> List[String] {
-                   store.items.get(id)!
-                   store.items.put(id)!
-                   store.items.delete(id)!
-                   store.items.query(id)!
+                 type Item {
+                   id: Uuid @primary
+                   name: String
+                 }
+
+                 fn crud(item: Item) -> List[Item] {
+                   store.items.get(item.id)!
+                   store.items.put(item)!
+                   store.items.delete(item.id)!
+                   store.items.query({})!
                  }
                }
                """)
@@ -3228,8 +3260,16 @@ defmodule Skein.AnalyzerTest do
         module M {
           capability http.out("api.a.com")
           capability http.out("api.b.com")
-          capability store.table("users")
-          capability store.table("orders")
+          capability store.table("users", User)
+          capability store.table("orders", Order)
+
+          type User {
+            id: Uuid @primary
+          }
+
+          type Order {
+            id: Uuid @primary
+          }
         }
         """)
 
@@ -3815,7 +3855,11 @@ defmodule Skein.AnalyzerTest do
       errors =
         analyze_errors("""
         module M {
-          capability store.table("users")
+          capability store.table("users", User)
+
+          type User {
+            id: String @primary
+          }
 
           fn lookup(id: String) -> String {
             let user = store.users.get(id)
@@ -4356,7 +4400,11 @@ defmodule Skein.AnalyzerTest do
       assert {:error, errors} =
                analyze("""
                module M {
-                 capability store.table("users")
+                 capability store.table("users", User)
+
+                 type User {
+                   id: Uuid @primary
+                 }
 
                  fn find(id: Uuid) -> String {
                    store.users.get(id)
@@ -4419,10 +4467,14 @@ defmodule Skein.AnalyzerTest do
       assert {:error, errors} =
                analyze("""
                module M {
-                 capability store.table("users")
+                 capability store.table("users", User)
 
-                 fn save() -> Result[String, String] {
-                   store.users.put({ id: uuid.new() })
+                 type User {
+                   id: Uuid @primary
+                 }
+
+                 fn save() -> Result[User, StoreError] {
+                   store.users.put(User { id: uuid.new() })
                  }
                }
                """)
@@ -5050,7 +5102,7 @@ defmodule Skein.AnalyzerTest do
                  capability event.log("audit")
 
                  fn log_event() -> String {
-                   event.log("user.login", "data")
+                   event.log("user.login", "data")!
                  }
                }
                """)
@@ -5064,7 +5116,7 @@ defmodule Skein.AnalyzerTest do
 
                  fn handle_request() -> String {
                    event.log("request.start", "data")
-                   event.log("request.end", "data")
+                   event.log("request.end", "data")!
                  }
                }
                """)

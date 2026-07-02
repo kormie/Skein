@@ -1,0 +1,10 @@
+-- expect: E0043
+-- C5/#255: the store record type needs exactly one @primary field — it is
+-- the key store.<table>.get/delete take.
+module StoreTableNoPrimary {
+  capability store.table("games", Game)
+
+  type Game { name: String, score: Int }
+
+  fn count() -> Int { 0 }
+}

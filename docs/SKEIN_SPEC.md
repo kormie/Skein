@@ -89,6 +89,11 @@ string      = "..." with ${ident} interpolation    -- "hello ${name}", "${user.i
 boolean     = true | false
 ```
 
+String literals support exactly five escape sequences: `\n` (newline), `\t`
+(tab), `\\` (backslash), `\"` (double quote), and `\$` (literal dollar sign,
+suppressing interpolation). Any other `\x` pair is two literal characters.
+Raw newlines inside a string literal are allowed and kept verbatim.
+
 Number literals are unsigned; negative numbers use the prefix `-` operator
 (`-3`, `-1.5`), which is part of the expression grammar (§3.11), not the token.
 
@@ -181,14 +186,19 @@ remains the only ambient dependency.
 ### 3.2 Capabilities
 
 ```
-capability  = "capability" cap_kind "(" cap_params ")"
+capability  = "capability" cap_kind [ "(" cap_params ")" ]
+              -- the parenthesized params are optional: `capability uuid`,
+              -- `capability instant`, and an unscoped `capability memory.kv`
+              -- are written bare
 cap_kind    = "http.out" | "http.in" | "store.table" | "memory.kv"
             | "event.log" | "topic.publish" | "topic.consume"
             | "queue.publish" | "queue.consume" | "schedule.trigger"
             | "model" | "tool.use" | "process.spawn" | "timer"
+            | "uuid" | "instant"
 cap_params  = (string | identifier | named_arg) ("," (string | identifier | named_arg))*
               -- tool.use params are dotted identifiers: tool.use(Stripe.CreateRefund)
-              -- other capabilities use strings: store.table("users"), model("anthropic", "claude-opus-4-8")
+              -- store.table takes the table name AND its record type: store.table("users", User)
+              -- other capabilities use strings: model("anthropic", "claude-opus-4-8")
 named_arg   = lower_ident ":" expr
 identifier  = dotted_name
 ```
@@ -205,6 +215,11 @@ declaration is a compile error (E0017). A nested agent's declaration
 overrides the enclosing module's for calls inside the agent. Declaring
 the capability with no parameter leaves the effect unscoped
 (presence-only enforcement).
+
+**Typed store tables.** `store.table` takes two parameters: the table
+name and the record type it stores (`capability store.table("games", Game)`,
+§6.2). Both are required — a missing or unknown record type, or a type
+without exactly one `@primary` field, is `E0043`.
 
 ### 3.3 Functions
 
@@ -294,30 +309,37 @@ language):
   reference (`child Worker { ... }`) with optional named start arguments
   in its brace block.
 - `strategy:` takes exactly the three OTP strategies shown; anything else
-  is E0040. It may be omitted; the wiring issue (#325) pins the runtime
-  default as `one_for_one` when it lands.
+  is E0040. It may be omitted; the runtime default is `one_for_one`
+  (#325).
 - `max_restarts: N per M s` is OTP restart intensity/period; both must be
   positive integers (E0041). A supervisor with no children warns (E0042).
 
-**Current semantics: metadata only.** Declarations compile to a
-`__supervisors__/0` metadata function; the runtime does not yet boot them
-as OTP supervisors. The wiring — real supervised agent children under
-`skein run`, restarts per the declared strategy, trace events on restart —
-is tracked by #325 (v0.5.0) and is additive on this surface.
+**Semantics: real OTP supervision (#325, landed 2026-07-02).**
+Declarations compile to a `__supervisors__/0` metadata function, and
+`skein run` boots one OTP supervisor per declaration for as long as the
+service runs. Each `child` target resolves to the module's compiled
+nested agent; children are started `permanent` unless the child's brace
+block declares `restart: transient` or `restart: temporary`, and the
+remaining brace-block entries are the agent's `on start(...)` arguments.
+The runtime default strategy is `one_for_one`; a declared `max_restarts:
+N per M s` is enforced as OTP restart intensity (exceeding it shuts the
+supervisor down). Every child start — including every restart — appends
+a `:supervisor`/`:child_started` event to the event log, so restarts are
+visible in the trace, and `memory.kv` data survives child restarts (the
+store outlives agent processes).
 
 ### 3.10 Tests
 
-> **Status (pre-1.0, in flux — 2026-06-15 reset):** the `scenario`/`golden` surface below is being
-> revised. The 1.0 direction is **scenario-scoped capability environments** — a `scenario` declares
-> the complete capability environment a tool may exercise as a nested
+> **Status: landed (reconciled 2026-07-02, #279).** The 1.0 testing surface is
+> **scenario-scoped capability environments** — a `scenario` declares the complete capability
+> environment a tool may exercise as a nested
 > `capability tool.use(T) { capability <effect>(...) { implement(...) } }` tree, with `test` reserved
-> for pure unit tests (no effects). The grammar below is implemented (parser/AST, #280); the analyzer
-> computes each tool's transitive effect summary and rejects a scenario whose envelope does not cover
-> it (E0028, #281). The runtime resolution stack (#282), provider purity — transitive through local
-> fn calls (E0029, #295) — provider contracts (E0038, #295), and the test-runner default policy +
-> live-effect blocking (#283) are all landed; the superseded `via` design is **not** the 1.0 surface
-> (and is a structured parse error). See `docs/design/scenario-capability-environments.md` and
-> `docs/ROADMAP.md`.
+> for pure unit tests (no effects). Everything below is implemented: parser/AST (#280), envelope
+> coverage of each tool's transitive effect summary (E0028, #281), the runtime resolution stack
+> (#282), transitive provider/test purity (E0029, #295), provider contracts (E0038, #295), and the
+> test-runner default policy + live-effect blocking (#283). The superseded `via` design is **not**
+> the 1.0 surface (and is a structured parse error). Design record:
+> `docs/design/scenario-capability-environments.md`.
 
 ```
 test_decl     = "test" string block
@@ -327,10 +349,18 @@ scenario_item = capability_envelope | given_block | expect_block
 capability_envelope = "capability" cap_kind [ "(" args ")" ] [ "{" envelope_item* "}" ]
 envelope_item = capability_envelope | implement_block
 implement_block = "implement" "(" params ")" "->" type block
-given_block   = "given" "{" (lower_ident ":" expr)* "}"   -- seed bindings
+given_block   = "given" "{" (lower_ident ":" expr)* "}"   -- seed bindings (see below)
 expect_block  = "expect" "{" assertion* "}"
 assertion     = "assert" expr
 ```
+
+`given` seeds the scenario: its bindings are evaluated **in order, before `expect`**, in the same
+scope (an `expect` body can reference them), inside the same `?`-propagation boundary. Because
+`store`/`memory`/`event.log` are scenario-local under `skein test` (reset before each test, table
+above), `given` is the home for **seeding stateful fixtures** — e.g.
+`given { seeded: store.games.put(Game { ... })! }` pre-populates the scenario-local store the tool
+under test will read. Plain value bindings inside `expect` use ordinary `let`; `given` earns its
+place by making fixture-seeding declarative and visually separate from the assertions.
 
 A nested capability with an `implement` block uses that controlled (test-only, pure) provider; one
 with no `implement` block falls through to the test-runner default policy. A capability envelope holds
@@ -359,8 +389,11 @@ effect with no `implement` provider and no recorded trace, the resolution order 
 | `http.out` | **blocked** |
 | `store` / `memory` / `event.log` | scenario-local state, reset before each test (never leaks) |
 
-A blocked live effect (`http.out`, or a live `model` backend) raises a structured error that fails
-the test — it is never returned as an `Err` a program could swallow. Live effects are opt-in via the
+A blocked live effect (`http.out`, or a live `model` backend) raises a structured error
+(`Skein.Runtime.LiveEffectError`) that fails the test — it is never returned as an `Err` a program
+could swallow. **This uncatchability is a frozen decision (C2/#297):** blocked-live failures are
+deliberately outside `Result` handling, so no error-handling code path can turn "this test tried to
+reach the network" into a value the program tolerates. Live effects are opt-in via the
 repeatable CLI flag `skein test --allow-live <effect>[:<scope>]`: `--allow-live http.out:api.stripe.com`
 permits exactly that host, a scopeless `--allow-live model` permits every model, and the gatable
 effect tokens are `http.out`, `model`, `uuid`, `instant`. Outside `skein test` (i.e. `skein run` in
@@ -722,7 +755,13 @@ http.delete(url: String) -> Result[HttpResponse, HttpError]
 
 type HttpRequest  { method: String, url: String, headers: Map[String, String], body: Json }
 type HttpResponse { status: Int, body: Map, headers: Map[String, String] }
-enum HttpError { Timeout, ConnectionFailed, Status(code: Int, body: String) }
+enum HttpError {
+  Timeout
+  ConnectionFailed
+  Status(code: Int, body: String)
+  InvalidRequest(reason: String)
+  Denied(reason: String)
+}
 ```
 
 `HttpRequest` is the provider contract type a scenario `implement` block receives when
@@ -736,11 +775,25 @@ wildcard.
 
 ```
 -- Requires: capability store.table(name)
-store.<table>.get(id: Uuid) -> Result[T, NotFound]
+store.<table>.get(id: Uuid) -> Result[T, StoreError]
 store.<table>.put(record: T) -> Result[T, StoreError]
 store.<table>.delete(id: Uuid) -> Result[Uuid, StoreError]
 store.<table>.query(filters: Map) -> Result[List[T], StoreError]
+
+enum StoreError { NotFound Failed(reason: String) Denied(reason: String) }
 ```
+
+**Store tables are typed** (C5, #255): the capability names both the table and
+its record type — `capability store.table("games", Game)` — where the record
+type is a declared `type` with exactly one `@primary` field (any scalar key
+type; `Uuid` and `String` are the common choices). `T` in the signatures above
+is that type: `put` takes a `Game` (nominally constructed, argument-checked at
+compile time), `get`/`delete` take the `@primary` field's type, and
+`get`/`query` return `Game` values. A declaration missing the record type, or
+naming an unknown type, or whose type does not have exactly one `@primary`
+field, is `E0043`. At runtime every `put` is additionally schema-checked
+against the record type's derived JSON Schema — a violating write is
+`Err(StoreError.Failed(reason))`.
 
 There are no separate `get!`/`put!` methods (#268): the postfix `!`/`?`
 operators (§3.11) unwrap any `Result`-returning effect — `store.users.get(id)!`
@@ -755,9 +808,11 @@ crashes on miss, `store.users.put(r)?` propagates the error.
 -- memory.list() returns unscoped key names (prefix stripped).
 -- Outside agent context: no scoping applied (backward compatible).
 memory.put(key: String, value: T) -> Result[T, MemoryError]
-memory.get(key: String) -> Result[T, NotFound]
+memory.get(key: String) -> Result[T, MemoryError]
 memory.delete(key: String) -> Result[String, MemoryError]
 memory.list(prefix: String) -> List[String]
+
+enum MemoryError { NotFound Failed(reason: String) Denied(reason: String) }
 ```
 
 As everywhere, unwrap with the postfix operator: `memory.get("k")!`.
@@ -778,11 +833,12 @@ type LlmResponse { text: String }
 enum LlmError {
   ParseFailed(raw: String, expected_type: String, parse_error: String)
   Refused(reason: String)
-  RateLimit(retry_after: Duration)
-  Timeout(elapsed: Duration)
+  RateLimit(retry_after_ms: Int)
+  Timeout(elapsed_ms: Int)
   ContentFiltered(filter: String)
   InvalidSchema(violations: List[String])
   ProviderError(code: String, message: String)
+  Denied(reason: String)
 }
 ```
 
@@ -795,6 +851,13 @@ one-parameter local function; it is invoked with each text chunk (a `String`)
 as it arrives. With or without `on_chunk`, the call returns the full
 assembled response text once the stream completes.
 
+Under a scenario `model` envelope (§3.10), `llm.chat`/`llm.json`/`llm.stream`
+resolve to the envelope's `implement` provider. `llm.embed` has **no provider
+form** — `LlmResponse` is text-only — so it resolves *past* the provider
+through the normal order (replay → deterministic test backend → live, with
+live blocked under `skein test` unless `--allow-live model`), staying
+deterministic offline (#279).
+
 ### 6.5 Tools
 
 ```
@@ -802,6 +865,13 @@ assembled response text once the stream completes.
 tool.call(name: ToolName, args: Map) -> Result[Map, ToolError]
 tool.list() -> Result[List[ToolInfo], ToolError]
 tool.schema(name: ToolName) -> Result[Map, ToolError]
+
+enum ToolError {
+  NotFound(name: String)
+  ValidationError(tool: String, violations: List[String])
+  ExecutionError(tool: String, error: String)
+  Denied(reason: String)
+}
 ```
 
 **Input validation:** `tool.call` validates input arguments against the tool's declared input schema before execution. Two schema formats are supported:
@@ -816,6 +886,8 @@ Invalid input returns a `ToolError` with `:validation_error` kind and a list of 
 -- Requires: capability topic.publish(name) / queue.publish(name)
 topic.publish(name: String, data: T) -> Result[String, PublishError]
 queue.publish(name: String, data: T) -> Result[String, PublishError]
+
+enum PublishError { Denied(reason: String) Failed(reason: String) }
 ```
 
 ### 6.7 Events
@@ -859,14 +931,17 @@ idempotent(key: String) -> ()   -- skip handler if key already processed
 All runtime events — effect spans, trace annotations, user-defined events (`event.log`), and memory state changes — are stored in a single unified event log. This enables querying, replay, and memory reconstruction from the event stream.
 
 ```
-trace.annotate(key: String, value: String) -> ()  -- add metadata to current span
-event.log(name: String, data: T) -> ()            -- record structured user event
+trace.annotate(key: String, value: String) -> ()             -- add metadata to current span
+event.log(name: String, data: T) -> Result[String, String]   -- record structured user event
 ```
 
-`trace.annotate` requires no capability. `event.log` requires
+`trace.annotate` requires no capability and cannot fail (`()` lowers to a
+bare value; no `!`/`?` applies). `event.log` requires
 `capability event.log(...)` — the capability parameter names the stream
 the events are recorded to (a scoped capability label, §3.2); the call
-carries only the event name and data.
+carries only the event name and data. Like the other scoped effects, a
+scope-label denial is an `Err` visible to the program (the `Ok` payload is
+the event name).
 
 Memory mutations (`memory.put`, `memory.delete`) automatically emit `:state_change` events, making memory state reconstructable from the event stream.
 
@@ -884,8 +959,12 @@ timer.after(delay_ms: Int, task: String) -> Result[String, String]           -- 
 timer.after(delay_ms: Int, task: String, work) -> Result[String, String]     -- one-shot with a task body
 timer.interval(every_ms: Int, task: String) -> Result[String, String]        -- repeating
 timer.interval(every_ms: Int, task: String, work) -> Result[String, String]  -- repeating with a task body
-timer.cancel(ref: String) -> ()
+timer.cancel(ref: String) -> Result[String, String]
 ```
+
+`timer.cancel` is idempotent: cancelling an unknown or already-fired ref
+still succeeds, and `Ok` carries the ref back. `Err` is a scope-label
+denial, exactly as for `timer.after`/`timer.interval`.
 
 The pool/group capability parameter is a scoped capability label (§3.2):
 the compiler threads it into each call and it appears on the trace span.
@@ -991,6 +1070,7 @@ edits generically — no per-error-code logic.
 | E0040 | Supervisor | error | Invalid supervisor strategy |
 | E0041 | Supervisor | error | Invalid `max_restarts` value |
 | E0042 | Supervisor | warning | Supervisor has no children |
+| E0043 | Store | error | Invalid `store.table` declaration — tables are typed: the capability must name a declared record type with exactly one `@primary` field (`capability store.table("games", Game)`) |
 | W0001 | Warning | warning | Unused binding |
 | W0002 | Warning | warning | Unused capability |
 | W0003 | Warning | warning | Unreachable code after `stop()` |
@@ -1019,7 +1099,7 @@ module Hello {
 ```
 module UserService {
   capability http.in
-  capability store.table("users")
+  capability store.table("users", User)
   capability uuid
   capability instant
 
@@ -1046,7 +1126,7 @@ module UserService {
 
   handler http POST "/users" (req) -> {
     let data = req.json[CreateUserInput]()?
-    let user = store.users.put({
+    let user = store.users.put(User {
       id: uuid.new(),
       email: data.email,
       name: data.name,
@@ -1063,9 +1143,16 @@ module UserService {
 module BillingWorker {
   capability queue.consume("billing.events")
   capability http.out("api.stripe.com")
-  capability store.table("transactions")
+  capability store.table("transactions", Transaction)
   capability uuid
   capability instant
+
+  type Transaction {
+    id: Uuid @primary
+    charge_id: String
+    amount: Int
+    created_at: Instant
+  }
 
   enum BillingEvent {
     ChargeSucceeded(charge_id: String, amount: Int)
@@ -1081,8 +1168,8 @@ module BillingWorker {
     }
   }
 
-  fn record_charge(charge_id: String, amount: Int) -> Result[String, StoreError] {
-    store.transactions.put({
+  fn record_charge(charge_id: String, amount: Int) -> Result[Transaction, StoreError] {
+    store.transactions.put(Transaction {
       id: uuid.new(),
       charge_id: charge_id,
       amount: amount,
@@ -1109,7 +1196,13 @@ compiles to its own BEAM module, `Skein.Agent.RefundService.RefundAgent`.
 module RefundService {
   capability model("anthropic", "claude-opus-4-8")
   capability tool.use(Stripe.CreateRefund)
-  capability store.table("tickets")
+  capability store.table("tickets", Ticket)
+
+  type Ticket {
+    id: String @primary
+    customer_id: String
+    subject: String
+  }
 
   type RefundDecision {
     action: String @one_of(["approve", "deny"])

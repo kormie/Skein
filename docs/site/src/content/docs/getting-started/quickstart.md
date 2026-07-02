@@ -11,7 +11,7 @@ release checksums, and installs to `~/.local/bin` (no root):
 ```bash
 curl -fsSL https://kormie.github.io/Skein/install.sh | sh
 
-skein version  # → skein 0.4.0
+skein version  # → skein 0.5.0
 ```
 
 Pin a version with `SKEIN_VERSION=0.4.0`, or change the destination with
@@ -154,7 +154,7 @@ skein help
 ```
 
 ```
-Skein 0.4.0 — AI-native language for the BEAM
+Skein 0.5.0 — AI-native language for the BEAM
 
 Usage: skein <command> [options]
 
@@ -179,6 +179,8 @@ Options:
   new --no-git               Skip git init (a .gitignore is always written)
   build --output <dir>       Write .beam files to directory
   run --port <port>          Server port (default: 4000)
+  run --no-persist           Skip SQLite event persistence (default:
+                             events persist to .skein/events.db)
   trace --last <n>           Number of traces (default: 10)
   trace --kind <kind>        Filter by span kind
   --json                     Machine-readable JSON output (compile, build,

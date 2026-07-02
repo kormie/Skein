@@ -354,7 +354,7 @@ Consider this scenario: a human writes a capability block that defines what a co
 ```
 -- Human writes this "constitution" for the billing service
 capability http.out("api.stripe.com", methods: [POST], paths: ["/v1/refunds", "/v1/charges"])
-capability store.table("transactions")
+capability store.table("transactions", Transaction)
 capability model.anthropic("claude-opus-4-8")
 capability tool.use(Stripe.Refund, Stripe.Charge)
 ```
@@ -369,7 +369,7 @@ capability http.out(host: String, methods: List[Method]?, paths: List[String]?)
 capability http.in                                    -- accept inbound HTTP
 
 -- Storage
-capability store.table(name: String, ops: List[Op]?)  -- ops: [read, write, delete, migrate]
+capability store.table(name: String, record: Type, ops: List[Op]?)  -- ops: [read, write, delete, migrate]
 capability memory.kv(namespace: String)
 capability event.log(stream: String)
 
@@ -397,7 +397,7 @@ Capabilities are additive and scoped. A module declares its maximum capability s
 ```
 module BillingService {
   capability http.out("api.stripe.com")
-  capability store.table("invoices")
+  capability store.table("invoices", Invoice)
   capability model("anthropic", "claude-opus-4-8")
 
   -- This function can use http.out and store.table but not model.
@@ -1033,7 +1033,7 @@ This puts everything together in a realistic service.
 module IncidentTriage {
   capability http.in
   capability http.out("api.github.com")
-  capability store.table("incidents")
+  capability store.table("incidents", Incident)
   capability topic.publish("incident.created")
   capability topic.consume("incident.created")
   capability model("anthropic", "claude-opus-4-8")

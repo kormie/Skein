@@ -38,7 +38,7 @@ defmodule Skein.Runtime.LlmEmbedTest do
     end
 
     test "rejects without model capability" do
-      assert {:error, %Llm.Error{kind: :capability_error}} =
+      assert {:error, {:denied, _reason}} =
                Llm.embed("text-embedding-3-small", "Hello", @no_capabilities)
     end
 
@@ -57,7 +57,7 @@ defmodule Skein.Runtime.LlmEmbedTest do
     test "handles backend errors gracefully" do
       Llm.set_backend(Skein.Runtime.Llm.FailingBackend)
 
-      assert {:error, %Llm.Error{kind: :provider_error}} =
+      assert {:error, {:provider_error, "500", "Embedding failed"}} =
                Llm.embed("text-embedding-3-small", "Hello", @valid_capabilities)
     end
 

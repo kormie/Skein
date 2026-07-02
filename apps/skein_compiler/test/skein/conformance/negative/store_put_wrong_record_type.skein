@@ -1,0 +1,12 @@
+-- expect: E0020
+-- C5/#255: store.put's argument is checked against the table's record type.
+module StorePutWrongRecord {
+  capability store.table("games", Game)
+
+  type Game { id: Uuid @primary, name: String }
+  type Other { id: Uuid @primary, label: String }
+
+  fn save(o: Other) -> Result[Game, StoreError] {
+    store.games.put(o)
+  }
+}

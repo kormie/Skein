@@ -23,7 +23,8 @@ defmodule Skein.LlmSchemaFlowTest do
     @impl true
     def json(_model, _system, _input, schema) do
       :persistent_term.put({__MODULE__, :captured_schema}, schema)
-      {:ok, %{"action" => "approve"}}
+      # A schema-complete response — llm.json[T] validates it since C3 (#298).
+      {:ok, %{"action" => "approve", "amount" => 0}}
     end
 
     def captured_schema do
@@ -60,7 +61,7 @@ defmodule Skein.LlmSchemaFlowTest do
           amount: Int @min(0)
         }
 
-        fn decide(ticket: String) -> Result[Decision, String] {
+        fn decide(ticket: String) -> Result[Decision, LlmError] {
           llm.json[Decision](model: "claude-opus-4-8", system: "Decide.", input: ticket)
         }
       }

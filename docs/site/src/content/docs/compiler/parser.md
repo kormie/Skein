@@ -158,7 +158,7 @@ Produces nested `%AST.FieldAccess{}` nodes.
 "Hello, ${name}!"
 ```
 
-Produces `%AST.StringLit{segments: [{:literal, "Hello, "}, {:interpolation, {:ident, _, "name"}}, {:literal, "!"}]}`.
+Produces `%AST.StringLit{segments: [{:literal, "Hello, "}, {:interpolation, %AST.Identifier{name: "name"}}, {:literal, "!"}]}`. The parser converts the lexer's raw interpolation tokens into AST nodes — an `%AST.Identifier{}`, or nested `%AST.FieldAccess{}` for dotted access like `${user.name}`.
 
 ### Type and Enum Declarations
 
@@ -194,7 +194,7 @@ Match arm patterns support:
 | Integer literal | `0`, `42` | `%AST.IntLit{}` |
 | String literal | `"active"` | `%AST.StringLit{}` |
 | Variable binding | `x`, `name` | `%AST.Identifier{}` |
-| Wildcard | `_` | `%AST.Identifier{name: "_"}` |
+| Wildcard | `_` | `%AST.Wildcard{}` |
 | Enum variant (bare) | `Active`, `Status.Active` | `%AST.Identifier{}` |
 | Enum variant (with fields) | `Banned(reason)`, `Status.Banned(reason)` | `%AST.Call{target: %AST.Identifier{}, args: [...]}` |
 

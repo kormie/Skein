@@ -206,7 +206,7 @@ defmodule Skein.NamedArgsTest do
         analyze("""
         module M {
           capability model("anthropic", "claude-opus-4-8")
-          fn g(ticket: String) -> Result[String, String] {
+          fn g(ticket: String) -> Result[String, LlmError] {
             llm.chat(input: ticket, model: "claude-opus-4-8", system: "Analyze.")
           }
         }
@@ -399,7 +399,7 @@ defmodule Skein.NamedArgsTest do
         analyze_errors("""
         module M {
           capability model("anthropic", "claude-opus-4-8")
-          fn g(t: String) -> Result[String, String] {
+          fn g(t: String) -> Result[String, LlmError] {
             llm.chat(model: "claude-opus-4-8", prompt: t, system: "x")
           }
         }
@@ -470,7 +470,7 @@ defmodule Skein.NamedArgsTest do
         module NamedLlm {
           capability model("anthropic", "claude-opus-4-8")
 
-          fn ask(question: String) -> Result[String, String] {
+          fn ask(question: String) -> Result[String, LlmError] {
             llm.chat(model: "claude-opus-4-8", system: "You are helpful.", input: question)
           }
         }
@@ -486,11 +486,11 @@ defmodule Skein.NamedArgsTest do
         module NamedMemory {
           capability memory.kv("named_args_test")
 
-          fn save(k: String, v: String) -> Result[String, String] {
+          fn save(k: String, v: String) -> Result[String, MemoryError] {
             memory.put(key: k, value: v)
           }
 
-          fn load(k: String) -> Result[String, String] {
+          fn load(k: String) -> Result[String, MemoryError] {
             memory.get(key: k)
           }
         }

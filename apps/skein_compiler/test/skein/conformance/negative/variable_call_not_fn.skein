@@ -1,4 +1,4 @@
--- expect: E0020
+-- expect: E0020, E0037
 -- #293 (B4): calling a variable is legal only when it holds a function value
 -- (`let g = &f` then `g()`). Calling an Int-typed binding is a structured
 -- error, not a silent :unknown.

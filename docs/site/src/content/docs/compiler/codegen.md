@@ -418,6 +418,8 @@ store.users.get(id)
 call 'Elixir.Skein.Runtime.Store':'get'("users", Id, Capabilities)
 ```
 
+For typed tables (C5), `put` carries one extra argument: the table's derived JSON Schema is compiled in immediately before the capabilities — `call 'Elixir.Skein.Runtime.Store':'put'("users", Record, Schema, Capabilities)` — so the runtime schema-checks every write (defense in depth behind the analyzer's record typing, and a guard for dynamic data that reached the record through `Json` seams).
+
 ### Memory effect compilation
 
 Memory effects extract the namespace from the `memory.kv(namespace)` capability declaration and pass it as the first argument:
@@ -511,7 +513,21 @@ namespace.method(arg1, arg2)
 call 'Elixir.Skein.Runtime.<Module>':'method'(Arg1, Arg2, Capabilities)
 ```
 
-This covers `process.spawn`, `timer.after`, `timer.interval`, `timer.cancel`, `trace.annotate`, `event.log`, `queue.publish`, and `topic.publish`.
+This covers `http.*`, `trace.annotate`, `queue.publish`, `topic.publish`, `uuid.new`, and `instant.now`. The namespace-to-module map is derived from the authoritative effect-ABI registry (`Skein.EffectABI`, #296) — the same registry that drives the analyzer's effect tables and the spec §6 signature drift test.
+
+### Scoped effect compilation
+
+The scoped effects — `process.spawn`, `timer.after`, `timer.interval`, `timer.cancel`, and `event.log` — thread the declared capability scope label (the pool/group/stream name from the capability declaration, spec §3.2) into the runtime call as the first argument:
+
+```skein
+-- Module has: capability process.spawn("workers")
+process.spawn(task)
+
+-- Compiles to:
+call 'Elixir.Skein.Runtime.Process':'spawn'("workers", Task, Capabilities)
+```
+
+A parameterless capability declaration leaves the label `nil` (unscoped — the runtime checks presence only). The first declared capability of the kind wins; nested agents list their own capabilities before the module's, so an agent-level label overrides the module's.
 
 ## Handler Generation
 

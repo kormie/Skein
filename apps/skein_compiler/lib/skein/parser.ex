@@ -1764,9 +1764,8 @@ defmodule Skein.Parser do
   defp parse_let_or_match_or_pipe([{:ident, {line, col}, "assert"} | rest], file) do
     case parse_pipe_expr(rest, file) do
       {:ok, expr, rest2} ->
-        assert_node = %AST.Call{
-          target: %AST.Identifier{name: "__assert__", meta: %{line: line, col: col, file: file}},
-          args: [expr],
+        assert_node = %AST.Assert{
+          expr: expr,
           meta: %{line: line, col: col, file: file}
         }
 

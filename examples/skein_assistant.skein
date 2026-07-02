@@ -9,9 +9,10 @@ module SkeinAssistant {
   capability model("anthropic", "claude-opus-4-8")
   capability memory.kv
 
-  -- Ask a question about Skein. Session history is stored in memory and
-  -- interpolated into the prompt so follow-up questions have context.
-  handler http POST "/ask" (req) -> {
+  -- Ask a question about Skein:  POST /ask/:session_id  (body = the question).
+  -- Session history is stored in memory and interpolated into the prompt so
+  -- follow-up questions have context.
+  handler http POST "/ask/:session_id" (req) -> {
     let session_id = req.params.session_id
     let question = req.body
     let history = Result.unwrap(memory.get(session_id), "")

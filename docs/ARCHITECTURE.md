@@ -120,7 +120,7 @@ defmodule Skein.AST do
   defmodule EnumDecl,   do: defstruct [:name, :variants, :transitions, :meta]
   defmodule Handler,    do: defstruct [:source, :method, :route, :param, :body, :meta]
   defmodule Agent,      do: defstruct [:name, :capabilities, :state, :phases, :handlers, :fns, :meta]
-  defmodule ToolDecl,   do: defstruct [:name, :description, :input, :output, :errors, :policy, :implement, :meta]
+  defmodule ToolDecl,   do: defstruct [:name, :description, :input, :output, :errors, :implement, :meta]
   defmodule Supervisor, do: defstruct [:name, :children, :strategy, :max_restarts, :meta]
   defmodule Test,       do: defstruct [:description, :body, :meta]
 
@@ -381,17 +381,20 @@ each read, so handing a copy to a concurrent task would double-serve events.
 
 ### 2.3 Unified Event Store (`Skein.Runtime.EventStore`)
 
-All runtime events — effect spans, trace annotations, user-defined events, and memory state changes — flow through a single append-only event log backed by one ETS ordered set (`:skein_events`).
+All runtime events — effect spans, trace annotations, user-defined events, and memory state changes — flow through a single append-only event log backed by one ETS ordered set (`:skein_events`), with opt-in SQLite persistence on the ordinary append path (C6/#299): when `Skein.Runtime.EventStore.Persistence` is enabled, every `append/1` write-through-persists asynchronously to `events.db`, `enable/1` reloads persisted history into ETS on restart (deduplicated by event id), and `skein run` enables it by default at `<project>/.skein/events.db` (`--no-persist` opts out). The persisted/reloaded shapes stay Pre-stable until the Wave F freeze (`docs/STABILITY.md`).
 
 ```elixir
 defmodule Skein.Runtime.EventStore do
-  # Append any event (auto-assigns id, timestamp, _key)
+  # Append any event (auto-assigns id, timestamp, _key);
+  # write-through-persists when Persistence is enabled
   @spec append(map()) :: :ok
   def append(event)
 
   # User-event entry point for compiled event.log() calls; the stream is
-  # the scoped capability label threaded in by codegen (nil = unscoped)
-  @spec log(String.t() | nil, String.t(), term(), list()) :: :ok | {:error, String.t()}
+  # the scoped capability label threaded in by codegen (nil = unscoped).
+  # Ok carries the event name (C1); a scope denial is a visible Err.
+  @spec log(String.t() | nil, String.t(), term(), list()) ::
+          {:ok, String.t()} | {:error, String.t()}
   def log(stream, event_name, data, capabilities)
 
   # Query by kind, namespace, or any field
@@ -482,15 +485,17 @@ Tool execution is wrapped in:
 
 ### 2.6 Store (`Skein.Runtime.Store`)
 
-ETS-backed dynamic store providing the `store.*` API.
+ETS-backed dynamic store providing the `store.*` API — typed since C5 (#255).
 
-Codegen emits calls like `Skein.Runtime.Store.get("users", id, capabilities)` — table names are plain strings (never converted to atoms, since they can come from arbitrary program input and atoms are not garbage-collected). All logical tables share a single ETS table (`:skein_store`, owned by `EtsTables`) keyed by `{table_name, id}`. Every operation is:
+Every `store.table` capability names a record type — `capability store.table("games", Game)` where `Game` is a declared type with exactly one `@primary` field (violations are E0043). The analyzer types the methods against it (`get`/`put` as `Result[Game, StoreError]`, `delete` as `Result[PK, StoreError]`, `query` as `Result[List[Game], StoreError]`) and argument-checks records and keys (E0020).
 
-1. Checked against the caller's declared `store.table(...)` capabilities
+Codegen emits calls like `Skein.Runtime.Store.get("games", id, capabilities)` — table names are plain strings (never converted to atoms, since they can come from arbitrary program input and atoms are not garbage-collected). For `put`, codegen additionally threads the record type's derived JSON Schema — `Store.put(table, record, schema, capabilities)` — and the runtime schema-checks every write (a wrong-shaped record is `Err(StoreError.Failed(reason))`, defense in depth behind the compile-time check). All logical tables share a single ETS table (`:skein_store`, owned by `EtsTables`) keyed by `{table_name, id}`. Every operation is:
+
+1. Checked against the caller's declared `store.table(...)` capabilities — a denial is `{:error, {:denied, reason}}` (`Err(StoreError.Denied(reason))`)
 2. Wrapped in a trace span (timing, metadata, outcome)
-3. Returned as `{:ok, result}` or `{:error, reason}` — a `get` miss is `{:error, :not_found}`, matching the spec's `Result[T, NotFound]` contract
+3. Returned as `{:ok, result}` or a structured error — a `get` miss is `{:error, :not_found}` (`Err(StoreError.NotFound)`)
 
-An Ecto/SQLite typed-table path (`Skein.Runtime.StoreEcto`, `EctoSchema`, `MigrationGen`, `Repo`) exists in the runtime as library code, but it has no production callers — codegen never routes `store.*` calls through it. Wiring typed tables into the store contract is roadmap item C5 (#255), targeted at v0.5.0.
+An Ecto/SQLite typed-table path (`Skein.Runtime.StoreEcto`, `EctoSchema`, `MigrationGen`, `Repo`) exists in the runtime as library code with no production callers — C5 deliberately landed the typed contract on the ETS store that compiled programs actually use, not on the Ecto path.
 
 ### 2.7 Memory (`Skein.Runtime.Memory`)
 
@@ -649,8 +654,12 @@ pure functions over the capability lists codegen threads into each call.
 Outside this tree:
 
 - **Agents** run as `gen_statem` processes (`Skein.Runtime.Agent`), started
-  by the host via the compiled module's `start_link/1` — there is no
-  runtime-owned agent pool supervisor.
+  by the host via the compiled module's `start_link/1` or as children of a
+  declared supervision tree (below).
+- **Declared supervisors** (`supervisor` blocks, #325) are realized by
+  `Skein.Runtime.SupervisorHost`: one real OTP `Supervisor` per
+  `__supervisors__/0` entry, with the module's compiled nested agents as
+  children, started by (and linked to) `Skein.Runtime.Server`.
 - **HTTP serving** is started by `skein run` via `Skein.Runtime.Server`
   (Bandit + the Plug router built from `__handlers__/0` metadata).
 

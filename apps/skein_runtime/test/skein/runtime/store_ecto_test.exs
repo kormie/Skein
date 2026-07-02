@@ -97,7 +97,7 @@ defmodule Skein.Runtime.StoreEctoTest do
 
     test "returns capability error when table not declared" do
       result = StoreEcto.put("orders", %{id: "o1"}, @caps)
-      assert {:error, msg} = result
+      assert {:error, {:denied, msg}} = result
       assert msg =~ "not declared"
     end
   end
@@ -121,7 +121,7 @@ defmodule Skein.Runtime.StoreEctoTest do
     end
 
     test "returns capability error when table not declared" do
-      assert {:error, msg} = StoreEcto.get("orders", "o1", @caps)
+      assert {:error, {:denied, msg}} = StoreEcto.get("orders", "o1", @caps)
       assert msg =~ "not declared"
     end
   end
@@ -144,7 +144,7 @@ defmodule Skein.Runtime.StoreEctoTest do
     end
 
     test "returns capability error when table not declared" do
-      assert {:error, msg} = StoreEcto.delete("orders", "o1", @caps)
+      assert {:error, {:denied, msg}} = StoreEcto.delete("orders", "o1", @caps)
       assert msg =~ "not declared"
     end
   end
@@ -203,7 +203,7 @@ defmodule Skein.Runtime.StoreEctoTest do
 
     test "returns capability error when table not declared" do
       result = StoreEcto.query("orders", %{}, @caps)
-      assert {:error, msg} = result
+      assert {:error, {:denied, msg}} = result
       assert msg =~ "not declared"
     end
 
@@ -211,7 +211,7 @@ defmodule Skein.Runtime.StoreEctoTest do
       {:ok, _} =
         StoreEcto.put("ecto_users", %{id: "u1", email: "a@test.com", name: "Alice"}, @caps)
 
-      assert {:error, msg} =
+      assert {:error, {:failed, msg}} =
                StoreEcto.query("ecto_users", %{"not_a_column" => "x"}, @caps)
 
       assert msg =~ "Unknown filter field"

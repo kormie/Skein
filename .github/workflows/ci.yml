@@ -58,3 +58,99 @@ jobs:
 
       - name: Run tests
         run: mix test
+
+  # Wave D dogfood gate (#262). Always (blocking): execute the checked-in
+  # dogfood corpus through the CLI path (`mix skein.test`), complementing the
+  # ExUnit runner (dogfood_corpus_test.exs) that already runs inside the main
+  # job's `mix test`. Additionally, when the DOGFOOD_GITHUB_TOKEN secret is
+  # configured (a fine-grained PAT with read access to the two PRIVATE
+  # upstream dogfood repos), clone each upstream repo at its pinned revision
+  # (conformance/dogfood.json) and EXECUTE its test suite against this Skein
+  # revision — so API drift against the real external ports fails CI, not a
+  # future release sweep.
+  dogfood:
+    name: Dogfood conformance
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Erlang & Elixir
+        uses: erlef/setup-beam@v1
+        with:
+          otp-version: ${{ env.OTP_VERSION }}
+          elixir-version: ${{ env.ELIXIR_VERSION }}
+
+      - name: Cache deps and build
+        uses: actions/cache@v5
+        with:
+          path: |
+            deps
+            _build
+          key: ${{ runner.os }}-mix-test-${{ hashFiles('mix.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-mix-test-
+
+      - name: Install dependencies
+        run: |
+          mix local.hex --force
+          mix local.rebar --force
+          mix deps.get
+
+      - name: Compile
+        run: mix compile
+
+      - name: Run the checked-in dogfood corpus through the CLI
+        run: |
+          for project in conformance/dogfood/*/; do
+            echo "::group::skein test ${project}"
+            mix skein.test "${project}"
+            echo "::endgroup::"
+          done
+
+      - name: Check for the external-repo token
+        id: token
+        env:
+          DOGFOOD_GITHUB_TOKEN: ${{ secrets.DOGFOOD_GITHUB_TOKEN }}
+        run: |
+          if [ -n "$DOGFOOD_GITHUB_TOKEN" ]; then
+            echo "have=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "have=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=Dogfood external ports not checked::The upstream dogfood repos are private and no DOGFOOD_GITHUB_TOKEN secret is configured — only the checked-in corpus was executed. Add a fine-grained PAT with read access to kormie/skein-testing and kormie/FablePool-skein to enable the upstream check."
+          fi
+
+      - name: Read dogfood pins
+        if: steps.token.outputs.have == 'true'
+        id: pins
+        run: |
+          echo "dungeon_repo=$(jq -r '.projects.dungeon.repo' conformance/dogfood.json)" >> "$GITHUB_OUTPUT"
+          echo "dungeon_rev=$(jq -r '.projects.dungeon.rev' conformance/dogfood.json)" >> "$GITHUB_OUTPUT"
+          echo "fablepool_repo=$(jq -r '.projects.fablepool.repo' conformance/dogfood.json)" >> "$GITHUB_OUTPUT"
+          echo "fablepool_rev=$(jq -r '.projects.fablepool.rev' conformance/dogfood.json)" >> "$GITHUB_OUTPUT"
+
+      - name: Check out skein-testing at its pin
+        if: steps.token.outputs.have == 'true'
+        uses: actions/checkout@v6
+        with:
+          repository: ${{ steps.pins.outputs.dungeon_repo }}
+          ref: ${{ steps.pins.outputs.dungeon_rev }}
+          path: dogfood-external/dungeon
+          token: ${{ secrets.DOGFOOD_GITHUB_TOKEN }}
+
+      - name: Check out FablePool-skein at its pin
+        if: steps.token.outputs.have == 'true'
+        uses: actions/checkout@v6
+        with:
+          repository: ${{ steps.pins.outputs.fablepool_repo }}
+          ref: ${{ steps.pins.outputs.fablepool_rev }}
+          path: dogfood-external/fablepool
+          token: ${{ secrets.DOGFOOD_GITHUB_TOKEN }}
+
+      - name: Run skein-testing test suite
+        if: steps.token.outputs.have == 'true'
+        run: mix skein.test dogfood-external/dungeon
+
+      - name: Run FablePool-skein test suite
+        if: steps.token.outputs.have == 'true'
+        run: mix skein.test dogfood-external/fablepool
