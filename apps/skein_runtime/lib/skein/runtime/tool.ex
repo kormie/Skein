@@ -286,7 +286,7 @@ defmodule Skein.Runtime.Tool do
           :ok ->
             case impl.(input) do
               {:ok, result} ->
-                {:ok, coerce_output(result, schema)}
+                validate_output(name, result, schema)
 
               {:error, reason} when is_binary(reason) ->
                 {:error, Error.execution_error(name, reason)}
@@ -308,14 +308,28 @@ defmodule Skein.Runtime.Tool do
   # come back total — {:some, v} when present, :none injected when absent —
   # identically to JSON decode and store reads (#294). Tools registered
   # without an output schema (hand-registered test doubles) pass through.
-  defp coerce_output(result, schema) when is_map(result) do
+  # C3/#298: tool OUTPUT is now VALIDATED against the declared output
+  # schema (it was only coerced before) — a tool implementation returning
+  # a shape that violates its own declaration is a validation error naming
+  # the violations, not silent nonsense at the caller. Tools registered
+  # without an output schema (hand-registered test doubles) pass through.
+  defp validate_output(name, result, schema) when is_map(result) do
     case output_schema(schema) do
-      nil -> result
-      out_schema -> Skein.Runtime.JsonSchema.atomize(result, out_schema)
+      nil ->
+        {:ok, result}
+
+      out_schema ->
+        case Skein.Runtime.JsonSchema.decode(result, out_schema) do
+          {:ok, decoded} ->
+            {:ok, decoded}
+
+          {:error, violations} ->
+            {:error, Error.validation_error(name, Enum.map(violations, &"output: #{&1}"))}
+        end
     end
   end
 
-  defp coerce_output(result, _schema), do: result
+  defp validate_output(_name, result, _schema), do: {:ok, result}
 
   defp output_schema(%{output_schema: %{"type" => "object"} = out}), do: out
   defp output_schema(%{"output_schema" => %{"type" => "object"} = out}), do: out
@@ -368,27 +382,23 @@ defmodule Skein.Runtime.Tool do
     end
   end
 
+  # C3/#298: JSON-Schema-format tool inputs validate through the one shared
+  # recursive engine — nested shapes, formats, uniqueItems and constraints
+  # included — instead of the former shallow field walk. Missing-field
+  # messages keep the historical wording.
   defp check_fields(input, {:json_schema, schema}) do
-    properties = Map.get(schema, "properties", %{})
-    required = Map.get(schema, "required", [])
+    case Skein.Runtime.JsonSchema.validate(input, schema) do
+      :ok ->
+        []
 
-    missing =
-      required
-      |> Enum.reject(fn field_name ->
-        map_has_key_flex?(input, field_name)
-      end)
-      |> Enum.map(fn field -> "missing required field '#{field}'" end)
-
-    type_errors =
-      properties
-      |> Enum.flat_map(fn {field_name, prop_schema} ->
-        case map_get_flex(input, field_name) do
-          :missing -> []
-          {:found, value} -> check_json_schema_type(field_name, value, prop_schema)
-        end
-      end)
-
-    missing ++ type_errors
+      {:error, violations} ->
+        Enum.map(violations, fn violation ->
+          case Regex.run(~r/\Arequired field '([^']+)' is missing\z/, violation) do
+            [_, field] -> "missing required field '#{field}'"
+            nil -> violation
+          end
+        end)
+    end
   end
 
   defp check_fields(input, spec) when is_map(spec) and is_map(input) do
@@ -403,12 +413,6 @@ defmodule Skein.Runtime.Tool do
   defp check_fields(_input, _spec), do: []
 
   # Flexible map access: tries both string and atom keys
-  defp map_has_key_flex?(map, key) when is_map(map) do
-    Map.has_key?(map, key) or
-      (is_binary(key) and Map.has_key?(map, safe_to_atom(key))) or
-      (is_atom(key) and Map.has_key?(map, Atom.to_string(key)))
-  end
-
   defp map_get_flex(map, key) when is_map(map) do
     cond do
       Map.has_key?(map, key) ->
@@ -449,20 +453,6 @@ defmodule Skein.Runtime.Tool do
     do: ["field '#{field}' expected Bool, got #{inspect(value)}"]
 
   defp check_type(_field, _value, _type), do: []
-
-  defp check_json_schema_type(field, value, %{"type" => "string"}) when not is_binary(value),
-    do: ["field '#{field}' expected String, got #{inspect(value)}"]
-
-  defp check_json_schema_type(field, value, %{"type" => "integer"}) when not is_integer(value),
-    do: ["field '#{field}' expected Int, got #{inspect(value)}"]
-
-  defp check_json_schema_type(field, value, %{"type" => "number"}) when not is_number(value),
-    do: ["field '#{field}' expected Number, got #{inspect(value)}"]
-
-  defp check_json_schema_type(field, value, %{"type" => "boolean"}) when not is_boolean(value),
-    do: ["field '#{field}' expected Bool, got #{inspect(value)}"]
-
-  defp check_json_schema_type(_field, _value, _schema), do: []
 end
 
 defmodule Skein.Runtime.Tool.Error do

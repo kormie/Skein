@@ -75,18 +75,24 @@ defmodule Skein.Runtime.Llm do
           case call_json(backend, model, system, input, schema) do
             {:ok, %Response{text: raw_text} = resp} ->
               case parse_json_response(raw_text) do
-                {:ok, parsed} -> {:ok, atomize_by_schema(parsed, schema), resp}
-                error -> error
+                {:ok, parsed} ->
+                  case decode_by_schema(parsed, schema) do
+                    {:ok, decoded} -> {:ok, decoded, resp}
+                    error -> error
+                  end
+
+                error ->
+                  error
               end
 
             {:ok, raw_text} when is_binary(raw_text) ->
               case parse_json_response(raw_text) do
-                {:ok, parsed} -> {:ok, atomize_by_schema(parsed, schema)}
+                {:ok, parsed} -> decode_by_schema(parsed, schema)
                 error -> error
               end
 
             {:ok, %{} = parsed} ->
-              {:ok, atomize_by_schema(parsed, schema)}
+              decode_by_schema(parsed, schema)
 
             {:error, _} = error ->
               error
@@ -409,7 +415,16 @@ defmodule Skein.Runtime.Llm do
 
   # Schema-directed key atomization is shared with the HTTP JSON path so
   # llm.json[T] and req.json[T] coerce keys identically.
-  defp atomize_by_schema(value, schema), do: Skein.Runtime.JsonSchema.atomize(value, schema)
+  # C3/#298: llm.json[T] now VALIDATES against the derived schema (the
+  # moduledoc always promised this; before C3 it only atomized). A
+  # well-formed-JSON response that violates the schema is
+  # LlmError.InvalidSchema(violations).
+  defp decode_by_schema(parsed, schema) do
+    case Skein.Runtime.JsonSchema.decode(parsed, schema) do
+      {:ok, decoded} -> {:ok, decoded}
+      {:error, violations} -> {:error, Error.invalid_schema(violations)}
+    end
+  end
 
   # -- Enriched span recording ---------------------------------------------
 
