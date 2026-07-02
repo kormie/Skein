@@ -2062,6 +2062,7 @@ defmodule Skein.Analyzer do
         env
         |> Map.put(:variables, Map.merge(env.variables, input_vars))
         |> Map.put(:tool_output, %{tool: name, fields: output || []})
+        |> Map.put(:tool_input_fields, Enum.map(input || [], & &1.name))
 
       {body_type, errors} = infer_type(implement, impl_env)
 
@@ -2295,6 +2296,25 @@ defmodule Skein.Analyzer do
               {:unknown, [unknown_constructor_error(name, meta, meta, env)]}
             end
         end
+
+      # `input.<field>` inside a tool implement body — the natural guess
+      # for reaching the tool's input (#336). The fields are directly in
+      # scope; a `let input = value` template would shadow them.
+      name == "input" and is_map_key(env, :tool_input_fields) ->
+        fields = Enum.join(env.tool_input_fields, ", ")
+
+        {:unknown,
+         [
+           %Error{
+             code: "E0010",
+             severity: :error,
+             message: "Unknown identifier 'input'",
+             location: location_from_meta(meta, env.file),
+             fix_hint:
+               "Tool implement bodies receive the input fields directly in scope " <>
+                 "(#{fields}) — use the field name itself, not input.<field>"
+           }
+         ]}
 
       # `return` is not a Skein construct — give a targeted hint instead of
       # the generic did-you-mean suggestion
@@ -3507,6 +3527,34 @@ defmodule Skein.Analyzer do
     }
   end
 
+  # `Some`/`None` reached construction position: the natural Option
+  # misconception (#336). Skein has no Option constructors — teach the
+  # bare-inner-value rule instead of suggesting an unrelated variant.
+  defp unknown_constructor_error("Some", meta, _name_meta, env) do
+    %Error{
+      code: "E0010",
+      severity: :error,
+      message: "'Some' is not a constructor — Skein does not build Option values with Some(...)",
+      location: location_from_meta(meta, env.file),
+      fix_hint:
+        "A present Option takes the bare inner value (nickname: \"Ally\", not " <>
+          "nickname: Some(\"Ally\")); an absent Option field is omitted. " <>
+          "Some/None exist only as match patterns"
+    }
+  end
+
+  defp unknown_constructor_error("None", meta, _name_meta, env) do
+    %Error{
+      code: "E0010",
+      severity: :error,
+      message: "'None' is not a value — Skein has no bare None",
+      location: location_from_meta(meta, env.file),
+      fix_hint:
+        "Omit an Option field to leave it absent; Options otherwise come from " <>
+          "stdlib returns. Some/None exist only as match patterns"
+    }
+  end
+
   # `meta` locates the error; `name_meta` locates the constructor name
   # itself (a Call's meta points at the lparen, its target's at the name).
   defp unknown_constructor_error(name, meta, name_meta, env) do
@@ -3516,7 +3564,12 @@ defmodule Skein.Analyzer do
         Enum.map(variants, & &1.name)
       end)
 
-    span = span_from_meta(name_meta, name)
+    # Only offer a machine-applicable replacement when a candidate is
+    # genuinely close (same gate as suggest_identifier/2): the old
+    # unconditional max-jaro pick turned every unknown constructor into
+    # a wrong builtin-variant edit (#336).
+    suggestion = close_name_suggestion(name, candidates ++ ["Ok", "Err"])
+    span = if suggestion, do: span_from_meta(name_meta, name)
 
     %Error{
       code: "E0010",
@@ -3528,10 +3581,23 @@ defmodule Skein.Analyzer do
           [] -> "Declare an enum with this variant, or use Ok(value)/Err(reason)"
           names -> "Declared variants: #{Enum.join(Enum.uniq(names), ", ")}"
         end,
-      fix_code: closest_name(name, candidates ++ ["Ok", "Err"]),
+      fix_code: suggestion,
       span: span,
       edit_kind: if(span, do: :replace)
     }
+  end
+
+  # The closest candidate, but only when it is a plausible misspelling
+  # (levenshtein-gated like suggest_identifier/2); nil when nothing close.
+  defp close_name_suggestion(name, candidates) do
+    candidates
+    |> Enum.map(fn candidate -> {candidate, levenshtein(name, candidate)} end)
+    |> Enum.filter(fn {_, dist} -> dist <= max(2, div(String.length(name), 2)) end)
+    |> Enum.sort_by(fn {_, dist} -> dist end)
+    |> case do
+      [{best, _} | _] -> best
+      [] -> nil
+    end
   end
 
   defp variant_construction_hint(enum_name, variant_name, []) do

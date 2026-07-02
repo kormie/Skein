@@ -929,8 +929,27 @@ defmodule Skein.Parser do
     end
   end
 
+  # Assertions (or any other expression) directly in the scenario body are
+  # the natural mistake coming from `test` — steer to the expect block
+  # instead of just naming the grammar (#336).
   defp parse_scenario_items(tokens, file, _acc) do
-    unexpected_token_error(tokens, file, "a 'capability' envelope, 'given', or 'expect'")
+    {line, col} = token_location(tokens)
+
+    {:error,
+     [
+       %Error{
+         code: "E0001",
+         severity: :error,
+         message:
+           "Expected a 'capability' envelope, 'given', or 'expect', got #{describe_token(tokens)}",
+         location: %{file: file, line: line, col: col},
+         fix_hint:
+           "Scenario bodies hold capability envelopes, 'given' seeds, and one " <>
+             "'expect' block — assertions go inside expect { assert ... }",
+         fix_code: "expect { ... }",
+         span: token_span(tokens)
+       }
+     ]}
   end
 
   # A scenario capability may open a nested envelope: `capability K(args) { ... }`

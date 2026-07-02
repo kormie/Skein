@@ -214,8 +214,9 @@ defmodule Skein.Analyzer.Purity do
       location: Analyzer.location_from_meta(meta, env.file),
       context: nil,
       fix_hint:
-        "Move this effectful check into a 'scenario', where effects are declared and controlled",
-      fix_code: "scenario \"...\" { /* ... */ }"
+        "Move this effectful check into a 'scenario', where effects are declared " <>
+          "and controlled — assertions go inside its expect block",
+      fix_code: "scenario \"...\" { expect { ... } }"
     }
   end
 

@@ -288,7 +288,7 @@ defmodule Skein.CLI.NewTest do
       assert agents_md =~ "## Syntax Cheatsheet"
       assert agents_md =~ "## Capabilities and Effects"
       assert agents_md =~ "## Known Gotchas"
-      assert agents_md =~ "`input` is a keyword"
+      assert agents_md =~ "input fields directly in scope"
       assert agents_md =~ "skein build"
       assert agents_md =~ "skein test"
       assert agents_md =~ "skein run"

@@ -53,7 +53,7 @@ module UserService {
   }
 
   fn greet(name: String) -> String {
-    "Hello, ${name}!"          -- string interpolation is ${expr}
+    "Hello, ${name}!"          -- interpolation: ${ident} / ${record.field}
   }
 
   handler http GET "/users/:id" (req) -> {
@@ -192,8 +192,10 @@ Memory keys are automatically scoped per agent instance.
 - **`store.<t>.get` not-found is a named variant**: match it as
   `Err(StoreError.NotFound) -> ...` (or the bare `Err(NotFound)`);
   `Err(_)` still works as a catch-all.
-- `input` is a keyword — never use it as a parameter or binding name (use
-  `ctx`, `data`, or a typed name).
+- Tool `implement` bodies see their input fields directly in scope
+  (`amount`, not `input.amount`) and must return the output shape wrapped
+  in `Ok({ ... })`; `input`/`output` are contextual keywords only inside
+  tool declarations.
 - `stop()` must be called with parentheses.
 - `on start` takes typed parameters (`on start(order_id: String)`), not a
   bare context argument.
@@ -203,7 +205,9 @@ Memory keys are automatically scoped per agent instance.
   module's body.
 - `handler queue`/`handler topic` take the queue/topic name as a string route;
   `handler schedule` handlers take no payload parameter.
-- String interpolation is `${expr}`; comments are `--` (not `//` or `#`).
+- String interpolation takes identifiers and field access only —
+  `${name}`, `${user.name}`; bind any other expression with `let` first.
+  Comments are `--` (not `//` or `#`).
 
 ## Going Deeper
 
