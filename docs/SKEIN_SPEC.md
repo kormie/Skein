@@ -379,6 +379,7 @@ match_expr    = "match" expr "{" match_arm+ "}"
 match_arm     = pattern [ "if" expr ] "->" expr
 pipe_expr     = expr "|>" call_expr
 emit_expr     = "emit" UpperIdent "{" (lower_ident ":" expr)* "}"
+                -- agent handlers only (E0039 elsewhere, §6.7)
 transition_expr = "transition" "(" expr ")"
 lifecycle_expr  = "stop" "(" ")" | "suspend" "(" expr ")"
               | "idempotent" "(" expr ")"      -- handlers only (§6.9)
@@ -820,9 +821,15 @@ queue.publish(name: String, data: T) -> Result[String, PublishError]
 ### 6.7 Events
 
 ```
--- No capability required (events are always allowed)
+-- Inside agent handlers only; no capability required
 emit <EventName> { field: value, ... }
 ```
+
+`emit` is an **agent construct**: emitted events are tagged with the
+agent/instance/phase and flushed to the EventStore before the handler's
+result is acted on. Using `emit` in a module function, module handler, or
+tool `implement` body is a compile error (`E0039`) — module code records
+events with `event.log(name, data)` (§6.10) instead.
 
 ### 6.8 Agent Lifecycle
 
@@ -962,7 +969,7 @@ edits generically — no per-error-code logic.
 | E0016 | Name | error | Cross-module function call (functions are module-private; expose a tool instead) |
 | E0017 | Capability | error | Duplicate scoped capability declaration (`memory.kv`, `event.log`, `process.spawn`, `timer` allow one per module or agent) |
 | E0020 | Type | error | Type mismatch (including wrong argument counts or types for fn, stdlib, effect, and fn-typed-variable calls, wrong-shape callbacks in higher-order slots, interpolation in string patterns, non-scalar interpolation segments (§2.6), tool `implement` bodies vs the `Result[output, error]` contract, provider bodies vs their declared return, a bare fn name used as a value, and calling a non-function value) |
-| E0021 | Type | error | Non-exhaustive match on a closed type (`Bool`, enum, `Result`, `Option`) with no `_` wildcard |
+| E0021 | Type | error | Non-exhaustive match on a `Bool` with no `_` wildcard (enum/`Result`/`Option` non-exhaustiveness is E0024) |
 | E0022 | Type | error | Invalid `!` on non-Result |
 | E0023 | Type | error | Invalid `?` on non-Result, enclosing fn doesn't return Result, or the propagated error type is incompatible with the enclosing Result's error type |
 | E0024 | Type | error | Unknown type name; or non-exhaustive match on an enum/`Result`/`Option` missing variant patterns (§3.11) |
@@ -980,6 +987,7 @@ edits generically — no per-error-code logic.
 | E0036 | Agent | error | `stop()` outside agent handlers |
 | E0037 | Type | error | Unverified type at a declared boundary: a value whose type is unknown, or whose branches produced incompatible types, cannot cross a declared fn return |
 | E0038 | Type | error | Provider contract violation: a scenario `implement` block whose signature does not match its capability's provider contract, or an `implement` under a capability with no provider contract (§4.3 rule 13) |
+| E0039 | Agent | error | `emit` outside agent handlers (module code records events with `event.log`) |
 | E0040 | Supervisor | error | Invalid supervisor strategy |
 | E0041 | Supervisor | error | Invalid `max_restarts` value |
 | E0042 | Supervisor | warning | Supervisor has no children |

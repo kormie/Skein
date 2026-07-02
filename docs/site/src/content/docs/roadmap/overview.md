@@ -7,7 +7,7 @@ Skein's compilation pipeline, runtime, standard library, editor tooling, and dis
 
 ## Current State
 
-The end-to-end pipeline works: `.skein` source files lex, parse, analyze, generate Core Erlang, compile to BEAM bytecode, and execute on OTP. The runtime supports agents, HTTP handlers, queue/schedule/topic handlers, storage (ETS and Ecto/SQLite), LLM integration (production Anthropic backend with streaming, AWS Bedrock, and an OpenAI-compatible backend for local models), tool calling, memory, tracing, replayable event sourcing, and guard expressions in match arms.
+The end-to-end pipeline works: `.skein` source files lex, parse, analyze, generate Core Erlang, compile to BEAM bytecode, and execute on OTP. The runtime supports agents, HTTP handlers, queue/schedule/topic handlers, storage (ETS-backed; the Ecto/SQLite typed-table path is unwired library code, C5 #255), LLM integration (production Anthropic backend with streaming, AWS Bedrock, and an OpenAI-compatible backend for local models), tool calling, memory, tracing, replayable event sourcing, and guard expressions in match arms.
 
 The full test suite (unit, property-based, and integration) runs green in CI on every change — see the CI badge on the README for current totals; counts aren't tracked here because they grow with every change.
 
@@ -21,15 +21,27 @@ The release train so far: **v0.2.0** and **v0.3.0** shipped 2026-06-11, and **v1
 
 ## What's Next
 
-The path to 1.0 is six waves across two development milestones, then a true RC, then GA. The canonical detail (waves, acceptance criteria, citations) lives in [`docs/ROADMAP.md`](https://github.com/kormie/Skein/blob/main/docs/ROADMAP.md).
+The path to 1.0 runs through the contract-first waves: **v0.4.0 — Truth & Soundness** (complete), then **v0.5.0 — Runtime Contract & Dogfood**, then a true RC (**v1.0.0-rc.2**, the Wave F freeze), then GA — which is **not imminent**. The canonical detail (waves, acceptance criteria, citations) lives in [`docs/ROADMAP.md`](https://github.com/kormie/Skein/blob/main/docs/ROADMAP.md).
 
-### v0.4.0 — Soundness & scenario capability environments
+### v0.4.0 — Truth & Soundness (complete)
 
-Waves 0–2: stop RC-promotion framing and make the docs/spec truthful; finish type/runtime soundness and pin it with a negative-fixture corpus; and ship **scenario-scoped capability environments** — a scenario declares the complete capability environment a tool may exercise, as a nested `capability tool.use(T) { capability http.out(...) { implement(...) } }` tree with local, typed, pure `implement` blocks. This **replaces** the earlier `via &stub` design (now superseded and out of 1.0).
+Wave A (truth reset: honest docs/spec/stability framing, surface cuts like tool `policy` blocks) and Wave B (analyzer/codegen soundness, B1–B6) landed — Wave B completed 2026-07-01 and was source-verified by the 2026-07-02 sanity check, with its residual holes (#309–#311, #313, #318, #319) closed. `?` truly early-returns, unknown/widened types cannot cross declared boundaries (E0037), call arguments are type-checked everywhere, the analyzer-accept ⇒ BEAM-load bridge holds, records are nominal, and tool/provider bodies are checked against their contracts (E0038).
 
-### v0.5.0 — Observability, canonical substrate & conformance
+### v0.5.0 — Runtime Contract & Dogfood (next)
 
-Waves 3–6: a deterministic scenario/golden/replay gate (tests never accidentally hit live effects); CLI human/agent observability (framework-neutral trace renderer, byte-stable plain output, JSON schemas, a TTY/TUI gate that never breaks MCP/LSP/non-TTY protocols); a minimal canonical bytes/hash substrate (only if "FablePool-capable" stays in the pitch); and a dogfood conformance gate that compiles, loads, and **runs** reduced programs from Skein, skein-testing, and FablePool-skein.
+Wave C makes the runtime expose exactly the contract the analyzer and spec claim, plus Wave D's continuous dogfood gate:
+
+- **C1** — authoritative effect-ABI registry (one source of truth; analyzer/spec/runtime drift becomes a CI failure)
+- **C2** — one structured-error ABI (LLM/tool/provider errors become matchable, not raw Elixir structs)
+- **C3** — one recursive schema engine (`req.json[T]`, `llm.json[T]`, tool input *and* output share a real validator — today `llm.json[T]` parses + atomizes but does not validate, [#298](https://github.com/kormie/Skein/issues/298))
+- **C5** — typed store tables ([#255](https://github.com/kormie/Skein/issues/255)): the analyzer learns table types so store methods type as `Result[T, StoreError]`; today the Ecto path is dead code
+- **C6** — EventStore persistence ([#299](https://github.com/kormie/Skein/issues/299)): wire the SQLite backend into the ordinary append path
+- **#325** — wire `supervisor` declarations into real OTP supervision
+- **Wave D / [#262](https://github.com/kormie/Skein/issues/262)** — the continuous dogfood conformance gate: compile + load + **run** reduced, pinned programs from Skein examples, skein-testing, and FablePool-skein on every change
+
+### v1.0.0-rc.2 and GA
+
+Wave F freezes grammar, diagnostics, effect ABI + error shapes, schema derivation, CLI/JSON/config, and persisted vectors — only after every preceding contract is executable and green — then the RC soaks and promotes to GA. The canonical-substrate question was resolved out of 1.0 ([#300](https://github.com/kormie/Skein/issues/300) closed as Alternative B): the substrate items live in v1.1, and there is no v0.6.0 milestone.
 
 ### Post-1.0 Backlog
 
@@ -62,7 +74,7 @@ Everything below is implemented and tested.
 | Sub-phase | Name | Summary |
 |-----------|------|---------|
 | 8a | Test Infrastructure | Scenario tests (`given`/`expect`), golden trace tests, replay engine (trace loading + memory rebuild) |
-| 8b | Storage Backend | Ecto schema generation, migrations, SQLite via `ecto_sqlite3`, persistent EventStore |
+| 8b | Storage Backend | Ecto schema generation, migrations, SQLite via `ecto_sqlite3` (library code — not yet wired into compiled programs; typed tables are C5 #255, EventStore persistence is #299) |
 | 8c | HTTP Server | Bandit + Plug integration, `req.json[T]` body validation |
 | 8d | Canonical Examples | 14 working programs with integration tests |
 | 8e | Queue & Schedule | `handler queue` and `handler schedule` constructs |
@@ -106,7 +118,7 @@ Everything below is implemented and tested.
 | Named arguments in calls | `f(name: value)` for local fns and documented effect signatures; analyzer rewrites to positional order at compile time (E0026 on misuse) |
 | Agent nesting inside modules | `module Foo { agent Bar }` → `Skein.Agent.Foo.Bar`; module types and capabilities apply to the nested agent |
 | Types usable from agents | Module types visible to nested agents; derived JSON Schema flows into `llm.json[T]` from agent handlers |
-| Persistent EventStore | SQLite-backed event store (opt-in, ETS default) |
+| EventStore | In-memory, size-bounded ETS event log; a SQLite backend module exists but is not wired into the append path — persistence is tracked by #299 |
 | Error system | Structured error/warning codes (spec §7); `context` and `fix_code` populated on all analyzer/parser/lexer errors |
 | Replay backend injection | Recorded traces intercept `llm`/`http`/`tool` effects on replay; exhausted or mismatched traces are structured errors, never silent live calls (#73) |
 | Scoped capability labels | `memory.kv`/`event.log`/`process.spawn`/`timer` capability params are scope labels the compiler threads into runtime calls and the runtime enforces exactly (#69, #57) |
@@ -131,7 +143,7 @@ Everything below is implemented and tested.
 | `Set` | Mathematical set operations |
 | `Option` | `Some(T)` / `None` handling |
 | `Result` | `Ok(T)` / `Err(E)` handling |
-| `Uuid` | UUID v4 generation |
+| `Uuid` | UUID parsing/formatting (generation is the capability-gated `uuid.new()` effect, not ambient stdlib) |
 | `Instant` | ISO 8601 timestamps |
 | `Duration` | Time intervals |
 

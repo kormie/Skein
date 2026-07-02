@@ -116,7 +116,7 @@ Agents never declare `type` blocks of their own — nesting is *the* way to use
 named types from an agent. The derived JSON Schema flows into `llm.json[T]`
 requests made from nested agent handlers.
 
-### Transition Validation (E0040)
+### Transition Validation (E0030)
 
 The analyzer checks transition validity at compile time. Given the Phase enum:
 

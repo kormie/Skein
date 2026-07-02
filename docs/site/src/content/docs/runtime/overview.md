@@ -119,8 +119,9 @@ Dispatches incoming HTTP requests to compiled Skein handler functions. Handles r
 **API:**
 
 ```elixir
-Skein.Runtime.Handler.dispatch(method, path, headers, body, module)
-#=> {:ok, %{status: 200, body: response_json}} | {:error, reason}
+Skein.Runtime.Handler.dispatch(module, method, path, headers, body)
+#=> {:ok, status, body, content_type} | {:error, reason}
+# content_type is :json, :text, or :html
 ```
 
 **Features:**
@@ -183,13 +184,13 @@ Features:
 
 ### `Skein.Runtime.Store`
 
-ETS-backed key-value storage that compiled `store.table` effect calls target. Used as the default backend for local development and testing.
+ETS-backed key-value storage that compiled `store.table` effect calls target — the only storage path compiled programs hit today (there is no backend-selection mechanism; typed tables are roadmap C5, #255).
 
 **API:**
 
 ```elixir
 Skein.Runtime.Store.get(table, id, capabilities)
-#=> {:ok, record} | {:error, "not_found"}
+#=> {:ok, record} | {:error, :not_found}
 
 Skein.Runtime.Store.put(table, record, capabilities)
 #=> {:ok, record}

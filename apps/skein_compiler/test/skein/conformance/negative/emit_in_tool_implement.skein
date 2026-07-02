@@ -1,0 +1,16 @@
+-- expect: E0039
+-- Tool implement bodies are module-path codegen: `emit` is agent-only
+-- there too (previously this walk skipped implement bodies entirely).
+module EmitInTool {
+  capability tool.use(Acme.Do)
+
+  tool Acme.Do {
+    description: "does a thing"
+    input { a: Int }
+    output { b: Int }
+    implement {
+      emit Ping { note: "hi" }
+      Ok({ b: input.a })
+    }
+  }
+}

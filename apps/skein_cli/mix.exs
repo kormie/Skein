@@ -4,7 +4,7 @@ defmodule SkeinCli.MixProject do
   def project do
     [
       app: :skein_cli,
-      version: "1.0.0-rc.4",
+      version: "0.4.0",
       build_path: "../../_build",
       config_path: "../../config/config.exs",
       deps_path: "../../deps",

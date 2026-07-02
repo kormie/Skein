@@ -120,9 +120,10 @@ module Test {
 mod.hello()
 
 # Inspect tokens
-{:ok, tokens} = Skein.Lexer.tokenize("let x = 42")
+{:ok, tokens} = Skein.Lexer.tokenize(~S|module T { fn f() -> Int { 42 } }|)
 
-# Inspect AST
+# Inspect AST (the parser expects a complete top-level module or agent —
+# parsing a bare expression like `let x = 42` returns {:error, [...]})
 {:ok, ast} = Skein.Parser.parse(tokens)
 ```
 
@@ -249,7 +250,7 @@ General workflow for extending the compiler:
 2. **Extend the lexer** -- add any new tokens (if needed)
 3. **Extend the parser** -- add the grammar production, build AST nodes
 4. **Add AST node types** -- if new node types are needed
-5. **Extend the analyzer** -- add type checking / validation (when analyzer is active)
+5. **Extend the analyzer** -- add type checking / validation
 6. **Extend the code generator** -- translate the new AST nodes to Core Erlang
 7. **Add property tests** -- generators that exercise the new feature randomly
 8. **Run all tests** -- `mix test` must pass with 0 failures

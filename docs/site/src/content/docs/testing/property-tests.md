@@ -217,7 +217,7 @@ def initial_state, do: %{}
 def postcondition(state, {:call, _, :do_get, [key]}, result) do
   case Map.fetch(state, key) do
     {:ok, expected} -> result == {:ok, expected}
-    :error -> result == {:error, "not_found"}
+    :error -> result == {:error, :not_found}
   end
 end
 
