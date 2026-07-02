@@ -105,14 +105,14 @@ During scenario execution:
 > spawned processes/tasks/timers (#282) — and `Dependencies`/`with_overrides` are retired. Parser/AST
 > (#280), effect-summary analysis + E0028 (#281), and test-purity E0029 (#273) also landed.
 >
-> **NOT yet landed (1.0 blockers, tracked under #279 / Wave C4):** provider `implement` bodies are
-> **not type-checked against their effect contract** — `check_tool_implement_inference`
-> (`analyzer.ex:1698-1714`) discards the inferred result type, and there is **no `infer_type` pass over
-> scenario provider bodies** at all (arity, parameter names/types, result type, and error type are
-> unchecked). Provider **purity is non-transitive** — `collect_effect_sites` explicitly does not
-> follow local helper-fn calls (`analyzer.ex:3879-3880`), so a provider calling an effectful helper
-> passes E0029. Also remaining: `llm.embed` provider support. Do **not** describe provider contract
-> checking as done until these have negative fixtures and pass their gates.
+> **Update (2026-07-02, post-Wave-B sanity check):** the above gaps **landed in B6 (#295)** and are
+> source-verified — provider `implement` bodies are type-checked against their capability's exact
+> provider contract (`@provider_contracts`, E0038) with full `infer_type` + declared-return checking,
+> and purity IS transitive (`collect_effect_sites` follows local fn calls and `&fn` references),
+> pinned by the `provider_contract_mismatch` / `provider_unsupported_capability` /
+> `transitive_effect_in_provider` negative fixtures. **Still remaining (tracked by the narrowed
+> #279):** `llm.embed` provider support (the `model` contract covers chat/json shapes only) and the
+> `given`-grammar reconciliation (the spec grammar still lists `given_block`).
 
 **Parser / AST.** *(done — #280)* `scenario_item = capability_envelope | given_block | expect_block`.
 `AST.Capability` gained `nested` (`[Capability]`) and `implement` (`CapabilityImplement{params,
