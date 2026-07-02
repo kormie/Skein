@@ -277,4 +277,51 @@ defmodule Skein.Runtime.StoreTest do
       assert {:error, :not_found} = Store.get("users", "u2", @caps)
     end
   end
+
+  # ------------------------------------------------------------------
+  # Declared @primary threading (#340): compiled puts carry the record
+  # type's primary field name; the key is no longer hard-coded to id.
+  # ------------------------------------------------------------------
+
+  describe "put/5 with a declared primary field" do
+    @item_caps [%{kind: "store.table", params: ["items"]}]
+
+    setup do
+      Store.clear("items")
+      :ok
+    end
+
+    test "stores and round-trips by a non-id primary (atom key)" do
+      record = %{sku: "SKU-1", qty: 3}
+      assert {:ok, ^record} = Store.put("items", record, nil, "sku", @item_caps)
+      assert {:ok, ^record} = Store.get("items", "SKU-1", @item_caps)
+    end
+
+    test "stores by a non-id primary (string key)" do
+      record = %{"sku" => "SKU-2", "qty" => 1}
+      assert {:ok, ^record} = Store.put("items", record, nil, "sku", @item_caps)
+      assert {:ok, ^record} = Store.get("items", "SKU-2", @item_caps)
+    end
+
+    test "a missing primary field names the declared field, not id" do
+      assert {:error, {:failed, message}} =
+               Store.put("items", %{qty: 9}, nil, "sku", @item_caps)
+
+      assert message =~ "sku"
+      refute message =~ ":id"
+    end
+
+    test "put/3 and put/4 keep the id default for direct callers" do
+      record = %{id: "u9", name: "Iris"}
+      assert {:ok, ^record} = Store.put("users", record, @caps)
+      assert {:ok, ^record} = Store.put("users", record, nil, @caps)
+    end
+
+    test "delete works with the primary's value like any key" do
+      record = %{sku: "SKU-3", qty: 7}
+      {:ok, _} = Store.put("items", record, nil, "sku", @item_caps)
+      assert {:ok, "SKU-3"} = Store.delete("items", "SKU-3", @item_caps)
+      assert {:error, :not_found} = Store.get("items", "SKU-3", @item_caps)
+    end
+  end
 end

@@ -48,15 +48,16 @@ defmodule Skein.Runtime.Store do
   end
 
   @doc """
-  Inserts or updates a record. The record must be a map with an `:id` field
-  (or `"id"` key) used as the primary key.
+  Inserts or updates a record, keyed by its primary field.
 
-  Returns `{:ok, record}` or `{:error, reason}`.
+  Direct Elixir callers default the primary field to `"id"`; compiled
+  Skein code threads the record type's declared `@primary` field name
+  (see `put/5`). Returns `{:ok, record}` or `{:error, reason}`.
   """
   @spec put(String.t(), map(), [map()]) :: {:ok, map()} | {:error, tuple()}
   def put(table_name, record, capabilities)
       when is_binary(table_name) and is_map(record) and is_list(capabilities) do
-    put(table_name, record, nil, capabilities)
+    put(table_name, record, nil, "id", capabilities)
   end
 
   @doc """
@@ -75,17 +76,36 @@ defmodule Skein.Runtime.Store do
   @spec put(String.t(), map(), map() | nil, [map()]) :: {:ok, map()} | {:error, tuple()}
   def put(table_name, record, schema, capabilities)
       when is_binary(table_name) and is_map(record) and is_list(capabilities) do
+    put(table_name, record, schema, "id", capabilities)
+  end
+
+  @doc """
+  Inserts or updates a record, schema-checked and keyed by the declared
+  primary field (#340).
+
+  Compiled `store.<table>.put(record)` calls land here: alongside the
+  derived JSON Schema, the compiler threads the record type's `@primary`
+  field name (the analyzer guarantees exactly one, E0043), so tables
+  whose primary is not named `id` — `sku: String @primary` — key their
+  rows by the declared field, exactly as spec §3.2/§6.2 promise.
+  """
+  @spec put(String.t(), map(), map() | nil, String.t(), [map()]) ::
+          {:ok, map()} | {:error, tuple()}
+  def put(table_name, record, schema, primary_field, capabilities)
+      when is_binary(table_name) and is_map(record) and is_binary(primary_field) and
+             is_list(capabilities) do
     Trace.with_span(%{kind: :store, method: :put, table: table_name}, fn ->
       with :ok <- check_store_capability(table_name, capabilities) |> denied(),
            :ok <- check_record_schema(record, schema) do
         ensure_table()
 
-        case extract_id(record) do
+        case extract_primary(record, primary_field) do
           nil ->
-            {:error, {:failed, "Record must have an :id or \"id\" field"}}
+            {:error,
+             {:failed, "Record must have a value for its primary field '#{primary_field}'"}}
 
-          id ->
-            :ets.insert(@table, {{table_name, id}, record})
+          key ->
+            :ets.insert(@table, {{table_name, key}, record})
             {:ok, record}
         end
       end
@@ -202,8 +222,10 @@ defmodule Skein.Runtime.Store do
     )
   end
 
-  defp extract_id(record) when is_map(record) do
-    Map.get(record, :id) || Map.get(record, "id")
+  # The primary field name arrives as a string from compiled literals;
+  # compiled records are atom-keyed, direct callers may pass either.
+  defp extract_primary(record, primary_field) when is_map(record) do
+    Map.get(record, String.to_atom(primary_field)) || Map.get(record, primary_field)
   end
 
   # Validate that every filter key names a field the table actually has.

@@ -1960,14 +1960,22 @@ defmodule Skein.CodeGen.CoreErlang do
     # Typed tables (C5/#255): `put` carries the table's derived JSON Schema
     # so the runtime schema-checks every write (defense in depth behind the
     # analyzer's record typing; also guards dynamic data that reached the
-    # record through Json seams).
+    # record through Json seams) — and the record type's @primary field
+    # name (#340), so rows are keyed by the declared primary rather than a
+    # hard-coded `id`.
     extra_args =
       case method do
-        "put" -> [:cerl.abstract(store_table_schema(table_name, scope))]
-        _ -> []
+        "put" ->
+          [
+            :cerl.abstract(store_table_schema(table_name, scope)),
+            :cerl.abstract(store_table_primary(table_name, scope))
+          ]
+
+        _ ->
+          []
       end
 
-    # Call: Skein.Runtime.Store.method(table_name, args..., [schema,] capabilities)
+    # Call: Skein.Runtime.Store.method(table_name, args..., [schema, primary,] capabilities)
     :cerl.c_call(
       :cerl.c_atom(:"Elixir.Skein.Runtime.Store"),
       :cerl.c_atom(method_atom),
@@ -2883,6 +2891,35 @@ defmodule Skein.CodeGen.CoreErlang do
       json_schema_for(type_name, type_decls)
     else
       _ -> nil
+    end
+  end
+
+  # The record type's @primary field name for a typed table (#340). The
+  # analyzer (E0043) guarantees exactly one; "id" is the safe fallback if
+  # this ever regresses (matching put/3-4's direct-caller default).
+  defp store_table_primary(table_name, scope) do
+    capabilities = Map.get(scope, :__capabilities__, [])
+    type_decls = Map.get(scope, :__type_decls__, %{})
+
+    with %AST.Capability{params: [_, %AST.Identifier{name: type_name} | _]} <-
+           Enum.find(capabilities, fn
+             %AST.Capability{
+               kind: "store.table",
+               params: [%AST.StringLit{segments: [literal: ^table_name]} | _]
+             } ->
+               true
+
+             _ ->
+               false
+           end),
+         %AST.TypeDecl{fields: fields} <- Map.get(type_decls, type_name),
+         %AST.Field{name: primary_name} <-
+           Enum.find(fields, fn %AST.Field{annotations: annotations} ->
+             Enum.any?(annotations || [], &(&1.name == "primary"))
+           end) do
+      primary_name
+    else
+      _ -> "id"
     end
   end
 
