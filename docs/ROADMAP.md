@@ -94,7 +94,7 @@ Ordered as a dependency graph, not a feature theme list; earlier waves unblock l
 - **B3 (#292)** argument typing for local/effect calls + `{:fn, params, ret}` callable type (contravariant params, exact arity) for `&fn` callbacks.
 - **B4 (#293)** unknown refs/calls are site errors in every body kind (E0010/E0020); codegen unbound-var fallbacks are now invariant raises (`core_erlang.ex:2472,2615,2630`); property gate `codegen_soundness_property_test.exs` + positive corpus.
 - **B5 (#294)** nominal records, total `Option` across construction/JSON/store/tool boundaries.
-- **B6 (#295)** tool implement bodies check `Result[output, error]` field-by-field; provider contracts exact-match (E0038, `analyzer.ex:4831-4852`); purity transitive (`collect_effect_sites`, `analyzer.ex:4675`).
+- **B6 (#295)** tool implement bodies check `Result[output, error]` field-by-field; provider contracts exact-match (E0038); purity transitive (`collect_effect_sites`) — both now live in `Skein.Analyzer.Purity` after the #315 factoring.
 - Negative corpus: 41 fixtures with pinned codes; golden-replay activation verified e2e (`test_construct_test.exs:334-361`).
 
 **Wave B residue** *(found by the 2026-07-02 adversarial probes — **ALL CLOSED** by the 2026-07-02 close-out sweep; the "silently cross" half of the invariant now holds)* — milestone v0.4.0:

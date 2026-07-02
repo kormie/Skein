@@ -52,6 +52,8 @@ capability <namespace>.<kind>(<params>)
 | `process.spawn` | Spawn supervised processes | Pool name (optional) |
 | `timer` | One-shot and recurring timers | Timer namespace (optional) |
 | `event.log` | Structured event logging | Log namespace (optional) |
+| `uuid` | `uuid.new()` — capability-gated randomness | None |
+| `instant` | `instant.now()` — capability-gated clock reads | None |
 
 ### Wildcard Capabilities
 

@@ -476,10 +476,11 @@ call 'Elixir.Skein.Runtime.Store':'get'("users", Id, Capabilities)
 ```
 
 ```skein
--- Skein source:
-memory.put("sessions", key, value)
+-- Skein source (in a module declaring `capability memory.kv("sessions")`):
+memory.put(key, value)
 
--- Compiles to (Core Erlang):
+-- Compiles to (Core Erlang) — the namespace comes from the capability
+-- declaration, not the call site:
 call 'Elixir.Skein.Runtime.Memory':'put'("sessions", Key, Value, Capabilities)
 ```
 

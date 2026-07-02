@@ -132,7 +132,7 @@ Everything below is implemented and tested.
 
 ### Standard Library
 
-11 modules with 101 functions:
+11 modules:
 
 | Module | Purpose |
 |--------|---------|

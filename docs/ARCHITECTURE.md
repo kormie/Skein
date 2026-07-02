@@ -159,7 +159,16 @@ end
 **Input:** AST
 **Output:** Annotated AST (same structure, with type information added to `meta`) + collected errors
 
-The analyzer runs multiple passes:
+The effect surface the analyzer checks against is not hand-maintained: `Skein.EffectABI`
+(C1/#296) is the single registry of every effect/store method signature, provider
+contract, and builtin error enum. The analyzer's effect tables and codegen's dispatch
+maps are derived from it, the spec §6 signature lines are drift-tested against it in
+both directions, and the runtime ABI matrix pins each method's live shapes — so
+analyzer/spec/runtime drift is a CI failure, not a doc bug. Since Wave F (#332) the
+registry itself is pinned by a frozen vector (`conformance/freeze/effect_abi.json`).
+
+The analyzer runs multiple passes (the pass groups live in submodules since #315:
+`Skein.Analyzer.Purity`, `.Capabilities`, `.AgentChecks`, `.Warnings`):
 
 **Pass 0: Named argument resolution (desugaring)**
 - Validate named call arguments (`f(b: 2, a: 1)`) against the callee's declared parameter names (same-module/agent fns and documented effect signatures)

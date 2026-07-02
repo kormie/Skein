@@ -98,7 +98,9 @@ skein/
 │   │   │           ├── config.ex        # skein.toml parsing + [env.<name>.llm] profiles
 │   │   │           ├── json.ex          # --json output rendering
 │   │   │           ├── render.ex        # Human-readable diagnostic/trace rendering
-│   │   │           └── mcp.ex           # MCP stdio server (skein mcp)
+│   │   │           ├── mcp.ex           # MCP stdio server (skein mcp)
+│   │   │           ├── bench.ex         # Agent-writability benchmark (#320, mix skein.bench)
+│   │   │           └── bench/           # Task suite, recordings, run history + trend chart
 │   │   └── test/
 │   └── skein_lsp/               # Language Server Protocol implementation
 │       ├── lib/
@@ -119,6 +121,8 @@ skein/
 │   ├── skein_assistant.skein
 │   ├── stdlib_demo.skein
 │   └── market_research/         # Multi-file example (agent + service)
+├── conformance/                 # Executable release gates: dogfood corpus + pins,
+│                                #   frozen-surface vectors (freeze/), writability recordings
 └── .docs-config.json            # Documentation site configuration
 ```
 
