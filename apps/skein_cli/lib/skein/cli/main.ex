@@ -317,6 +317,8 @@ defmodule Skein.CLI.Main do
       new --no-git               Skip git init (a .gitignore is always written)
       build --output <dir>       Write .beam files to directory
       run --port <port>          Server port (default: 4000)
+      run --no-persist           Skip SQLite event persistence (default:
+                                 events persist to .skein/events.db)
       trace --last <n>           Number of traces (default: 10)
       trace --kind <kind>        Filter by span kind
       --json                     Machine-readable JSON output (compile, build,

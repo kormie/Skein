@@ -35,7 +35,7 @@ Wave C makes the runtime expose exactly the contract the analyzer and spec claim
 - **C2** — one structured-error ABI (LLM/tool/provider errors become matchable, not raw Elixir structs)
 - **C3** — one recursive schema engine (`req.json[T]`, `llm.json[T]`, tool input *and* output share a real validator — today `llm.json[T]` parses + atomizes but does not validate, [#298](https://github.com/kormie/Skein/issues/298))
 - **C5** — typed store tables ([#255](https://github.com/kormie/Skein/issues/255)): the analyzer learns table types so store methods type as `Result[T, StoreError]`; today the Ecto path is dead code
-- **C6** — EventStore persistence ([#299](https://github.com/kormie/Skein/issues/299)): wire the SQLite backend into the ordinary append path
+- **C6** — EventStore persistence ([#299](https://github.com/kormie/Skein/issues/299), landed 2026-07-02): the SQLite backend is wired onto the ordinary append path — opt-in via `Persistence.enable/1`, enabled by default by `skein run` (`.skein/events.db`, `--no-persist` opts out), with persisted history reloaded on restart; the persisted shapes freeze at Wave F
 - **#325** — wire `supervisor` declarations into real OTP supervision
 - **Wave D / [#262](https://github.com/kormie/Skein/issues/262)** — the continuous dogfood conformance gate: compile + load + **run** reduced, pinned programs from Skein examples, skein-testing, and FablePool-skein on every change
 
@@ -74,7 +74,7 @@ Everything below is implemented and tested.
 | Sub-phase | Name | Summary |
 |-----------|------|---------|
 | 8a | Test Infrastructure | Scenario tests (`given`/`expect`), golden trace tests, replay engine (trace loading + memory rebuild) |
-| 8b | Storage Backend | Ecto schema generation, migrations, SQLite via `ecto_sqlite3` (library code — not yet wired into compiled programs; typed tables are C5 #255, EventStore persistence is #299) |
+| 8b | Storage Backend | Ecto schema generation, migrations, SQLite via `ecto_sqlite3` (library code — not yet wired into compiled programs; typed tables are C5 #255, EventStore persistence landed via #299) |
 | 8c | HTTP Server | Bandit + Plug integration, `req.json[T]` body validation |
 | 8d | Canonical Examples | 14 working programs with integration tests |
 | 8e | Queue & Schedule | `handler queue` and `handler schedule` constructs |
@@ -118,7 +118,7 @@ Everything below is implemented and tested.
 | Named arguments in calls | `f(name: value)` for local fns and documented effect signatures; analyzer rewrites to positional order at compile time (E0026 on misuse) |
 | Agent nesting inside modules | `module Foo { agent Bar }` → `Skein.Agent.Foo.Bar`; module types and capabilities apply to the nested agent |
 | Types usable from agents | Module types visible to nested agents; derived JSON Schema flows into `llm.json[T]` from agent handlers |
-| EventStore | In-memory, size-bounded ETS event log; a SQLite backend module exists but is not wired into the append path — persistence is tracked by #299 |
+| EventStore | In-memory, size-bounded ETS event log with opt-in SQLite persistence on the ordinary append path (#299): `skein run` enables it by default and reloads persisted history on restart; shapes freeze at Wave F |
 | Error system | Structured error/warning codes (spec §7); `context` and `fix_code` populated on all analyzer/parser/lexer errors |
 | Replay backend injection | Recorded traces intercept `llm`/`http`/`tool` effects on replay; exhausted or mismatched traces are structured errors, never silent live calls (#73) |
 | Scoped capability labels | `memory.kv`/`event.log`/`process.spawn`/`timer` capability params are scope labels the compiler threads into runtime calls and the runtime enforces exactly (#69, #57) |

@@ -365,7 +365,9 @@ Skein.Runtime.Request.json(req_map, json_schema)
 
 Unified append-only event log for the entire runtime. All trace spans, user events (`event.log`), memory state changes, and annotations flow through a single ETS ordered set (`:skein_events`).
 
-The in-memory log is size-bounded: once it grows past the configured maximum (`config :skein_runtime, :event_store_max_events`, default 100,000), the oldest events are evicted on append. The log is **in-memory only** — events older than the bound are gone and nothing survives a restart. A SQLite backend module exists but is not wired into the ordinary append path today; durable persistence is tracked by [#299](https://github.com/kormie/Skein/issues/299).
+The in-memory log is size-bounded: once it grows past the configured maximum (`config :skein_runtime, :event_store_max_events`, default 100,000), the oldest events are evicted on append.
+
+Durable persistence is **opt-in** ([#299](https://github.com/kormie/Skein/issues/299)): `Skein.Runtime.EventStore.Persistence.enable(db_path)` — which `skein run` calls by default, writing to `<project>/.skein/events.db` (`skein run --no-persist` opts out) — makes every ordinary append also write the event asynchronously to SQLite and reloads previously persisted events into the ETS log on startup, so a restarted service sees its history. ETS eviction never deletes persisted rows: SQLite keeps the full history beyond the in-memory bound. Persisted events round-trip through JSON, so a reloaded event is not bit-identical to the original (unknown keys and non-`kind`-like atom values come back as strings); the exact reloaded shape is pinned in the `Persistence` moduledoc and stays Pre-stable until the Wave F freeze. Without `enable/1` the log is in-memory only and nothing survives a restart.
 
 **API:**
 

@@ -13,10 +13,32 @@ defmodule Skein.CLI.RunTest do
     File.mkdir_p!(src_dir)
 
     on_exit(fn ->
+      # run/1 enables event persistence by default — clear the global flag
+      # and the Repo so other tests are unaffected.
+      Skein.Runtime.EventStore.Persistence.disable()
+
+      try do
+        GenServer.stop(Skein.Runtime.Repo, :normal, 1000)
+      catch
+        :exit, _ -> :ok
+      end
+
       File.rm_rf!(@tmp_dir)
     end)
 
     %{tmp_dir: @tmp_dir, src_dir: src_dir}
+  end
+
+  defp write_service(src_dir, module_name) do
+    File.write!(Path.join(src_dir, "#{String.downcase(module_name)}.skein"), """
+    module #{module_name} {
+      capability http.in
+
+      handler http GET "/health" (req) -> {
+        respond.json(200, "ok")
+      }
+    }
+    """)
   end
 
   describe "run/1" do
@@ -122,6 +144,45 @@ defmodule Skein.CLI.RunTest do
     test "out-of-range --port returns a structured error", %{tmp_dir: tmp} do
       assert {:error, message} = CLI.run_config([tmp, "--port", "99999"])
       assert message =~ "--port"
+    end
+  end
+
+  describe "event persistence (#299)" do
+    test "run enables persistence at <project>/.skein/events.db by default",
+         %{tmp_dir: tmp, src_dir: src} do
+      write_service(src, "PersistApi")
+
+      port = get_free_port()
+      assert {:ok, pid} = CLI.run([tmp, "--port", "#{port}"])
+
+      assert Skein.Runtime.EventStore.Persistence.enabled?()
+      assert File.exists?(Path.join([tmp, ".skein", "events.db"]))
+
+      GenServer.stop(pid)
+    end
+
+    test "--no-persist skips persistence", %{tmp_dir: tmp, src_dir: src} do
+      write_service(src, "NoPersistApi")
+
+      port = get_free_port()
+      assert {:ok, pid} = CLI.run([tmp, "--no-persist", "--port", "#{port}"])
+
+      refute Skein.Runtime.EventStore.Persistence.enabled?()
+      refute File.exists?(Path.join([tmp, ".skein", "events.db"]))
+
+      GenServer.stop(pid)
+    end
+
+    test "run_config exposes persist (default true) and project_dir",
+         %{tmp_dir: tmp, src_dir: src} do
+      write_service(src, "ConfigApi")
+
+      assert {:ok, config} = CLI.run_config([tmp])
+      assert config.persist == true
+      assert config.project_dir == Path.expand(tmp)
+
+      assert {:ok, config} = CLI.run_config([tmp, "--no-persist"])
+      assert config.persist == false
     end
   end
 

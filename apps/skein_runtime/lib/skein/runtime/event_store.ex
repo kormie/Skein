@@ -24,11 +24,19 @@ defmodule Skein.Runtime.EventStore do
 
       config :skein_runtime, :event_store_max_events, 100_000
 
-  **The log is in-memory only.** Events older than the bound are gone, and
-  nothing survives a VM restart. The SQLite backend module
-  (`Skein.Runtime.EventStore.SqliteBackend`) exists but is NOT wired into
-  the ordinary append path — the runtime neither starts nor writes to it
-  today. Durable persistence is tracked by issue #299 (roadmap C6).
+  **Durable persistence is opt-in** (issue #299 / roadmap C6). By default
+  the log is in-memory only: events older than the bound are gone and
+  nothing survives a VM restart. Calling
+  `Skein.Runtime.EventStore.Persistence.enable/1` — which `skein run` does
+  by default, writing to `<project>/.skein/events.db` (`--no-persist` opts
+  out) — makes every ordinary `append/1` also write the event
+  asynchronously to SQLite (`Skein.Runtime.EventStore.SqliteBackend`), and
+  reloads previously persisted events into the ETS log so a restarted
+  service sees its history. ETS eviction never deletes persisted rows:
+  SQLite keeps the full history beyond the in-memory bound. Persisted
+  events round-trip through JSON — see
+  `Skein.Runtime.EventStore.Persistence` for the exact reloaded shape
+  (Pre-stable until the Wave F freeze).
 
   Every event gets automatic metadata:
   - `id` — unique hex identifier
@@ -48,6 +56,7 @@ defmodule Skein.Runtime.EventStore do
   """
 
   alias Skein.Runtime.Capability
+  alias Skein.Runtime.EventStore.Persistence
 
   @table :skein_events
   @default_max_events 100_000
@@ -121,6 +130,14 @@ defmodule Skein.Runtime.EventStore do
 
     :ets.insert(@table, {key, enriched})
     evict_overflow()
+
+    # Opt-in durability (#299): when persistence is enabled, the enriched
+    # event (minus the non-JSON-encodable ETS ordering key) is written
+    # asynchronously to SQLite.
+    if Persistence.enabled?() do
+      Persistence.record(Map.delete(enriched, :_key))
+    end
+
     :ok
   end
 

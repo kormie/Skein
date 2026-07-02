@@ -77,12 +77,52 @@ defmodule Skein.Runtime.EventStore.SqliteBackendTest do
     end
   end
 
+  describe "persist/1" do
+    test "writes an already-enriched event to SQLite without touching ETS" do
+      enriched = %{
+        id: "abc123",
+        timestamp: 42,
+        kind: :user_event,
+        event: "login",
+        stream: "audit",
+        data: %{"user" => "alice"}
+      }
+
+      assert :ok = SqliteBackend.persist(enriched)
+
+      # SQLite has it, with the caller's id/timestamp preserved verbatim.
+      [event] = SqliteBackend.load_all()
+      assert event.id == "abc123"
+      assert event.timestamp == 42
+      assert event.kind == :user_event
+      assert event.event == "login"
+
+      # ETS was not written.
+      assert EventStore.count() == 0
+    end
+  end
+
   describe "round-trip fidelity" do
     test "preserves event kind as atom" do
       SqliteBackend.append(%{kind: :state_change, namespace: "sess", operation: :put, key: "k"})
 
       [event] = SqliteBackend.load_all()
       assert event.kind == :state_change
+    end
+
+    test "preserves the stream label on user events" do
+      SqliteBackend.append(%{kind: :user_event, event: "x", stream: "audit", data: "d"})
+
+      [event] = SqliteBackend.load_all()
+      assert event.stream == "audit"
+    end
+
+    test "preserves nil and booleans instead of stringifying them" do
+      SqliteBackend.append(%{kind: :user_event, event: "flags", stream: nil, data: true})
+
+      [event] = SqliteBackend.load_all()
+      assert event.stream == nil
+      assert event.data == true
     end
 
     test "preserves complex data via JSON serialization" do
@@ -115,6 +155,16 @@ defmodule Skein.Runtime.EventStore.SqliteBackendTest do
       # Load into ETS
       SqliteBackend.load_into_ets()
       assert EventStore.count() == 2
+    end
+
+    test "deduplicates by event id when ETS already holds the events" do
+      SqliteBackend.append(%{kind: :user_event, event: "one", data: "a"})
+      assert EventStore.count() == 1
+
+      # The event is already in ETS (append writes both); a reload must
+      # not duplicate it.
+      SqliteBackend.load_into_ets()
+      assert EventStore.count() == 1
     end
   end
 end
