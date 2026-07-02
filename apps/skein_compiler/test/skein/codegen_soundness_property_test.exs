@@ -38,27 +38,19 @@ defmodule Skein.CodegenSoundnessPropertyTest do
     if size <= 0 do
       var_or_literal
     else
-      # A generated line must not START with "(" — the parser reads a
-      # newline-separated paren group as a call of the previous expression.
-      # So the left operand is always atomic; only the right operand may be
-      # a parenthesized subexpression.
+      # Operands parenthesize freely — since #311, a "(" starting a line is a
+      # new expression, so generated programs need no parser trivia.
       binop =
         StreamData.bind(StreamData.member_of(["+", "-", "*"]), fn op ->
-          StreamData.bind(int_expr(scope, 0), fn left ->
-            StreamData.map(int_operand(scope, size - 1), fn right ->
-              "#{left} #{op} #{right}"
+          StreamData.bind(int_expr(scope, size - 1), fn left ->
+            StreamData.map(int_expr(scope, size - 1), fn right ->
+              "(#{left} #{op} #{right})"
             end)
           end)
         end)
 
       StreamData.frequency([{3, var_or_literal}, {2, binop}])
     end
-  end
-
-  defp int_operand(scope, size) do
-    StreamData.map(int_expr(scope, size), fn expr ->
-      if String.contains?(expr, " "), do: "(#{expr})", else: expr
-    end)
   end
 
   defp string_expr(scope, _size) do
@@ -81,7 +73,7 @@ defmodule Skein.CodegenSoundnessPropertyTest do
       StreamData.bind(StreamData.member_of(["==", "!=", "<", ">"]), fn op ->
         StreamData.bind(int_expr(scope, 0), fn left ->
           StreamData.map(int_expr(scope, 0), fn right ->
-            "#{left} #{op} #{right}"
+            "(#{left} #{op} #{right})"
           end)
         end)
       end)
