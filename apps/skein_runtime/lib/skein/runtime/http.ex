@@ -130,8 +130,11 @@ defmodule Skein.Runtime.Http do
     # Option-typed record fields are {:some, v} / :none in-language (#294);
     # on the wire they are bare values / absent keys.
     case Jason.encode(Skein.Runtime.Options.strip(body)) do
-      {:ok, json} -> request_fn.(json)
-      {:error, reason} -> {:error, "Cannot encode request body as JSON: #{inspect(reason)}"}
+      {:ok, json} ->
+        request_fn.(json)
+
+      {:error, reason} ->
+        {:error, {:invalid_request, "Cannot encode request body as JSON: #{inspect(reason)}"}}
     end
   end
 
@@ -141,8 +144,9 @@ defmodule Skein.Runtime.Http do
         :ok ->
           dispatch(method, url, body)
 
-        {:error, _reason} = error ->
-          {error, %{}}
+        {:error, reason} ->
+          # HttpError.Denied(reason) — the frozen ABI form (C2/#297).
+          {{:error, {:denied, reason}}, %{}}
       end
     end)
   end
@@ -178,11 +182,12 @@ defmodule Skein.Runtime.Http do
         {recorded_result(recorded), %{replayed: true}}
 
       :exhausted ->
-        {{:error, "Replay trace exhausted: no recorded http event remains for #{method} #{url}"},
+        {{:error,
+          {:denied, "Replay trace exhausted: no recorded http event remains for #{method} #{url}"}},
          %{replayed: true}}
 
       {:mismatch, message} ->
-        {{:error, message}, %{replayed: true}}
+        {{:error, {:denied, message}}, %{replayed: true}}
     end
   end
 

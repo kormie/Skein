@@ -129,7 +129,7 @@ defmodule Skein.Integration.ToolTest do
         module ToolCaller {
           capability tool.use(Greet)
 
-          fn invoke(name: String) -> Result[String, String] {
+          fn invoke(name: String) -> Result[String, ToolError] {
             tool.call(Greet, name)
           }
         }
@@ -144,15 +144,13 @@ defmodule Skein.Integration.ToolTest do
         module ToolCaller2 {
           capability tool.use(Missing)
 
-          fn invoke() -> Result[String, String] {
+          fn invoke() -> Result[String, ToolError] {
             tool.call(Missing, "data")
           }
         }
         """)
 
-      assert {:error, error} = mod.invoke()
-      assert error.__struct__ == Skein.Runtime.Tool.Error
-      assert error.kind == :not_found
+      assert {:error, {:not_found, "Missing"}} = mod.invoke()
     end
 
     test "tool.call result can be bound with let" do
@@ -166,7 +164,7 @@ defmodule Skein.Integration.ToolTest do
         module ToolCalcBind {
           capability tool.use(Calc)
 
-          fn double(n: Int) -> Result[String, String] {
+          fn double(n: Int) -> Result[String, ToolError] {
             let result = tool.call(Calc, n)
             result
           }
@@ -191,7 +189,7 @@ defmodule Skein.Integration.ToolTest do
         module ToolLister {
           capability tool.use(ToolA)
 
-          fn get_tools() -> Result[List[String], String] {
+          fn get_tools() -> Result[List[String], ToolError] {
             tool.list()
           }
         }
@@ -212,7 +210,7 @@ defmodule Skein.Integration.ToolTest do
         module ToolSchemaGetter {
           capability tool.use(SchemaTool)
 
-          fn get_schema() -> Result[String, String] {
+          fn get_schema() -> Result[String, ToolError] {
             tool.schema(SchemaTool)
           }
         }
@@ -235,7 +233,7 @@ defmodule Skein.Integration.ToolTest do
         module ToolTraced {
           capability tool.use(TracedTool)
 
-          fn invoke() -> Result[String, String] {
+          fn invoke() -> Result[String, ToolError] {
             tool.call(TracedTool, "input")
           }
         }
@@ -576,14 +574,14 @@ defmodule Skein.Integration.ToolTest do
         module StrictToolCaller {
           capability tool.use(Strict.Echo)
 
-          fn bad_call() -> Result[String, String] {
+          fn bad_call() -> Result[String, ToolError] {
             tool.call(Strict.Echo, { message: 42 })
           }
         }
         """)
 
-      assert {:error, error} = caller.bad_call()
-      assert error.kind == :validation_error
+      assert {:error, {:validation_error, "Strict.Echo", violations}} = caller.bad_call()
+      assert is_list(violations) and violations != []
     end
 
     test "implement Err(...) surfaces as execution_error to the caller" do
@@ -606,15 +604,14 @@ defmodule Skein.Integration.ToolTest do
         module FailingToolCaller {
           capability tool.use(Failing.Always)
 
-          fn call_it() -> Result[String, String] {
+          fn call_it() -> Result[String, ToolError] {
             tool.call(Failing.Always, { reason: "nope" })
           }
         }
         """)
 
-      assert {:error, error} = caller.call_it()
-      assert error.kind == :execution_error
-      assert error.detail.error =~ "tool_failure"
+      assert {:error, {:execution_error, "Failing.Always", error}} = caller.call_it()
+      assert error =~ "tool_failure"
     end
 
     test "implement match arms route Ok and Err results" do
@@ -648,9 +645,10 @@ defmodule Skein.Integration.ToolTest do
       assert {:ok, %{value: 7}} =
                Skein.Runtime.Tool.call("Branching.Compute", %{n: 7}, caps)
 
-      assert {:error, error} = Skein.Runtime.Tool.call("Branching.Compute", %{n: 0}, caps)
-      assert error.kind == :execution_error
-      assert error.detail.error =~ "zero not allowed"
+      assert {:error, {:execution_error, "Branching.Compute", error}} =
+               Skein.Runtime.Tool.call("Branching.Compute", %{n: 0}, caps)
+
+      assert error =~ "zero not allowed"
     end
   end
 
@@ -772,7 +770,7 @@ defmodule Skein.Integration.ToolTest do
         module ToolCallerIdent {
           capability tool.use(Greet)
 
-          fn invoke(name: String) -> Result[String, String] {
+          fn invoke(name: String) -> Result[String, ToolError] {
             tool.call(Greet, name)
           }
         }
@@ -791,7 +789,7 @@ defmodule Skein.Integration.ToolTest do
         module DottedToolCaller {
           capability tool.use(Stripe.Refund)
 
-          fn refund(data: String) -> Result[String, String] {
+          fn refund(data: String) -> Result[String, ToolError] {
             tool.call(Stripe.Refund, data)
           }
         }
@@ -809,7 +807,7 @@ defmodule Skein.Integration.ToolTest do
         module SchemaToolIdent {
           capability tool.use(SchemaTool)
 
-          fn get_schema() -> Result[String, String] {
+          fn get_schema() -> Result[String, ToolError] {
             tool.schema(SchemaTool)
           }
         }
@@ -835,7 +833,7 @@ defmodule Skein.Integration.ToolTest do
             implement { Ok({ result: "computed" }) }
           }
 
-          fn invoke(x: String) -> Result[String, String] {
+          fn invoke(x: String) -> Result[String, ToolError] {
             tool.call(HelperTool, x)
           }
 
@@ -863,7 +861,7 @@ defmodule Skein.Integration.ToolTest do
         module TracedIdentService {
           capability tool.use(TracedIdent)
 
-          fn invoke() -> Result[String, String] {
+          fn invoke() -> Result[String, ToolError] {
             tool.call(TracedIdent, "input")
           }
         }

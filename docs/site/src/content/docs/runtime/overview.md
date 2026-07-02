@@ -292,7 +292,7 @@ Every operation:
 3. For `json/5`, parses the response as JSON and validates structure
 4. For `stream/5`, delivers each chunk to the callback, then returns the assembled text
 5. Records a trace span with model, timing, and outcome
-6. Returns `{:ok, _}` or `{:error, %Llm.Error{}}`
+6. Returns `{:ok, _}` or `{:error, <LlmError ABI tuple>}` — the frozen matchable form (C2/#297), e.g. `{:provider_error, code, message}`; internal `%Llm.Error{}` structs are converted at the public boundary
 
 **Production backends** (selected via the `[llm]` profile in skein.toml):
 - `Skein.Runtime.Llm.AnthropicBackend` -- Anthropic Messages API (the production default)
@@ -309,18 +309,21 @@ Every operation:
 
 Custom backends implement the `Skein.Runtime.Llm.Backend` behaviour.
 
-**Error types (`Skein.Runtime.Llm.Error`):**
+**Error ABI (`LlmError`, C2/#297)** — what compiled Skein sees, matchable as `Err(LlmError.<Variant>(…))`:
 
-| Kind | Description |
-|------|-------------|
-| `:parse_failed` | Response couldn't be parsed as expected type |
-| `:refused` | LLM refused to generate a response |
-| `:rate_limit` | Rate limited (includes retry-after duration) |
-| `:timeout` | Request timed out |
-| `:content_filtered` | Response was filtered by content policy |
-| `:invalid_schema` | Response didn't match expected JSON schema |
-| `:provider_error` | Provider returned an error |
-| `:capability_error` | Missing capability declaration |
+| ABI form | Skein variant | Description |
+|------|------|-------------|
+| `{:parse_failed, raw, expected_type, parse_error}` | `ParseFailed` | Response couldn't be parsed as expected type |
+| `{:refused, reason}` | `Refused` | LLM refused to generate a response |
+| `{:rate_limit, retry_after_ms}` | `RateLimit` | Rate limited (retry-after in ms) |
+| `{:timeout, elapsed_ms}` | `Timeout` | Request timed out |
+| `{:content_filtered, filter}` | `ContentFiltered` | Response was filtered by content policy |
+| `{:invalid_schema, violations}` | `InvalidSchema` | Response didn't match expected JSON schema |
+| `{:provider_error, code, message}` | `ProviderError` | Provider returned an error |
+| `{:denied, reason}` | `Denied` | Capability/scope denial |
+
+Internally the backends use `Skein.Runtime.Llm.Error` structs; `Llm.Error.to_abi/1`
+converts at the public boundary.
 
 ### `Skein.Runtime.Server`
 

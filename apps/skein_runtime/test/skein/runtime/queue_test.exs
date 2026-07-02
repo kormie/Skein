@@ -75,13 +75,13 @@ defmodule Skein.Runtime.QueueTest do
     end
 
     test "rejects publish without a queue.publish capability" do
-      assert {:error, message} = Queue.publish("caps-jobs", %{body: "x"}, [])
+      assert {:error, {:denied, message}} = Queue.publish("caps-jobs", %{body: "x"}, [])
       assert message =~ "queue.publish"
     end
 
     test "rejects publish to an undeclared queue name" do
       caps = [%{kind: "queue.publish", params: ["other-queue"]}]
-      assert {:error, message} = Queue.publish("caps-jobs", %{body: "x"}, caps)
+      assert {:error, {:denied, message}} = Queue.publish("caps-jobs", %{body: "x"}, caps)
       assert message =~ "caps-jobs"
     end
   end

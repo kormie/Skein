@@ -41,6 +41,7 @@ Every public surface belongs to one of three classes:
 |---|---|---|
 | Language: spec grammar + semantics | **Stable** | See "The language" below |
 | Error and warning codes (`E####`/`W####`) | **Stable, append-only** | See "Error codes" below |
+| Structured-error ABI (effect error enum variants + their lowered tuple forms, spec §6) | **Stable** | The matchable forms are pinned by `Skein.EffectABI.error_enums/0` and the runtime ABI-matrix tests (C2/#297). New variants in minors; existing variants never change shape. The blocked-live `LiveEffectError` raise stays uncatchable — a frozen decision |
 | Compiled-module metadata (`__handlers__/0`, `__tools__/0`, `__tests__/0`, `__supervisors__/0`) | **Evolving** | Entries may gain fields in minors; existing fields never change meaning |
 | EventStore persisted event shapes (SQLite) | **Pre-stable** | The SQLite backend is not yet wired into the ordinary append path (#299); the shapes freeze with the Wave F gate, not before. Replay depends on them; see "Stored traces" below |
 | `skein.toml` format | **Stable** | New keys in minors; unknown keys are never errors |

@@ -1,0 +1,8 @@
+-- expect: E0010
+-- C2/#297: builtin effect error enums are real enums — an unknown variant
+-- is rejected exactly like an unknown user-enum variant.
+module BuiltinErrorVariantUnknown {
+  fn fail() -> Result[String, LlmError] {
+    Err(LlmError.Bogus("nope"))
+  }
+}

@@ -68,14 +68,14 @@ defmodule Skein.Runtime.ToolTest do
     end
 
     test "rejects without tool.use capability" do
-      assert {:error, %Tool.Error{kind: :capability_error}} =
+      assert {:error, {:denied, _reason}} =
                Tool.call("MyTool", %{amount: 100}, @no_capabilities)
     end
 
     test "returns error for unknown tool" do
       caps = [%{kind: "tool.use", params: ["UnknownTool"]}]
 
-      assert {:error, %Tool.Error{kind: :not_found}} =
+      assert {:error, {:not_found, "UnknownTool"}} =
                Tool.call("UnknownTool", %{}, caps)
     end
 
@@ -85,8 +85,10 @@ defmodule Skein.Runtime.ToolTest do
 
       caps = [%{kind: "tool.use", params: ["FailingTool"]}]
 
-      assert {:error, %Tool.Error{kind: :execution_error}} =
+      assert {:error, {:execution_error, "FailingTool", error_message}} =
                Tool.call("FailingTool", %{}, caps)
+
+      assert error_message == "Stripe API down"
     end
 
     test "records a trace span with tool metadata" do
@@ -169,7 +171,7 @@ defmodule Skein.Runtime.ToolTest do
     end
 
     test "rejects without tool.use capability" do
-      assert {:error, %Tool.Error{kind: :capability_error}} =
+      assert {:error, {:denied, _reason}} =
                Tool.list(@no_capabilities)
     end
 
@@ -198,12 +200,12 @@ defmodule Skein.Runtime.ToolTest do
     test "returns error for unknown tool" do
       caps = [%{kind: "tool.use", params: ["UnknownTool"]}]
 
-      assert {:error, %Tool.Error{kind: :not_found}} =
+      assert {:error, {:not_found, "UnknownTool"}} =
                Tool.schema("UnknownTool", caps)
     end
 
     test "rejects without tool.use capability" do
-      assert {:error, %Tool.Error{kind: :capability_error}} =
+      assert {:error, {:denied, _reason}} =
                Tool.schema("MyTool", @no_capabilities)
     end
   end
@@ -232,21 +234,21 @@ defmodule Skein.Runtime.ToolTest do
     end
 
     test "wrong type for integer field is rejected" do
-      assert {:error, %Tool.Error{kind: :validation_error} = err} =
+      assert {:error, {:validation_error, "ValidatedTool", violations}} =
                Tool.call(
                  "ValidatedTool",
                  %{amount: "not_an_int", customer_id: "cust_1"},
                  @validated_caps
                )
 
-      assert Enum.any?(err.detail.violations, &String.contains?(&1, "amount"))
+      assert Enum.any?(violations, &String.contains?(&1, "amount"))
     end
 
     test "wrong type for string field is rejected" do
-      assert {:error, %Tool.Error{kind: :validation_error} = err} =
+      assert {:error, {:validation_error, "ValidatedTool", violations}} =
                Tool.call("ValidatedTool", %{customer_id: 42}, @validated_caps)
 
-      assert Enum.any?(err.detail.violations, &String.contains?(&1, "customer_id"))
+      assert Enum.any?(violations, &String.contains?(&1, "customer_id"))
     end
 
     test "extra fields are allowed (not rejected)" do
@@ -270,12 +272,12 @@ defmodule Skein.Runtime.ToolTest do
     end
 
     test "validation_error includes tool name and violation details" do
-      assert {:error, %Tool.Error{kind: :validation_error, detail: detail}} =
+      assert {:error, {:validation_error, tool, violations}} =
                Tool.call("ValidatedTool", %{amount: "bad"}, @validated_caps)
 
-      assert detail.tool == "ValidatedTool"
-      assert is_list(detail.violations)
-      assert length(detail.violations) > 0
+      assert tool == "ValidatedTool"
+      assert is_list(violations)
+      assert length(violations) > 0
     end
   end
 
@@ -300,7 +302,7 @@ defmodule Skein.Runtime.ToolTest do
     test "float field rejects string" do
       Tool.register("FloatTool2", %{input: %{score: :float}}, fn i -> {:ok, i} end)
 
-      assert {:error, %Tool.Error{kind: :validation_error}} =
+      assert {:error, {:validation_error, "FloatTool2", _violations}} =
                Tool.call("FloatTool2", %{score: "high"}, @all_caps)
     end
 
@@ -313,31 +315,31 @@ defmodule Skein.Runtime.ToolTest do
     test "bool field rejects non-boolean" do
       Tool.register("BoolTool2", %{input: %{active: :bool}}, fn i -> {:ok, i} end)
 
-      assert {:error, %Tool.Error{kind: :validation_error}} =
+      assert {:error, {:validation_error, "BoolTool2", _violations}} =
                Tool.call("BoolTool2", %{active: 1}, @all_caps)
     end
 
     test "int field rejects float" do
       Tool.register("IntTool", %{input: %{count: :int}}, fn i -> {:ok, i} end)
 
-      assert {:error, %Tool.Error{kind: :validation_error}} =
+      assert {:error, {:validation_error, "IntTool", _violations}} =
                Tool.call("IntTool", %{count: 3.5}, @all_caps)
     end
 
     test "string field rejects atom" do
       Tool.register("StrTool", %{input: %{name: :string}}, fn i -> {:ok, i} end)
 
-      assert {:error, %Tool.Error{kind: :validation_error}} =
+      assert {:error, {:validation_error, "StrTool", _violations}} =
                Tool.call("StrTool", %{name: :hello}, @all_caps)
     end
 
     test "multiple type violations reported together" do
       Tool.register("MultiErr", %{input: %{a: :int, b: :string}}, fn i -> {:ok, i} end)
 
-      assert {:error, %Tool.Error{kind: :validation_error, detail: detail}} =
+      assert {:error, {:validation_error, "MultiErr", violations}} =
                Tool.call("MultiErr", %{a: "bad", b: 42}, @all_caps)
 
-      assert length(detail.violations) == 2
+      assert length(violations) == 2
     end
   end
 
@@ -373,10 +375,10 @@ defmodule Skein.Runtime.ToolTest do
 
       Tool.register("JsonReq", schema, fn i -> {:ok, i} end)
 
-      assert {:error, %Tool.Error{kind: :validation_error, detail: d}} =
+      assert {:error, {:validation_error, "JsonReq", violations}} =
                Tool.call("JsonReq", %{}, @all_caps)
 
-      assert Enum.any?(d.violations, &String.contains?(&1, "name"))
+      assert Enum.any?(violations, &String.contains?(&1, "name"))
     end
 
     test "validates JSON Schema integer type" do
@@ -549,16 +551,16 @@ defmodule Skein.Runtime.ToolTest do
     test "input validation against the declared schema still applies" do
       Tool.register_module(FakeCompiledModule)
 
-      assert {:error, %Tool.Error{kind: :validation_error} = error} =
+      assert {:error, {:validation_error, "Fake.Add", violations}} =
                Tool.call("Fake.Add", %{a: 2}, @fake_caps)
 
-      assert Enum.any?(error.detail.violations, &(&1 =~ "b"))
+      assert Enum.any?(violations, &(&1 =~ "b"))
     end
 
     test "non-map input to a tool with required fields is a validation error" do
       Tool.register_module(FakeCompiledModule)
 
-      assert {:error, %Tool.Error{kind: :validation_error}} =
+      assert {:error, {:validation_error, "Fake.Add", _violations}} =
                Tool.call("Fake.Add", "not a map", @fake_caps)
     end
 
@@ -574,10 +576,10 @@ defmodule Skein.Runtime.ToolTest do
     test "tool declared without an implement block returns execution_error on call" do
       Tool.register_module(FakeCompiledModule)
 
-      assert {:error, %Tool.Error{kind: :execution_error} = error} =
+      assert {:error, {:execution_error, "Fake.Declared", error_message}} =
                Tool.call("Fake.Declared", %{}, @fake_caps)
 
-      assert error.detail.error =~ "implement"
+      assert error_message =~ "implement"
     end
 
     test "tool without implement still exposes its schema" do

@@ -127,7 +127,7 @@ defmodule Skein.Runtime.MemoryPropertyTest do
             value <- value_gen()
           ) do
       wrong_caps = [%{kind: "memory.kv", params: ["definitely_wrong_namespace"]}]
-      assert {:error, msg} = Memory.put(ns, key, value, wrong_caps)
+      assert {:error, {:denied, msg}} = Memory.put(ns, key, value, wrong_caps)
       assert msg =~ ns
       Memory.clear(ns)
     end
@@ -139,9 +139,9 @@ defmodule Skein.Runtime.MemoryPropertyTest do
             key <- key_gen()
           ) do
       Memory.clear(ns)
-      assert {:error, _} = Memory.get(ns, key, [])
-      assert {:error, _} = Memory.put(ns, key, "val", [])
-      assert {:error, _} = Memory.delete(ns, key, [])
+      assert {:error, {:denied, _}} = Memory.get(ns, key, [])
+      assert {:error, {:denied, _}} = Memory.put(ns, key, "val", [])
+      assert {:error, {:denied, _}} = Memory.delete(ns, key, [])
     end
   end
 

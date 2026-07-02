@@ -60,7 +60,7 @@ defmodule Skein.LlmSchemaFlowTest do
           amount: Int @min(0)
         }
 
-        fn decide(ticket: String) -> Result[Decision, String] {
+        fn decide(ticket: String) -> Result[Decision, LlmError] {
           llm.json[Decision](model: "claude-opus-4-8", system: "Decide.", input: ticket)
         }
       }

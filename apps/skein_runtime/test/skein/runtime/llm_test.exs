@@ -27,7 +27,7 @@ defmodule Skein.Runtime.LlmTest do
     end
 
     test "rejects without model capability" do
-      assert {:error, %Llm.Error{kind: :capability_error}} =
+      assert {:error, {:denied, _reason}} =
                Llm.chat("claude-sonnet-4-5", "system", "input", @no_capabilities)
     end
 
@@ -46,7 +46,7 @@ defmodule Skein.Runtime.LlmTest do
     test "handles backend errors gracefully" do
       Llm.set_backend(Skein.Runtime.Llm.FailingBackend)
 
-      assert {:error, %Llm.Error{kind: :provider_error}} =
+      assert {:error, {:provider_error, "500", "Internal server error"}} =
                Llm.chat("claude-sonnet-4-5", "system", "input", @valid_capabilities)
     end
   end
@@ -170,7 +170,7 @@ defmodule Skein.Runtime.LlmTest do
 
       schema = %{"type" => "object"}
 
-      assert {:error, %Llm.Error{kind: :parse_failed}} =
+      assert {:error, {:parse_failed, _raw, _expected_type, _parse_error}} =
                Llm.json(
                  "claude-sonnet-4-5",
                  "Return JSON.",
@@ -183,7 +183,7 @@ defmodule Skein.Runtime.LlmTest do
     test "rejects without model capability" do
       schema = %{"type" => "object"}
 
-      assert {:error, %Llm.Error{kind: :capability_error}} =
+      assert {:error, {:denied, _reason}} =
                Llm.json("claude-sonnet-4-5", "system", "input", schema, @no_capabilities)
     end
 
@@ -258,7 +258,7 @@ defmodule Skein.Runtime.LlmTest do
     test "set_backend/1 changes the active backend" do
       Llm.set_backend(Skein.Runtime.Llm.FailingBackend)
 
-      assert {:error, %Llm.Error{kind: :provider_error}} =
+      assert {:error, {:provider_error, "500", "Internal server error"}} =
                Llm.chat("claude-sonnet-4-5", "system", "input", @valid_capabilities)
 
       Llm.set_backend(Skein.Runtime.Llm.TestBackend)

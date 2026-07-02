@@ -30,7 +30,7 @@ defmodule Skein.Runtime.StoreTest do
 
     test "returns error when record has no id" do
       record = %{name: "NoId"}
-      assert {:error, msg} = Store.put("users", record, @caps)
+      assert {:error, {:failed, msg}} = Store.put("users", record, @caps)
       assert msg =~ "id"
     end
 
@@ -44,7 +44,7 @@ defmodule Skein.Runtime.StoreTest do
 
     test "returns capability error when table not declared" do
       result = Store.put("orders", %{id: "o1"}, @caps)
-      assert {:error, msg} = result
+      assert {:error, {:denied, msg}} = result
       assert msg =~ "not declared"
     end
   end
@@ -65,7 +65,7 @@ defmodule Skein.Runtime.StoreTest do
 
     test "returns capability error when table not declared" do
       result = Store.get("orders", "o1", @caps)
-      assert {:error, msg} = result
+      assert {:error, {:denied, msg}} = result
       assert msg =~ "not declared"
     end
   end
@@ -87,7 +87,7 @@ defmodule Skein.Runtime.StoreTest do
 
     test "returns capability error when table not declared" do
       result = Store.delete("orders", "o1", @caps)
-      assert {:error, msg} = result
+      assert {:error, {:denied, msg}} = result
       assert msg =~ "not declared"
     end
   end
@@ -137,7 +137,7 @@ defmodule Skein.Runtime.StoreTest do
 
     test "returns capability error when table not declared" do
       result = Store.query("orders", %{}, @caps)
-      assert {:error, msg} = result
+      assert {:error, {:denied, msg}} = result
       assert msg =~ "not declared"
     end
 
@@ -148,7 +148,7 @@ defmodule Skein.Runtime.StoreTest do
       {:ok, _} = Store.put("users", %{id: "u1", name: "Alice", role: "admin"}, @caps)
       {:ok, _} = Store.put("users", %{id: "u2", name: "Bob", role: "user"}, @caps)
 
-      assert {:error, msg} = Store.query("users", %{no_such_field: "x"}, @caps)
+      assert {:error, {:failed, msg}} = Store.query("users", %{no_such_field: "x"}, @caps)
       assert msg =~ "Unknown filter field"
       assert msg =~ "no_such_field"
     end
@@ -241,12 +241,12 @@ defmodule Skein.Runtime.StoreTest do
     end
 
     test "blocks operations on undeclared tables" do
-      assert {:error, msg} = Store.get("orders", "o1", @caps)
+      assert {:error, {:denied, msg}} = Store.get("orders", "o1", @caps)
       assert msg =~ "not declared"
     end
 
     test "empty capabilities block all store operations" do
-      assert {:error, msg} = Store.get("users", "u1", [])
+      assert {:error, {:denied, msg}} = Store.get("users", "u1", [])
       assert msg =~ "not declared"
     end
 

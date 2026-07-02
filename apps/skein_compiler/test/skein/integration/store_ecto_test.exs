@@ -238,7 +238,7 @@ defmodule Skein.Integration.StoreEctoTest do
       caps_list = [%{kind: "store.table", params: ["integration_users"]}]
 
       result = StoreEcto.get("unauthorized_table", "id", caps_list)
-      assert {:error, msg} = result
+      assert {:error, {:denied, msg}} = result
       assert msg =~ "not declared"
     end
 

@@ -95,7 +95,7 @@ defmodule Skein.Runtime.LlmStreamPropertyTest do
 
       on_chunk = fn _chunk -> :ok end
 
-      assert {:error, %Llm.Error{kind: :capability_error}} =
+      assert {:error, {:denied, _reason}} =
                Llm.stream(
                  "claude-sonnet-4-5",
                  "system",

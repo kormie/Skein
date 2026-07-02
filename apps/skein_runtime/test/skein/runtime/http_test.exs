@@ -16,36 +16,48 @@ defmodule Skein.Runtime.HttpTest do
   describe "capability enforcement" do
     test "get/2 blocks requests to undeclared hosts" do
       capabilities = [%{kind: "http.out", params: ["api.allowed.com"]}]
-      assert {:error, reason} = Http.get("https://api.blocked.com/data", capabilities)
+      assert {:error, {:denied, reason}} = Http.get("https://api.blocked.com/data", capabilities)
       assert reason =~ "not declared"
     end
 
     test "post/3 blocks requests to undeclared hosts" do
       capabilities = [%{kind: "http.out", params: ["api.allowed.com"]}]
-      assert {:error, reason} = Http.post("https://api.blocked.com/data", "body", capabilities)
+
+      assert {:error, {:denied, reason}} =
+               Http.post("https://api.blocked.com/data", "body", capabilities)
+
       assert reason =~ "not declared"
     end
 
     test "put/3 blocks requests to undeclared hosts" do
       capabilities = [%{kind: "http.out", params: ["api.allowed.com"]}]
-      assert {:error, reason} = Http.put("https://api.blocked.com/data", "body", capabilities)
+
+      assert {:error, {:denied, reason}} =
+               Http.put("https://api.blocked.com/data", "body", capabilities)
+
       assert reason =~ "not declared"
     end
 
     test "patch/3 blocks requests to undeclared hosts" do
       capabilities = [%{kind: "http.out", params: ["api.allowed.com"]}]
-      assert {:error, reason} = Http.patch("https://api.blocked.com/data", "body", capabilities)
+
+      assert {:error, {:denied, reason}} =
+               Http.patch("https://api.blocked.com/data", "body", capabilities)
+
       assert reason =~ "not declared"
     end
 
     test "delete/2 blocks requests to undeclared hosts" do
       capabilities = [%{kind: "http.out", params: ["api.allowed.com"]}]
-      assert {:error, reason} = Http.delete("https://api.blocked.com/data", capabilities)
+
+      assert {:error, {:denied, reason}} =
+               Http.delete("https://api.blocked.com/data", capabilities)
+
       assert reason =~ "not declared"
     end
 
     test "get/2 with no capabilities blocks all requests" do
-      assert {:error, _} = Http.get("https://api.example.com/data", [])
+      assert {:error, {:denied, _reason}} = Http.get("https://api.example.com/data", [])
     end
 
     test "post/3 accepts a map body and JSON-encodes it" do
@@ -55,7 +67,7 @@ defmodule Skein.Runtime.HttpTest do
       # the binary guard.
       capabilities = [%{kind: "http.out", params: ["api.allowed.com"]}]
 
-      assert {:error, reason} =
+      assert {:error, {:denied, reason}} =
                Http.post("https://api.blocked.com/data", %{query: "ai", n: 1}, capabilities)
 
       assert reason =~ "not declared"
@@ -64,17 +76,21 @@ defmodule Skein.Runtime.HttpTest do
     test "put/3 and patch/3 accept map bodies" do
       capabilities = []
 
-      assert {:error, reason} = Http.put("https://api.example.com/x", %{a: 1}, capabilities)
+      assert {:error, {:denied, reason}} =
+               Http.put("https://api.example.com/x", %{a: 1}, capabilities)
+
       assert reason =~ "not declared"
 
-      assert {:error, reason} = Http.patch("https://api.example.com/x", %{a: 1}, capabilities)
+      assert {:error, {:denied, reason}} =
+               Http.patch("https://api.example.com/x", %{a: 1}, capabilities)
+
       assert reason =~ "not declared"
     end
 
     test "post/3 reports unencodable map bodies as errors" do
       capabilities = [%{kind: "http.out", params: []}]
 
-      assert {:error, reason} =
+      assert {:error, {:invalid_request, reason}} =
                Http.post("https://api.example.com/x", %{bad: {:ok, "tuple"}}, capabilities)
 
       assert reason =~ "JSON"
@@ -86,11 +102,12 @@ defmodule Skein.Runtime.HttpTest do
       # This will likely fail to connect but should not be blocked by capability check
       result = Http.get("https://api.example.com/data", capabilities)
       # The result will be either {:ok, _} or {:error, _} from the HTTP call,
-      # but NOT a capability error. A transport failure is now an HttpError
-      # variant atom (:timeout / :connection_failed), not a string.
+      # but NOT a capability denial. A transport failure is an HttpError
+      # variant atom (:timeout / :connection_failed), unchanged by C2.
       case result do
-        {:error, reason} when is_binary(reason) -> refute reason =~ "not declared"
+        {:error, {:denied, reason}} -> flunk("wildcard capability was denied: #{reason}")
         {:error, reason} when is_atom(reason) -> assert reason in [:timeout, :connection_failed]
+        {:error, {:status, status, _body}} -> assert is_integer(status)
         {:ok, %{status: status}} -> assert is_integer(status)
       end
     end

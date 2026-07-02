@@ -961,22 +961,22 @@ defmodule Skein.ExamplesTest do
       # the runtime denies (the module declares no http.out capability) —
       # so the implement's Err arm wraps the denial in a SearchError.
       # A registration regression would surface as :not_found instead.
-      assert {:error, %Tool.Error{kind: :execution_error} = error} =
+      assert {:error, {:execution_error, "Research.SearchMarket", error}} =
                Tool.call(
                  "Research.SearchMarket",
                  %{topic: "AI chips", industry: "semiconductors"},
                  @tool_caps
                )
 
-      assert error.detail.error =~ "search_error"
-      assert error.detail.error =~ "http.out"
+      assert error =~ "search_error"
+      assert error =~ "http.out"
     end
 
     test "input validation applies to the registered tools" do
       {service, _agent} = compile_market_research()
       Tool.register_module(service)
 
-      assert {:error, %Tool.Error{kind: :validation_error}} =
+      assert {:error, {:validation_error, "Research.SearchMarket", _violations}} =
                Tool.call("Research.SearchMarket", %{topic: "AI chips"}, @tool_caps)
     end
 

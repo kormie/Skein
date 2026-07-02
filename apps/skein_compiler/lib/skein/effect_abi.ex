@@ -75,7 +75,7 @@ defmodule Skein.EffectABI do
       scoped: :host,
       params: [%{name: "url", type: :string, optional: false}],
       named_args: true,
-      return: {:result, :dynamic, :dynamic},
+      return: {:result, :dynamic, {:user_type, "HttpError"}},
       runtime: {:"Elixir.Skein.Runtime.Http", :get},
       dispatch: :generic,
       spec_lines: ["http.get(url: String) -> Result[HttpResponse, HttpError]"]
@@ -90,7 +90,7 @@ defmodule Skein.EffectABI do
         %{name: "json", type: :dynamic, optional: false}
       ],
       named_args: true,
-      return: {:result, :dynamic, :dynamic},
+      return: {:result, :dynamic, {:user_type, "HttpError"}},
       runtime: {:"Elixir.Skein.Runtime.Http", :post},
       dispatch: :generic,
       spec_lines: ["http.post(url: String, json: Map) -> Result[HttpResponse, HttpError]"]
@@ -105,7 +105,7 @@ defmodule Skein.EffectABI do
         %{name: "json", type: :dynamic, optional: false}
       ],
       named_args: true,
-      return: {:result, :dynamic, :dynamic},
+      return: {:result, :dynamic, {:user_type, "HttpError"}},
       runtime: {:"Elixir.Skein.Runtime.Http", :put},
       dispatch: :generic,
       spec_lines: ["http.put(url: String, json: Map) -> Result[HttpResponse, HttpError]"]
@@ -120,7 +120,7 @@ defmodule Skein.EffectABI do
         %{name: "json", type: :dynamic, optional: false}
       ],
       named_args: true,
-      return: {:result, :dynamic, :dynamic},
+      return: {:result, :dynamic, {:user_type, "HttpError"}},
       runtime: {:"Elixir.Skein.Runtime.Http", :patch},
       dispatch: :generic,
       spec_lines: ["http.patch(url: String, json: Map) -> Result[HttpResponse, HttpError]"]
@@ -132,7 +132,7 @@ defmodule Skein.EffectABI do
       scoped: :host,
       params: [%{name: "url", type: :string, optional: false}],
       named_args: true,
-      return: {:result, :dynamic, :dynamic},
+      return: {:result, :dynamic, {:user_type, "HttpError"}},
       runtime: {:"Elixir.Skein.Runtime.Http", :delete},
       dispatch: :generic,
       spec_lines: ["http.delete(url: String) -> Result[HttpResponse, HttpError]"]
@@ -149,7 +149,7 @@ defmodule Skein.EffectABI do
         %{name: "value", type: :dynamic, optional: false}
       ],
       named_args: true,
-      return: {:result, :dynamic, :dynamic},
+      return: {:result, :dynamic, {:user_type, "MemoryError"}},
       runtime: {:"Elixir.Skein.Runtime.Memory", :put},
       dispatch: :special,
       spec_lines: ["memory.put(key: String, value: T) -> Result[T, MemoryError]"]
@@ -161,10 +161,10 @@ defmodule Skein.EffectABI do
       scoped: :namespace,
       params: [%{name: "key", type: :string, optional: false}],
       named_args: true,
-      return: {:result, :dynamic, :dynamic},
+      return: {:result, :dynamic, {:user_type, "MemoryError"}},
       runtime: {:"Elixir.Skein.Runtime.Memory", :get},
       dispatch: :special,
-      spec_lines: ["memory.get(key: String) -> Result[T, NotFound]"]
+      spec_lines: ["memory.get(key: String) -> Result[T, MemoryError]"]
     },
     %{
       ns: "memory",
@@ -173,7 +173,7 @@ defmodule Skein.EffectABI do
       scoped: :namespace,
       params: [%{name: "key", type: :string, optional: false}],
       named_args: true,
-      return: {:result, :string, :dynamic},
+      return: {:result, :string, {:user_type, "MemoryError"}},
       runtime: {:"Elixir.Skein.Runtime.Memory", :delete},
       dispatch: :special,
       spec_lines: ["memory.delete(key: String) -> Result[String, MemoryError]"]
@@ -203,7 +203,7 @@ defmodule Skein.EffectABI do
         %{name: "input", type: :dynamic, optional: false}
       ],
       named_args: true,
-      return: {:result, :string, :dynamic},
+      return: {:result, :string, {:user_type, "LlmError"}},
       runtime: {:"Elixir.Skein.Runtime.Llm", :chat},
       dispatch: :special,
       spec_lines: [
@@ -238,7 +238,7 @@ defmodule Skein.EffectABI do
         %{name: "on_chunk", type: {:fn, [:string], :dynamic}, optional: true}
       ],
       named_args: true,
-      return: {:result, :string, :dynamic},
+      return: {:result, :string, {:user_type, "LlmError"}},
       runtime: {:"Elixir.Skein.Runtime.Llm", :stream},
       dispatch: :special,
       spec_lines: [
@@ -256,7 +256,7 @@ defmodule Skein.EffectABI do
         %{name: "input", type: :string, optional: false}
       ],
       named_args: true,
-      return: {:result, {:list, :float}, :dynamic},
+      return: {:result, {:list, :float}, {:user_type, "LlmError"}},
       runtime: {:"Elixir.Skein.Runtime.Llm", :embed},
       dispatch: :special,
       spec_lines: ["llm.embed(model: String, input: String) -> Result[List[Float], LlmError]"]
@@ -275,7 +275,7 @@ defmodule Skein.EffectABI do
         %{name: "args", type: :dynamic, optional: false}
       ],
       named_args: false,
-      return: {:result, :dynamic, :dynamic},
+      return: {:result, :dynamic, {:user_type, "ToolError"}},
       runtime: {:"Elixir.Skein.Runtime.Tool", :call},
       dispatch: :special,
       spec_lines: ["tool.call(name: ToolName, args: Map) -> Result[Map, ToolError]"]
@@ -287,7 +287,7 @@ defmodule Skein.EffectABI do
       scoped: nil,
       params: [],
       named_args: false,
-      return: {:result, {:list, :dynamic}, :dynamic},
+      return: {:result, {:list, :dynamic}, {:user_type, "ToolError"}},
       runtime: {:"Elixir.Skein.Runtime.Tool", :list},
       dispatch: :special,
       spec_lines: ["tool.list() -> Result[List[ToolInfo], ToolError]"]
@@ -299,7 +299,7 @@ defmodule Skein.EffectABI do
       scoped: nil,
       params: [%{name: "name", type: :dynamic, optional: false}],
       named_args: false,
-      return: {:result, :dynamic, :dynamic},
+      return: {:result, :dynamic, {:user_type, "ToolError"}},
       runtime: {:"Elixir.Skein.Runtime.Tool", :schema},
       dispatch: :special,
       spec_lines: ["tool.schema(name: ToolName) -> Result[Map, ToolError]"]
@@ -316,7 +316,7 @@ defmodule Skein.EffectABI do
         %{name: "data", type: :dynamic, optional: false}
       ],
       named_args: true,
-      return: {:result, :string, :dynamic},
+      return: {:result, :string, {:user_type, "PublishError"}},
       runtime: {:"Elixir.Skein.Runtime.Topic", :publish},
       dispatch: :generic,
       spec_lines: ["topic.publish(name: String, data: T) -> Result[String, PublishError]"]
@@ -331,7 +331,7 @@ defmodule Skein.EffectABI do
         %{name: "data", type: :dynamic, optional: false}
       ],
       named_args: true,
-      return: {:result, :string, :dynamic},
+      return: {:result, :string, {:user_type, "PublishError"}},
       runtime: {:"Elixir.Skein.Runtime.Queue", :publish},
       dispatch: :generic,
       spec_lines: ["queue.publish(name: String, data: T) -> Result[String, PublishError]"]
@@ -470,25 +470,25 @@ defmodule Skein.EffectABI do
   @store_methods_registry [
     %{
       method: "get",
-      return: {:result, :dynamic, :dynamic},
+      return: {:result, :dynamic, {:user_type, "StoreError"}},
       runtime: {:"Elixir.Skein.Runtime.Store", :get},
-      spec_lines: ["store.<table>.get(id: Uuid) -> Result[T, NotFound]"]
+      spec_lines: ["store.<table>.get(id: Uuid) -> Result[T, StoreError]"]
     },
     %{
       method: "put",
-      return: {:result, :dynamic, :dynamic},
+      return: {:result, :dynamic, {:user_type, "StoreError"}},
       runtime: {:"Elixir.Skein.Runtime.Store", :put},
       spec_lines: ["store.<table>.put(record: T) -> Result[T, StoreError]"]
     },
     %{
       method: "delete",
-      return: {:result, :dynamic, :dynamic},
+      return: {:result, :dynamic, {:user_type, "StoreError"}},
       runtime: {:"Elixir.Skein.Runtime.Store", :delete},
       spec_lines: ["store.<table>.delete(id: Uuid) -> Result[Uuid, StoreError]"]
     },
     %{
       method: "query",
-      return: {:result, {:list, :dynamic}, :dynamic},
+      return: {:result, {:list, :dynamic}, {:user_type, "StoreError"}},
       runtime: {:"Elixir.Skein.Runtime.Store", :query},
       spec_lines: ["store.<table>.query(filters: Map) -> Result[List[T], StoreError]"]
     }
@@ -519,6 +519,82 @@ defmodule Skein.EffectABI do
       signature: "implement(req: LlmRequest) -> Result[LlmResponse, LlmError]"
     }
   }
+
+  # ── Structured-error ABI (C2/#297) ──────────────────────────────────────
+  #
+  # The FROZEN matchable forms of every effect error enum. Variants lower
+  # exactly like user enum variants: a zero-field variant is the snake_case
+  # atom of its name (`Timeout` -> :timeout), a field-carrying variant is the
+  # tuple {snake_case_tag, field...} (`Status(code, body)` ->
+  # {:status, code, body}). The runtime converts its internal error structs /
+  # reason strings to these forms at each effect-module public boundary, so a
+  # Skein `Err(LlmError.RateLimit(ms))` pattern really matches.
+  #
+  # `Denied(reason)` is the uniform capability/scope-denial variant; `Failed`
+  # carries the residual reason string for store/memory write failures.
+  # The blocked-live `LiveEffectError` is deliberately NOT here: it is an
+  # uncatchable raise, outside `Result` handling by design (frozen decision,
+  # spec §3.10).
+  @error_enums %{
+    "HttpError" => [
+      %{name: "Timeout", fields: []},
+      %{name: "ConnectionFailed", fields: []},
+      %{name: "Status", fields: [{"code", "Int"}, {"body", "String"}]},
+      %{name: "InvalidRequest", fields: [{"reason", "String"}]},
+      %{name: "Denied", fields: [{"reason", "String"}]}
+    ],
+    "LlmError" => [
+      %{
+        name: "ParseFailed",
+        fields: [{"raw", "String"}, {"expected_type", "String"}, {"parse_error", "String"}]
+      },
+      %{name: "Refused", fields: [{"reason", "String"}]},
+      %{name: "RateLimit", fields: [{"retry_after_ms", "Int"}]},
+      %{name: "Timeout", fields: [{"elapsed_ms", "Int"}]},
+      %{name: "ContentFiltered", fields: [{"filter", "String"}]},
+      %{name: "InvalidSchema", fields: [{"violations", {"List", "String"}}]},
+      %{name: "ProviderError", fields: [{"code", "String"}, {"message", "String"}]},
+      %{name: "Denied", fields: [{"reason", "String"}]}
+    ],
+    "ToolError" => [
+      %{name: "NotFound", fields: [{"name", "String"}]},
+      %{
+        name: "ValidationError",
+        fields: [{"tool", "String"}, {"violations", {"List", "String"}}]
+      },
+      %{name: "ExecutionError", fields: [{"tool", "String"}, {"error", "String"}]},
+      %{name: "Denied", fields: [{"reason", "String"}]}
+    ],
+    "StoreError" => [
+      %{name: "NotFound", fields: []},
+      %{name: "Failed", fields: [{"reason", "String"}]},
+      %{name: "Denied", fields: [{"reason", "String"}]}
+    ],
+    "MemoryError" => [
+      %{name: "NotFound", fields: []},
+      %{name: "Failed", fields: [{"reason", "String"}]},
+      %{name: "Denied", fields: [{"reason", "String"}]}
+    ],
+    "PublishError" => [
+      %{name: "Denied", fields: [{"reason", "String"}]},
+      %{name: "Failed", fields: [{"reason", "String"}]}
+    ],
+    # Standalone single-variant enum: `Result[T, NotFound]` stays a legal
+    # user-facing signature for pure code; the store/memory effects
+    # themselves type their misses as StoreError.NotFound / MemoryError.NotFound
+    # (all three lower to the same :not_found atom).
+    "NotFound" => [%{name: "NotFound", fields: []}]
+  }
+
+  @doc """
+  The builtin effect error enums (C2/#297): enum name => variants, each
+  `%{name, fields}` with fields as `{field_name, type_name}` pairs
+  (`{"List", inner}` for list types). The analyzer materializes these into
+  real `AST.EnumDecl`s so variant construction and patterns are validated
+  exactly like user enums.
+  """
+  @spec error_enums() :: %{String.t() => [map()]}
+  def error_enums, do: @error_enums
 
   @doc "Every effect-method registry entry."
   @spec entries() :: [entry()]

@@ -307,17 +307,16 @@ is tracked by #325 (v0.5.0) and is additive on this surface.
 
 ### 3.10 Tests
 
-> **Status (pre-1.0, in flux — 2026-06-15 reset):** the `scenario`/`golden` surface below is being
-> revised. The 1.0 direction is **scenario-scoped capability environments** — a `scenario` declares
-> the complete capability environment a tool may exercise as a nested
+> **Status: landed (reconciled 2026-07-02, #279).** The 1.0 testing surface is
+> **scenario-scoped capability environments** — a `scenario` declares the complete capability
+> environment a tool may exercise as a nested
 > `capability tool.use(T) { capability <effect>(...) { implement(...) } }` tree, with `test` reserved
-> for pure unit tests (no effects). The grammar below is implemented (parser/AST, #280); the analyzer
-> computes each tool's transitive effect summary and rejects a scenario whose envelope does not cover
-> it (E0028, #281). The runtime resolution stack (#282), provider purity — transitive through local
-> fn calls (E0029, #295) — provider contracts (E0038, #295), and the test-runner default policy +
-> live-effect blocking (#283) are all landed; the superseded `via` design is **not** the 1.0 surface
-> (and is a structured parse error). See `docs/design/scenario-capability-environments.md` and
-> `docs/ROADMAP.md`.
+> for pure unit tests (no effects). Everything below is implemented: parser/AST (#280), envelope
+> coverage of each tool's transitive effect summary (E0028, #281), the runtime resolution stack
+> (#282), transitive provider/test purity (E0029, #295), provider contracts (E0038, #295), and the
+> test-runner default policy + live-effect blocking (#283). The superseded `via` design is **not**
+> the 1.0 surface (and is a structured parse error). Design record:
+> `docs/design/scenario-capability-environments.md`.
 
 ```
 test_decl     = "test" string block
@@ -327,10 +326,18 @@ scenario_item = capability_envelope | given_block | expect_block
 capability_envelope = "capability" cap_kind [ "(" args ")" ] [ "{" envelope_item* "}" ]
 envelope_item = capability_envelope | implement_block
 implement_block = "implement" "(" params ")" "->" type block
-given_block   = "given" "{" (lower_ident ":" expr)* "}"   -- seed bindings
+given_block   = "given" "{" (lower_ident ":" expr)* "}"   -- seed bindings (see below)
 expect_block  = "expect" "{" assertion* "}"
 assertion     = "assert" expr
 ```
+
+`given` seeds the scenario: its bindings are evaluated **in order, before `expect`**, in the same
+scope (an `expect` body can reference them), inside the same `?`-propagation boundary. Because
+`store`/`memory`/`event.log` are scenario-local under `skein test` (reset before each test, table
+above), `given` is the home for **seeding stateful fixtures** — e.g.
+`given { seeded: store.games.put(Game { ... })! }` pre-populates the scenario-local store the tool
+under test will read. Plain value bindings inside `expect` use ordinary `let`; `given` earns its
+place by making fixture-seeding declarative and visually separate from the assertions.
 
 A nested capability with an `implement` block uses that controlled (test-only, pure) provider; one
 with no `implement` block falls through to the test-runner default policy. A capability envelope holds
@@ -359,8 +366,11 @@ effect with no `implement` provider and no recorded trace, the resolution order 
 | `http.out` | **blocked** |
 | `store` / `memory` / `event.log` | scenario-local state, reset before each test (never leaks) |
 
-A blocked live effect (`http.out`, or a live `model` backend) raises a structured error that fails
-the test — it is never returned as an `Err` a program could swallow. Live effects are opt-in via the
+A blocked live effect (`http.out`, or a live `model` backend) raises a structured error
+(`Skein.Runtime.LiveEffectError`) that fails the test — it is never returned as an `Err` a program
+could swallow. **This uncatchability is a frozen decision (C2/#297):** blocked-live failures are
+deliberately outside `Result` handling, so no error-handling code path can turn "this test tried to
+reach the network" into a value the program tolerates. Live effects are opt-in via the
 repeatable CLI flag `skein test --allow-live <effect>[:<scope>]`: `--allow-live http.out:api.stripe.com`
 permits exactly that host, a scopeless `--allow-live model` permits every model, and the gatable
 effect tokens are `http.out`, `model`, `uuid`, `instant`. Outside `skein test` (i.e. `skein run` in
@@ -722,7 +732,13 @@ http.delete(url: String) -> Result[HttpResponse, HttpError]
 
 type HttpRequest  { method: String, url: String, headers: Map[String, String], body: Json }
 type HttpResponse { status: Int, body: Map, headers: Map[String, String] }
-enum HttpError { Timeout, ConnectionFailed, Status(code: Int, body: String) }
+enum HttpError {
+  Timeout
+  ConnectionFailed
+  Status(code: Int, body: String)
+  InvalidRequest(reason: String)
+  Denied(reason: String)
+}
 ```
 
 `HttpRequest` is the provider contract type a scenario `implement` block receives when
@@ -736,10 +752,12 @@ wildcard.
 
 ```
 -- Requires: capability store.table(name)
-store.<table>.get(id: Uuid) -> Result[T, NotFound]
+store.<table>.get(id: Uuid) -> Result[T, StoreError]
 store.<table>.put(record: T) -> Result[T, StoreError]
 store.<table>.delete(id: Uuid) -> Result[Uuid, StoreError]
 store.<table>.query(filters: Map) -> Result[List[T], StoreError]
+
+enum StoreError { NotFound Failed(reason: String) Denied(reason: String) }
 ```
 
 There are no separate `get!`/`put!` methods (#268): the postfix `!`/`?`
@@ -755,9 +773,11 @@ crashes on miss, `store.users.put(r)?` propagates the error.
 -- memory.list() returns unscoped key names (prefix stripped).
 -- Outside agent context: no scoping applied (backward compatible).
 memory.put(key: String, value: T) -> Result[T, MemoryError]
-memory.get(key: String) -> Result[T, NotFound]
+memory.get(key: String) -> Result[T, MemoryError]
 memory.delete(key: String) -> Result[String, MemoryError]
 memory.list(prefix: String) -> List[String]
+
+enum MemoryError { NotFound Failed(reason: String) Denied(reason: String) }
 ```
 
 As everywhere, unwrap with the postfix operator: `memory.get("k")!`.
@@ -778,11 +798,12 @@ type LlmResponse { text: String }
 enum LlmError {
   ParseFailed(raw: String, expected_type: String, parse_error: String)
   Refused(reason: String)
-  RateLimit(retry_after: Duration)
-  Timeout(elapsed: Duration)
+  RateLimit(retry_after_ms: Int)
+  Timeout(elapsed_ms: Int)
   ContentFiltered(filter: String)
   InvalidSchema(violations: List[String])
   ProviderError(code: String, message: String)
+  Denied(reason: String)
 }
 ```
 
@@ -795,6 +816,13 @@ one-parameter local function; it is invoked with each text chunk (a `String`)
 as it arrives. With or without `on_chunk`, the call returns the full
 assembled response text once the stream completes.
 
+Under a scenario `model` envelope (§3.10), `llm.chat`/`llm.json`/`llm.stream`
+resolve to the envelope's `implement` provider. `llm.embed` has **no provider
+form** — `LlmResponse` is text-only — so it resolves *past* the provider
+through the normal order (replay → deterministic test backend → live, with
+live blocked under `skein test` unless `--allow-live model`), staying
+deterministic offline (#279).
+
 ### 6.5 Tools
 
 ```
@@ -802,6 +830,13 @@ assembled response text once the stream completes.
 tool.call(name: ToolName, args: Map) -> Result[Map, ToolError]
 tool.list() -> Result[List[ToolInfo], ToolError]
 tool.schema(name: ToolName) -> Result[Map, ToolError]
+
+enum ToolError {
+  NotFound(name: String)
+  ValidationError(tool: String, violations: List[String])
+  ExecutionError(tool: String, error: String)
+  Denied(reason: String)
+}
 ```
 
 **Input validation:** `tool.call` validates input arguments against the tool's declared input schema before execution. Two schema formats are supported:
@@ -816,6 +851,8 @@ Invalid input returns a `ToolError` with `:validation_error` kind and a list of 
 -- Requires: capability topic.publish(name) / queue.publish(name)
 topic.publish(name: String, data: T) -> Result[String, PublishError]
 queue.publish(name: String, data: T) -> Result[String, PublishError]
+
+enum PublishError { Denied(reason: String) Failed(reason: String) }
 ```
 
 ### 6.7 Events

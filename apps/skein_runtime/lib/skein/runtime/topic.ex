@@ -154,7 +154,7 @@ defmodule Skein.Runtime.Topic do
 
     case matching_caps do
       [] ->
-        {:error, "Capability '#{kind}' not declared. Operation on '#{name}' blocked."}
+        {:error, {:denied, "Capability '#{kind}' not declared. Operation on '#{name}' blocked."}}
 
       caps ->
         match =
@@ -170,7 +170,8 @@ defmodule Skein.Runtime.Topic do
         else
           declared = caps |> Enum.flat_map(fn cap -> cap.params end) |> Enum.join(", ")
 
-          {:error, "'#{name}' not declared in #{kind} capabilities. Declared: #{declared}"}
+          {:error,
+           {:denied, "'#{name}' not declared in #{kind} capabilities. Declared: #{declared}"}}
         end
     end
   end

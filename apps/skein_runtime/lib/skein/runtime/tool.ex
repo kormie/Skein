@@ -118,11 +118,12 @@ defmodule Skein.Runtime.Tool do
   @doc """
   Calls a registered tool by name with the given input.
 
-  Returns `{:ok, result_map}` or `{:error, %Tool.Error{}}`.
+  Returns `{:ok, result_map}` or `{:error, <ToolError ABI tuple>}` — the
+  frozen matchable form (C2/#297), e.g. `{:validation_error, tool, violations}`.
 
   Requires `tool.use` capability in the capabilities list.
   """
-  @spec call(String.t(), any(), [map()]) :: {:ok, any()} | {:error, Error.t()}
+  @spec call(String.t(), any(), [map()]) :: {:ok, any()} | {:error, Error.abi()}
   def call(name, input, capabilities)
       when is_binary(name) and is_list(capabilities) do
     Trace.with_recorded_span(%{kind: :tool, method: :call, name: name}, fn ->
@@ -137,6 +138,7 @@ defmodule Skein.Runtime.Tool do
           {{:error, Error.capability_error(reason)}, %{}}
       end
     end)
+    |> Error.to_abi_result()
   end
 
   # An active replay context serves recorded tool results instead of
@@ -173,7 +175,7 @@ defmodule Skein.Runtime.Tool do
 
   Requires `tool.use` capability.
   """
-  @spec list([map()]) :: {:ok, [map()]} | {:error, Error.t()}
+  @spec list([map()]) :: {:ok, [map()]} | {:error, Error.abi()}
   def list(capabilities) when is_list(capabilities) do
     Trace.with_span(%{kind: :tool, method: :list, name: "*"}, fn ->
       case check_tool_capability(capabilities) do
@@ -192,16 +194,17 @@ defmodule Skein.Runtime.Tool do
           {:error, Error.capability_error(reason)}
       end
     end)
+    |> Error.to_abi_result()
   end
 
   @doc """
   Returns the schema for a registered tool.
 
-  Returns `{:ok, schema_map}` or `{:error, %Tool.Error{}}`.
+  Returns `{:ok, schema_map}` or `{:error, <ToolError ABI tuple>}` (C2/#297).
 
   Requires `tool.use` capability.
   """
-  @spec schema(String.t(), [map()]) :: {:ok, map()} | {:error, Error.t()}
+  @spec schema(String.t(), [map()]) :: {:ok, map()} | {:error, Error.abi()}
   def schema(name, capabilities) when is_binary(name) and is_list(capabilities) do
     Trace.with_span(%{kind: :tool, method: :schema, name: name}, fn ->
       case check_tool_capability(capabilities, name) do
@@ -220,6 +223,7 @@ defmodule Skein.Runtime.Tool do
           {:error, Error.capability_error(reason)}
       end
     end)
+    |> Error.to_abi_result()
   end
 
   @doc """
@@ -283,6 +287,9 @@ defmodule Skein.Runtime.Tool do
             case impl.(input) do
               {:ok, result} ->
                 {:ok, coerce_output(result, schema)}
+
+              {:error, reason} when is_binary(reason) ->
+                {:error, Error.execution_error(name, reason)}
 
               {:error, reason} ->
                 {:error, Error.execution_error(name, inspect(reason))}
@@ -497,4 +504,40 @@ defmodule Skein.Runtime.Tool.Error do
   def validation_error(tool_name, violations) do
     %__MODULE__{kind: :validation_error, detail: %{tool: tool_name, violations: violations}}
   end
+
+  @typedoc """
+  The frozen structured-error ABI form (C2/#297): the tuple a Skein
+  `ToolError` variant pattern lowers to, so `Err(ToolError.NotFound(name))`
+  really matches. See `Skein.EffectABI.error_enums/0` and spec §6.5.
+  """
+  @type abi ::
+          {:not_found, String.t()}
+          | {:validation_error, String.t(), [String.t()]}
+          | {:execution_error, String.t(), String.t()}
+          | {:denied, String.t()}
+
+  @doc "Converts the internal error struct to its frozen ABI tuple (C2/#297)."
+  @spec to_abi(t() | abi()) :: abi()
+  def to_abi(%__MODULE__{kind: :not_found, detail: d}), do: {:not_found, d.name}
+
+  def to_abi(%__MODULE__{kind: :validation_error, detail: d}) do
+    {:validation_error, d.tool, d.violations}
+  end
+
+  def to_abi(%__MODULE__{kind: :execution_error, detail: d}) do
+    {:execution_error, d.tool, to_string_error(d.error)}
+  end
+
+  def to_abi(%__MODULE__{kind: :capability_error, detail: d}), do: {:denied, d.reason}
+  def to_abi(already_abi), do: already_abi
+
+  @doc "Applies `to_abi/1` to the error side of a result; success passes through."
+  @spec to_abi_result({:ok, any()} | {:error, t() | abi()}) :: {:ok, any()} | {:error, abi()}
+  def to_abi_result({:error, error}), do: {:error, to_abi(error)}
+  def to_abi_result(other), do: other
+
+  # Tool implement bodies return arbitrary Err payloads; render non-string
+  # reasons canonically so the ABI field stays a String.
+  defp to_string_error(error) when is_binary(error), do: error
+  defp to_string_error(error), do: inspect(error)
 end

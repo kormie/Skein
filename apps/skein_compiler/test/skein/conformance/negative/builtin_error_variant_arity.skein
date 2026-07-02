@@ -1,0 +1,8 @@
+-- expect: E0020
+-- C2/#297: builtin error enum variants carry declared fields — wrong arity
+-- is rejected (RateLimit takes exactly one Int, retry_after_ms).
+module BuiltinErrorVariantArity {
+  fn fail() -> Result[String, LlmError] {
+    Err(LlmError.RateLimit())
+  }
+}

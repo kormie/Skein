@@ -211,19 +211,24 @@ defmodule Skein.Runtime.EffectABIMatrixTest do
       :ok
     end
 
-    test "tool.call/list/schema return {:ok, _} | {:error, %Tool.Error{}}" do
+    test "tool.call/list/schema return {:ok, _} | {:error, <ToolError ABI tuple>}" do
       caps = cap("tool.use")
 
       assert {:ok, %{"x" => 1}} = Tool.call("abi_matrix_echo", %{"x" => 1}, caps)
-      assert {:error, %Tool.Error{}} = Tool.call("abi_matrix_missing", %{}, caps)
-      assert {:error, %Tool.Error{}} = Tool.call("abi_matrix_echo", %{}, [])
+
+      assert {:error, {:not_found, "abi_matrix_missing"}} =
+               Tool.call("abi_matrix_missing", %{}, caps)
+
+      assert {:error, {:denied, _}} = Tool.call("abi_matrix_echo", %{}, [])
 
       assert {:ok, tools} = Tool.list(caps)
       assert Enum.any?(tools, &(&1.name == "abi_matrix_echo"))
-      assert {:error, %Tool.Error{}} = Tool.list([])
+      assert {:error, {:denied, _}} = Tool.list([])
 
       assert {:ok, %{}} = Tool.schema("abi_matrix_echo", caps)
-      assert {:error, %Tool.Error{}} = Tool.schema("abi_matrix_missing", caps)
+
+      assert {:error, {:not_found, "abi_matrix_missing"}} =
+               Tool.schema("abi_matrix_missing", caps)
     end
   end
 

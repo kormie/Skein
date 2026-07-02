@@ -82,8 +82,9 @@ defmodule Skein.Runtime.Queue do
         publish(queue_name, message)
         {:ok, queue_name}
 
-      {:error, _reason} = error ->
-        error
+      {:error, reason} ->
+        # PublishError.Denied(reason) — the frozen ABI form (C2/#297).
+        {:error, {:denied, reason}}
     end
   end
 

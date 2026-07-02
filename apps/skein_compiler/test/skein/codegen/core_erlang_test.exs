@@ -829,7 +829,7 @@ defmodule Skein.CodeGen.CoreErlangTest do
         module EffectGet {
           capability http.out("api.example.com")
 
-          fn fetch(url: String) -> Result[String, String] {
+          fn fetch(url: String) -> Result[String, HttpError] {
             http.get(url)
           }
         }
@@ -846,7 +846,7 @@ defmodule Skein.CodeGen.CoreErlangTest do
         module EffectPost {
           capability http.out("api.example.com")
 
-          fn send(url: String, body: String) -> Result[String, String] {
+          fn send(url: String, body: String) -> Result[String, HttpError] {
             http.post(url, body)
           }
         }
@@ -862,7 +862,7 @@ defmodule Skein.CodeGen.CoreErlangTest do
         module EffectBlock {
           capability http.out("api.allowed.com")
 
-          fn fetch(url: String) -> Result[String, String] {
+          fn fetch(url: String) -> Result[String, HttpError] {
             http.get(url)
           }
         }
@@ -870,7 +870,7 @@ defmodule Skein.CodeGen.CoreErlangTest do
 
       # Calling with an undeclared host should return capability error
       result = mod.fetch("https://api.blocked.com/data")
-      assert {:error, reason} = result
+      assert {:error, {:denied, reason}} = result
       assert reason =~ "not declared"
     end
 
@@ -880,7 +880,7 @@ defmodule Skein.CodeGen.CoreErlangTest do
         module EffectAllow {
           capability http.out("api.example.com")
 
-          fn fetch(url: String) -> Result[String, String] {
+          fn fetch(url: String) -> Result[String, HttpError] {
             http.get(url)
           }
         }
@@ -905,7 +905,7 @@ defmodule Skein.CodeGen.CoreErlangTest do
         module EffectTrace {
           capability http.out("api.allowed.com")
 
-          fn fetch(url: String) -> Result[String, String] {
+          fn fetch(url: String) -> Result[String, HttpError] {
             http.get(url)
           }
         }
@@ -930,7 +930,7 @@ defmodule Skein.CodeGen.CoreErlangTest do
         module EffectLet {
           capability http.out("api.allowed.com")
 
-          fn fetch(url: String) -> Result[String, String] {
+          fn fetch(url: String) -> Result[String, HttpError] {
             let result = http.get(url)
             result
           }
@@ -938,7 +938,7 @@ defmodule Skein.CodeGen.CoreErlangTest do
         """)
 
       result = mod.fetch("https://api.blocked.com/data")
-      assert {:error, reason} = result
+      assert {:error, {:denied, reason}} = result
       assert reason =~ "not declared"
     end
   end
@@ -1243,7 +1243,7 @@ defmodule Skein.CodeGen.CoreErlangTest do
         module StoreGet {
           capability store.table("users")
 
-          fn find(id: String) -> Result[String, String] {
+          fn find(id: String) -> Result[String, StoreError] {
             store.users.get(id)
           }
         }
@@ -1264,7 +1264,7 @@ defmodule Skein.CodeGen.CoreErlangTest do
         module StoreGetFound {
           capability store.table("users")
 
-          fn find(id: String) -> Result[String, String] {
+          fn find(id: String) -> Result[String, StoreError] {
             store.users.get(id)
           }
         }
@@ -1325,7 +1325,7 @@ defmodule Skein.CodeGen.CoreErlangTest do
         module StorePut {
           capability store.table("items")
 
-          fn save(record: String) -> Result[String, String] {
+          fn save(record: String) -> Result[String, StoreError] {
             store.items.put(record)
           }
         }
@@ -1348,7 +1348,7 @@ defmodule Skein.CodeGen.CoreErlangTest do
         module StoreDelete {
           capability store.table("items")
 
-          fn remove(id: String) -> Result[String, String] {
+          fn remove(id: String) -> Result[String, StoreError] {
             store.items.delete(id)
           }
         }
@@ -1402,7 +1402,7 @@ defmodule Skein.CodeGen.CoreErlangTest do
           capability store.table("items")
           capability uuid
 
-          fn save(name: String) -> Result[String, String] {
+          fn save(name: String) -> Result[String, StoreError] {
             store.items.put({ id: uuid.new(), name: name })
           }
         }
@@ -1465,7 +1465,7 @@ defmodule Skein.CodeGen.CoreErlangTest do
         module StoreQuery {
           capability store.table("users")
 
-          fn search(filters: String) -> Result[List[String], String] {
+          fn search(filters: String) -> Result[List[String], StoreError] {
             store.users.query(filters)
           }
         }
@@ -1494,7 +1494,7 @@ defmodule Skein.CodeGen.CoreErlangTest do
         module StoreTrace {
           capability store.table("users")
 
-          fn find(id: String) -> Result[String, String] {
+          fn find(id: String) -> Result[String, StoreError] {
             store.users.get(id)
           }
         }
@@ -1522,7 +1522,7 @@ defmodule Skein.CodeGen.CoreErlangTest do
         module StoreBlock {
           capability store.table("orders")
 
-          fn find(id: String) -> Result[String, String] {
+          fn find(id: String) -> Result[String, StoreError] {
             store.orders.get(id)
           }
         }
@@ -1922,7 +1922,7 @@ defmodule Skein.CodeGen.CoreErlangTest do
         module MemoryCaps {
           capability memory.kv("sessions")
 
-          fn save(key: String, value: String) -> Result[String, String] {
+          fn save(key: String, value: String) -> Result[String, MemoryError] {
             memory.put(key, value)
           }
         }
@@ -1941,7 +1941,7 @@ defmodule Skein.CodeGen.CoreErlangTest do
         module MemPut {
           capability memory.kv("sessions")
 
-          fn save(key: String, value: String) -> Result[String, String] {
+          fn save(key: String, value: String) -> Result[String, MemoryError] {
             memory.put(key, value)
           }
         }
@@ -1957,7 +1957,7 @@ defmodule Skein.CodeGen.CoreErlangTest do
         module MemPutRun {
           capability memory.kv("test_ns")
 
-          fn save(key: String, value: String) -> Result[String, String] {
+          fn save(key: String, value: String) -> Result[String, MemoryError] {
             memory.put(key, value)
           }
         }
@@ -1977,11 +1977,11 @@ defmodule Skein.CodeGen.CoreErlangTest do
         module MemGet {
           capability memory.kv("test_get")
 
-          fn save(key: String, value: String) -> Result[String, String] {
+          fn save(key: String, value: String) -> Result[String, MemoryError] {
             memory.put(key, value)
           }
 
-          fn load(key: String) -> Result[String, String] {
+          fn load(key: String) -> Result[String, MemoryError] {
             memory.get(key)
           }
         }
@@ -2002,15 +2002,15 @@ defmodule Skein.CodeGen.CoreErlangTest do
         module MemDel {
           capability memory.kv("test_del")
 
-          fn save(key: String, value: String) -> Result[String, String] {
+          fn save(key: String, value: String) -> Result[String, MemoryError] {
             memory.put(key, value)
           }
 
-          fn remove(key: String) -> Result[String, String] {
+          fn remove(key: String) -> Result[String, MemoryError] {
             memory.delete(key)
           }
 
-          fn load(key: String) -> Result[String, String] {
+          fn load(key: String) -> Result[String, MemoryError] {
             memory.get(key)
           }
         }
@@ -2031,7 +2031,7 @@ defmodule Skein.CodeGen.CoreErlangTest do
         module MemList {
           capability memory.kv("test_list")
 
-          fn save(key: String, value: String) -> Result[String, String] {
+          fn save(key: String, value: String) -> Result[String, MemoryError] {
             memory.put(key, value)
           }
 
@@ -2061,7 +2061,7 @@ defmodule Skein.CodeGen.CoreErlangTest do
         module MemTrace {
           capability memory.kv("trace_ns")
 
-          fn save(key: String, value: String) -> Result[String, String] {
+          fn save(key: String, value: String) -> Result[String, MemoryError] {
             memory.put(key, value)
           }
         }
@@ -2093,7 +2093,7 @@ defmodule Skein.CodeGen.CoreErlangTest do
         module LlmCaps {
           capability model("anthropic", "claude-sonnet-4-5")
 
-          fn ask(data: String) -> Result[String, String] {
+          fn ask(data: String) -> Result[String, LlmError] {
             llm.chat("claude-sonnet-4-5", "Be helpful.", data)
           }
         }
@@ -2112,7 +2112,7 @@ defmodule Skein.CodeGen.CoreErlangTest do
         module LlmChat {
           capability model("anthropic", "claude-sonnet-4-5")
 
-          fn ask(data: String) -> Result[String, String] {
+          fn ask(data: String) -> Result[String, LlmError] {
             llm.chat("claude-sonnet-4-5", "Be helpful.", data)
           }
         }
@@ -2130,7 +2130,7 @@ defmodule Skein.CodeGen.CoreErlangTest do
         module LlmChatRun {
           capability model("anthropic", "claude-sonnet-4-5")
 
-          fn ask(data: String) -> Result[String, String] {
+          fn ask(data: String) -> Result[String, LlmError] {
             llm.chat("claude-sonnet-4-5", "Be helpful.", data)
           }
         }
@@ -2147,9 +2147,7 @@ defmodule Skein.CodeGen.CoreErlangTest do
       Skein.Runtime.Llm.set_backend(Skein.Runtime.Llm.TestBackend)
 
       result = Skein.Runtime.Llm.chat("claude-sonnet-4-5", "Be helpful.", "Hello", [])
-      assert {:error, error} = result
-      assert error.__struct__ == Skein.Runtime.Llm.Error
-      assert error.kind == :capability_error
+      assert {:error, {:denied, _reason}} = result
     end
   end
 
@@ -2160,7 +2158,7 @@ defmodule Skein.CodeGen.CoreErlangTest do
         module LlmJson {
           capability model("anthropic", "claude-sonnet-4-5")
 
-          fn decide(data: String) -> Result[String, String] {
+          fn decide(data: String) -> Result[String, LlmError] {
             llm.json("claude-sonnet-4-5", "Return JSON.", data)
           }
         }
@@ -2178,7 +2176,7 @@ defmodule Skein.CodeGen.CoreErlangTest do
         module LlmJsonRun {
           capability model("anthropic", "claude-sonnet-4-5")
 
-          fn decide(data: String) -> Result[String, String] {
+          fn decide(data: String) -> Result[String, LlmError] {
             llm.json("claude-sonnet-4-5", "Return JSON.", data)
           }
         }
@@ -2199,7 +2197,7 @@ defmodule Skein.CodeGen.CoreErlangTest do
         module LlmTrace {
           capability model("anthropic", "claude-sonnet-4-5")
 
-          fn ask(data: String) -> Result[String, String] {
+          fn ask(data: String) -> Result[String, LlmError] {
             llm.chat("claude-sonnet-4-5", "Be helpful.", data)
           }
         }
@@ -2229,7 +2227,7 @@ defmodule Skein.CodeGen.CoreErlangTest do
         module LlmStream {
           capability model("anthropic", "claude-sonnet-4-5")
 
-          fn stream_it(data: String) -> Result[String, String] {
+          fn stream_it(data: String) -> Result[String, LlmError] {
             llm.stream("claude-sonnet-4-5", "Be helpful.", data)
           }
         }
@@ -2247,7 +2245,7 @@ defmodule Skein.CodeGen.CoreErlangTest do
         module LlmStreamRun {
           capability model("anthropic", "claude-sonnet-4-5")
 
-          fn stream_it(data: String) -> Result[String, String] {
+          fn stream_it(data: String) -> Result[String, LlmError] {
             llm.stream("claude-sonnet-4-5", "Be helpful.", data)
           }
         }
@@ -2266,7 +2264,7 @@ defmodule Skein.CodeGen.CoreErlangTest do
         module LlmStreamTrace {
           capability model("anthropic", "claude-sonnet-4-5")
 
-          fn stream_it(data: String) -> Result[String, String] {
+          fn stream_it(data: String) -> Result[String, LlmError] {
             llm.stream("claude-sonnet-4-5", "Be helpful.", data)
           }
         }
@@ -2440,7 +2438,7 @@ defmodule Skein.CodeGen.CoreErlangTest do
         module ToolCallSimple {
           capability tool.use(MyTool)
 
-          fn invoke(data: String) -> Result[String, String] {
+          fn invoke(data: String) -> Result[String, ToolError] {
             tool.call(MyTool, data)
           }
         }
@@ -2456,7 +2454,7 @@ defmodule Skein.CodeGen.CoreErlangTest do
         module ToolListCall {
           capability tool.use(MyTool)
 
-          fn get_tools() -> Result[List[String], String] {
+          fn get_tools() -> Result[List[String], ToolError] {
             tool.list()
           }
         }
@@ -2473,7 +2471,7 @@ defmodule Skein.CodeGen.CoreErlangTest do
         module ToolSchemaCall {
           capability tool.use(MyTool)
 
-          fn get_schema() -> Result[String, String] {
+          fn get_schema() -> Result[String, ToolError] {
             tool.schema(MyTool)
           }
         }
@@ -2491,7 +2489,7 @@ defmodule Skein.CodeGen.CoreErlangTest do
         module ToolCallTrace {
           capability tool.use(MyTool)
 
-          fn invoke(data: String) -> Result[String, String] {
+          fn invoke(data: String) -> Result[String, ToolError] {
             tool.call(MyTool, data)
           }
         }
@@ -2786,7 +2784,7 @@ defmodule Skein.CodeGen.CoreErlangTest do
         module TopicPublisher {
           capability topic.publish("notifications")
 
-          fn notify() -> Result[String, String] {
+          fn notify() -> Result[String, PublishError] {
             topic.publish("notifications", "hello")
           }
         }
@@ -2802,7 +2800,7 @@ defmodule Skein.CodeGen.CoreErlangTest do
         module QueuePublisher {
           capability queue.publish("codegen-jobs")
 
-          fn enqueue() -> Result[String, String] {
+          fn enqueue() -> Result[String, PublishError] {
             queue.publish("codegen-jobs", "hello")
           }
         }
@@ -2854,13 +2852,13 @@ defmodule Skein.CodeGen.CoreErlangTest do
         module QueueScoped {
           capability queue.publish("codegen-jobs")
 
-          fn rogue() -> Result[String, String] {
+          fn rogue() -> Result[String, PublishError] {
             queue.publish("other-queue", "hello")
           }
         }
         """)
 
-      assert {:error, message} = mod.rogue()
+      assert {:error, {:denied, message}} = mod.rogue()
       assert message =~ "other-queue"
     end
 
@@ -2923,7 +2921,7 @@ defmodule Skein.CodeGen.CoreErlangTest do
         module ToolCallIdent {
           capability tool.use(MyTool)
 
-          fn invoke(data: String) -> Result[String, String] {
+          fn invoke(data: String) -> Result[String, ToolError] {
             tool.call(MyTool, data)
           }
         }
@@ -2939,7 +2937,7 @@ defmodule Skein.CodeGen.CoreErlangTest do
         module ToolSchemaIdent {
           capability tool.use(MyTool)
 
-          fn get_schema() -> Result[String, String] {
+          fn get_schema() -> Result[String, ToolError] {
             tool.schema(MyTool)
           }
         }
@@ -2959,7 +2957,7 @@ defmodule Skein.CodeGen.CoreErlangTest do
         module ToolCallDotted {
           capability tool.use(Stripe.CreateRefund)
 
-          fn refund(data: String) -> Result[String, String] {
+          fn refund(data: String) -> Result[String, ToolError] {
             tool.call(Stripe.CreateRefund, data)
           }
         }
@@ -2977,7 +2975,7 @@ defmodule Skein.CodeGen.CoreErlangTest do
         module ToolTraceIdent {
           capability tool.use(MyTool)
 
-          fn invoke(data: String) -> Result[String, String] {
+          fn invoke(data: String) -> Result[String, ToolError] {
             tool.call(MyTool, data)
           }
         }
@@ -3603,7 +3601,7 @@ defmodule Skein.CodeGen.CoreErlangTest do
         module TraceAnnotateMixed {
           capability http.out("api.example.com")
 
-          fn fetch(url: String) -> Result[String, String] {
+          fn fetch(url: String) -> Result[String, HttpError] {
             trace.annotate("url", url)
             http.get(url)
           }

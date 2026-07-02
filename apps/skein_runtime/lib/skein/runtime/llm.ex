@@ -32,10 +32,11 @@ defmodule Skein.Runtime.Llm do
   @doc """
   Sends an unstructured chat request to the LLM.
 
-  Returns `{:ok, response_text}` or `{:error, %Llm.Error{}}`.
+  Returns `{:ok, response_text}` or `{:error, <LlmError ABI tuple>}` —
+  the frozen matchable form (C2/#297), e.g. `{:provider_error, code, message}`.
   """
   @spec chat(String.t(), String.t(), any(), [map()]) ::
-          {:ok, String.t()} | {:error, Error.t()}
+          {:ok, String.t()} | {:error, Error.abi()}
   def chat(model, system, input, capabilities)
       when is_binary(model) and is_binary(system) and is_list(capabilities) do
     backend = resolve_backend(model)
@@ -50,6 +51,7 @@ defmodule Skein.Runtime.Llm do
           {:error, Error.capability_error(reason)}
       end
     end)
+    |> Error.to_abi_result()
   end
 
   @doc """
@@ -58,10 +60,10 @@ defmodule Skein.Runtime.Llm do
   The `schema` is a JSON Schema map that the response must conform to.
   The response is parsed as JSON and validated against the schema.
 
-  Returns `{:ok, parsed_map}` or `{:error, %Llm.Error{}}`.
+  Returns `{:ok, parsed_map}` or `{:error, <LlmError ABI tuple>}` (C2/#297).
   """
   @spec json(String.t(), String.t(), any(), map(), [map()]) ::
-          {:ok, map()} | {:error, Error.t()}
+          {:ok, map()} | {:error, Error.abi()}
   def json(model, system, input, schema, capabilities)
       when is_binary(model) and is_binary(system) and is_map(schema) and is_list(capabilities) do
     backend = resolve_backend(model)
@@ -94,6 +96,7 @@ defmodule Skein.Runtime.Llm do
           {:error, Error.capability_error(reason)}
       end
     end)
+    |> Error.to_abi_result()
   end
 
   @doc """
@@ -105,10 +108,10 @@ defmodule Skein.Runtime.Llm do
   When called from compiled Skein code without a callback (e.g. `llm.stream(model, system, input)`),
   the codegen passes a no-op callback and returns the assembled response.
 
-  Returns `{:ok, assembled_text}` or `{:error, %Llm.Error{}}`.
+  Returns `{:ok, assembled_text}` or `{:error, <LlmError ABI tuple>}` (C2/#297).
   """
   @spec stream(String.t(), String.t(), any(), function(), [map()]) ::
-          {:ok, String.t()} | {:error, Error.t()}
+          {:ok, String.t()} | {:error, Error.abi()}
   def stream(model, system, input, on_chunk, capabilities)
       when is_binary(model) and is_binary(system) and is_function(on_chunk, 1) and
              is_list(capabilities) do
@@ -131,6 +134,7 @@ defmodule Skein.Runtime.Llm do
           {:error, Error.capability_error(reason)}
       end
     end)
+    |> Error.to_abi_result()
   end
 
   @doc """
@@ -140,7 +144,7 @@ defmodule Skein.Runtime.Llm do
   The vector dimensionality depends on the model used.
   """
   @spec embed(String.t(), String.t(), [map()]) ::
-          {:ok, [float()]} | {:error, Error.t()}
+          {:ok, [float()]} | {:error, Error.abi()}
   def embed(model, input, capabilities)
       when is_binary(model) and is_binary(input) and is_list(capabilities) do
     backend = resolve_backend(model)
@@ -158,6 +162,7 @@ defmodule Skein.Runtime.Llm do
           {{:error, Error.capability_error(reason)}, %{}}
       end
     end)
+    |> Error.to_abi_result()
   end
 
   @doc """
@@ -568,6 +573,49 @@ defmodule Skein.Runtime.Llm.Error do
   def capability_error(reason) do
     %__MODULE__{kind: :capability_error, detail: %{reason: reason}}
   end
+
+  @typedoc """
+  The frozen structured-error ABI form (C2/#297): the tuple/atom shape a
+  Skein `LlmError` variant pattern lowers to, so `Err(LlmError.RateLimit(ms))`
+  really matches. See `Skein.EffectABI.error_enums/0` and spec §6.4.
+  """
+  @type abi ::
+          {:parse_failed, String.t(), String.t(), String.t()}
+          | {:refused, String.t()}
+          | {:rate_limit, integer()}
+          | {:timeout, integer()}
+          | {:content_filtered, String.t()}
+          | {:invalid_schema, [String.t()]}
+          | {:provider_error, String.t(), String.t()}
+          | {:denied, String.t()}
+
+  @doc """
+  Converts the internal error struct to its frozen ABI tuple (C2/#297).
+  Already-converted tuples (e.g. from a scenario `implement` provider, whose
+  compiled body returns lowered `LlmError` variants) pass through unchanged.
+  """
+  @spec to_abi(t() | abi()) :: abi()
+  def to_abi(%__MODULE__{kind: :parse_failed, detail: d}) do
+    {:parse_failed, d.raw, d.expected_type, d.parse_error}
+  end
+
+  def to_abi(%__MODULE__{kind: :refused, detail: d}), do: {:refused, d.reason}
+  def to_abi(%__MODULE__{kind: :rate_limit, detail: d}), do: {:rate_limit, d.retry_after_ms}
+  def to_abi(%__MODULE__{kind: :timeout, detail: d}), do: {:timeout, d.elapsed_ms}
+  def to_abi(%__MODULE__{kind: :content_filtered, detail: d}), do: {:content_filtered, d.filter}
+  def to_abi(%__MODULE__{kind: :invalid_schema, detail: d}), do: {:invalid_schema, d.violations}
+
+  def to_abi(%__MODULE__{kind: :provider_error, detail: d}) do
+    {:provider_error, d.code, d.message}
+  end
+
+  def to_abi(%__MODULE__{kind: :capability_error, detail: d}), do: {:denied, d.reason}
+  def to_abi(already_abi), do: already_abi
+
+  @doc "Applies `to_abi/1` to the error side of a result; success passes through."
+  @spec to_abi_result({:ok, any()} | {:error, t() | abi()}) :: {:ok, any()} | {:error, abi()}
+  def to_abi_result({:error, error}), do: {:error, to_abi(error)}
+  def to_abi_result(other), do: other
 end
 
 defmodule Skein.Runtime.Llm.Backend do

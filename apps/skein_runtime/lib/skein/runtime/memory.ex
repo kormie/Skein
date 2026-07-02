@@ -61,8 +61,9 @@ defmodule Skein.Runtime.Memory do
 
           {:ok, value}
 
-        {:error, _} = error ->
-          error
+        {:error, reason} ->
+          # MemoryError.Denied(reason) — the frozen ABI form (C2/#297).
+          {:error, {:denied, reason}}
       end
     end)
   end
@@ -88,8 +89,9 @@ defmodule Skein.Runtime.Memory do
             [] -> {:error, :not_found}
           end
 
-        {:error, _} = error ->
-          error
+        {:error, reason} ->
+          # MemoryError.Denied(reason) — the frozen ABI form (C2/#297).
+          {:error, {:denied, reason}}
       end
     end)
   end
@@ -118,8 +120,9 @@ defmodule Skein.Runtime.Memory do
 
           {:ok, key}
 
-        {:error, _} = error ->
-          error
+        {:error, reason} ->
+          # MemoryError.Denied(reason) — the frozen ABI form (C2/#297).
+          {:error, {:denied, reason}}
       end
     end)
   end
@@ -156,8 +159,9 @@ defmodule Skein.Runtime.Memory do
           end)
           |> Enum.map(&unscope_key/1)
 
-        {:error, _} = error ->
-          error
+        {:error, reason} ->
+          # MemoryError.Denied(reason) — the frozen ABI form (C2/#297).
+          {:error, {:denied, reason}}
       end
     end)
   end

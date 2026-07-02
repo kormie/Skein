@@ -3,7 +3,7 @@
 -- store.put({ id: uuid.new() }) requires `capability uuid`.
 module NondeterminismInRecord {
   capability store.table("users")
-  fn save() -> Result[String, String] {
+  fn save() -> Result[String, StoreError] {
     store.users.put({ id: uuid.new() })
   }
 }

@@ -354,9 +354,13 @@ defmodule Skein.Analyzer do
   # `builtin_type_decls/0`) so scenario `implement` blocks can construct and
   # field-access them; they are injected into the type env and override the
   # opaque `:builtin` entry.
+  # The effect ERROR enums (HttpError/LlmError/ToolError/StoreError/
+  # MemoryError/PublishError/NotFound) are NOT in this opaque list any more:
+  # they are real builtin EnumDecls (C2/#297, `builtin_enum_decls/0` from
+  # `Skein.EffectABI.error_enums/0`) so variant construction and patterns
+  # are validated exactly like user enums.
   @effect_type_names ~w(
-    HttpError StoreError NotFound MemoryError LlmError
-    ToolError ToolInfo ToolName PublishError
+    ToolInfo ToolName
     HttpRequest HttpResponse LlmRequest LlmResponse
   )
 
@@ -925,12 +929,38 @@ defmodule Skein.Analyzer do
   # fall back to `:dynamic` — they are real runtime calls whose shape the
   # table does not pin yet (C1), not inference failures.
   defp effect_call_return_type("llm", "json", %AST.TypeRef{} = type_param, env) do
-    {:result, resolve_type(type_param, env.types), :dynamic}
+    {:result, resolve_type(type_param, env.types), {:enum, "LlmError"}}
   end
 
-  defp effect_call_return_type(namespace, method, _type_param, _env) do
-    Map.get(@effect_return_types, {namespace, method}, :dynamic)
+  defp effect_call_return_type(namespace, method, _type_param, env) do
+    @effect_return_types
+    |> Map.get({namespace, method}, :dynamic)
+    |> normalize_enum_refs(env)
   end
+
+  # The effect-ABI registry names error enums as {:user_type, "LlmError"}
+  # etc.; resolved declared types spell the same enum {:enum, "LlmError"}.
+  # Normalize registry-sourced types so comparisons see one spelling.
+  defp normalize_enum_refs({:user_type, name} = type, env) do
+    if Map.has_key?(env.enums, name), do: {:enum, name}, else: type
+  end
+
+  defp normalize_enum_refs({:result, ok, err}, env) do
+    {:result, normalize_enum_refs(ok, env), normalize_enum_refs(err, env)}
+  end
+
+  defp normalize_enum_refs({:list, inner}, env), do: {:list, normalize_enum_refs(inner, env)}
+  defp normalize_enum_refs({:option, inner}, env), do: {:option, normalize_enum_refs(inner, env)}
+
+  defp normalize_enum_refs({:map, k, v}, env) do
+    {:map, normalize_enum_refs(k, env), normalize_enum_refs(v, env)}
+  end
+
+  defp normalize_enum_refs({:fn, params, ret}, env) do
+    {:fn, Enum.map(params, &normalize_enum_refs(&1, env)), normalize_enum_refs(ret, env)}
+  end
+
+  defp normalize_enum_refs(other, _env), do: other
 
   # Sharper return types for higher-order stdlib calls (#292/B3): when the
   # callback argument carries a concrete callable type, the collection result
@@ -1254,6 +1284,44 @@ defmodule Skein.Analyzer do
     }
   end
 
+  # The builtin effect error enums (C2/#297), materialized from the
+  # effect-ABI registry into real EnumDecls so `Err(LlmError.RateLimit(ms))`
+  # constructions and patterns are validated (unknown variant / wrong arity)
+  # exactly like user enums. Variants lower to snake_case atoms/tuples —
+  # the shapes the runtime converts its errors to at each effect boundary.
+  defp builtin_enum_decls do
+    Map.new(Skein.EffectABI.error_enums(), fn {enum_name, variants} ->
+      decl = %AST.EnumDecl{
+        name: enum_name,
+        variants:
+          Enum.map(variants, fn %{name: variant_name, fields: fields} ->
+            %AST.Variant{
+              name: variant_name,
+              fields: Enum.map(fields, &error_enum_field/1),
+              transitions: [],
+              meta: @builtin_meta
+            }
+          end),
+        transitions: [],
+        meta: @builtin_meta
+      }
+
+      {enum_name, decl}
+    end)
+  end
+
+  defp error_enum_field({name, {"List", inner}}) do
+    field(name, %AST.TypeRef{
+      name: "List",
+      params: [%AST.TypeRef{name: inner, params: [], meta: @builtin_meta}],
+      meta: @builtin_meta
+    })
+  end
+
+  defp error_enum_field({name, type_name}) when is_binary(type_name) do
+    field(name, type_name)
+  end
+
   defp type_decl(name, fields) do
     %AST.TypeDecl{name: name, fields: fields, meta: @builtin_meta}
   end
@@ -1303,11 +1371,13 @@ defmodule Skein.Analyzer do
         _, acc -> acc
       end)
 
-    # Register user-declared enums
+    # Register user-declared enums on top of the builtin effect error
+    # enums (C2/#297; a user declaration shadows the builtin name).
     enums =
       declarations
       |> Enum.filter(&match?(%AST.EnumDecl{}, &1))
       |> Map.new(fn %AST.EnumDecl{name: name} = decl -> {name, decl} end)
+      |> then(&Map.merge(builtin_enum_decls(), &1))
 
     # Register enums as types too
     types =
@@ -2521,7 +2591,8 @@ defmodule Skein.Analyzer do
         field: method
       }
       when method in @store_methods ->
-        {Map.get(@store_return_types, method, :dynamic), args_errors}
+        {@store_return_types |> Map.get(method, :dynamic) |> normalize_enum_refs(env),
+         args_errors}
 
       %AST.Identifier{name: name} when is_map_key(env.functions, name) ->
         fn_info = Map.get(env.functions, name)
@@ -4792,7 +4863,10 @@ defmodule Skein.Analyzer do
 
     declared_return = resolve_type(implement.return_type, env.types)
 
-    if declared_params == contract.params and declared_return == contract.return do
+    contract_params = Enum.map(contract.params, &normalize_enum_refs(&1, env))
+    contract_return = normalize_enum_refs(contract.return, env)
+
+    if declared_params == contract_params and declared_return == contract_return do
       []
     else
       [
@@ -5161,12 +5235,13 @@ defmodule Skein.Analyzer do
       |> Map.put("Map", :builtin_param)
       |> Map.put("Set", :builtin_param)
 
-    # Register Phase enum as a type if it exists
+    # Register Phase enum as a type if it exists, on top of the builtin
+    # effect error enums (C2/#297).
     enums =
       if phases do
-        %{"Phase" => phases}
+        Map.put(builtin_enum_decls(), "Phase", phases)
       else
-        %{}
+        builtin_enum_decls()
       end
 
     types =

@@ -21,7 +21,7 @@ module UserService {
   capability http.out("api.example.com")
   capability http.out("auth.example.com")
 
-  fn fetch_user(id: String) -> Result[String, String] {
+  fn fetch_user(id: String) -> Result[String, HttpError] {
     http.get("https://api.example.com/users/${id}")
   }
 }
@@ -61,7 +61,7 @@ A capability without parameters acts as a wildcard:
 module OpenClient {
   capability http.out  -- allows HTTP to any host
 
-  fn fetch(url: String) -> Result[String, String] {
+  fn fetch(url: String) -> Result[String, HttpError] {
     http.get(url)
   }
 }
@@ -347,17 +347,24 @@ The analyzer recognizes this pattern and checks it against declared capabilities
 - `{:ok, body}` on success (HTTP 2xx)
 - `{:error, reason}` on failure (HTTP errors, network errors, capability violations)
 
-**Memory** effect calls return `Result` tuples:
-- `memory.get` returns `{:ok, value}` or `{:error, :not_found}` (an atom, matched as `Err(_)` in Skein)
+**Memory** effect calls return `Result` tuples typed `Result[T, MemoryError]`:
+- `memory.get` returns `{:ok, value}` or `{:error, :not_found}` — matched as `Err(MemoryError.NotFound)` (or the bare `Err(NotFound)`) in Skein
 - `memory.put` returns `{:ok, value}`
 - `memory.delete` returns `{:ok, key}`
 - `memory.list` returns a list of matching keys
+- a namespace denial is `{:error, {:denied, reason}}` — `Err(MemoryError.Denied(reason))`
 
-**LLM** effect calls return `Result` tuples:
-- `llm.chat` returns `{:ok, response_text}` or `{:error, %Llm.Error{}}`
-- `llm.json` returns `{:ok, parsed_map}` or `{:error, %Llm.Error{}}`
-- `llm.stream` returns `{:ok, assembled_text}` or `{:error, %Llm.Error{}}` (chunks delivered via callback at runtime)
-- `llm.embed` returns `{:ok, [float()]}` or `{:error, %Llm.Error{}}` (vector dimensionality depends on model)
+**LLM** effect calls return `Result` tuples typed `Result[_, LlmError]`. Since C2 (#297) the
+error side is the **frozen structured-error ABI**: nominal enum variants that lower to
+snake_case tuples, so a Skein `Err(LlmError.ProviderError(code, message))` arm really matches.
+- `llm.chat` returns `{:ok, response_text}` or `{:error, <LlmError variant>}` — e.g. `{:rate_limit, retry_after_ms}`, `{:provider_error, code, message}`, `{:denied, reason}`
+- `llm.json` returns `{:ok, parsed_map}` or `{:error, <LlmError variant>}`
+- `llm.stream` returns `{:ok, assembled_text}` or `{:error, <LlmError variant>}` (chunks delivered via callback at runtime)
+- `llm.embed` returns `{:ok, [float()]}` or `{:error, <LlmError variant>}` (vector dimensionality depends on model)
+
+The full variant list for every effect error enum (`HttpError`, `LlmError`, `ToolError`,
+`StoreError`, `MemoryError`, `PublishError`) is in spec §6 and pinned by
+`Skein.EffectABI.error_enums/0`.
 
 ## Compile-Time Checking
 
@@ -367,7 +374,7 @@ The analyzer's capability checking pass (Pass 3) walks every function body looki
 
 ```skein
 module BadService {
-  fn fetch(url: String) -> Result[String, String] {
+  fn fetch(url: String) -> Result[String, HttpError] {
     http.get(url)  -- ERROR: E0012
   }
 }
@@ -408,7 +415,7 @@ When compiled code calls `http.get(url)`, the code generator emits a call to `Sk
 module Service {
   capability http.out("api.allowed.com")
 
-  fn fetch(url: String) -> Result[String, String] {
+  fn fetch(url: String) -> Result[String, HttpError] {
     http.get("https://api.blocked.com/data")
   }
 }

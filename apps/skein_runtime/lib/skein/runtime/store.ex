@@ -40,8 +40,9 @@ defmodule Skein.Runtime.Store do
             [] -> {:error, :not_found}
           end
 
-        {:error, _} = error ->
-          error
+        {:error, reason} ->
+          # StoreError.Denied(reason) — the frozen ABI form (C2/#297).
+          {:error, {:denied, reason}}
       end
     end)
   end
@@ -62,15 +63,16 @@ defmodule Skein.Runtime.Store do
 
           case extract_id(record) do
             nil ->
-              {:error, "Record must have an :id or \"id\" field"}
+              {:error, {:failed, "Record must have an :id or \"id\" field"}}
 
             id ->
               :ets.insert(@table, {{table_name, id}, record})
               {:ok, record}
           end
 
-        {:error, _} = error ->
-          error
+        {:error, reason} ->
+          # StoreError.Denied(reason) — the frozen ABI form (C2/#297).
+          {:error, {:denied, reason}}
       end
     end)
   end
@@ -89,8 +91,9 @@ defmodule Skein.Runtime.Store do
           :ets.delete(@table, {table_name, id})
           {:ok, id}
 
-        {:error, _} = error ->
-          error
+        {:error, reason} ->
+          # StoreError.Denied(reason) — the frozen ABI form (C2/#297).
+          {:error, {:denied, reason}}
       end
     end)
   end
@@ -129,8 +132,9 @@ defmodule Skein.Runtime.Store do
               error
           end
 
-        {:error, _} = error ->
-          error
+        {:error, reason} ->
+          # StoreError.Denied(reason) — the frozen ABI form (C2/#297).
+          {:error, {:denied, reason}}
       end
     end)
   end
@@ -198,8 +202,9 @@ defmodule Skein.Runtime.Store do
           allowed = known |> MapSet.to_list() |> Enum.sort() |> Enum.join(", ")
 
           {:error,
-           "Unknown filter field#{plural(keys)} #{Enum.map_join(keys, ", ", &inspect/1)} " <>
-             "for query on table '#{table_name}'. Allowed fields: #{allowed}"}
+           {:failed,
+            "Unknown filter field#{plural(keys)} #{Enum.map_join(keys, ", ", &inspect/1)} " <>
+              "for query on table '#{table_name}'. Allowed fields: #{allowed}"}}
       end
     end
   end
