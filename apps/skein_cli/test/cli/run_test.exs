@@ -147,6 +147,55 @@ defmodule Skein.CLI.RunTest do
     end
   end
 
+  describe "supervisor wiring (#325)" do
+    defp write_pool(src_dir, module_name) do
+      File.write!(Path.join(src_dir, "#{String.downcase(module_name)}.skein"), """
+      module #{module_name} {
+        supervisor Main {
+          child Worker
+        }
+
+        agent Worker {
+          enum Phase {
+            Waiting -> []
+          }
+
+          on start() -> {
+            transition(Phase.Waiting)
+          }
+
+          on phase(Phase.Waiting) -> {
+            42
+          }
+        }
+      }
+      """)
+    end
+
+    test "a module with only a supervisor is mounted", %{tmp_dir: tmp, src_dir: src} do
+      write_pool(src, "SoloPool")
+
+      assert {:ok, config} = CLI.run_config([tmp])
+      assert [mod] = config.modules
+      assert mod.__supervisors__() != []
+    end
+
+    test "run boots declared supervisors with agent children", %{tmp_dir: tmp, src_dir: src} do
+      write_pool(src, "RunPool")
+      Skein.Runtime.EventStore.clear()
+
+      port = get_free_port()
+      assert {:ok, pid} = CLI.run([tmp, "--no-persist", "--port", "#{port}"])
+
+      events = Skein.Runtime.EventStore.query(kind: :supervisor, event: :child_started)
+      assert [event] = events
+      assert event.supervisor == "Main"
+      assert event.child == "Worker"
+
+      GenServer.stop(pid)
+    end
+  end
+
   describe "event persistence (#299)" do
     test "run enables persistence at <project>/.skein/events.db by default",
          %{tmp_dir: tmp, src_dir: src} do

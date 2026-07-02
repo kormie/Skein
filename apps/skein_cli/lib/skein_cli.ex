@@ -754,6 +754,11 @@ defmodule Skein.CLI do
   @doc """
   Compiles a Skein project and starts an HTTP server for any handlers found.
 
+  Declared `supervisor` trees boot as real OTP supervisors under the
+  server (#325): each module's `__supervisors__/0` metadata is realized
+  by `Skein.Runtime.SupervisorHost`, with agent children restarted per
+  the declared strategy and intensity for as long as the service runs.
+
   Event persistence is enabled by default (#299): every EventStore append
   is also written to SQLite at `<project>/.skein/events.db`, and previously
   persisted events are reloaded on startup so a restarted service sees its
@@ -838,18 +843,20 @@ defmodule Skein.CLI do
         # compile order, not the reversed accumulator
         |> Enum.reverse()
 
-      # Every module with handlers is mounted: HTTP routes are merged into
-      # one router and background (schedule/queue/topic) handlers register,
-      # rather than picking a single module and 404-ing the rest
-      # (skein-testing#21).
-      handler_modules =
+      # Every module with handlers OR supervisors is mounted: HTTP routes
+      # are merged into one router, background (schedule/queue/topic)
+      # handlers register, and declared supervision trees boot under the
+      # server (#325), rather than picking a single module and 404-ing
+      # the rest (skein-testing#21).
+      service_modules =
         Enum.filter(modules, fn mod ->
-          function_exported?(mod, :__handlers__, 0) and mod.__handlers__() != []
+          (function_exported?(mod, :__handlers__, 0) and mod.__handlers__() != []) or
+            (function_exported?(mod, :__supervisors__, 0) and mod.__supervisors__() != [])
         end)
 
-      case handler_modules do
+      case service_modules do
         [] ->
-          {:error, "No handlers found in compiled modules"}
+          {:error, "No handlers or supervisors found in compiled modules"}
 
         mods ->
           {:ok,

@@ -14,10 +14,12 @@ defmodule Skein.Runtime.Server do
 
   The server will:
   1. Build a Plug router from `__handlers__/0` on the compiled module
-  2. Start Bandit on the given port
-  3. Dispatch requests to compiled Skein handlers
-  4. Return JSON responses
-  5. Serve trace data at `GET /__skein/traces`
+  2. Boot declared supervision trees from `__supervisors__/0` (see
+     `Skein.Runtime.SupervisorHost` — supervisors live as long as the server)
+  3. Start Bandit on the given port
+  4. Dispatch requests to compiled Skein handlers
+  5. Return JSON responses
+  6. Serve trace data at `GET /__skein/traces`
   """
 
   use GenServer
@@ -66,6 +68,14 @@ defmodule Skein.Runtime.Server do
     router = Router.build_multi(modules)
     Enum.each(modules, &register_background_handlers/1)
 
+    # Boot declared supervision trees (#325). The supervisors are linked
+    # to this server process, so they live exactly as long as the service.
+    supervisor_pids =
+      Enum.flat_map(modules, fn module ->
+        {:ok, pids} = Skein.Runtime.SupervisorHost.start_supervisors(module)
+        pids
+      end)
+
     case Bandit.start_link(plug: router, port: port, ip: {127, 0, 0, 1}) do
       {:ok, bandit_pid} ->
         {:ok,
@@ -73,7 +83,8 @@ defmodule Skein.Runtime.Server do
            modules: modules,
            module: hd(modules),
            port: port,
-           bandit_pid: bandit_pid
+           bandit_pid: bandit_pid,
+           supervisor_pids: supervisor_pids
          }}
 
       {:error, reason} ->

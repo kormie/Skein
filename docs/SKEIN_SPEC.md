@@ -300,16 +300,24 @@ language):
   reference (`child Worker { ... }`) with optional named start arguments
   in its brace block.
 - `strategy:` takes exactly the three OTP strategies shown; anything else
-  is E0040. It may be omitted; the wiring issue (#325) pins the runtime
-  default as `one_for_one` when it lands.
+  is E0040. It may be omitted; the runtime default is `one_for_one`
+  (#325).
 - `max_restarts: N per M s` is OTP restart intensity/period; both must be
   positive integers (E0041). A supervisor with no children warns (E0042).
 
-**Current semantics: metadata only.** Declarations compile to a
-`__supervisors__/0` metadata function; the runtime does not yet boot them
-as OTP supervisors. The wiring — real supervised agent children under
-`skein run`, restarts per the declared strategy, trace events on restart —
-is tracked by #325 (v0.5.0) and is additive on this surface.
+**Semantics: real OTP supervision (#325, landed 2026-07-02).**
+Declarations compile to a `__supervisors__/0` metadata function, and
+`skein run` boots one OTP supervisor per declaration for as long as the
+service runs. Each `child` target resolves to the module's compiled
+nested agent; children are started `permanent` unless the child's brace
+block declares `restart: transient` or `restart: temporary`, and the
+remaining brace-block entries are the agent's `on start(...)` arguments.
+The runtime default strategy is `one_for_one`; a declared `max_restarts:
+N per M s` is enforced as OTP restart intensity (exceeding it shuts the
+supervisor down). Every child start — including every restart — appends
+a `:supervisor`/`:child_started` event to the event log, so restarts are
+visible in the trace, and `memory.kv` data survives child restarts (the
+store outlives agent processes).
 
 ### 3.10 Tests
 

@@ -649,8 +649,12 @@ pure functions over the capability lists codegen threads into each call.
 Outside this tree:
 
 - **Agents** run as `gen_statem` processes (`Skein.Runtime.Agent`), started
-  by the host via the compiled module's `start_link/1` — there is no
-  runtime-owned agent pool supervisor.
+  by the host via the compiled module's `start_link/1` or as children of a
+  declared supervision tree (below).
+- **Declared supervisors** (`supervisor` blocks, #325) are realized by
+  `Skein.Runtime.SupervisorHost`: one real OTP `Supervisor` per
+  `__supervisors__/0` entry, with the module's compiled nested agents as
+  children, started by (and linked to) `Skein.Runtime.Server`.
 - **HTTP serving** is started by `skein run` via `Skein.Runtime.Server`
   (Bandit + the Plug router built from `__handlers__/0` metadata).
 
