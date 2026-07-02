@@ -1,0 +1,52 @@
+{
+  "comment": "Frozen keyword inventory (#332). reserved = Skein.Lexer.keywords/0; contextual words lex as identifiers and are recognised by position in the parser. Both lists are drift-tested against spec section 2.3.",
+  "contextual": [
+    "assert",
+    "child",
+    "description",
+    "errors",
+    "expect",
+    "from",
+    "given",
+    "if",
+    "input",
+    "max_restarts",
+    "output",
+    "per",
+    "phase",
+    "start",
+    "state",
+    "strategy",
+    "trace"
+  ],
+  "reserved": [
+    "agent",
+    "capability",
+    "emit",
+    "enum",
+    "false",
+    "fn",
+    "golden",
+    "handler",
+    "idempotent",
+    "implement",
+    "let",
+    "match",
+    "module",
+    "on",
+    "scenario",
+    "stop",
+    "supervisor",
+    "suspend",
+    "test",
+    "tool",
+    "transition",
+    "true",
+    "type"
+  ],
+  "strategy_values": [
+    "one_for_all",
+    "one_for_one",
+    "rest_for_one"
+  ]
+}

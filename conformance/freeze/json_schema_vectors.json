@@ -1,0 +1,265 @@
+{
+  "comment": "Frozen JSON Schema derivation vectors (#332): schemas derived from the canonical declarations in json_schema_freeze_test.exs. The schema for a fixed declaration only changes in a major.",
+  "schemas": {
+    "Basic": {
+      "properties": {
+        "active": {
+          "type": "boolean"
+        },
+        "age": {
+          "maximum": 150,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "email": {
+          "format": "email",
+          "type": "string"
+        },
+        "homepage": {
+          "format": "uri",
+          "type": "string"
+        },
+        "id": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "joined": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "score": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "active",
+        "age",
+        "email",
+        "homepage",
+        "id",
+        "joined",
+        "name",
+        "score"
+      ],
+      "type": "object"
+    },
+    "Color": {
+      "enum": [
+        "Blue",
+        "Green",
+        "Red"
+      ],
+      "type": "string"
+    },
+    "Constrained": {
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "basic",
+            "pro"
+          ],
+          "type": "string"
+        },
+        "note": {
+          "description": "free text",
+          "type": "string"
+        },
+        "plan": {
+          "default": "basic",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "note",
+        "plan"
+      ],
+      "type": "object"
+    },
+    "Nested": {
+      "properties": {
+        "color": {
+          "enum": [
+            "Blue",
+            "Green",
+            "Red"
+          ],
+          "type": "string"
+        },
+        "friends": {
+          "items": {
+            "properties": {
+              "active": {
+                "type": "boolean"
+              },
+              "age": {
+                "maximum": 150,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "email": {
+                "format": "email",
+                "type": "string"
+              },
+              "homepage": {
+                "format": "uri",
+                "type": "string"
+              },
+              "id": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "joined": {
+                "format": "date-time",
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "score": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "active",
+              "age",
+              "email",
+              "homepage",
+              "id",
+              "joined",
+              "name",
+              "score"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "id": {
+          "type": "string"
+        },
+        "owner": {
+          "properties": {
+            "active": {
+              "type": "boolean"
+            },
+            "age": {
+              "maximum": 150,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "email": {
+              "format": "email",
+              "type": "string"
+            },
+            "homepage": {
+              "format": "uri",
+              "type": "string"
+            },
+            "id": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "joined": {
+              "format": "date-time",
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            },
+            "score": {
+              "type": "number"
+            }
+          },
+          "required": [
+            "active",
+            "age",
+            "email",
+            "homepage",
+            "id",
+            "joined",
+            "name",
+            "score"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "color",
+        "friends",
+        "id",
+        "owner"
+      ],
+      "type": "object"
+    },
+    "Shape": {
+      "oneOf": [
+        {
+          "properties": {
+            "radius": {
+              "type": "integer"
+            },
+            "type": {
+              "const": "Circle"
+            }
+          },
+          "required": [
+            "radius",
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "side": {
+              "type": "integer"
+            },
+            "type": {
+              "const": "Square"
+            }
+          },
+          "required": [
+            "side",
+            "type"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "WithOption": {
+      "properties": {
+        "counts": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "type": "object"
+        },
+        "id": {
+          "type": "string"
+        },
+        "nickname": {
+          "type": "string",
+          "x-skein-optional": true
+        },
+        "tags": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "counts",
+        "id",
+        "tags"
+      ],
+      "type": "object"
+    }
+  }
+}

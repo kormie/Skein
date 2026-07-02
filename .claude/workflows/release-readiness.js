@@ -107,8 +107,14 @@ const GATES_PROMPT =
   '3. `mix compile --warnings-as-errors`\n' +
   '4. `mix test` (the full umbrella suite; record the totals line)\n' +
   '5. `bash .claude/skills/bump-version/check-release.sh` (release preflight: version agreement, dated CHANGELOG, banner drift)\n' +
+  '6. Freeze gates (#332): from each app directory run its freeze suite and report one gate entry per app — ' +
+  '`cd apps/skein_compiler && mix test test/skein/freeze` (keywords, diagnostics registry, effect ABI, ' +
+  'JSON Schema vectors, metadata classes), `cd apps/skein_runtime && mix test test/skein/runtime/event_store_freeze_test.exs` ' +
+  '(persisted event vectors), `cd apps/skein_cli && mix test test/cli/cli_surface_freeze_test.exs test/cli/dogfood_pins_freeze_test.exs` ' +
+  '(CLI/config surface, dogfood pins). These compare the live surfaces against the frozen vectors in ' +
+  'conformance/freeze/ — a failure means a frozen surface drifted and the release CANNOT be GO.\n' +
   (TARGET_VERSION
-    ? '6. Version staging for the intended release v' + TARGET_VERSION + ': the `version:` in BOTH mix.exs and ' +
+    ? '7. Version staging for the intended release v' + TARGET_VERSION + ': the `version:` in BOTH mix.exs and ' +
       'apps/skein_cli/mix.exs must equal "' + TARGET_VERSION + '" (fail with what they actually say if not — ' +
       'that means the bump PR has not landed), and `git ls-remote --tags origin refs/tags/v' + TARGET_VERSION + '` ' +
       'must come back empty (fail if the tag already exists).\n'

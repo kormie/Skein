@@ -36,7 +36,7 @@ defmodule Skein.Runtime.EventStore do
   SQLite keeps the full history beyond the in-memory bound. Persisted
   events round-trip through JSON — see
   `Skein.Runtime.EventStore.Persistence` for the exact reloaded shape
-  (Pre-stable until the Wave F freeze).
+  (FROZEN at the Wave F gate #332 — see `event_store_freeze_test.exs`).
 
   Every event gets automatic metadata:
   - `id` — unique hex identifier

@@ -1,0 +1,888 @@
+{
+  "comment": "Frozen effect ABI (#332): the full Skein.EffectABI registry — every effect/store method signature, provider contract, and error enum variant (with its lowered shape pinned by the runtime ABI matrix). New methods/variants are minors; changing an existing one is major.",
+  "entries": [
+    {
+      "capability": "http.out",
+      "dispatch": "generic",
+      "method": "get",
+      "named_args": true,
+      "ns": "http",
+      "params": [
+        {
+          "name": "url",
+          "optional": false,
+          "type": ":string"
+        }
+      ],
+      "return": "{:result, :dynamic, {:user_type, \"HttpError\"}}",
+      "scoped": "host",
+      "spec_lines": [
+        "http.get(url: String) -> Result[HttpResponse, HttpError]"
+      ]
+    },
+    {
+      "capability": "http.out",
+      "dispatch": "generic",
+      "method": "post",
+      "named_args": true,
+      "ns": "http",
+      "params": [
+        {
+          "name": "url",
+          "optional": false,
+          "type": ":string"
+        },
+        {
+          "name": "json",
+          "optional": false,
+          "type": ":dynamic"
+        }
+      ],
+      "return": "{:result, :dynamic, {:user_type, \"HttpError\"}}",
+      "scoped": "host",
+      "spec_lines": [
+        "http.post(url: String, json: Map) -> Result[HttpResponse, HttpError]"
+      ]
+    },
+    {
+      "capability": "http.out",
+      "dispatch": "generic",
+      "method": "put",
+      "named_args": true,
+      "ns": "http",
+      "params": [
+        {
+          "name": "url",
+          "optional": false,
+          "type": ":string"
+        },
+        {
+          "name": "json",
+          "optional": false,
+          "type": ":dynamic"
+        }
+      ],
+      "return": "{:result, :dynamic, {:user_type, \"HttpError\"}}",
+      "scoped": "host",
+      "spec_lines": [
+        "http.put(url: String, json: Map) -> Result[HttpResponse, HttpError]"
+      ]
+    },
+    {
+      "capability": "http.out",
+      "dispatch": "generic",
+      "method": "patch",
+      "named_args": true,
+      "ns": "http",
+      "params": [
+        {
+          "name": "url",
+          "optional": false,
+          "type": ":string"
+        },
+        {
+          "name": "json",
+          "optional": false,
+          "type": ":dynamic"
+        }
+      ],
+      "return": "{:result, :dynamic, {:user_type, \"HttpError\"}}",
+      "scoped": "host",
+      "spec_lines": [
+        "http.patch(url: String, json: Map) -> Result[HttpResponse, HttpError]"
+      ]
+    },
+    {
+      "capability": "http.out",
+      "dispatch": "generic",
+      "method": "delete",
+      "named_args": true,
+      "ns": "http",
+      "params": [
+        {
+          "name": "url",
+          "optional": false,
+          "type": ":string"
+        }
+      ],
+      "return": "{:result, :dynamic, {:user_type, \"HttpError\"}}",
+      "scoped": "host",
+      "spec_lines": [
+        "http.delete(url: String) -> Result[HttpResponse, HttpError]"
+      ]
+    },
+    {
+      "capability": "memory.kv",
+      "dispatch": "special",
+      "method": "put",
+      "named_args": true,
+      "ns": "memory",
+      "params": [
+        {
+          "name": "key",
+          "optional": false,
+          "type": ":string"
+        },
+        {
+          "name": "value",
+          "optional": false,
+          "type": ":dynamic"
+        }
+      ],
+      "return": "{:result, :dynamic, {:user_type, \"MemoryError\"}}",
+      "scoped": "namespace",
+      "spec_lines": [
+        "memory.put(key: String, value: T) -> Result[T, MemoryError]"
+      ]
+    },
+    {
+      "capability": "memory.kv",
+      "dispatch": "special",
+      "method": "get",
+      "named_args": true,
+      "ns": "memory",
+      "params": [
+        {
+          "name": "key",
+          "optional": false,
+          "type": ":string"
+        }
+      ],
+      "return": "{:result, :dynamic, {:user_type, \"MemoryError\"}}",
+      "scoped": "namespace",
+      "spec_lines": [
+        "memory.get(key: String) -> Result[T, MemoryError]"
+      ]
+    },
+    {
+      "capability": "memory.kv",
+      "dispatch": "special",
+      "method": "delete",
+      "named_args": true,
+      "ns": "memory",
+      "params": [
+        {
+          "name": "key",
+          "optional": false,
+          "type": ":string"
+        }
+      ],
+      "return": "{:result, :string, {:user_type, \"MemoryError\"}}",
+      "scoped": "namespace",
+      "spec_lines": [
+        "memory.delete(key: String) -> Result[String, MemoryError]"
+      ]
+    },
+    {
+      "capability": "memory.kv",
+      "dispatch": "special",
+      "method": "list",
+      "named_args": true,
+      "ns": "memory",
+      "params": [
+        {
+          "name": "prefix",
+          "optional": false,
+          "type": ":string"
+        }
+      ],
+      "return": "{:list, :string}",
+      "scoped": "namespace",
+      "spec_lines": [
+        "memory.list(prefix: String) -> List[String]"
+      ]
+    },
+    {
+      "capability": "model",
+      "dispatch": "special",
+      "method": "chat",
+      "named_args": true,
+      "ns": "llm",
+      "params": [
+        {
+          "name": "model",
+          "optional": false,
+          "type": ":string"
+        },
+        {
+          "name": "system",
+          "optional": false,
+          "type": ":string"
+        },
+        {
+          "name": "input",
+          "optional": false,
+          "type": ":dynamic"
+        }
+      ],
+      "return": "{:result, :string, {:user_type, \"LlmError\"}}",
+      "scoped": null,
+      "spec_lines": [
+        "llm.chat(model: String, system: String, input: T) -> Result[String, LlmError]"
+      ]
+    },
+    {
+      "capability": "model",
+      "dispatch": "special",
+      "method": "json",
+      "named_args": true,
+      "ns": "llm",
+      "params": [
+        {
+          "name": "model",
+          "optional": false,
+          "type": ":string"
+        },
+        {
+          "name": "system",
+          "optional": false,
+          "type": ":string"
+        },
+        {
+          "name": "input",
+          "optional": false,
+          "type": ":dynamic"
+        }
+      ],
+      "return": ":from_type_param",
+      "scoped": null,
+      "spec_lines": [
+        "llm.json[T](model: String, system: String, input: U) -> Result[T, LlmError]"
+      ]
+    },
+    {
+      "capability": "model",
+      "dispatch": "special",
+      "method": "stream",
+      "named_args": true,
+      "ns": "llm",
+      "params": [
+        {
+          "name": "model",
+          "optional": false,
+          "type": ":string"
+        },
+        {
+          "name": "system",
+          "optional": false,
+          "type": ":string"
+        },
+        {
+          "name": "input",
+          "optional": false,
+          "type": ":dynamic"
+        },
+        {
+          "name": "on_chunk",
+          "optional": true,
+          "type": "{:fn, [:string], :dynamic}"
+        }
+      ],
+      "return": "{:result, :string, {:user_type, \"LlmError\"}}",
+      "scoped": null,
+      "spec_lines": [
+        "llm.stream(model: String, system: String, input: T) -> Result[String, LlmError]",
+        "llm.stream(model: String, system: String, input: T, on_chunk) -> Result[String, LlmError]"
+      ]
+    },
+    {
+      "capability": "model",
+      "dispatch": "special",
+      "method": "embed",
+      "named_args": true,
+      "ns": "llm",
+      "params": [
+        {
+          "name": "model",
+          "optional": false,
+          "type": ":string"
+        },
+        {
+          "name": "input",
+          "optional": false,
+          "type": ":string"
+        }
+      ],
+      "return": "{:result, {:list, :float}, {:user_type, \"LlmError\"}}",
+      "scoped": null,
+      "spec_lines": [
+        "llm.embed(model: String, input: String) -> Result[List[Float], LlmError]"
+      ]
+    },
+    {
+      "capability": "tool.use",
+      "dispatch": "special",
+      "method": "call",
+      "named_args": false,
+      "ns": "tool",
+      "params": [
+        {
+          "name": "name",
+          "optional": false,
+          "type": ":dynamic"
+        },
+        {
+          "name": "args",
+          "optional": false,
+          "type": ":dynamic"
+        }
+      ],
+      "return": "{:result, :dynamic, {:user_type, \"ToolError\"}}",
+      "scoped": null,
+      "spec_lines": [
+        "tool.call(name: ToolName, args: Map) -> Result[Map, ToolError]"
+      ]
+    },
+    {
+      "capability": "tool.use",
+      "dispatch": "special",
+      "method": "list",
+      "named_args": false,
+      "ns": "tool",
+      "params": [],
+      "return": "{:result, {:list, :dynamic}, {:user_type, \"ToolError\"}}",
+      "scoped": null,
+      "spec_lines": [
+        "tool.list() -> Result[List[ToolInfo], ToolError]"
+      ]
+    },
+    {
+      "capability": "tool.use",
+      "dispatch": "special",
+      "method": "schema",
+      "named_args": false,
+      "ns": "tool",
+      "params": [
+        {
+          "name": "name",
+          "optional": false,
+          "type": ":dynamic"
+        }
+      ],
+      "return": "{:result, :dynamic, {:user_type, \"ToolError\"}}",
+      "scoped": null,
+      "spec_lines": [
+        "tool.schema(name: ToolName) -> Result[Map, ToolError]"
+      ]
+    },
+    {
+      "capability": "topic.publish",
+      "dispatch": "generic",
+      "method": "publish",
+      "named_args": true,
+      "ns": "topic",
+      "params": [
+        {
+          "name": "name",
+          "optional": false,
+          "type": ":string"
+        },
+        {
+          "name": "data",
+          "optional": false,
+          "type": ":dynamic"
+        }
+      ],
+      "return": "{:result, :string, {:user_type, \"PublishError\"}}",
+      "scoped": null,
+      "spec_lines": [
+        "topic.publish(name: String, data: T) -> Result[String, PublishError]"
+      ]
+    },
+    {
+      "capability": "queue.publish",
+      "dispatch": "generic",
+      "method": "publish",
+      "named_args": true,
+      "ns": "queue",
+      "params": [
+        {
+          "name": "name",
+          "optional": false,
+          "type": ":string"
+        },
+        {
+          "name": "data",
+          "optional": false,
+          "type": ":dynamic"
+        }
+      ],
+      "return": "{:result, :string, {:user_type, \"PublishError\"}}",
+      "scoped": null,
+      "spec_lines": [
+        "queue.publish(name: String, data: T) -> Result[String, PublishError]"
+      ]
+    },
+    {
+      "capability": null,
+      "dispatch": "generic",
+      "method": "annotate",
+      "named_args": true,
+      "ns": "trace",
+      "params": [
+        {
+          "name": "key",
+          "optional": false,
+          "type": ":string"
+        },
+        {
+          "name": "value",
+          "optional": false,
+          "type": ":dynamic"
+        }
+      ],
+      "return": ":dynamic",
+      "scoped": null,
+      "spec_lines": [
+        "trace.annotate(key: String, value: String) -> ()"
+      ]
+    },
+    {
+      "capability": "event.log",
+      "dispatch": "generic",
+      "method": "log",
+      "named_args": true,
+      "ns": "event",
+      "params": [
+        {
+          "name": "name",
+          "optional": false,
+          "type": ":string"
+        },
+        {
+          "name": "data",
+          "optional": false,
+          "type": ":dynamic"
+        }
+      ],
+      "return": "{:result, :string, :dynamic}",
+      "scoped": "label",
+      "spec_lines": [
+        "event.log(name: String, data: T) -> Result[String, String]"
+      ]
+    },
+    {
+      "capability": "process.spawn",
+      "dispatch": "generic",
+      "method": "spawn",
+      "named_args": true,
+      "ns": "process",
+      "params": [
+        {
+          "name": "task",
+          "optional": false,
+          "type": ":string"
+        },
+        {
+          "name": "work",
+          "optional": true,
+          "type": "{:fn, [], :dynamic}"
+        }
+      ],
+      "return": "{:result, :dynamic, :string}",
+      "scoped": "label",
+      "spec_lines": [
+        "process.spawn(task: String) -> Result[_, String]",
+        "process.spawn(task: String, work) -> Result[_, String]"
+      ]
+    },
+    {
+      "capability": "timer",
+      "dispatch": "generic",
+      "method": "after",
+      "named_args": true,
+      "ns": "timer",
+      "params": [
+        {
+          "name": "delay_ms",
+          "optional": false,
+          "type": ":int"
+        },
+        {
+          "name": "task",
+          "optional": false,
+          "type": ":string"
+        },
+        {
+          "name": "work",
+          "optional": true,
+          "type": "{:fn, [], :dynamic}"
+        }
+      ],
+      "return": "{:result, :string, :string}",
+      "scoped": "label",
+      "spec_lines": [
+        "timer.after(delay_ms: Int, task: String) -> Result[String, String]",
+        "timer.after(delay_ms: Int, task: String, work) -> Result[String, String]"
+      ]
+    },
+    {
+      "capability": "timer",
+      "dispatch": "generic",
+      "method": "interval",
+      "named_args": true,
+      "ns": "timer",
+      "params": [
+        {
+          "name": "every_ms",
+          "optional": false,
+          "type": ":int"
+        },
+        {
+          "name": "task",
+          "optional": false,
+          "type": ":string"
+        },
+        {
+          "name": "work",
+          "optional": true,
+          "type": "{:fn, [], :dynamic}"
+        }
+      ],
+      "return": "{:result, :string, :string}",
+      "scoped": "label",
+      "spec_lines": [
+        "timer.interval(every_ms: Int, task: String) -> Result[String, String]",
+        "timer.interval(every_ms: Int, task: String, work) -> Result[String, String]"
+      ]
+    },
+    {
+      "capability": "timer",
+      "dispatch": "generic",
+      "method": "cancel",
+      "named_args": true,
+      "ns": "timer",
+      "params": [
+        {
+          "name": "ref",
+          "optional": false,
+          "type": ":dynamic"
+        }
+      ],
+      "return": "{:result, :string, :string}",
+      "scoped": "label",
+      "spec_lines": [
+        "timer.cancel(ref: String) -> Result[String, String]"
+      ]
+    },
+    {
+      "capability": "uuid",
+      "dispatch": "generic",
+      "method": "new",
+      "named_args": true,
+      "ns": "uuid",
+      "params": [],
+      "return": ":uuid",
+      "scoped": null,
+      "spec_lines": [
+        "uuid.new() -> Uuid"
+      ]
+    },
+    {
+      "capability": "instant",
+      "dispatch": "generic",
+      "method": "now",
+      "named_args": true,
+      "ns": "instant",
+      "params": [],
+      "return": ":instant",
+      "scoped": null,
+      "spec_lines": [
+        "instant.now() -> Instant"
+      ]
+    }
+  ],
+  "error_enums": {
+    "HttpError": [
+      {
+        "fields": [],
+        "name": "Timeout"
+      },
+      {
+        "fields": [],
+        "name": "ConnectionFailed"
+      },
+      {
+        "fields": [
+          {
+            "name": "code",
+            "type": "\"Int\""
+          },
+          {
+            "name": "body",
+            "type": "\"String\""
+          }
+        ],
+        "name": "Status"
+      },
+      {
+        "fields": [
+          {
+            "name": "reason",
+            "type": "\"String\""
+          }
+        ],
+        "name": "InvalidRequest"
+      },
+      {
+        "fields": [
+          {
+            "name": "reason",
+            "type": "\"String\""
+          }
+        ],
+        "name": "Denied"
+      }
+    ],
+    "LlmError": [
+      {
+        "fields": [
+          {
+            "name": "raw",
+            "type": "\"String\""
+          },
+          {
+            "name": "expected_type",
+            "type": "\"String\""
+          },
+          {
+            "name": "parse_error",
+            "type": "\"String\""
+          }
+        ],
+        "name": "ParseFailed"
+      },
+      {
+        "fields": [
+          {
+            "name": "reason",
+            "type": "\"String\""
+          }
+        ],
+        "name": "Refused"
+      },
+      {
+        "fields": [
+          {
+            "name": "retry_after_ms",
+            "type": "\"Int\""
+          }
+        ],
+        "name": "RateLimit"
+      },
+      {
+        "fields": [
+          {
+            "name": "elapsed_ms",
+            "type": "\"Int\""
+          }
+        ],
+        "name": "Timeout"
+      },
+      {
+        "fields": [
+          {
+            "name": "filter",
+            "type": "\"String\""
+          }
+        ],
+        "name": "ContentFiltered"
+      },
+      {
+        "fields": [
+          {
+            "name": "violations",
+            "type": "{\"List\", \"String\"}"
+          }
+        ],
+        "name": "InvalidSchema"
+      },
+      {
+        "fields": [
+          {
+            "name": "code",
+            "type": "\"String\""
+          },
+          {
+            "name": "message",
+            "type": "\"String\""
+          }
+        ],
+        "name": "ProviderError"
+      },
+      {
+        "fields": [
+          {
+            "name": "reason",
+            "type": "\"String\""
+          }
+        ],
+        "name": "Denied"
+      }
+    ],
+    "MemoryError": [
+      {
+        "fields": [],
+        "name": "NotFound"
+      },
+      {
+        "fields": [
+          {
+            "name": "reason",
+            "type": "\"String\""
+          }
+        ],
+        "name": "Failed"
+      },
+      {
+        "fields": [
+          {
+            "name": "reason",
+            "type": "\"String\""
+          }
+        ],
+        "name": "Denied"
+      }
+    ],
+    "NotFound": [
+      {
+        "fields": [],
+        "name": "NotFound"
+      }
+    ],
+    "PublishError": [
+      {
+        "fields": [
+          {
+            "name": "reason",
+            "type": "\"String\""
+          }
+        ],
+        "name": "Denied"
+      },
+      {
+        "fields": [
+          {
+            "name": "reason",
+            "type": "\"String\""
+          }
+        ],
+        "name": "Failed"
+      }
+    ],
+    "StoreError": [
+      {
+        "fields": [],
+        "name": "NotFound"
+      },
+      {
+        "fields": [
+          {
+            "name": "reason",
+            "type": "\"String\""
+          }
+        ],
+        "name": "Failed"
+      },
+      {
+        "fields": [
+          {
+            "name": "reason",
+            "type": "\"String\""
+          }
+        ],
+        "name": "Denied"
+      }
+    ],
+    "ToolError": [
+      {
+        "fields": [
+          {
+            "name": "name",
+            "type": "\"String\""
+          }
+        ],
+        "name": "NotFound"
+      },
+      {
+        "fields": [
+          {
+            "name": "tool",
+            "type": "\"String\""
+          },
+          {
+            "name": "violations",
+            "type": "{\"List\", \"String\"}"
+          }
+        ],
+        "name": "ValidationError"
+      },
+      {
+        "fields": [
+          {
+            "name": "tool",
+            "type": "\"String\""
+          },
+          {
+            "name": "error",
+            "type": "\"String\""
+          }
+        ],
+        "name": "ExecutionError"
+      },
+      {
+        "fields": [
+          {
+            "name": "reason",
+            "type": "\"String\""
+          }
+        ],
+        "name": "Denied"
+      }
+    ]
+  },
+  "provider_contracts": {
+    "http.out": {
+      "signature": "implement(req: HttpRequest) -> Result[HttpResponse, HttpError]"
+    },
+    "instant": {
+      "signature": "implement() -> Instant"
+    },
+    "model": {
+      "signature": "implement(req: LlmRequest) -> Result[LlmResponse, LlmError]"
+    },
+    "uuid": {
+      "signature": "implement() -> Uuid"
+    }
+  },
+  "store_entries": [
+    {
+      "method": "get",
+      "return": "{:result, :dynamic, {:user_type, \"StoreError\"}}",
+      "spec_lines": [
+        "store.<table>.get(id: Uuid) -> Result[T, StoreError]"
+      ]
+    },
+    {
+      "method": "put",
+      "return": "{:result, :dynamic, {:user_type, \"StoreError\"}}",
+      "spec_lines": [
+        "store.<table>.put(record: T) -> Result[T, StoreError]"
+      ]
+    },
+    {
+      "method": "delete",
+      "return": "{:result, :dynamic, {:user_type, \"StoreError\"}}",
+      "spec_lines": [
+        "store.<table>.delete(id: Uuid) -> Result[Uuid, StoreError]"
+      ]
+    },
+    {
+      "method": "query",
+      "return": "{:result, {:list, :dynamic}, {:user_type, \"StoreError\"}}",
+      "spec_lines": [
+        "store.<table>.query(filters: Map) -> Result[List[T], StoreError]"
+      ]
+    }
+  ]
+}

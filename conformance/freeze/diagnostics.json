@@ -1,0 +1,179 @@
+{
+  "codes": {
+    "W0001": {
+      "category": "Warning",
+      "severity": "warning"
+    },
+    "E0033": {
+      "category": "Agent",
+      "severity": "error"
+    },
+    "E0032": {
+      "category": "Agent",
+      "severity": "error"
+    },
+    "E0010": {
+      "category": "Name",
+      "severity": "error"
+    },
+    "E0036": {
+      "category": "Agent",
+      "severity": "error"
+    },
+    "E0037": {
+      "category": "Type",
+      "severity": "error"
+    },
+    "E0041": {
+      "category": "Supervisor",
+      "severity": "error"
+    },
+    "E0029": {
+      "category": "Capability",
+      "severity": "error"
+    },
+    "E0012": {
+      "category": "Capability",
+      "severity": "error"
+    },
+    "E0025": {
+      "category": "Type",
+      "severity": "error"
+    },
+    "W0003": {
+      "category": "Warning",
+      "severity": "warning"
+    },
+    "E0026": {
+      "category": "Type",
+      "severity": "error"
+    },
+    "E0022": {
+      "category": "Type",
+      "severity": "error"
+    },
+    "E0020": {
+      "category": "Type",
+      "severity": "error"
+    },
+    "E0003": {
+      "category": "Syntax",
+      "severity": "error"
+    },
+    "E0024": {
+      "category": "Type",
+      "severity": "error"
+    },
+    "E0021": {
+      "category": "Type",
+      "severity": "error"
+    },
+    "E0042": {
+      "category": "Supervisor",
+      "severity": "warning"
+    },
+    "E0043": {
+      "category": "Store",
+      "severity": "error"
+    },
+    "E0017": {
+      "category": "Capability",
+      "severity": "error"
+    },
+    "E0039": {
+      "category": "Agent",
+      "severity": "error"
+    },
+    "E0027": {
+      "category": "Type",
+      "severity": "error"
+    },
+    "W0002": {
+      "category": "Warning",
+      "severity": "warning"
+    },
+    "E0040": {
+      "category": "Supervisor",
+      "severity": "error"
+    },
+    "E0028": {
+      "category": "Capability",
+      "severity": "error"
+    },
+    "W0004": {
+      "category": "Warning",
+      "severity": "warning"
+    },
+    "E0030": {
+      "category": "Agent",
+      "severity": "error"
+    },
+    "E0016": {
+      "category": "Name",
+      "severity": "error"
+    },
+    "E0035": {
+      "category": "Agent",
+      "severity": "error"
+    },
+    "E0011": {
+      "category": "Name",
+      "severity": "error"
+    },
+    "E0031": {
+      "category": "Agent",
+      "severity": "warning"
+    },
+    "E0023": {
+      "category": "Type",
+      "severity": "error"
+    },
+    "E0001": {
+      "category": "Syntax",
+      "severity": "error"
+    },
+    "E0014": {
+      "category": "Tool",
+      "severity": "error"
+    },
+    "E0002": {
+      "category": "Syntax",
+      "severity": "error"
+    },
+    "E0038": {
+      "category": "Type",
+      "severity": "error"
+    },
+    "E0015": {
+      "category": "Tool",
+      "severity": "error"
+    },
+    "E0013": {
+      "category": "Capability",
+      "severity": "—"
+    },
+    "E0034": {
+      "category": "Agent",
+      "severity": "error"
+    }
+  },
+  "comment": "Frozen diagnostics registry (#332): code -> category/severity, parsed from spec section 7 (the canonical table). Codes are append-only; a severity change is breaking. Structured fields + edit kinds are the machine-consumed error shape.",
+  "edit_kinds": [
+    "delete_line",
+    "insert_after",
+    "insert_before",
+    "insert_line",
+    "replace"
+  ],
+  "error_fields": [
+    "code",
+    "context",
+    "edit_kind",
+    "fix_code",
+    "fix_hint",
+    "location",
+    "message",
+    "severity",
+    "span"
+  ]
+}

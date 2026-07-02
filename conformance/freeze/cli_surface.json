@@ -1,0 +1,22 @@
+{
+  "comment": "Frozen CLI/JSON/config surface (#332). json_schemas are the versioned --json envelope schemas; llm_profile_keys are the recognized [llm] / [env.<name>.llm] skein.toml keys (unknown keys are never errors); new_backends are the `skein new --backend` values. The command/flag inventory is pinned verbatim by cli_usage.txt + cli_completions.zsh.",
+  "json_schemas": [
+    "skein.build/v1",
+    "skein.compile/v1",
+    "skein.test/v1",
+    "skein.trace/v1"
+  ],
+  "llm_profile_keys": [
+    "api_key_env",
+    "backend",
+    "base_url",
+    "model_map",
+    "region"
+  ],
+  "new_backends": [
+    "anthropic",
+    "bedrock",
+    "openai_compatible",
+    "test"
+  ]
+}

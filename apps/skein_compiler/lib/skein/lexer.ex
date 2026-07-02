@@ -29,11 +29,22 @@ defmodule Skein.Lexer do
   )a
 
   # Contextual keywords (input, output, errors, description, state,
-  # strategy, child, replay, given, expect, assert, if) are NOT in @keywords.
-  # They are emitted as :ident tokens and recognised contextually by the parser.
-  # See expect_ident_value/3 and direct {:ident, _, "word"} matches in parser.
+  # strategy, child, given, expect, assert, start, phase, from, trace,
+  # per, max_restarts, if) are NOT in @keywords. They are emitted as
+  # :ident tokens and recognised contextually by the parser. See
+  # expect_ident_value/3 and direct {:ident, _, "word"} matches in parser.
+  # The frozen inventory lives in conformance/freeze/keywords.json (#332).
 
   @keyword_strings Enum.map(@keywords, &Atom.to_string/1)
+
+  @doc """
+  The reserved-keyword inventory, sorted.
+
+  Frozen at the Wave F gate (#332): reserving a new word is a breaking
+  change (it steals an identifier); additions prefer contextual keywords.
+  """
+  @spec keywords() :: [String.t()]
+  def keywords, do: Enum.sort(@keyword_strings)
 
   @spec tokenize(String.t()) :: {:ok, list()} | {:error, [Skein.Error.t()]}
   def tokenize(source) do

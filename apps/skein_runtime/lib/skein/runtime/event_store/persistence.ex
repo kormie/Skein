@@ -38,7 +38,10 @@ defmodule Skein.Runtime.EventStore.Persistence do
     `timestamp` is a monotonic time from the previous VM run, so it is
     only meaningful for ordering within that run's events)
 
-  These shapes are Pre-stable until the Wave F freeze (`docs/STABILITY.md`).
+  These shapes are FROZEN as of the Wave F gate (#332): the frozen
+  vectors in `event_store_freeze_test.exs` pin the reloaded map per
+  persisted class. Shapes only gain fields within a major
+  (`docs/STABILITY.md`).
   """
 
   use GenServer

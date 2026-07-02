@@ -1,6 +1,6 @@
 # SKEIN_SPEC.md — Complete Language Specification
 
-**Version 1.0 — draft (pre-release; NOT yet frozen).** v1.0.0 has not been released. The grammar, effects, diagnostics, derived schemas, CLI/config, and persisted EventStore shapes are still **pre-1.0 and may change** until the freeze gate (`v1.0.0-rc.2`); see `docs/STABILITY.md` and `docs/ROADMAP.md`. Sections describing the scenario-testing surface (§3.10), the effect/error ABI (§6), the error registry (§7), the store contract (§6.2), and EventStore durability are under active soundness/contract work (2026-06-19 audit) and are not authoritative until their release gates are green.
+**Version 1.0 — release candidate (FROZEN at the v1.0.0-rc.5 gate, Wave F/#332, 2026-07-02).** v1.0.0 has not been released yet, but every surface this spec describes — the grammar and keyword inventory (§2–§3), the scenario-testing surface (§3.10), the effect/error ABI (§6, including the store contract §6.2), the error registry (§7), derived schemas, CLI/config, and persisted EventStore shapes — is now declared frozen and guarded by executable drift gates (the registry drift tests plus the frozen vectors under `conformance/freeze/`). Between rc.5 and GA these surfaces change only for release-blocking defects; the semver promises in `docs/STABILITY.md` bind when v1.0.0 tags.
 
 This document is the single-file specification for Skein. It is designed to fit within an LLM context window alongside task-specific code and instructions.
 
@@ -54,15 +54,24 @@ true  false  implement  idempotent
 
 **Contextual keywords.** The following words have meaning only inside their
 construct and are ordinary identifiers everywhere else (`let input = 1` is
-valid Skein):
+valid Skein). This is the complete frozen inventory (#332; drift-tested
+against `conformance/freeze/keywords.json`):
 
 ```
 input  output  errors  description  state  strategy  child
-replay  given  expect  assert
+given  expect  assert  start  phase  from  trace  per  max_restarts  if
 ```
 
-`if` is likewise contextual: it introduces a guard in match arms (§3.11) and
-is an ordinary identifier elsewhere.
+Positions: `input`/`output`/`errors`/`description` head tool sections (§3.8);
+`state` heads the agent state block and `start`/`phase` head `on` handlers
+(§3.7); `strategy`/`child`/`max_restarts`/`per` appear in supervisor
+bodies (§3.9), whose strategy *values* (`one_for_one`, `one_for_all`,
+`rest_for_one`) are likewise positional identifiers; `given`/`expect` head
+scenario blocks and `assert` introduces assertions (§3.10); `from`/`trace`
+join a `golden` declaration to its trace (§3.10); `if` introduces a guard in
+match arms (§3.11). (`replay`, listed here in earlier drafts, is not a
+contextual keyword — no construct recognizes it; it is an ordinary
+identifier.)
 
 ### 2.4 Operators
 
