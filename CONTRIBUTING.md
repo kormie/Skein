@@ -31,13 +31,14 @@ automatically; a maintainer then sets priority and milestone and removes the tri
 
 - **v0.4.0 — Truth & Soundness** — shipped 2026-07-02 (Wave A truth reset + Wave B analyzer/codegen
   soundness, B1–B6, source-verified — plus the Wave B residue, all closed).
-- **v0.5.0 — Runtime Contract & Dogfood** — landed 2026-07-02, release pending (Wave C
+- **v0.5.0 — Runtime Contract & Dogfood** — shipped 2026-07-02 (Wave C
   effect-ABI/structured-error/schema/store/EventStore honesty, C1–C6 + supervisor wiring #325;
   Wave D continuous dogfood gate).
-- **v1.0.0-rc.2 — True release candidate** — the next active gate; cut only when every 1.0 blocker
-  is green; no feature work. (The conditional v0.6.0 canonical-substrate milestone was retired
-  2026-07-02 when #300 resolved as Alternative B — the substrate items live in v1.1.)
-- **v1.0.0 Release** — GA, after rc.2 soaks (not imminent).
+- **v1.0.0-rc.5 — True release candidate** — the next active gate; cut only when every 1.0 blocker
+  is green; no feature work. (Renamed from v1.0.0-rc.2: tags rc.2–rc.4 exist from the pre-reset
+  June train, so the next RC tag is rc.5. The conditional v0.6.0 canonical-substrate milestone was
+  retired 2026-07-02 when #300 resolved as Alternative B — the substrate items live in v1.1.)
+- **v1.0.0 Release** — GA, after rc.5 soaks (not imminent).
 - **v1.1: Hardening & Language** / **v1.2: Interop & Agent Workflows** / **Future: Platform** —
   the post-1.0 backlog, in priority order.
 - **v0.1 Alpha Release**, **v0.2 Beta Release**, and **v1.0.0-rc Release** — closed; they gated
