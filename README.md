@@ -390,6 +390,14 @@ The compilation pipeline was built in phases — the *pipeline* is complete end-
 | **8b** | **Storage backend** — Ecto/SQLite layer (schema + migration generation); built as library code — typed store tables landed on the ETS store instead (C5, #255) | Complete |
 | **9-10** | **Stdlib, error codes, unified event store** — 11 stdlib modules (101 functions), the structured error/warning registry (aligned with the spec §7 table, including E0028/E0029), single append-only event log (ETS; opt-in SQLite persistence on the ordinary append path, enabled by default under `skein run` — #299) | Complete |
 
+### Measured agent writability
+
+The central pitch — a language LLM agents can *write* — is measured, not asserted. The agent-writability benchmark asks a live model to write twelve Skein programs from the scaffolded [`AGENTS.md` primer](docs/site/src/content/docs/reference/agent-primer.md), compiles each one, mechanically applies the machine-applicable fixes, feeds the structured diagnostics back, and iterates to green:
+
+![Agent-writability benchmark: tasks-green and first-try compile rates over recorded live runs](docs/site/public/writability-history.svg)
+
+Every live run records its generations (`conformance/writability/`), and CI replays them deterministically against the current compiler — a recorded solution that stops compiling is a caught regression. A diagnostic that fails to converge the loop is treated as a compiler bug. Details: [the benchmark reference](https://kormie.github.io/Skein/reference/writability-benchmark/).
+
 The full test suite (unit, property-based, and integration) runs green in CI on every change — see the CI badge above for current totals. The compilation pipeline works end-to-end — from `.skein` source to running BEAM bytecode with real LLM calls and capability-checked storage. See [`examples/`](examples/README.md) for sixteen working programs, all covered by integration tests, and [docs/ROADMAP.md](docs/ROADMAP.md) for what's next.
 
 ---

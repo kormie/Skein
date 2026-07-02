@@ -128,7 +128,11 @@ const E2E_PROMPT =
   'directory under conformance/dogfood/ — each must report 0 failed and 0 compile failures, ' +
   'and the total per project must equal its `expected_tests` in conformance/dogfood.json. ' +
   'One gate entry per project. Release-readiness CANNOT report GO without these.\n' +
-  '5. Clean up /tmp/skein_rc_smoke.\n' +
+  '5. Agent-writability benchmark (#320): `mix skein.bench -- --report /tmp/skein_bench_report.json` ' +
+  '(replay mode — deterministic, no LLM calls) — must exit 0 with every task green. Put the ' +
+  'first-try compile rate and mean-iterations-to-green from the printed summary in detail: ' +
+  'they are the measured RC writability quality. Clean up the report file.\n' +
+  '6. Clean up /tmp/skein_rc_smoke.\n' +
   '\nStructured output only.'
 
 const INVENTORY_PROMPT =
