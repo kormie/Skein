@@ -17,7 +17,7 @@ defmodule Skein.Analyzer do
   - E0003: Invalid number literal
 
   ### Name Resolution (E001x)
-  - E0010: Undefined identifier
+  - E0010: Undefined identifier, unknown `&fn` reference, call to an undeclared fn, or unknown store-table method
   - E0011: Duplicate definition (same name declared twice in a scope)
   - E0012: Missing capability declaration
   - E0013: Capability parameter mismatch
@@ -28,7 +28,7 @@ defmodule Skein.Analyzer do
   - E0017: Duplicate scoped capability declaration (memory.kv, event.log, process.spawn, timer)
 
   ### Type Checking (E002x)
-  - E0020: Type mismatch (return type, match arm types, operator types, arity, argument types for fn/stdlib/effect calls, wrong-shape callbacks in higher-order slots, tool implement bodies vs the Result[output, error] contract, provider bodies vs their declared return)
+  - E0020: Type mismatch (return type, match arm types, operator types, arity, argument types for fn/stdlib/effect/fn-typed-variable calls, wrong-shape callbacks in higher-order slots, tool implement bodies vs the Result[output, error] contract, provider bodies vs their declared return, a bare fn name used as a value, calling a non-function value)
   - E0021: Non-exhaustive match (warning)
   - E0022: Invalid `!` on non-Result type
   - E0023: Invalid `?` on non-Result type (or enclosing fn doesn't return Result)
@@ -2174,8 +2174,21 @@ defmodule Skein.Analyzer do
         {Map.get(env.variables, name), []}
 
       Map.has_key?(env.functions, name) ->
-        # A function reference — type is determined at call site
-        {:unknown, []}
+        # A bare fn name is not a value — `&name` is the one reference form
+        # (#293 / B4). Before this, the silent :unknown reached codegen's
+        # identifier fallback and emitted an unbound Core variable.
+        {:unknown,
+         [
+           %Error{
+             code: "E0020",
+             severity: :error,
+             message:
+               "'#{name}' is a function — use '&#{name}' to reference it, or '#{name}(...)' to call it",
+             location: location_from_meta(meta, env.file),
+             fix_hint: "Function values are written with '&'",
+             fix_code: "&#{name}"
+           }
+         ]}
 
       Map.has_key?(env.enums, name) ->
         # Enum variant reference (simple, no data)
@@ -2860,9 +2873,71 @@ defmodule Skein.Analyzer do
             end
         end
 
-      _ ->
-        # Unknown function call — can't infer type
+      # The parser's internal assert marker (`assert expr` desugars to a
+      # __assert__ call) — not a user-callable name, and codegen lowers it.
+      %AST.Identifier{name: "__assert__"} ->
         {:unknown, args_errors}
+
+      # Calling a variable: legal when the variable holds a function value
+      # (`let g = &f` then `g()` — codegen applies the bound closure). Any
+      # other variable, or an unknown lowercase name, is a structured error at
+      # the call site (#293 / B4) — never a silent :unknown.
+      %AST.Identifier{name: <<c, _::binary>> = name} when c in ?a..?z ->
+        cond do
+          Map.has_key?(env.variables, name) ->
+            variable_call_result(name, Map.get(env.variables, name), args_results, meta, env)
+
+          true ->
+            {:unknown,
+             args_errors ++
+               [
+                 %Error{
+                   code: "E0010",
+                   severity: :error,
+                   message: "Unknown function '#{name}'",
+                   location: location_from_meta(meta, env.file),
+                   fix_hint: fn_suggestion_hint(env),
+                   fix_code: "#{closest_name(name, Map.keys(env.functions))}(...)"
+                 }
+               ]}
+        end
+
+      # store.<table>.<method>(...) with a method outside the store surface —
+      # the guarded store clause above did not match, so reject it here
+      # rather than letting it reach codegen (#293 / B4).
+      %AST.FieldAccess{
+        subject: %AST.FieldAccess{subject: %AST.Identifier{name: "store"}, field: table},
+        field: method
+      } ->
+        {:unknown,
+         args_errors ++
+           [
+             %Error{
+               code: "E0010",
+               severity: :error,
+               message: "Unknown store method 'store.#{table}.#{method}'",
+               location: location_from_meta(meta, env.file),
+               fix_hint: "Store tables support: #{Enum.join(@store_methods, ", ")}",
+               fix_code: "store.#{table}.#{closest_name(method, @store_methods)}(...)"
+             }
+           ]}
+
+      _ ->
+        # Remaining exotic call targets (deep field-access chains on values).
+        # No codegen path applies these, so they must not pass analysis.
+        {:unknown,
+         args_errors ++
+           [
+             %Error{
+               code: "E0020",
+               severity: :error,
+               message: "This expression cannot be called as a function",
+               location: location_from_meta(meta, env.file),
+               fix_hint:
+                 "Call a declared fn, a stdlib function, an effect, or a fn-typed variable",
+               fix_code: nil
+             }
+           ]}
     end
   end
 
@@ -2940,9 +3015,10 @@ defmodule Skein.Analyzer do
 
   # FnRef: `&name` carries the referenced fn's signature as a callable type
   # (#292 / B3), so higher-order slots can check the callback's shape. An
-  # unresolved name stays :unknown — the boundary guard rejects it (E0037)
-  # until B4/#293 makes the unresolved reference itself a structured error.
-  defp infer_type(%AST.FnRef{name: name}, env) do
+  # unresolved name is a structured error at the reference itself (#293 / B4)
+  # — before this, it stayed a silent :unknown and codegen emitted an unbound
+  # Core variable that failed BEAM compilation.
+  defp infer_type(%AST.FnRef{name: name, meta: meta}, env) do
     case Map.fetch(env.functions, name) do
       {:ok, fn_info} ->
         param_types =
@@ -2953,7 +3029,17 @@ defmodule Skein.Analyzer do
         {{:fn, param_types, fn_info.return_type}, []}
 
       :error ->
-        {:unknown, []}
+        {:unknown,
+         [
+           %Error{
+             code: "E0010",
+             severity: :error,
+             message: "Unknown function '&#{name}' — no fn '#{name}' is declared in this module",
+             location: location_from_meta(meta, env.file),
+             fix_hint: fn_suggestion_hint(env),
+             fix_code: "&#{closest_name(name, Map.keys(env.functions))}"
+           }
+         ]}
     end
   end
 
@@ -3112,6 +3198,88 @@ defmodule Skein.Analyzer do
   # Catch-all
   defp infer_type(_expr, _env) do
     {:unknown, []}
+  end
+
+  # `g(...)` where `g` is a bound variable: typed when the variable carries a
+  # callable type (arity + argument types checked like a local call), passed
+  # through when it is permissive, rejected when it is anything else.
+  defp variable_call_result(name, {:fn, param_types, ret}, args_results, meta, env) do
+    args_errors = Enum.flat_map(args_results, &elem(&1, 1))
+    arg_types = Enum.map(args_results, &elem(&1, 0))
+
+    arity_errors =
+      if length(param_types) == length(arg_types) do
+        []
+      else
+        [
+          %Error{
+            code: "E0020",
+            severity: :error,
+            message:
+              "'#{name}' expects #{length(param_types)} argument(s), got #{length(arg_types)}",
+            location: location_from_meta(meta, env.file),
+            fix_hint: "Pass #{length(param_types)} argument(s)",
+            fix_code: nil
+          }
+        ]
+      end
+
+    type_errors =
+      if length(param_types) == length(arg_types) do
+        Enum.zip(param_types, arg_types)
+        |> Enum.with_index(1)
+        |> Enum.flat_map(fn {{expected, actual}, index} ->
+          if types_compatible?(actual, expected) do
+            []
+          else
+            [
+              %Error{
+                code: "E0020",
+                severity: :error,
+                message:
+                  "Argument #{index} to '#{name}' expects #{format_type(expected)}, got #{format_type(actual)}",
+                location: location_from_meta(meta, env.file),
+                fix_hint: "Pass a #{format_type(expected)} value",
+                fix_code: nil
+              }
+            ]
+          end
+        end)
+      else
+        []
+      end
+
+    {ret, args_errors ++ arity_errors ++ type_errors}
+  end
+
+  defp variable_call_result(name, var_type, args_results, meta, env) do
+    args_errors = Enum.flat_map(args_results, &elem(&1, 1))
+
+    if permissive_type?(var_type) do
+      {:unknown, args_errors}
+    else
+      {:unknown,
+       args_errors ++
+         [
+           %Error{
+             code: "E0020",
+             severity: :error,
+             message:
+               "'#{name}' is a #{format_type(var_type)}, not a function — it cannot be called",
+             location: location_from_meta(meta, env.file),
+             fix_hint: "Bind a function value with '&fn_name' before calling it",
+             fix_code: nil
+           }
+         ]}
+    end
+  end
+
+  # Suggestion hint for an unresolved fn reference/call.
+  defp fn_suggestion_hint(env) do
+    case Map.keys(env.functions) do
+      [] -> "No fns are declared in this module"
+      names -> "Declared fns: #{names |> Enum.sort() |> Enum.join(", ")}"
+    end
   end
 
   # A record field is optional when its declared type is Option[...].
@@ -5147,6 +5315,11 @@ defmodule Skein.Analyzer do
       agent_env
       | types: Map.merge(module_env.types, agent_env.types),
         enums: Map.merge(module_env.enums, agent_env.enums),
+        # Module-level fns are inherited as local functions of the agent's
+        # compiled module (skein-testing#8), so agent bodies may call them —
+        # merge them in (agent's own fns win) or the unresolved-call check
+        # (#293 / B4) would wrongly reject the inherited calls.
+        functions: Map.merge(module_env.functions, agent_env.functions),
         capabilities: merged_capabilities,
         tool_error_names: module_env.tool_error_names,
         file: module_env.file

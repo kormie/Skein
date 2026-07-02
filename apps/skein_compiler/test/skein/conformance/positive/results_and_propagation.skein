@@ -1,0 +1,27 @@
+-- Positive corpus (#293 / B4): Result construction, `!` unwrapping, `?`
+-- early-return propagation, and match on Ok/Err must load and run.
+module ResultsAndPropagation {
+  fn half(n: Int) -> Result[Int, String] {
+    match n {
+      0 -> Err("zero")
+      _ -> Ok(n / 2)
+    }
+  }
+
+  fn quarter(n: Int) -> Result[Int, String] {
+    let h = half(n)?
+    half(h)
+  }
+
+  fn describe(n: Int) -> String {
+    match quarter(n) {
+      Ok(q) -> "quarter is ${q}"
+      Err(reason) -> "failed: ${reason}"
+    }
+  }
+
+  fn main() -> Int {
+    let sixteen = quarter(64)!
+    sixteen
+  }
+}

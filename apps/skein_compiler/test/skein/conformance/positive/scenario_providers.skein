@@ -1,0 +1,24 @@
+-- Positive corpus (#293 / B4): a scenario capability environment with a
+-- canonical uuid provider (B6 contract) must compile and load.
+module ScenarioProviders {
+  capability tool.use(Ids.New)
+  capability uuid
+
+  tool Ids.New {
+    input { kind: String }
+    output { id: Uuid }
+    implement { Ok({ id: uuid.new() }) }
+  }
+
+  scenario "ids are controlled" {
+    capability tool.use(Ids.New) {
+      capability uuid {
+        implement() -> Uuid { Uuid.parse("00000000-0000-4000-8000-000000000001")! }
+      }
+    }
+    expect {
+      let r = tool.call(Ids.New, { kind: "x" })!
+      assert true
+    }
+  }
+}

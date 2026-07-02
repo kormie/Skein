@@ -1,0 +1,10 @@
+-- expect: E0010
+-- #293 (B4): an unresolved `&fn` reference is a structured error at the
+-- reference itself. Before B4 it inferred a silent :unknown and codegen
+-- emitted an unbound Core variable that failed BEAM compilation.
+module FnRefUnknown {
+  fn f() -> Int {
+    let _g = &nope
+    1
+  }
+}

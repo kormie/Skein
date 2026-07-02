@@ -1591,6 +1591,20 @@ defmodule Skein.CodeGen.CoreErlang do
     :cerl.c_fun(param_vars, wrap_propagate(body, generate_expr(body, scope)))
   end
 
+  # An analyzer-accepted program must never reach these paths (#293 / B4) —
+  # reaching one is a compiler bug, and a loud, located crash beats an
+  # unbound Core variable failing core_lint far from the cause.
+  defp codegen_invariant_error(description, node) do
+    meta = Map.get(node, :meta) || %{}
+
+    %RuntimeError{
+      message:
+        "Skein codegen invariant violation: #{description} " <>
+          "(#{Map.get(meta, :file, "?")}:#{Map.get(meta, :line, "?")}). " <>
+          "The analyzer accepted a program codegen cannot lower — please report this compiler bug."
+    }
+  end
+
   defp tool_use_cap_name(%AST.Capability{params: params}) do
     case params do
       [%AST.ToolRef{name: name} | _] -> name
@@ -2452,9 +2466,13 @@ defmodule Skein.CodeGen.CoreErlang do
         first_char = String.at(name, 0)
 
         if first_char == String.upcase(first_char) and first_char != "_" do
-          # Module.function reference - just produce an identifier
-          # This will be resolved when used in a Call context
-          :cerl.c_var(var_name("#{name}_#{field}"))
+          # Unreachable for analyzer-accepted programs (#293 / B4): a bare
+          # Module.field value that is not an enum variant (handled above) is
+          # a structured analyzer error, never an unbound Core variable.
+          raise codegen_invariant_error(
+                  "'#{name}.#{field}' is not a value",
+                  %AST.FieldAccess{subject: subject, field: field}
+                )
         else
           # Instance field access - for now, map get
           :cerl.c_call(
@@ -2587,11 +2605,14 @@ defmodule Skein.CodeGen.CoreErlang do
     end
   end
 
-  defp generate_expr(%AST.Identifier{name: name}, scope) do
+  defp generate_expr(%AST.Identifier{name: name} = node, scope) do
     case Map.get(scope, name) do
       nil ->
-        # Could be a module reference or unresolved - use the raw name
-        :cerl.c_var(var_name(name))
+        # Unreachable for analyzer-accepted programs (#293 / B4): every
+        # unresolved identifier is a structured analyzer error. Emitting a
+        # variable here would be an unbound Core var that fails BEAM
+        # compilation far from the cause — fail loudly at the source instead.
+        raise codegen_invariant_error("identifier '#{name}' is not bound in scope", node)
 
       var ->
         :cerl.c_var(var)
@@ -2604,8 +2625,12 @@ defmodule Skein.CodeGen.CoreErlang do
 
     case Map.get(fn_arities, name) do
       nil ->
-        # Unknown function — fall back to variable reference
-        :cerl.c_var(var_name(name))
+        # Unreachable for analyzer-accepted programs (#293 / B4): an
+        # unresolved `&fn` reference is a structured E0010.
+        raise codegen_invariant_error(
+                "function reference '&#{name}' has no local fn",
+                %AST.FnRef{name: name}
+              )
 
       arity ->
         # Known local function — wrap in a lambda so it's a passable function value

@@ -1,0 +1,17 @@
+-- Positive corpus (#293 / B4): &fn references through stdlib higher-order
+-- slots, fn-typed variables called directly, and pipes must load and run.
+module CallbacksAndPipes {
+  fn increment(n: Int) -> Int { n + 1 }
+
+  fn is_even(n: Int) -> Bool { n - (n / 2) * 2 == 0 }
+
+  fn add(acc: Int, n: Int) -> Int { acc + n }
+
+  fn main() -> Int {
+    let bumped = List.map([1, 2, 3], &increment)
+    let evens = List.filter(bumped, &is_even)
+    let total = List.reduce(evens, 0, &add)
+    let again = &increment
+    again(total) |> increment()
+  }
+}
