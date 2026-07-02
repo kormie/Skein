@@ -67,6 +67,11 @@ defmodule Skein.Analyzer do
   alias Skein.AST
   alias Skein.Error
 
+  alias Skein.Analyzer.AgentChecks
+  alias Skein.Analyzer.Capabilities
+  alias Skein.Analyzer.Purity
+  alias Skein.Analyzer.Warnings
+
   # Internal type representation
   @type skein_type ::
           :int
@@ -420,13 +425,13 @@ defmodule Skein.Analyzer do
     # Pass 2g: Purity of `test` bodies and scenario `implement` providers (#273)
     # — `test` is for pure unit tests (effects belong in `scenario`); provider
     # `implement` blocks must be pure.
-    errors = errors ++ check_pure_contexts(ast.declarations, env)
+    errors = errors ++ Purity.check_pure_contexts(ast.declarations, env)
 
     # Pass 2h: Scenario provider contracts (#295 / B6) — every `implement`
     # provider block is checked against its capability's canonical contract
     # (arity, param types, return type) and its body is fully type-checked
     # against the declared return type.
-    errors = errors ++ check_provider_contracts(ast.declarations, env)
+    errors = errors ++ Purity.check_provider_contracts(ast.declarations, env)
 
     # Pass 2c: Scope-independent interpolation rules — uppercase
     # interpolation roots and interpolated string patterns. One generic
@@ -435,16 +440,19 @@ defmodule Skein.Analyzer do
 
     # Pass 3: Capability checking — verify effect calls have covering
     # capabilities (test/scenario/golden bodies included)
-    errors = errors ++ check_capabilities(ast.declarations ++ test_views, env)
+    errors = errors ++ Capabilities.check_capabilities(ast.declarations ++ test_views, env)
 
     # Pass 4: Unused binding warnings
-    errors = errors ++ check_unused_bindings_in_declarations(ast.declarations, env)
+    errors = errors ++ Warnings.check_unused_bindings_in_declarations(ast.declarations, env)
 
     # Pass 5: Unused capability warnings (nested agent and test-block
     # usage counts)
     errors =
       errors ++
-        check_unused_capabilities(ast.declarations ++ nested_agent_views ++ test_views, env)
+        Warnings.check_unused_capabilities(
+          ast.declarations ++ nested_agent_views ++ test_views,
+          env
+        )
 
     # Pass 6: Unreachable code after stop() warnings
     errors = errors ++ check_unreachable_after_stop(ast.declarations)
@@ -452,7 +460,7 @@ defmodule Skein.Analyzer do
     # Pass 7: agent-only lifecycle calls (transition/suspend/stop) outside
     # agent handlers — test/scenario/golden bodies included, so codegen
     # never sees these nodes on the module path
-    errors = errors ++ check_agent_only_calls(ast.declarations ++ test_views, env)
+    errors = errors ++ AgentChecks.check_agent_only_calls(ast.declarations ++ test_views, env)
 
     # Pass 8: idempotent() outside handler check
     errors = errors ++ check_idempotent_outside_handler(ast.declarations, env)
@@ -495,13 +503,13 @@ defmodule Skein.Analyzer do
     errors = validate_agent_state(ast.state, env)
 
     # Pass 2: Validate phase transitions
-    errors = errors ++ validate_phase_transitions(ast, env)
+    errors = errors ++ AgentChecks.validate_phase_transitions(ast, env)
 
     # Pass 3: Check that all reachable phases have handlers
-    errors = errors ++ check_phase_handlers(ast, env)
+    errors = errors ++ AgentChecks.check_phase_handlers(ast, env)
 
     # Pass 4: Validate transition() calls match declared transitions
-    errors = errors ++ validate_transition_calls(ast, env)
+    errors = errors ++ AgentChecks.validate_transition_calls(ast, env)
 
     # Pass 5: Type-check agent function bodies
     errors = errors ++ check_functions(ast.fns, env)
@@ -526,14 +534,14 @@ defmodule Skein.Analyzer do
     errors = errors ++ check_unreachable_after_stop(all_decls)
 
     # Pass 7: Capability checking — verify effect calls have covering capabilities
-    errors = errors ++ check_capabilities(all_decls, env)
+    errors = errors ++ Capabilities.check_capabilities(all_decls, env)
 
     # Pass 8: Unused capability warnings — only the agent's OWN capability
     # declarations are candidates (a nested agent's env also carries the
     # enclosing module's capabilities for coverage checking; their usage
     # is accounted for at module level)
     own_caps_env = %{env | capabilities: Map.get(env, :own_capabilities, env.capabilities)}
-    errors = errors ++ check_unused_capabilities(all_decls, own_caps_env)
+    errors = errors ++ Warnings.check_unused_capabilities(all_decls, own_caps_env)
 
     # Schema-bearing type params on `*.json[T]` calls in agent bodies
     errors = errors ++ check_schema_type_params(all_decls, env)
@@ -1056,26 +1064,27 @@ defmodule Skein.Analyzer do
   # The effect-ABI registry names error enums as {:user_type, "LlmError"}
   # etc.; resolved declared types spell the same enum {:enum, "LlmError"}.
   # Normalize registry-sourced types so comparisons see one spelling.
-  defp normalize_enum_refs({:user_type, name} = type, env) do
+  @doc false
+  def normalize_enum_refs({:user_type, name} = type, env) do
     if Map.has_key?(env.enums, name), do: {:enum, name}, else: type
   end
 
-  defp normalize_enum_refs({:result, ok, err}, env) do
+  def normalize_enum_refs({:result, ok, err}, env) do
     {:result, normalize_enum_refs(ok, env), normalize_enum_refs(err, env)}
   end
 
-  defp normalize_enum_refs({:list, inner}, env), do: {:list, normalize_enum_refs(inner, env)}
-  defp normalize_enum_refs({:option, inner}, env), do: {:option, normalize_enum_refs(inner, env)}
+  def normalize_enum_refs({:list, inner}, env), do: {:list, normalize_enum_refs(inner, env)}
+  def normalize_enum_refs({:option, inner}, env), do: {:option, normalize_enum_refs(inner, env)}
 
-  defp normalize_enum_refs({:map, k, v}, env) do
+  def normalize_enum_refs({:map, k, v}, env) do
     {:map, normalize_enum_refs(k, env), normalize_enum_refs(v, env)}
   end
 
-  defp normalize_enum_refs({:fn, params, ret}, env) do
+  def normalize_enum_refs({:fn, params, ret}, env) do
     {:fn, Enum.map(params, &normalize_enum_refs(&1, env)), normalize_enum_refs(ret, env)}
   end
 
-  defp normalize_enum_refs(other, _env), do: other
+  def normalize_enum_refs(other, _env), do: other
 
   # Sharper return types for higher-order stdlib calls (#292/B3): when the
   # callback argument carries a concrete callable type, the collection result
@@ -1771,11 +1780,12 @@ defmodule Skein.Analyzer do
   defp validate_declaration(%AST.Capability{}, _env), do: []
   defp validate_declaration(_, _env), do: []
 
-  defp handler_required_capability("http"), do: "http.in"
-  defp handler_required_capability("queue"), do: "queue.consume"
-  defp handler_required_capability("schedule"), do: "schedule.trigger"
-  defp handler_required_capability("topic"), do: "topic.consume"
-  defp handler_required_capability(_), do: "unknown"
+  @doc false
+  def handler_required_capability("http"), do: "http.in"
+  def handler_required_capability("queue"), do: "queue.consume"
+  def handler_required_capability("schedule"), do: "schedule.trigger"
+  def handler_required_capability("topic"), do: "topic.consume"
+  def handler_required_capability(_), do: "unknown"
 
   # Pre-1.0 renames: declaring the old name gets a targeted migration hint.
   defp deprecated_capability_alias("queue.consume"), do: "queue.in"
@@ -1939,9 +1949,10 @@ defmodule Skein.Analyzer do
   # `:unknown` components (e.g. the store/memory success type the effect
   # tables cannot know) stay permissive until the C1 effect-ABI matrix closes
   # them — the load-bearing part for soundness is the verified shape.
-  defp boundary_type_errors(_actual, :unknown, _meta, _env), do: []
+  @doc false
+  def boundary_type_errors(_actual, :unknown, _meta, _env), do: []
 
-  defp boundary_type_errors(:unknown, declared, meta, env) do
+  def boundary_type_errors(:unknown, declared, meta, env) do
     [
       %Error{
         code: "E0037",
@@ -1959,7 +1970,7 @@ defmodule Skein.Analyzer do
     ]
   end
 
-  defp boundary_type_errors(actual, declared, meta, env) do
+  def boundary_type_errors(actual, declared, meta, env) do
     case find_widened(actual) do
       nil ->
         []
@@ -2203,18 +2214,19 @@ defmodule Skein.Analyzer do
   # ------------------------------------------------------------------
 
   # Block: type is the type of the last expression
-  defp infer_type(%AST.Block{expressions: []}, _env), do: {:unknown, []}
+  @doc false
+  def infer_type(%AST.Block{expressions: []}, _env), do: {:unknown, []}
 
-  defp infer_type(%AST.Block{expressions: exprs}, env) do
+  def infer_type(%AST.Block{expressions: exprs}, env) do
     infer_block(exprs, env, {:unknown, []})
   end
 
   # Literals
-  defp infer_type(%AST.IntLit{}, _env), do: {:int, []}
-  defp infer_type(%AST.FloatLit{}, _env), do: {:float, []}
-  defp infer_type(%AST.BoolLit{}, _env), do: {:bool, []}
+  def infer_type(%AST.IntLit{}, _env), do: {:int, []}
+  def infer_type(%AST.FloatLit{}, _env), do: {:float, []}
+  def infer_type(%AST.BoolLit{}, _env), do: {:bool, []}
 
-  defp infer_type(%AST.StringLit{segments: segments}, env) do
+  def infer_type(%AST.StringLit{segments: segments}, env) do
     # Each interpolation segment is fully inferred and held to the
     # interpolable set (#310) — see interpolation_segment_errors/2.
     errors =
@@ -2228,7 +2240,7 @@ defmodule Skein.Analyzer do
   end
 
   # Identifier
-  defp infer_type(%AST.Identifier{name: name, meta: meta}, env) do
+  def infer_type(%AST.Identifier{name: name, meta: meta}, env) do
     cond do
       Map.has_key?(env.variables, name) ->
         {Map.get(env.variables, name), []}
@@ -2347,8 +2359,8 @@ defmodule Skein.Analyzer do
   end
 
   # Binary operations
-  defp infer_type(%AST.BinaryOp{op: op, left: left, right: right, meta: meta}, env)
-       when op in [:+, :-, :*, :/] do
+  def infer_type(%AST.BinaryOp{op: op, left: left, right: right, meta: meta}, env)
+      when op in [:+, :-, :*, :/] do
     {left_type, left_errors} = infer_type(left, env)
     {right_type, right_errors} = infer_type(right, env)
 
@@ -2392,8 +2404,8 @@ defmodule Skein.Analyzer do
   end
 
   # Comparison operators
-  defp infer_type(%AST.BinaryOp{op: op, left: left, right: right, meta: meta}, env)
-       when op in [:==, :!=, :<, :>, :<=, :>=] do
+  def infer_type(%AST.BinaryOp{op: op, left: left, right: right, meta: meta}, env)
+      when op in [:==, :!=, :<, :>, :<=, :>=] do
     {left_type, left_errors} = infer_type(left, env)
     {right_type, right_errors} = infer_type(right, env)
 
@@ -2432,8 +2444,8 @@ defmodule Skein.Analyzer do
   end
 
   # Logical operators
-  defp infer_type(%AST.BinaryOp{op: op, left: left, right: right, meta: meta}, env)
-       when op in [:&&, :||] do
+  def infer_type(%AST.BinaryOp{op: op, left: left, right: right, meta: meta}, env)
+      when op in [:&&, :||] do
     {left_type, left_errors} = infer_type(left, env)
     {right_type, right_errors} = infer_type(right, env)
 
@@ -2474,7 +2486,7 @@ defmodule Skein.Analyzer do
   end
 
   # Unary not
-  defp infer_type(%AST.UnaryOp{op: :not, operand: operand, meta: meta}, env) do
+  def infer_type(%AST.UnaryOp{op: :not, operand: operand, meta: meta}, env) do
     {operand_type, operand_errors} = infer_type(operand, env)
 
     errors =
@@ -2497,7 +2509,7 @@ defmodule Skein.Analyzer do
   end
 
   # Unary minus (arithmetic negation)
-  defp infer_type(%AST.UnaryOp{op: :negate, operand: operand, meta: meta}, env) do
+  def infer_type(%AST.UnaryOp{op: :negate, operand: operand, meta: meta}, env) do
     {operand_type, operand_errors} = infer_type(operand, env)
 
     case operand_type do
@@ -2531,7 +2543,7 @@ defmodule Skein.Analyzer do
   end
 
   # Unwrap (!) operator
-  defp infer_type(%AST.UnaryOp{op: :unwrap, operand: operand, meta: meta}, env) do
+  def infer_type(%AST.UnaryOp{op: :unwrap, operand: operand, meta: meta}, env) do
     {operand_type, operand_errors} = infer_type(operand, env)
 
     case operand_type do
@@ -2564,7 +2576,7 @@ defmodule Skein.Analyzer do
   end
 
   # Propagate (?) operator
-  defp infer_type(%AST.UnaryOp{op: :propagate, operand: operand, meta: meta}, env) do
+  def infer_type(%AST.UnaryOp{op: :propagate, operand: operand, meta: meta}, env) do
     {operand_type, operand_errors} = infer_type(operand, env)
 
     type_errors =
@@ -2663,7 +2675,7 @@ defmodule Skein.Analyzer do
   end
 
   # Match expression
-  defp infer_type(%AST.Match{subject: subject, arms: arms, meta: meta}, env) do
+  def infer_type(%AST.Match{subject: subject, arms: arms, meta: meta}, env) do
     {raw_subject_type, subject_errors} = infer_type(subject, env)
 
     # Enum-typed params resolve as {:user_type, name}; normalize so variant
@@ -2692,8 +2704,16 @@ defmodule Skein.Analyzer do
     {result_type, subject_errors ++ arm_errors ++ consistency_errors ++ exhaustiveness_warnings}
   end
 
+  # `assert expr` (issue #105): the asserted expression is fully inferred so
+  # errors inside it still fire; the assert itself has no useful value type
+  # (codegen lowers it to a runtime check).
+  def infer_type(%AST.Assert{expr: expr}, env) do
+    {_expr_type, expr_errors} = infer_type(expr, env)
+    {:unknown, expr_errors}
+  end
+
   # Function call
-  defp infer_type(%AST.Call{target: target, args: args, meta: meta} = call, env) do
+  def infer_type(%AST.Call{target: target, args: args, meta: meta} = call, env) do
     args_results = Enum.map(args, &infer_type(&1, env))
     args_errors = Enum.flat_map(args_results, &elem(&1, 1))
     type_param = Map.get(call, :type_param)
@@ -2949,11 +2969,6 @@ defmodule Skein.Analyzer do
             end
         end
 
-      # The parser's internal assert marker (`assert expr` desugars to a
-      # __assert__ call) — not a user-callable name, and codegen lowers it.
-      %AST.Identifier{name: "__assert__"} ->
-        {:unknown, args_errors}
-
       # Calling a variable: legal when the variable holds a function value
       # (`let g = &f` then `g()` — codegen applies the bound closure). Any
       # other variable, or an unknown lowercase name, is a structured error at
@@ -3019,11 +3034,11 @@ defmodule Skein.Analyzer do
 
   # Pipe expression: the piped value becomes the first argument of the
   # right-hand call (spec section 4 rule 8), so check the desugared call.
-  defp infer_type(%AST.Pipe{left: left, right: %AST.Call{args: args} = call}, env) do
+  def infer_type(%AST.Pipe{left: left, right: %AST.Call{args: args} = call}, env) do
     infer_type(%{call | args: [left | args]}, env)
   end
 
-  defp infer_type(%AST.Pipe{left: left, right: right}, env) do
+  def infer_type(%AST.Pipe{left: left, right: right}, env) do
     {_left_type, left_errors} = infer_type(left, env)
     {right_type, right_errors} = infer_type(right, env)
     {right_type, left_errors ++ right_errors}
@@ -3031,15 +3046,15 @@ defmodule Skein.Analyzer do
 
   # Enum variant reference: Status.Active — zero-field construction.
   # The head must be a declared enum NAME (a binding of the same name wins).
-  defp infer_type(
-         %AST.FieldAccess{
-           subject: %AST.Identifier{name: enum_name},
-           field: <<c, _::binary>> = variant_name,
-           meta: meta
-         },
-         env
-       )
-       when c in ?A..?Z do
+  def infer_type(
+        %AST.FieldAccess{
+          subject: %AST.Identifier{name: enum_name},
+          field: <<c, _::binary>> = variant_name,
+          meta: meta
+        },
+        env
+      )
+      when c in ?A..?Z do
     cond do
       Map.has_key?(env.variables, enum_name) ->
         infer_field_access_type(
@@ -3085,7 +3100,7 @@ defmodule Skein.Analyzer do
   end
 
   # Field access
-  defp infer_type(%AST.FieldAccess{subject: subject, field: field, meta: meta}, env) do
+  def infer_type(%AST.FieldAccess{subject: subject, field: field, meta: meta}, env) do
     infer_field_access_type(subject, field, meta, env)
   end
 
@@ -3094,7 +3109,7 @@ defmodule Skein.Analyzer do
   # unresolved name is a structured error at the reference itself (#293 / B4)
   # — before this, it stayed a silent :unknown and codegen emitted an unbound
   # Core variable that failed BEAM compilation.
-  defp infer_type(%AST.FnRef{name: name, meta: meta}, env) do
+  def infer_type(%AST.FnRef{name: name, meta: meta}, env) do
     case Map.fetch(env.functions, name) do
       {:ok, fn_info} ->
         param_types =
@@ -3120,7 +3135,7 @@ defmodule Skein.Analyzer do
   end
 
   # Let (standalone — shouldn't appear outside blocks, but handle gracefully)
-  defp infer_type(%AST.Let{value: value}, env) do
+  def infer_type(%AST.Let{value: value}, env) do
     infer_type(value, env)
   end
 
@@ -3128,7 +3143,7 @@ defmodule Skein.Analyzer do
   # type from the first element whose type is known, then flag every element
   # whose (known) type is incompatible. An empty or all-:unknown list infers
   # List[:unknown], which unifies with any declared List[_].
-  defp infer_type(%AST.ListLit{elements: elements, meta: meta}, env) do
+  def infer_type(%AST.ListLit{elements: elements, meta: meta}, env) do
     results = Enum.map(elements, &infer_type(&1, env))
     element_errors = Enum.flat_map(results, &elem(&1, 1))
     element_types = Enum.map(results, &elem(&1, 0))
@@ -3154,7 +3169,7 @@ defmodule Skein.Analyzer do
     {{:list, canonical}, element_errors ++ homogeneity_errors}
   end
 
-  defp infer_type(%AST.MapLit{entries: entries}, env) do
+  def infer_type(%AST.MapLit{entries: entries}, env) do
     errors =
       Enum.flat_map(entries, fn {_key, value} ->
         {_type, errs} = infer_type(value, env)
@@ -3167,7 +3182,7 @@ defmodule Skein.Analyzer do
   # Nominal record literal: TypeName { field: expr, ... }. Checked field-by-field
   # against the named type's declaration: unknown fields, missing required
   # (non-Option) fields, and per-field type mismatches are all structured errors.
-  defp infer_type(%AST.RecordLit{type_name: name, fields: fields, meta: meta}, env) do
+  def infer_type(%AST.RecordLit{type_name: name, fields: fields, meta: meta}, env) do
     field_results = Enum.map(fields, fn {fname, value} -> {fname, infer_type(value, env)} end)
     value_errors = Enum.flat_map(field_results, fn {_n, {_t, errs}} -> errs end)
 
@@ -3272,7 +3287,7 @@ defmodule Skein.Analyzer do
   end
 
   # Catch-all
-  defp infer_type(_expr, _env) do
+  def infer_type(_expr, _env) do
     {:unknown, []}
   end
 
@@ -3907,7 +3922,7 @@ defmodule Skein.Analyzer do
               ]
             end
 
-          missing_warnings ++ value_level_warnings(enum_name, unguarded_arms, env)
+          missing_warnings ++ Warnings.value_level_warnings(enum_name, unguarded_arms, env)
         end
     end
   end
@@ -4028,7 +4043,8 @@ defmodule Skein.Analyzer do
 
   # Patterns may name variants with the enum prefix (Event.Charge) or bare
   # (Charge); coverage is computed on the bare variant name.
-  defp strip_enum_prefix(name, enum_name) do
+  @doc false
+  def strip_enum_prefix(name, enum_name) do
     prefix = enum_name <> "."
 
     if String.starts_with?(name, prefix) do
@@ -4037,58 +4053,6 @@ defmodule Skein.Analyzer do
       name
     end
   end
-
-  # Value-level exhaustiveness (W0004): a variant arm with literal field
-  # patterns only covers those specific values — without a wildcard arm or
-  # an all-bindings arm for the same variant, other values of that variant
-  # raise case_clause at runtime. Only called when no wildcard arm exists.
-  defp value_level_warnings(enum_name, arms, env) do
-    arms
-    |> Enum.filter(&match?(%AST.MatchArm{pattern: %AST.Call{target: %AST.Identifier{}}}, &1))
-    |> Enum.group_by(fn %AST.MatchArm{
-                          pattern: %AST.Call{target: %AST.Identifier{name: name}}
-                        } ->
-      strip_enum_prefix(name, enum_name)
-    end)
-    |> Enum.sort_by(fn {variant, _arms} -> variant end)
-    |> Enum.flat_map(fn {variant, variant_arms} ->
-      generally_covered =
-        Enum.any?(variant_arms, fn %AST.MatchArm{pattern: %AST.Call{args: args}} ->
-          Enum.all?(args, &binding_pattern?/1)
-        end)
-
-      literal_arm =
-        Enum.find(variant_arms, fn %AST.MatchArm{pattern: %AST.Call{args: args}} ->
-          Enum.any?(args, &(not binding_pattern?(&1)))
-        end)
-
-      if generally_covered or literal_arm == nil do
-        []
-      else
-        %AST.MatchArm{
-          pattern: %AST.Call{target: %AST.Identifier{name: pattern_name}, meta: pattern_meta}
-        } = literal_arm
-
-        [
-          %Error{
-            code: "W0004",
-            severity: :warning,
-            message:
-              "Match on #{enum_name} covers only specific values of #{variant}: " <>
-                "other #{variant}(...) values raise case_clause at runtime",
-            location: location_from_meta(pattern_meta, env.file),
-            fix_hint:
-              "Add a '#{pattern_name}(...)' arm with variable bindings or a wildcard '_' arm",
-            fix_code: "_ -> value"
-          }
-        ]
-      end
-    end)
-  end
-
-  defp binding_pattern?(%AST.Identifier{}), do: true
-  defp binding_pattern?(%AST.Wildcard{}), do: true
-  defp binding_pattern?(_), do: false
 
   # ------------------------------------------------------------------
   # Match arm type consistency
@@ -4252,33 +4216,34 @@ defmodule Skein.Analyzer do
   # `:dynamic` is different: it marks the spec-sanctioned dynamically-typed
   # seams (the generic `T` of the untyped store/memory/tool payloads, spec §6)
   # and is allowed across boundaries until C1/C3/C5 type those seams.
-  defp types_compatible?(:unknown, _), do: true
-  defp types_compatible?(_, :unknown), do: true
-  defp types_compatible?(:dynamic, _), do: true
-  defp types_compatible?(_, :dynamic), do: true
-  defp types_compatible?({:widened, _, _}, _), do: true
-  defp types_compatible?(_, {:widened, _, _}), do: true
+  @doc false
+  def types_compatible?(:unknown, _), do: true
+  def types_compatible?(_, :unknown), do: true
+  def types_compatible?(:dynamic, _), do: true
+  def types_compatible?(_, :dynamic), do: true
+  def types_compatible?({:widened, _, _}, _), do: true
+  def types_compatible?(_, {:widened, _, _}), do: true
   # Json accepts any value (#291): every Skein value is a JSON value, so any
   # type may flow INTO a Json-typed position. The reverse is deliberately
   # false — a Json value cannot flow into a concrete type without an explicit
   # decode (req.json[T] / llm.json[T]). The old `(:json, _) -> true` clause
   # made Json a second universal top type (#274's hatch); it is gone.
-  defp types_compatible?(_, :json), do: true
-  defp types_compatible?(a, a), do: true
+  def types_compatible?(_, :json), do: true
+  def types_compatible?(a, a), do: true
 
   # Parameterized types — recurse into inner types
-  defp types_compatible?({:list, a}, {:list, b}), do: types_compatible?(a, b)
-  defp types_compatible?({:set, a}, {:set, b}), do: types_compatible?(a, b)
-  defp types_compatible?({:option, a}, {:option, b}), do: types_compatible?(a, b)
+  def types_compatible?({:list, a}, {:list, b}), do: types_compatible?(a, b)
+  def types_compatible?({:set, a}, {:set, b}), do: types_compatible?(a, b)
+  def types_compatible?({:option, a}, {:option, b}), do: types_compatible?(a, b)
 
-  defp types_compatible?({:result, a1, a2}, {:result, b1, b2}),
+  def types_compatible?({:result, a1, a2}, {:result, b1, b2}),
     do: types_compatible?(a1, b1) and types_compatible?(a2, b2)
 
   # Callable types (#292 / B3): parameters check contravariantly (the value
   # the CALLER will pass must flow into the callback's declared parameter),
   # the return covariantly. Arity must match exactly — the runtime applies
   # callbacks positionally, so a wrong-arity callable is always badarity.
-  defp types_compatible?({:fn, actual_params, actual_ret}, {:fn, expected_params, expected_ret}) do
+  def types_compatible?({:fn, actual_params, actual_ret}, {:fn, expected_params, expected_ret}) do
     length(actual_params) == length(expected_params) and
       Enum.zip(actual_params, expected_params)
       |> Enum.all?(fn {actual_param, expected_param} ->
@@ -4287,7 +4252,7 @@ defmodule Skein.Analyzer do
       types_compatible?(actual_ret, expected_ret)
   end
 
-  defp types_compatible?({:map, k1, v1}, {:map, k2, v2}),
+  def types_compatible?({:map, k1, v1}, {:map, k2, v2}),
     do: types_compatible?(k1, k2) and types_compatible?(v1, v2)
 
   # Records are NOMINAL (#294 / B5): `TypeName { ... }` is the one
@@ -4304,151 +4269,7 @@ defmodule Skein.Analyzer do
   # {:widened, _, _} remain the only permissive types, and only because they
   # are transient inference markers that boundary_type_errors/4 rejects at
   # every declared fn-return boundary (#291).
-  defp types_compatible?(_, _), do: false
-
-  # ------------------------------------------------------------------
-  # Pass 3: Capability checking
-  # ------------------------------------------------------------------
-
-  defp check_capabilities(declarations, env) do
-    # Check for duplicate short tool names across all tool.use capabilities,
-    # and duplicate declarations of single-label (scoped) capability kinds
-    dup_errors =
-      check_duplicate_tool_short_names(env) ++
-        check_duplicate_scoped_capabilities(env) ++
-        check_store_table_declarations(env)
-
-    fn_errors =
-      declarations
-      |> Enum.filter(&match?(%AST.Fn{}, &1))
-      |> Enum.flat_map(&collect_effect_calls(&1.body, env))
-
-    handler_errors =
-      declarations
-      |> Enum.filter(&match?(%AST.Handler{}, &1))
-      |> Enum.flat_map(&collect_effect_calls(&1.body, env))
-
-    dup_errors ++ fn_errors ++ handler_errors
-  end
-
-  # Walk the AST to find effect calls and check them against declared capabilities
-  defp collect_effect_calls(%AST.Block{expressions: exprs}, env) do
-    Enum.flat_map(exprs, &collect_effect_calls(&1, env))
-  end
-
-  # Store effect: store.<table>.<method>(...)
-  # This is a three-level field access: Call(FieldAccess(FieldAccess(store, table), method), args)
-  defp collect_effect_calls(
-         %AST.Call{
-           target: %AST.FieldAccess{
-             subject: %AST.FieldAccess{
-               subject: %AST.Identifier{name: "store"},
-               field: table_name
-             },
-             field: method
-           },
-           args: args,
-           meta: meta
-         },
-         env
-       )
-       when method in @store_methods do
-    check_store_capability(table_name, method, meta, env) ++
-      Enum.flat_map(args, &collect_effect_calls(&1, env))
-  end
-
-  # Tool effect with identifier first arg: tool.call(ToolName, args) / tool.schema(ToolName)
-  # Check that the specific tool name is declared in capability tool.use params.
-  defp collect_effect_calls(
-         %AST.Call{
-           target: %AST.FieldAccess{
-             subject: %AST.Identifier{name: "tool"},
-             field: method
-           },
-           args: [first_arg | _] = args,
-           meta: meta
-         },
-         env
-       )
-       when method in ["call", "schema"] do
-    tool_name = extract_tool_name_from_expr(first_arg)
-
-    own =
-      if tool_name do
-        check_tool_capability(tool_name, method, meta, env)
-      else
-        # Non-identifier first arg (e.g. variable) — fall back to generic check
-        check_effect_capability("tool", method, meta, env)
-      end
-
-    own ++ Enum.flat_map(args, &collect_effect_calls(&1, env))
-  end
-
-  defp collect_effect_calls(
-         %AST.Call{
-           target: %AST.FieldAccess{
-             subject: %AST.Identifier{name: namespace},
-             field: method
-           },
-           args: args,
-           meta: meta
-         } = _call,
-         env
-       ) do
-    own =
-      if effect_namespace?(namespace) and effect_method?(namespace, method) do
-        check_effect_capability(namespace, method, meta, env)
-      else
-        []
-      end
-
-    own ++ Enum.flat_map(args, &collect_effect_calls(&1, env))
-  end
-
-  defp collect_effect_calls(%AST.Call{args: args}, env) do
-    Enum.flat_map(args, &collect_effect_calls(&1, env))
-  end
-
-  defp collect_effect_calls(%AST.Let{value: value}, env) do
-    collect_effect_calls(value, env)
-  end
-
-  defp collect_effect_calls(%AST.Match{subject: subject, arms: arms}, env) do
-    subject_errors = collect_effect_calls(subject, env)
-
-    arm_errors =
-      Enum.flat_map(arms, fn %AST.MatchArm{body: body} ->
-        collect_effect_calls(body, env)
-      end)
-
-    subject_errors ++ arm_errors
-  end
-
-  defp collect_effect_calls(%AST.Pipe{left: left, right: right}, env) do
-    collect_effect_calls(left, env) ++ collect_effect_calls(right, env)
-  end
-
-  defp collect_effect_calls(%AST.BinaryOp{left: left, right: right}, env) do
-    collect_effect_calls(left, env) ++ collect_effect_calls(right, env)
-  end
-
-  defp collect_effect_calls(%AST.MapLit{entries: entries}, env) do
-    Enum.flat_map(entries, fn {_key, value} -> collect_effect_calls(value, env) end)
-  end
-
-  defp collect_effect_calls(%AST.RecordLit{fields: fields}, env) do
-    Enum.flat_map(fields, fn {_key, value} -> collect_effect_calls(value, env) end)
-  end
-
-  defp collect_effect_calls(%AST.ListLit{elements: elements}, env) do
-    Enum.flat_map(elements, &collect_effect_calls(&1, env))
-  end
-
-  defp collect_effect_calls(%AST.UnaryOp{operand: operand}, env) do
-    collect_effect_calls(operand, env)
-  end
-
-  defp collect_effect_calls(_expr, _env), do: []
+  def types_compatible?(_, _), do: false
 
   # ------------------------------------------------------------------
   # Pass 2f: Scenario capability envelope coverage (#281)
@@ -4590,6 +4411,11 @@ defmodule Skein.Analyzer do
   defp effect_requirements(%AST.Call{args: args}, ctx, visited),
     do: union_reqs(Enum.map(args, &effect_requirements(&1, ctx, visited)))
 
+  # `assert expr` wraps an expression; its effects count (it was previously
+  # a synthetic Call whose args were walked).
+  defp effect_requirements(%AST.Assert{expr: expr}, ctx, visited),
+    do: effect_requirements(expr, ctx, visited)
+
   defp effect_requirements(%AST.Block{expressions: exprs}, ctx, visited),
     do: union_reqs(Enum.map(exprs, &effect_requirements(&1, ctx, visited)))
 
@@ -4649,6 +4475,8 @@ defmodule Skein.Analyzer do
 
   defp collect_called_tools(%AST.Call{args: args}),
     do: Enum.flat_map(args, &collect_called_tools/1)
+
+  defp collect_called_tools(%AST.Assert{expr: expr}), do: collect_called_tools(expr)
 
   defp collect_called_tools(%AST.Block{expressions: exprs}),
     do: Enum.flat_map(exprs, &collect_called_tools/1)
@@ -4732,338 +4560,6 @@ defmodule Skein.Analyzer do
   defp req_to_capability_decl("model"), do: "capability model(provider, model)"
   defp req_to_capability_decl(kind), do: "capability #{kind}"
 
-  # ------------------------------------------------------------------
-  # Pass 2g: Purity of `test` bodies and scenario `implement` providers (#273)
-  #
-  # `test` is for pure, module-level unit tests — effects belong in `scenario`.
-  # Scenario `implement` provider blocks must likewise be pure: they replace an
-  # effect, so they cannot themselves perform one. Both are E0029.
-  # ------------------------------------------------------------------
-
-  defp check_pure_contexts(declarations, env) do
-    # Local fn bodies, for the transitive walk (#295 / B6): an effect hidden
-    # behind a helper call poisons the pure context just like a direct one.
-    fns =
-      declarations
-      |> Enum.filter(&match?(%AST.Fn{}, &1))
-      |> Map.new(fn %AST.Fn{name: name, body: body} -> {name, body} end)
-
-    test_errors =
-      declarations
-      |> Enum.filter(&match?(%AST.Test{}, &1))
-      |> Enum.flat_map(fn %AST.Test{body: body} ->
-        body
-        |> collect_effect_sites(fns, MapSet.new())
-        |> Enum.map(&effect_in_test_error(&1, env))
-      end)
-
-    provider_errors =
-      declarations
-      |> Enum.filter(&match?(%AST.Scenario{}, &1))
-      |> Enum.flat_map(fn %AST.Scenario{capabilities: caps} ->
-        caps
-        |> List.wrap()
-        |> Enum.flat_map(&collect_implement_bodies/1)
-        |> Enum.flat_map(fn body ->
-          body
-          |> collect_effect_sites(fns, MapSet.new())
-          |> Enum.map(&effect_in_provider_error(&1, env))
-        end)
-      end)
-
-    test_errors ++ provider_errors
-  end
-
-  # All `implement` provider bodies under a capability, including nested ones.
-  defp collect_implement_bodies(%AST.Capability{implement: implement, nested: nested}) do
-    own = if implement, do: [implement.body], else: []
-    own ++ Enum.flat_map(nested || [], &collect_implement_bodies/1)
-  end
-
-  defp collect_implement_bodies(_), do: []
-
-  # Capability-gated effect call sites in an expression, transitively through
-  # local fn calls and references (#295 / B6): a pure context must not reach an
-  # effect either directly or through a helper. `fns` maps local fn names to
-  # their bodies; `visited` guards recursion. `trace` is not gated and is
-  # therefore allowed. Returns `[{label, meta, via}]` where `via` is the local
-  # call chain ([] for a direct effect) and `meta` is the outermost call site —
-  # the location inside the pure context itself.
-  defp collect_effect_sites(
-         %AST.Call{
-           target: %AST.FieldAccess{subject: %AST.Identifier{name: "tool"}, field: method},
-           args: args,
-           meta: meta
-         },
-         fns,
-         visited
-       )
-       when method in ["call", "schema"] do
-    [{"tool.#{method}", meta, []} | Enum.flat_map(args, &collect_effect_sites(&1, fns, visited))]
-  end
-
-  defp collect_effect_sites(
-         %AST.Call{
-           target: %AST.FieldAccess{subject: %AST.Identifier{name: namespace}, field: method},
-           args: args,
-           meta: meta
-         },
-         fns,
-         visited
-       ) do
-    own =
-      if effect_namespace?(namespace) and effect_method?(namespace, method) and
-           Map.get(@effect_namespaces, namespace) != nil do
-        [{"#{namespace}.#{method}", meta, []}]
-      else
-        []
-      end
-
-    own ++ Enum.flat_map(args, &collect_effect_sites(&1, fns, visited))
-  end
-
-  # A local fn call: the callee's effect sites poison this context too. The
-  # reported location stays the call site in the pure context; the callee (and
-  # any deeper hops) accumulate in the via chain.
-  defp collect_effect_sites(
-         %AST.Call{target: %AST.Identifier{name: fname}, args: args, meta: meta},
-         fns,
-         visited
-       ) do
-    Enum.flat_map(args, &collect_effect_sites(&1, fns, visited)) ++
-      callee_effect_sites(fname, meta, fns, visited)
-  end
-
-  defp collect_effect_sites(%AST.Call{args: args}, fns, visited),
-    do: Enum.flat_map(args, &collect_effect_sites(&1, fns, visited))
-
-  # A reference to a local fn can be invoked by whatever receives it (stdlib
-  # callbacks, process.spawn under test), so it carries the fn's effects.
-  defp collect_effect_sites(%AST.FnRef{name: fname, meta: meta}, fns, visited),
-    do: callee_effect_sites(fname, meta, fns, visited)
-
-  defp collect_effect_sites(%AST.Block{expressions: exprs}, fns, visited),
-    do: Enum.flat_map(exprs, &collect_effect_sites(&1, fns, visited))
-
-  defp collect_effect_sites(%AST.Let{value: value}, fns, visited),
-    do: collect_effect_sites(value, fns, visited)
-
-  defp collect_effect_sites(%AST.Match{subject: subject, arms: arms}, fns, visited) do
-    collect_effect_sites(subject, fns, visited) ++
-      Enum.flat_map(arms, fn %AST.MatchArm{body: body} ->
-        collect_effect_sites(body, fns, visited)
-      end)
-  end
-
-  defp collect_effect_sites(%AST.Pipe{left: left, right: right}, fns, visited),
-    do: collect_effect_sites(left, fns, visited) ++ collect_effect_sites(right, fns, visited)
-
-  defp collect_effect_sites(%AST.BinaryOp{left: left, right: right}, fns, visited),
-    do: collect_effect_sites(left, fns, visited) ++ collect_effect_sites(right, fns, visited)
-
-  defp collect_effect_sites(%AST.UnaryOp{operand: operand}, fns, visited),
-    do: collect_effect_sites(operand, fns, visited)
-
-  defp collect_effect_sites(%AST.FieldAccess{subject: subject}, fns, visited),
-    do: collect_effect_sites(subject, fns, visited)
-
-  defp collect_effect_sites(%AST.StringLit{segments: segments}, fns, visited) do
-    Enum.flat_map(segments, fn
-      {:interpolation, expr} -> collect_effect_sites(expr, fns, visited)
-      {:literal, _} -> []
-    end)
-  end
-
-  defp collect_effect_sites(%AST.MapLit{entries: entries}, fns, visited),
-    do: Enum.flat_map(entries, fn {_k, v} -> collect_effect_sites(v, fns, visited) end)
-
-  defp collect_effect_sites(%AST.RecordLit{fields: fields}, fns, visited),
-    do: Enum.flat_map(fields, fn {_k, v} -> collect_effect_sites(v, fns, visited) end)
-
-  defp collect_effect_sites(%AST.ListLit{elements: elements}, fns, visited),
-    do: Enum.flat_map(elements, &collect_effect_sites(&1, fns, visited))
-
-  defp collect_effect_sites(_, _fns, _visited), do: []
-
-  defp callee_effect_sites(fname, meta, fns, visited) do
-    case Map.get(fns, fname) do
-      nil ->
-        []
-
-      body ->
-        if MapSet.member?(visited, fname) do
-          []
-        else
-          body
-          |> collect_effect_sites(fns, MapSet.put(visited, fname))
-          |> Enum.map(fn {label, _inner_meta, via} -> {label, meta, [fname | via]} end)
-        end
-    end
-  end
-
-  defp via_suffix([]), do: ""
-  defp via_suffix(via), do: " (reached via #{Enum.join(via, " -> ")})"
-
-  defp effect_in_test_error({label, meta, via}, env) do
-    %Error{
-      code: "E0029",
-      severity: :error,
-      message:
-        "Effect '#{label}' is not allowed in a 'test'; 'test' is for pure unit tests — use a 'scenario'" <>
-          via_suffix(via),
-      location: location_from_meta(meta, env.file),
-      context: nil,
-      fix_hint:
-        "Move this effectful check into a 'scenario', where effects are declared and controlled",
-      fix_code: "scenario \"...\" { /* ... */ }"
-    }
-  end
-
-  defp effect_in_provider_error({label, meta, via}, env) do
-    %Error{
-      code: "E0029",
-      severity: :error,
-      message:
-        "Effect '#{label}' is not allowed in an 'implement' provider block; providers must be pure" <>
-          via_suffix(via),
-      location: location_from_meta(meta, env.file),
-      context: nil,
-      fix_hint: "Return a value directly; a provider replaces an effect and cannot perform one",
-      fix_code: nil
-    }
-  end
-
-  # ------------------------------------------------------------------
-  # Pass 2h: Scenario provider contracts (#295 / B6)
-  #
-  # A provider replaces a specific effect, so its signature is fixed by the
-  # capability it controls — the runtime invokes it positionally with exactly
-  # these argument and result shapes. Mirrors the runtime resolution sites
-  # (`Skein.Runtime.Nondeterminism`, `Skein.Runtime.Http.dispatch/3`,
-  # `Skein.Runtime.Llm.ProviderBackend`). A capability kind outside this table
-  # has no runtime resolution point, so an `implement` block under it would be
-  # silently dead — that is a contract error, not a no-op.
-  # ------------------------------------------------------------------
-
-  # Derived from the effect-ABI registry (C1/#296).
-  @provider_contracts Skein.EffectABI.provider_contracts()
-
-  defp check_provider_contracts(declarations, env) do
-    declarations
-    |> Enum.filter(&match?(%AST.Scenario{}, &1))
-    |> Enum.flat_map(fn %AST.Scenario{capabilities: caps} ->
-      caps |> List.wrap() |> Enum.flat_map(&check_envelope_providers(&1, env))
-    end)
-  end
-
-  defp check_envelope_providers(
-         %AST.Capability{kind: kind, implement: implement, nested: nested},
-         env
-       ) do
-    own = if implement, do: check_provider(kind, implement, env), else: []
-    own ++ Enum.flat_map(nested || [], &check_envelope_providers(&1, env))
-  end
-
-  defp check_envelope_providers(_, _env), do: []
-
-  defp check_provider(kind, %AST.CapabilityImplement{} = implement, env) do
-    case Map.get(@provider_contracts, kind) do
-      nil ->
-        [unsupported_provider_error(kind, implement, env)]
-
-      contract ->
-        provider_signature_errors(kind, contract, implement, env) ++
-          provider_body_errors(implement, env)
-    end
-  end
-
-  defp provider_signature_errors(kind, contract, %AST.CapabilityImplement{} = implement, env) do
-    declared_params =
-      Enum.map(implement.params, fn %AST.Field{type: type} -> resolve_type(type, env.types) end)
-
-    declared_return = resolve_type(implement.return_type, env.types)
-
-    contract_params = Enum.map(contract.params, &normalize_enum_refs(&1, env))
-    contract_return = normalize_enum_refs(contract.return, env)
-
-    if declared_params == contract_params and declared_return == contract_return do
-      []
-    else
-      [
-        %Error{
-          code: "E0038",
-          severity: :error,
-          message:
-            "Provider for capability '#{kind}' must be '#{contract.signature}', got 'implement(#{format_provider_params(implement.params, env)}) -> #{format_type(declared_return)}'",
-          location: location_from_meta(implement.meta, env.file),
-          context: "the runtime invokes the provider with exactly this contract",
-          fix_hint: "Match the provider contract for '#{kind}' exactly",
-          fix_code: contract.signature
-        }
-      ]
-    end
-  end
-
-  defp unsupported_provider_error(kind, %AST.CapabilityImplement{meta: meta}, env) do
-    supported = @provider_contracts |> Map.keys() |> Enum.sort() |> Enum.join(", ")
-
-    %Error{
-      code: "E0038",
-      severity: :error,
-      message: "Capability '#{kind}' does not support an 'implement' provider",
-      location: location_from_meta(meta, env.file),
-      context: "no runtime resolution point exists for '#{kind}', so this provider would be dead",
-      fix_hint:
-        "Providers exist for: #{supported}. Other effects are controlled by replay or the test-runner default policy",
-      fix_code: nil
-    }
-  end
-
-  # The provider body is executable and typed: run full inference with the
-  # declared params in scope and hold the body to the declared return type,
-  # exactly like a named fn body (E0020 + the #291 boundary guard).
-  defp provider_body_errors(
-         %AST.CapabilityImplement{params: params, return_type: ret, body: body, meta: meta},
-         env
-       ) do
-    declared_return = resolve_type(ret, env.types)
-
-    vars =
-      Map.new(params, fn %AST.Field{name: name, type: type} ->
-        {name, resolve_type(type, env.types)}
-      end)
-
-    body_env = %{env | variables: vars, current_fn_return_type: declared_return}
-    {actual_return, errors} = infer_type(body, body_env)
-
-    return_errors =
-      if types_compatible?(actual_return, declared_return) do
-        boundary_type_errors(actual_return, declared_return, meta, env)
-      else
-        [
-          %Error{
-            code: "E0020",
-            severity: :error,
-            message:
-              "Provider return type mismatch: expected #{format_type(declared_return)}, got #{format_type(actual_return)}",
-            location: location_from_meta(meta, env.file),
-            fix_hint: "Make the provider body produce #{format_type(declared_return)}",
-            fix_code: nil
-          }
-        ]
-      end
-
-    errors ++ return_errors
-  end
-
-  defp format_provider_params(params, env) do
-    params
-    |> Enum.map(fn %AST.Field{name: name, type: type} ->
-      "#{name}: #{format_type(resolve_type(type, env.types))}"
-    end)
-    |> Enum.join(", ")
-  end
-
   @doc false
   def effect_namespace?(namespace), do: Map.has_key?(@effect_namespaces, namespace)
 
@@ -5075,85 +4571,9 @@ defmodule Skein.Analyzer do
     end
   end
 
-  defp check_effect_capability(namespace, _method, meta, env) do
-    case Map.fetch!(@effect_namespaces, namespace) do
-      # No capability required for this effect namespace (e.g., trace)
-      nil ->
-        []
-
-      required_capability ->
-        check_effect_capability_required(namespace, required_capability, meta, env)
-    end
-  end
-
-  defp check_effect_capability_required(namespace, required_capability, meta, env) do
-    has_capability =
-      Enum.any?(env.capabilities, fn %AST.Capability{kind: kind} ->
-        kind == required_capability
-      end)
-
-    if has_capability do
-      []
-    else
-      span = capability_insertion_span(env)
-
-      [
-        %Error{
-          code: "E0012",
-          severity: :error,
-          message:
-            "Capability '#{required_capability}' required but not declared. " <>
-              "Effect calls to '#{namespace}' require this capability.",
-          location: location_from_meta(meta, env.file),
-          fix_hint:
-            "Add a capability declaration to the module: capability #{required_capability}",
-          fix_code: "capability #{required_capability}",
-          span: span,
-          edit_kind: if(span, do: :insert_line)
-        }
-      ]
-    end
-  end
-
   # ------------------------------------------------------------------
-  # Store capability checking
-  # ------------------------------------------------------------------
-
-  defp check_store_capability(table_name, _method, meta, env) do
-    has_capability =
-      Enum.any?(env.capabilities, fn %AST.Capability{kind: kind, params: params} ->
-        kind == "store.table" and
-          Enum.any?(params, fn
-            %AST.StringLit{segments: [{:literal, name}]} -> name == table_name
-            _ -> false
-          end)
-      end)
-
-    if has_capability do
-      []
-    else
-      span = capability_insertion_span(env)
-
-      [
-        %Error{
-          code: "E0012",
-          severity: :error,
-          message:
-            "Capability 'store.table(\"#{table_name}\")' required but not declared. " <>
-              "Store operations on '#{table_name}' require this capability.",
-          location: location_from_meta(meta, env.file),
-          fix_hint:
-            "Add a capability declaration to the module: capability store.table(\"#{table_name}\")",
-          fix_code: "capability store.table(\"#{table_name}\")",
-          span: span,
-          edit_kind: if(span, do: :insert_line)
-        }
-      ]
-    end
-  end
-
-  # ------------------------------------------------------------------
-  # Tool capability checking — identifier-based tool references
+  # Tool name extraction — identifier-based tool references (the
+  # capability checks themselves live in Skein.Analyzer.Capabilities)
   # ------------------------------------------------------------------
 
   # Extract a tool name string from an AST expression.
@@ -5169,246 +4589,6 @@ defmodule Skein.Analyzer do
   def extract_tool_name_from_param(%AST.ToolRef{name: name}), do: name
   def extract_tool_name_from_param(%AST.StringLit{segments: [{:literal, name}]}), do: name
   def extract_tool_name_from_param(_), do: nil
-
-  # Get the short (unqualified) name of a tool, e.g. "CreateRefund" from "Stripe.CreateRefund"
-  defp tool_short_name(name) do
-    case String.split(name, ".") do
-      [short] -> short
-      parts -> List.last(parts)
-    end
-  end
-
-  # Collect all declared tool names from tool.use capabilities in env
-  defp collect_declared_tool_names(env) do
-    env.capabilities
-    |> Enum.filter(&match?(%AST.Capability{kind: "tool.use"}, &1))
-    |> Enum.flat_map(fn %AST.Capability{params: params} ->
-      params
-      |> Enum.map(&extract_tool_name_from_param/1)
-      |> Enum.reject(&is_nil/1)
-    end)
-  end
-
-  # Check that a tool.call/tool.schema references a tool declared in capability tool.use params
-  defp check_tool_capability(tool_name, _method, meta, env) do
-    declared_names = collect_declared_tool_names(env)
-
-    span = capability_insertion_span(env)
-
-    cond do
-      declared_names == [] ->
-        # No tool.use capability at all — produce E0012
-        [
-          %Error{
-            code: "E0012",
-            severity: :error,
-            message:
-              "Capability 'tool.use' required but not declared. " <>
-                "Effect calls to 'tool' require this capability.",
-            location: location_from_meta(meta, env.file),
-            fix_hint:
-              "Add a capability declaration to the module: capability tool.use(#{tool_name})",
-            fix_code: "capability tool.use(#{tool_name})",
-            span: span,
-            edit_kind: if(span, do: :insert_line)
-          }
-        ]
-
-      tool_name in declared_names ->
-        # Exact match found
-        []
-
-      true ->
-        # Has tool.use but this specific tool is not listed — E0014
-        [
-          %Error{
-            code: "E0014",
-            severity: :error,
-            message:
-              "Tool '#{tool_name}' is not declared in any capability tool.use. " <>
-                "Declared tools: #{Enum.join(declared_names, ", ")}.",
-            location: location_from_meta(meta, env.file),
-            fix_hint:
-              "Add '#{tool_name}' to your capability declaration: capability tool.use(#{tool_name})",
-            fix_code: "capability tool.use(#{tool_name})",
-            span: span,
-            edit_kind: if(span, do: :insert_line)
-          }
-        ]
-    end
-  end
-
-  # Check that no two tool.use params produce the same short name
-  defp check_duplicate_tool_short_names(env) do
-    declared_names = collect_declared_tool_names(env)
-
-    # Group by short name and find duplicates
-    declared_names
-    |> Enum.group_by(&tool_short_name/1)
-    |> Enum.flat_map(fn {short_name, full_names} ->
-      if length(full_names) > 1 do
-        # Find a capability meta to attach the error to
-        cap_meta =
-          env.capabilities
-          |> Enum.filter(&match?(%AST.Capability{kind: "tool.use"}, &1))
-          |> List.first()
-          |> then(fn
-            %AST.Capability{meta: meta} -> meta
-            _ -> %{line: 1, col: 1, file: env.file}
-          end)
-
-        [
-          %Error{
-            code: "E0015",
-            severity: :error,
-            message:
-              "Duplicate short tool name '#{short_name}'. " <>
-                "The following tools share the same short name: #{Enum.join(full_names, ", ")}. " <>
-                "Tool names must be unique within a module.",
-            location: location_from_meta(cap_meta, env.file),
-            fix_hint: "Rename one of the tools to avoid the naming conflict",
-            fix_code: nil
-          }
-        ]
-      else
-        []
-      end
-    end)
-  end
-
-  # Scoped (single-label) capability kinds: the parameter names a scope
-  # label — a memory namespace, event stream, process pool, or timer group
-  # — that the compiler threads into every generated runtime call (spec
-  # §3.2). Two declarations of the same kind in one scope would make that
-  # label ambiguous, so each module or agent may declare at most one.
-  @scoped_capability_kinds ["memory.kv", "event.log", "process.spawn", "timer"]
-
-  # Typed store tables (C5/#255, E0043): every `capability store.table(...)`
-  # must name BOTH the table and its record type — a declared `type` with
-  # exactly one `@primary` field (the get/delete key). Checked per scope's
-  # own declarations (nested agents check their own).
-  defp check_store_table_declarations(env) do
-    env
-    |> Map.get(:own_capabilities, env.capabilities)
-    |> Enum.filter(&match?(%AST.Capability{kind: "store.table"}, &1))
-    |> Enum.flat_map(&store_table_declaration_errors(&1, env))
-  end
-
-  defp store_table_declaration_errors(%AST.Capability{params: params, meta: meta}, env) do
-    case params do
-      [%AST.StringLit{segments: [literal: table]}, %AST.Identifier{name: type_name}] ->
-        case Map.get(env.types, type_name) do
-          %AST.TypeDecl{} = decl ->
-            primary_count =
-              Enum.count(decl.fields, fn %AST.Field{annotations: annotations} ->
-                Enum.any?(annotations || [], &match?(%AST.Annotation{name: "primary"}, &1))
-              end)
-
-            if primary_count == 1 do
-              []
-            else
-              [
-                store_table_error(
-                  "Record type '#{type_name}' for store table \"#{table}\" must have exactly one @primary field, found #{primary_count}",
-                  "Annotate the primary-key field: id: Uuid @primary",
-                  nil,
-                  meta,
-                  env
-                )
-              ]
-            end
-
-          _ ->
-            [
-              store_table_error(
-                "Record type '#{type_name}' for store table \"#{table}\" is not a declared type",
-                "Declare the record type this table stores",
-                "type #{type_name} { id: Uuid @primary }",
-                meta,
-                env
-              )
-            ]
-        end
-
-      [%AST.StringLit{segments: [literal: table]} | _] ->
-        [
-          store_table_error(
-            "capability store.table(\"#{table}\") must also name the table's record type (store tables are typed)",
-            "Add the record type: capability store.table(\"#{table}\", RecordType)",
-            "capability store.table(\"#{table}\", RecordType)",
-            meta,
-            env
-          )
-        ]
-
-      _ ->
-        [
-          store_table_error(
-            "capability store.table requires a table name string and a record type",
-            "Declare as: capability store.table(\"table_name\", RecordType)",
-            "capability store.table(\"table_name\", RecordType)",
-            meta,
-            env
-          )
-        ]
-    end
-  end
-
-  defp store_table_error(message, fix_hint, fix_code, meta, env) do
-    %Error{
-      code: "E0043",
-      severity: :error,
-      message: message,
-      location: location_from_meta(meta, env.file),
-      fix_hint: fix_hint,
-      fix_code: fix_code
-    }
-  end
-
-  defp check_duplicate_scoped_capabilities(env) do
-    # A nested agent's env merges the enclosing module's capabilities;
-    # only the scope's own declarations count toward the duplicate rule
-    # (the agent's label overrides the module's for calls inside it).
-    env
-    |> Map.get(:own_capabilities, env.capabilities)
-    |> Enum.filter(fn %AST.Capability{kind: kind} -> kind in @scoped_capability_kinds end)
-    |> Enum.group_by(fn %AST.Capability{kind: kind} -> kind end)
-    |> Enum.flat_map(fn
-      {_kind, [_single]} ->
-        []
-
-      {kind, [first | rest]} ->
-        first_label = scoped_capability_label(first)
-
-        Enum.map(rest, fn cap ->
-          %Error{
-            code: "E0017",
-            severity: :error,
-            message:
-              "Duplicate '#{kind}' capability: #{scoped_capability_label(cap)}. " <>
-                "This module already declares #{kind}(#{inspect(first_label)}) — " <>
-                "the parameter names the scope label for every #{kind} call, " <>
-                "so at most one #{kind} capability is allowed per module or agent.",
-            location: location_from_meta(cap.meta, env.file),
-            fix_hint:
-              "Remove this declaration or merge its uses into " <>
-                "#{kind}(#{inspect(first_label)})",
-            fix_code: nil
-          }
-        end)
-    end)
-  end
-
-  defp scoped_capability_label(%AST.Capability{params: []}), do: ""
-
-  defp scoped_capability_label(%AST.Capability{params: [param | _]}) do
-    case param do
-      %AST.StringLit{segments: [{:literal, text}]} -> text
-      %AST.StringLit{segments: []} -> ""
-      %AST.Identifier{name: name} -> name
-      _ -> ""
-    end
-  end
 
   # ------------------------------------------------------------------
   # Agent environment
@@ -5544,221 +4724,6 @@ defmodule Skein.Analyzer do
   end
 
   # ------------------------------------------------------------------
-  # Phase transition validation
-  # ------------------------------------------------------------------
-
-  defp validate_phase_transitions(%AST.Agent{phases: nil}, _env), do: []
-
-  defp validate_phase_transitions(
-         %AST.Agent{phases: %AST.EnumDecl{variants: variants}, meta: meta},
-         env
-       ) do
-    variant_names = MapSet.new(variants, & &1.name)
-
-    # Check that all transition targets exist as phase variants
-    Enum.flat_map(variants, fn %AST.Variant{name: source, transitions: targets, meta: vmeta} ->
-      Enum.flat_map(targets, fn target ->
-        if MapSet.member?(variant_names, target) do
-          []
-        else
-          [
-            %Error{
-              code: "E0030",
-              severity: :error,
-              message:
-                "Invalid phase transition: '#{source}' declares transition to unknown phase '#{target}'",
-              location: location_from_meta(vmeta, env.file),
-              fix_hint: "Add '#{target}' as a Phase variant or remove the transition",
-              fix_code: "#{target} -> []"
-            }
-          ]
-        end
-      end)
-    end) ++ check_unreachable_phases(variants, meta, env)
-  end
-
-  defp check_unreachable_phases(variants, meta, env) do
-    # Find all phases that are transition targets (reachable)
-    all_targets =
-      variants
-      |> Enum.flat_map(& &1.transitions)
-      |> MapSet.new()
-
-    # The first variant is implicitly reachable (it's the start phase)
-    first_variant =
-      case variants do
-        [first | _] -> first.name
-        [] -> nil
-      end
-
-    Enum.flat_map(variants, fn %AST.Variant{name: name} ->
-      if name == first_variant or MapSet.member?(all_targets, name) do
-        []
-      else
-        [
-          %Error{
-            code: "E0031",
-            severity: :warning,
-            message: "Phase '#{name}' is unreachable — no transitions lead to it",
-            location: location_from_meta(meta, env.file),
-            fix_hint: "Add a transition to '#{name}' from another phase or remove it",
-            fix_code: "SomePhase -> [#{name}]"
-          }
-        ]
-      end
-    end)
-  end
-
-  # ------------------------------------------------------------------
-  # Phase handler checking
-  # ------------------------------------------------------------------
-
-  defp check_phase_handlers(%AST.Agent{phases: nil}, _env), do: []
-
-  defp check_phase_handlers(
-         %AST.Agent{phases: %AST.EnumDecl{variants: variants}, handlers: handlers, meta: meta},
-         env
-       ) do
-    # Collect all phase handler references
-    handled_phases =
-      handlers
-      |> Enum.filter(fn %AST.AgentHandler{kind: kind} -> kind == :phase end)
-      |> Enum.map(fn %AST.AgentHandler{phase: phase} -> phase end)
-      |> MapSet.new()
-
-    # Every phase variant needs a handler
-    Enum.flat_map(variants, fn %AST.Variant{name: name} ->
-      if MapSet.member?(handled_phases, name) do
-        []
-      else
-        [
-          %Error{
-            code: "E0032",
-            severity: :error,
-            message: "Phase '#{name}' has no handler — add 'on phase(Phase.#{name}) -> { ... }'",
-            location: location_from_meta(meta, env.file),
-            fix_hint: "Add a handler for this phase",
-            fix_code: "on phase(Phase.#{name}) -> { ... }"
-          }
-        ]
-      end
-    end)
-  end
-
-  # ------------------------------------------------------------------
-  # Transition call validation
-  # ------------------------------------------------------------------
-
-  defp validate_transition_calls(%AST.Agent{phases: nil, handlers: handlers}, env) do
-    # If there are no phases but there are transition calls, that's an error
-    transitions = collect_transitions_from_handlers(handlers)
-
-    Enum.map(transitions, fn {_phase, tmeta} ->
-      %Error{
-        code: "E0033",
-        severity: :error,
-        message: "transition() used but no Phase enum is defined in this agent",
-        location: location_from_meta(tmeta, env.file),
-        fix_hint: "Define an 'enum Phase { ... }' in the agent",
-        fix_code: "enum Phase { Start -> [] }"
-      }
-    end)
-  end
-
-  defp validate_transition_calls(
-         %AST.Agent{phases: %AST.EnumDecl{variants: variants}, handlers: handlers},
-         env
-       ) do
-    # Build transition map: source_phase -> allowed_targets
-    transition_map =
-      Map.new(variants, fn %AST.Variant{name: name, transitions: targets} ->
-        {name, MapSet.new(targets)}
-      end)
-
-    variant_names = MapSet.new(variants, & &1.name)
-
-    # Check each handler's transition calls
-    Enum.flat_map(handlers, fn handler ->
-      source_phase =
-        case handler do
-          %AST.AgentHandler{kind: :start} -> :start
-          %AST.AgentHandler{kind: :phase, phase: phase} -> phase
-        end
-
-      transitions = collect_transitions_from_body(handler.body)
-
-      Enum.flat_map(transitions, fn {target_phase, tmeta} ->
-        cond do
-          not MapSet.member?(variant_names, target_phase) ->
-            [
-              %Error{
-                code: "E0030",
-                severity: :error,
-                message: "Transition to unknown phase '#{target_phase}'",
-                location: location_from_meta(tmeta, env.file),
-                fix_hint: "Use a valid Phase variant name",
-                fix_code:
-                  "transition(Phase.#{closest_name(target_phase, MapSet.to_list(variant_names))})"
-              }
-            ]
-
-          source_phase == :start ->
-            # Start handler can transition to any phase
-            []
-
-          true ->
-            allowed = Map.get(transition_map, source_phase, MapSet.new())
-
-            if MapSet.member?(allowed, target_phase) do
-              []
-            else
-              allowed_list = allowed |> MapSet.to_list() |> Enum.join(", ")
-
-              [
-                %Error{
-                  code: "E0030",
-                  severity: :error,
-                  message:
-                    "Invalid transition: Phase.#{source_phase} cannot transition to Phase.#{target_phase}. Allowed targets: [#{allowed_list}]",
-                  location: location_from_meta(tmeta, env.file),
-                  fix_hint:
-                    "Update the Phase enum to allow this transition or use an allowed target",
-                  fix_code: "#{source_phase} -> [#{allowed_list}, #{target_phase}]"
-                }
-              ]
-            end
-        end
-      end)
-    end)
-  end
-
-  defp collect_transitions_from_handlers(handlers) do
-    Enum.flat_map(handlers, fn handler ->
-      collect_transitions_from_body(handler.body)
-    end)
-  end
-
-  defp collect_transitions_from_body(%AST.Block{expressions: exprs}) do
-    Enum.flat_map(exprs, &collect_transitions_from_body/1)
-  end
-
-  defp collect_transitions_from_body(%AST.Transition{phase: phase, meta: meta}) do
-    [{phase, meta}]
-  end
-
-  defp collect_transitions_from_body(%AST.Match{arms: arms}) do
-    Enum.flat_map(arms, fn %AST.MatchArm{body: body} ->
-      collect_transitions_from_body(body)
-    end)
-  end
-
-  defp collect_transitions_from_body(%AST.Let{value: value}) do
-    collect_transitions_from_body(value)
-  end
-
-  defp collect_transitions_from_body(_), do: []
-
-  # ------------------------------------------------------------------
   # Helpers
   # ------------------------------------------------------------------
 
@@ -5774,58 +4739,62 @@ defmodule Skein.Analyzer do
     end
   end
 
-  defp format_type(:json), do: "Json"
-  defp format_type(:int), do: "Int"
-  defp format_type(:float), do: "Float"
-  defp format_type(:string), do: "String"
-  defp format_type(:bool), do: "Bool"
-  defp format_type(:uuid), do: "Uuid"
-  defp format_type(:instant), do: "Instant"
-  defp format_type(:duration), do: "Duration"
-  defp format_type(:email), do: "Email"
-  defp format_type(:url), do: "Url"
-  defp format_type({:option, inner}), do: "Option[#{format_type(inner)}]"
-  defp format_type({:result, ok, err}), do: "Result[#{format_type(ok)}, #{format_type(err)}]"
-  defp format_type({:list, elem}), do: "List[#{format_type(elem)}]"
-  defp format_type({:map, k, v}), do: "Map[#{format_type(k)}, #{format_type(v)}]"
-  defp format_type({:set, elem}), do: "Set[#{format_type(elem)}]"
-  defp format_type({:user_type, name}), do: name
-  defp format_type({:enum, name}), do: name
+  @doc false
+  def format_type(:json), do: "Json"
+  def format_type(:int), do: "Int"
+  def format_type(:float), do: "Float"
+  def format_type(:string), do: "String"
+  def format_type(:bool), do: "Bool"
+  def format_type(:uuid), do: "Uuid"
+  def format_type(:instant), do: "Instant"
+  def format_type(:duration), do: "Duration"
+  def format_type(:email), do: "Email"
+  def format_type(:url), do: "Url"
+  def format_type({:option, inner}), do: "Option[#{format_type(inner)}]"
+  def format_type({:result, ok, err}), do: "Result[#{format_type(ok)}, #{format_type(err)}]"
+  def format_type({:list, elem}), do: "List[#{format_type(elem)}]"
+  def format_type({:map, k, v}), do: "Map[#{format_type(k)}, #{format_type(v)}]"
+  def format_type({:set, elem}), do: "Set[#{format_type(elem)}]"
+  def format_type({:user_type, name}), do: name
+  def format_type({:enum, name}), do: name
 
-  defp format_type({:fn, params, ret}),
+  def format_type({:fn, params, ret}),
     do: "fn(#{Enum.map_join(params, ", ", &format_type/1)}) -> #{format_type(ret)}"
 
-  defp format_type(:unknown), do: "<unknown>"
-  defp format_type(:dynamic), do: "<dynamic>"
-  defp format_type({:widened, a, b}), do: "#{format_type(a)} | #{format_type(b)}"
-  defp format_type(other), do: inspect(other)
+  def format_type(:unknown), do: "<unknown>"
+  def format_type(:dynamic), do: "<dynamic>"
+  def format_type({:widened, a, b}), do: "#{format_type(a)} | #{format_type(b)}"
+  def format_type(other), do: inspect(other)
 
-  defp location_from_meta(%{line: line, col: col, file: file}, _default_file) do
+  @doc false
+  def location_from_meta(%{line: line, col: col, file: file}, _default_file) do
     %{file: file, line: line, col: col}
   end
 
-  defp location_from_meta(%{line: line, col: col}, default_file) do
+  def location_from_meta(%{line: line, col: col}, default_file) do
     %{file: default_file, line: line, col: col}
   end
 
-  defp location_from_meta(_, default_file) do
+  def location_from_meta(_, default_file) do
     %{file: default_file, line: 0, col: 0}
   end
 
   # Span covering `text` at the position `meta` points to. Only safe when
   # meta locates the exact start of `text` in the source (identifier and
   # type-name metas do; call metas point at the lparen and do not).
-  defp span_from_meta(%{line: line, col: col}, text)
-       when is_integer(line) and line > 0 and is_integer(col) and col > 0 do
+  @doc false
+  def span_from_meta(%{line: line, col: col}, text)
+      when is_integer(line) and line > 0 and is_integer(col) and col > 0 do
     Error.span(line, col, String.length(text))
   end
 
-  defp span_from_meta(_, _), do: nil
+  def span_from_meta(_, _), do: nil
 
   # Insertion point for a new `capability` line: directly under the last
   # declaration the module/agent already has (matching its indentation),
   # or as the first body line after the opening declaration.
-  defp capability_insertion_span(env) do
+  @doc false
+  def capability_insertion_span(env) do
     own_capabilities = Map.get(env, :own_capabilities, env.capabilities)
 
     positions =
@@ -5906,264 +4875,6 @@ defmodule Skein.Analyzer do
   end
 
   # ------------------------------------------------------------------
-  # W0001: Unused binding detection
-  # ------------------------------------------------------------------
-
-  defp check_unused_bindings_in_declarations(declarations, _env) do
-    fns = Enum.filter(declarations, &match?(%AST.Fn{}, &1))
-    Enum.flat_map(fns, &check_unused_bindings_in_fn/1)
-  end
-
-  defp check_unused_bindings_in_fn(%AST.Fn{body: body, meta: fn_meta}) do
-    # Collect all let-binding names from the body
-    let_bindings = collect_let_bindings(body)
-    # Collect all referenced identifiers in the body
-    referenced = collect_referenced_identifiers(body)
-
-    # Find unused bindings (ignore _ prefixed names)
-    Enum.flat_map(let_bindings, fn {name, meta, name_meta} ->
-      if name in referenced or String.starts_with?(name, "_") do
-        []
-      else
-        span = span_from_meta(name_meta, name)
-
-        [
-          %Error{
-            code: "W0001",
-            severity: :warning,
-            message: "Unused binding '#{name}'",
-            location: location_from_meta(meta, Map.get(fn_meta, :file, "unknown")),
-            fix_hint:
-              "Remove this binding or prefix with _ to indicate it is intentionally unused",
-            fix_code: "_#{name}",
-            span: span,
-            edit_kind: if(span, do: :replace)
-          }
-        ]
-      end
-    end)
-  end
-
-  defp collect_let_bindings(%AST.Block{expressions: exprs}) do
-    Enum.flat_map(exprs, &collect_let_bindings/1)
-  end
-
-  defp collect_let_bindings(%AST.Let{name: name, meta: meta, name_meta: name_meta, value: value}) do
-    [{name, meta, name_meta} | collect_let_bindings(value)]
-  end
-
-  defp collect_let_bindings(%AST.Match{arms: arms}) do
-    Enum.flat_map(arms, fn %AST.MatchArm{body: body} ->
-      collect_let_bindings(body)
-    end)
-  end
-
-  defp collect_let_bindings(_), do: []
-
-  defp collect_referenced_identifiers(%AST.Block{expressions: exprs}) do
-    Enum.flat_map(exprs, &collect_referenced_identifiers/1)
-  end
-
-  defp collect_referenced_identifiers(%AST.Identifier{name: name}) do
-    [name]
-  end
-
-  defp collect_referenced_identifiers(%AST.Let{value: value}) do
-    collect_referenced_identifiers(value)
-  end
-
-  defp collect_referenced_identifiers(%AST.Call{target: target, args: args}) do
-    collect_referenced_identifiers(target) ++
-      Enum.flat_map(args, &collect_referenced_identifiers/1)
-  end
-
-  defp collect_referenced_identifiers(%AST.BinaryOp{left: left, right: right}) do
-    collect_referenced_identifiers(left) ++ collect_referenced_identifiers(right)
-  end
-
-  defp collect_referenced_identifiers(%AST.UnaryOp{operand: operand}) do
-    collect_referenced_identifiers(operand)
-  end
-
-  defp collect_referenced_identifiers(%AST.Match{subject: subject, arms: arms}) do
-    collect_referenced_identifiers(subject) ++
-      Enum.flat_map(arms, fn %AST.MatchArm{guard: guard, body: body} ->
-        guard_refs = if guard, do: collect_referenced_identifiers(guard), else: []
-        guard_refs ++ collect_referenced_identifiers(body)
-      end)
-  end
-
-  defp collect_referenced_identifiers(%AST.Pipe{left: left, right: right}) do
-    collect_referenced_identifiers(left) ++ collect_referenced_identifiers(right)
-  end
-
-  defp collect_referenced_identifiers(%AST.FieldAccess{subject: subject}) do
-    collect_referenced_identifiers(subject)
-  end
-
-  defp collect_referenced_identifiers(%AST.ListLit{elements: elements}) do
-    Enum.flat_map(elements, &collect_referenced_identifiers/1)
-  end
-
-  defp collect_referenced_identifiers(%AST.MapLit{entries: entries}) do
-    Enum.flat_map(entries, fn {_key, value} -> collect_referenced_identifiers(value) end)
-  end
-
-  defp collect_referenced_identifiers(%AST.RecordLit{fields: fields}) do
-    Enum.flat_map(fields, fn {_key, value} -> collect_referenced_identifiers(value) end)
-  end
-
-  defp collect_referenced_identifiers(%AST.StringLit{segments: segments}) do
-    Enum.flat_map(segments, fn
-      {:interpolation, expr} -> collect_referenced_identifiers(expr)
-      _ -> []
-    end)
-  end
-
-  defp collect_referenced_identifiers(_), do: []
-
-  # ------------------------------------------------------------------
-  # W0002: Unused capability detection
-  # ------------------------------------------------------------------
-
-  defp check_unused_capabilities(declarations, env) do
-    # Collect all effect calls/handlers to determine which capabilities are exercised
-    used_capabilities = collect_used_capabilities(declarations, env)
-
-    env.capabilities
-    |> Enum.flat_map(fn %AST.Capability{kind: kind, meta: meta} ->
-      if kind in used_capabilities do
-        []
-      else
-        span = span_from_meta(meta, "capability")
-
-        [
-          %Error{
-            code: "W0002",
-            severity: :warning,
-            message: "Unused capability '#{kind}' — declared but never exercised",
-            location: location_from_meta(meta, env.file),
-            fix_hint: "Remove this capability declaration if it is no longer needed",
-            fix_code: "",
-            span: span,
-            edit_kind: if(span, do: :delete_line)
-          }
-        ]
-      end
-    end)
-  end
-
-  defp collect_used_capabilities(declarations, _env) do
-    # Check effect calls in function bodies
-    fn_caps =
-      declarations
-      |> Enum.filter(&match?(%AST.Fn{}, &1))
-      |> Enum.flat_map(fn %AST.Fn{body: body} ->
-        collect_effect_namespaces(body)
-      end)
-      |> Enum.map(&namespace_capability/1)
-      |> Enum.reject(&is_nil/1)
-
-    # Check handlers (they require http.in/queue.consume/schedule.trigger)
-    handler_caps =
-      declarations
-      |> Enum.filter(&match?(%AST.Handler{}, &1))
-      |> Enum.flat_map(fn %AST.Handler{source: source, body: body} ->
-        cap = handler_required_capability(source)
-
-        body_caps =
-          body
-          |> collect_effect_namespaces()
-          |> Enum.map(&namespace_capability/1)
-          |> Enum.reject(&is_nil/1)
-
-        [cap | body_caps]
-      end)
-      |> Enum.reject(&is_nil/1)
-
-    MapSet.new(fn_caps ++ handler_caps)
-  end
-
-  # store.<table>.<method> usage exercises the store.table capability; all
-  # other namespaces map through the effect registry.
-  defp namespace_capability("store"), do: "store.table"
-  defp namespace_capability(namespace), do: Map.get(@effect_namespaces, namespace)
-
-  defp collect_effect_namespaces(%AST.Block{expressions: exprs}) do
-    Enum.flat_map(exprs, &collect_effect_namespaces/1)
-  end
-
-  # Store effect: store.<table>.<method>(...) exercises store.table
-  defp collect_effect_namespaces(%AST.Call{
-         target: %AST.FieldAccess{
-           subject: %AST.FieldAccess{subject: %AST.Identifier{name: "store"}, field: _table},
-           field: method
-         },
-         args: args
-       })
-       when method in @store_methods do
-    ["store"] ++ Enum.flat_map(args, &collect_effect_namespaces/1)
-  end
-
-  defp collect_effect_namespaces(%AST.Call{
-         target: %AST.FieldAccess{
-           subject: %AST.Identifier{name: namespace},
-           field: method
-         },
-         args: args
-       }) do
-    ns =
-      if effect_namespace?(namespace) and effect_method?(namespace, method) do
-        [namespace]
-      else
-        []
-      end
-
-    ns ++ Enum.flat_map(args, &collect_effect_namespaces/1)
-  end
-
-  defp collect_effect_namespaces(%AST.Call{args: args}) do
-    Enum.flat_map(args, &collect_effect_namespaces/1)
-  end
-
-  defp collect_effect_namespaces(%AST.Let{value: value}) do
-    collect_effect_namespaces(value)
-  end
-
-  defp collect_effect_namespaces(%AST.Match{subject: subject, arms: arms}) do
-    collect_effect_namespaces(subject) ++
-      Enum.flat_map(arms, fn %AST.MatchArm{body: body} ->
-        collect_effect_namespaces(body)
-      end)
-  end
-
-  defp collect_effect_namespaces(%AST.Pipe{left: left, right: right}) do
-    collect_effect_namespaces(left) ++ collect_effect_namespaces(right)
-  end
-
-  defp collect_effect_namespaces(%AST.BinaryOp{left: left, right: right}) do
-    collect_effect_namespaces(left) ++ collect_effect_namespaces(right)
-  end
-
-  defp collect_effect_namespaces(%AST.MapLit{entries: entries}) do
-    Enum.flat_map(entries, fn {_key, value} -> collect_effect_namespaces(value) end)
-  end
-
-  defp collect_effect_namespaces(%AST.RecordLit{fields: fields}) do
-    Enum.flat_map(fields, fn {_key, value} -> collect_effect_namespaces(value) end)
-  end
-
-  defp collect_effect_namespaces(%AST.ListLit{elements: elements}) do
-    Enum.flat_map(elements, &collect_effect_namespaces/1)
-  end
-
-  defp collect_effect_namespaces(%AST.UnaryOp{operand: operand}) do
-    collect_effect_namespaces(operand)
-  end
-
-  defp collect_effect_namespaces(_), do: []
-
-  # ------------------------------------------------------------------
   # W0003: Unreachable code after stop()
   # ------------------------------------------------------------------
 
@@ -6207,85 +4918,6 @@ defmodule Skein.Analyzer do
 
   defp extract_meta(%{meta: meta}), do: meta
   defp extract_meta(_), do: %{line: 0, col: 0}
-
-  # ------------------------------------------------------------------
-  # Agent-only lifecycle calls outside agent handlers:
-  # E0033 transition(), E0034 suspend(), E0036 stop()
-  # ------------------------------------------------------------------
-
-  defp check_agent_only_calls(declarations, env) do
-    declarations
-    |> Enum.flat_map(fn
-      %AST.Fn{body: body} -> collect_agent_only_calls(body)
-      %AST.Handler{body: body} -> collect_agent_only_calls(body)
-      %AST.ToolDecl{implement: body} -> collect_agent_only_calls(body)
-      _ -> []
-    end)
-    |> Enum.map(fn {kind, meta} -> agent_only_call_error(kind, meta, env) end)
-  end
-
-  defp agent_only_call_error(:transition, meta, env) do
-    %Error{
-      code: "E0033",
-      severity: :error,
-      message:
-        "transition() can only be used in agent handlers, not in module functions or handlers",
-      location: location_from_meta(meta, env.file),
-      fix_hint: "Move this to an agent handler (on start/on phase) — phases only exist in agents",
-      fix_code: "on phase(Phase.Name) -> { transition(Phase.Next) }"
-    }
-  end
-
-  defp agent_only_call_error(:suspend, meta, env) do
-    %Error{
-      code: "E0034",
-      severity: :error,
-      message:
-        "suspend() can only be used in agent handlers, not in module functions or handlers",
-      location: location_from_meta(meta, env.file),
-      fix_hint: "Move this to an agent handler (on start/on phase)",
-      fix_code: "on phase(Phase.Name) -> { suspend(\"reason\") }"
-    }
-  end
-
-  defp agent_only_call_error(:stop, meta, env) do
-    %Error{
-      code: "E0036",
-      severity: :error,
-      message: "stop() can only be used in agent handlers, not in module functions or handlers",
-      location: location_from_meta(meta, env.file),
-      fix_hint: "Move this to an agent handler (on start/on phase)",
-      fix_code: "on phase(Phase.Name) -> { stop() }"
-    }
-  end
-
-  defp agent_only_call_error(:emit, meta, env) do
-    %Error{
-      code: "E0039",
-      severity: :error,
-      message: "emit can only be used in agent handlers, not in module functions or handlers",
-      location: location_from_meta(meta, env.file),
-      fix_hint:
-        "Move the emit into an agent handler (on start/on phase); " <>
-          "outside agents, record events with event.log(name, data)",
-      fix_code: nil
-    }
-  end
-
-  defp collect_agent_only_calls(%AST.Transition{meta: meta}), do: [{:transition, meta}]
-  defp collect_agent_only_calls(%AST.Suspend{meta: meta}), do: [{:suspend, meta}]
-  defp collect_agent_only_calls(%AST.Stop{meta: meta}), do: [{:stop, meta}]
-  defp collect_agent_only_calls(%AST.Emit{meta: meta}), do: [{:emit, meta}]
-
-  defp collect_agent_only_calls(%AST.Block{expressions: exprs}),
-    do: Enum.flat_map(exprs, &collect_agent_only_calls/1)
-
-  defp collect_agent_only_calls(%AST.Match{arms: arms}) do
-    Enum.flat_map(arms, fn %AST.MatchArm{body: body} -> collect_agent_only_calls(body) end)
-  end
-
-  defp collect_agent_only_calls(%AST.Let{value: value}), do: collect_agent_only_calls(value)
-  defp collect_agent_only_calls(_), do: []
 
   # ------------------------------------------------------------------
   # E0035: idempotent() outside handler
@@ -6405,9 +5037,10 @@ defmodule Skein.Analyzer do
 
   # Picks the candidate closest to the given name, used as fix_code for
   # unknown-name errors.
-  defp closest_name(_name, []), do: "name"
+  @doc false
+  def closest_name(_name, []), do: "name"
 
-  defp closest_name(name, candidates) do
+  def closest_name(name, candidates) do
     Enum.max_by(candidates, &String.jaro_distance(&1, name))
   end
 

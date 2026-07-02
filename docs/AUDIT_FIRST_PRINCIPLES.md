@@ -96,7 +96,7 @@ The big decisions here are well-executed:
 
 **Keyword count has drifted.** The first principles claim "~25 keywords total" (Section 10.1). The actual count is **38** (37 spec + `idempotent`). Many are contextual (`input`, `output`, `errors`, `policy`, `description`, `state`, `strategy`, `child`, `replay`, `given`, `expect`, `assert`, `idempotent`) but all are unconditionally reserved in the lexer. You cannot use `input` as a variable name *anywhere* in a Skein program, even though it's only meaningful inside tool blocks. This violates the "small keyword set" claim and creates a usability trap: `input` is a natural parameter name that will silently fail.
 
-**`assert` desugars in the parser.** CLAUDE.md explicitly states "no desugaring in the parser; that happens in the analyzer." But `assert expr` is transformed into a `%AST.Call{target: "__assert__"}` synthetic call in the parser rather than having its own `AST.Assert` node. Minor, but it's a broken internal rule.
+**`assert` desugars in the parser.** CLAUDE.md explicitly states "no desugaring in the parser; that happens in the analyzer." But `assert expr` is transformed into a `%AST.Call{target: "__assert__"}` synthetic call in the parser rather than having its own `AST.Assert` node. Minor, but it's a broken internal rule. *(Resolved 2026-07-02: #315 replaced the synthetic `__assert__` call with a first-class `AST.Assert` node across parser, analyzer, and codegen.)*
 
 **The universal pattern is not actually universal.** The first principles (Section 3.1) claim every construct follows `<keyword> <name> <signature>? <block>`. In practice:
 - `capability` has no name and no block: `capability http.out("api.stripe.com")`

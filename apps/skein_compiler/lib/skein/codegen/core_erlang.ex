@@ -2274,16 +2274,16 @@ defmodule Skein.CodeGen.CoreErlang do
     )
   end
 
-  # Assert expression: __assert__(expr) — raises a structured
+  # Assert expression: `assert expr` — raises a structured
   # Skein.Runtime.AssertionError on falsy (issue #105). Comparison asserts
   # bind both operands so the failure reports expected vs actual; every
   # assert carries the rendered expression and its source location.
   @comparison_ops [:==, :!=, :<, :>, :<=, :>=]
 
   defp generate_expr(
-         %AST.Call{
-           target: %AST.Identifier{name: "__assert__", meta: meta},
-           args: [%AST.BinaryOp{op: op, left: left, right: right} = expr]
+         %AST.Assert{
+           expr: %AST.BinaryOp{op: op, left: left, right: right} = expr,
+           meta: meta
          },
          scope
        )
@@ -2322,10 +2322,7 @@ defmodule Skein.CodeGen.CoreErlang do
     )
   end
 
-  defp generate_expr(
-         %AST.Call{target: %AST.Identifier{name: "__assert__", meta: meta}, args: [expr]},
-         scope
-       ) do
+  defp generate_expr(%AST.Assert{expr: expr, meta: meta}, scope) do
     expr_val = generate_expr(expr, scope)
     result_var = :cerl.c_var(gen_var())
 
