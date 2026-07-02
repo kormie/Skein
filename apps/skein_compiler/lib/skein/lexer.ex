@@ -25,7 +25,7 @@ defmodule Skein.Lexer do
   @keywords ~w(
     module fn let match type enum handler agent tool capability
     supervisor test scenario golden on emit transition stop suspend
-    resume true false implement idempotent
+    true false implement idempotent
   )a
 
   # Contextual keywords (input, output, errors, policy, description, state,

@@ -85,7 +85,6 @@ defmodule Skein.Lsp.Completions do
       {"expect", "Scenario expect block", "keyword"},
       {"assert", "Assertion", "keyword"},
       {"suspend", "Suspend the agent", "keyword"},
-      {"resume", "Resume a suspended agent", "keyword"},
       {"idempotent", "Idempotent guard", "keyword"},
       {"return", "Return value", "keyword"}
     ]

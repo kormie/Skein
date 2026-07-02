@@ -175,8 +175,9 @@ agent RefundAgent {
 ```
 
 Agent lifecycle calls (inside agents only): `transition(Phase.X)`, `stop()`,
-`suspend(reason)`, `resume(input)`. Memory keys are automatically scoped per
-agent instance.
+`suspend(reason)`. There is no in-agent `resume` — a suspended agent is
+resumed from outside by the host-side `Skein.Runtime.Agent.resume(pid, phase)`.
+Memory keys are automatically scoped per agent instance.
 
 ## Known Gotchas
 

@@ -46,8 +46,12 @@ Reserved words that cannot be used as identifiers:
 module  fn       let      match    type       enum
 handler agent    tool     capability supervisor test
 scenario golden  on       emit     transition stop
-suspend resume   true     false    implement  idempotent
+suspend true     false    implement  idempotent
 ```
+
+> `resume` is not reserved: agents are resumed host-side
+> (`Skein.Runtime.Agent.resume/2`), there is no in-agent `resume`
+> construct, and `resume` is an ordinary identifier in Skein source.
 
 Each keyword tokenizes to its corresponding atom: `"module"` becomes `{:module, {line, col}}`.
 

@@ -45,8 +45,12 @@ Reserved words — these cannot be used as identifiers:
 ```
 module  fn  let  match  type  enum  handler  agent  tool  capability
 supervisor  test  scenario  golden  on  emit  transition  stop  suspend
-resume  true  false  implement  idempotent
+true  false  implement  idempotent
 ```
+
+> `resume` was de-reserved before the freeze (#301): there is no in-agent
+> `resume` construct (agents are resumed host-side, §6.8), so it is an
+> ordinary identifier.
 
 **Contextual keywords.** The following words have meaning only inside their
 construct and are ordinary identifiers everywhere else (`let input = 1` is
@@ -770,9 +774,10 @@ suspend(reason: String) -> ()
 There is no in-agent `resume` call. `suspend` hands control back to the
 host, and a suspended agent is resumed *from outside* by the host-side
 runtime API — `Skein.Runtime.Agent.resume(pid, next_phase)` — which
-moves the agent into the given phase. The `resume` keyword is nonetheless
-**reserved** (§1 keyword list): it is intentionally burned for 1.0 so a future
-1.x in-agent `resume` form can claim it without a breaking keyword addition.
+moves the agent into the given phase. `resume` is **not** a reserved word
+(de-reserved by #301): it is an ordinary identifier in Skein source. A
+future in-agent resumption construct, if one ships, will pick its own
+surface (see the human-in-the-loop roadmap item).
 
 ### 6.9 Idempotency
 
@@ -1206,6 +1211,6 @@ with `tool.call` — there is no cross-module function access to test against.
 *End of Skein Language Specification — v1.0 draft (pre-release; not yet frozen).*
 
 > The 1.0 spec is **not** finally frozen. v1.0.0-rc.1 was tagged but the 2026-06-15 roadmap reset
-> determined GA is not imminent; the scenario-testing surface (§3.10/§8.5), the fate of `given`/
-> `resume`, and the soundness fixes in flight may still change before the freeze. See
+> determined GA is not imminent; the scenario-testing surface (§3.10/§8.5), the fate of `given`,
+> and the soundness fixes in flight may still change before the freeze. See
 > `docs/STABILITY.md` and `docs/ROADMAP.md`.
