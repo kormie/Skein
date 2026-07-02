@@ -39,7 +39,7 @@ Wave C made the runtime expose exactly the contract the analyzer and spec claim,
 - **#325** — `supervisor` declarations boot real OTP supervisors under `skein run` ([#325](https://github.com/kormie/Skein/issues/325))
 - **Wave D / [#262](https://github.com/kormie/Skein/issues/262)** — the continuous dogfood conformance gate: compile + load + **run** reduced, pinned programs from the checked-in dungeon and fablepool ports on every change
 
-### v1.0.0-rc.2 and GA (next)
+### v1.0.0-rc.5 and GA (next)
 
 Wave F freezes grammar, diagnostics, effect ABI + error shapes, schema derivation, CLI/JSON/config, and persisted vectors — only after every preceding contract is executable and green — then the RC soaks and promotes to GA. The canonical-substrate question was resolved out of 1.0 ([#300](https://github.com/kormie/Skein/issues/300) closed as Alternative B): the substrate items live in v1.1, and there is no v0.6.0 milestone.
 
@@ -47,7 +47,7 @@ Wave F freezes grammar, diagnostics, effect ABI + error shapes, schema derivatio
 
 Tracked in [`docs/ROADMAP.md`](https://github.com/kormie/Skein/blob/main/docs/ROADMAP.md) with linked issues:
 
-- **v1.1: Hardening & Language** — closures (#248), effectful crypto (#257), content-addressed store (needs a fresh tracking issue; #255 was consumed by C5's typed store tables), language ergonomics (#251/#249/#247), `via` if still useful, `llm.rerank` (#145), docs/spec drift guards (#202), LSP rename/references (#240)
+- **v1.1: Hardening & Language** — closures (#248), effectful crypto (#257), content-addressed store tables (#333), language ergonomics (#251/#249/#247), `via` if still useful, `llm.rerank` (#145), docs/spec drift guards (#202), LSP rename/references (#240)
 - **v1.2: Interop & Agent Workflows** — Erlang/Elixir FFI (`extern`, #141), human-in-the-loop approval workflows (#144), web trace viewer (#143), Raxol CLI TUI (#171, separately gated), structural codemod (#241)
 - **Future: Platform** — hot code upgrades (#142), managed deployment platform (#148), tool/connector marketplace (#149)
 

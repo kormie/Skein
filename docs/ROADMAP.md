@@ -12,11 +12,11 @@ This is the forward-looking work list for Skein. Items are ordered by impact —
 | Milestone | Carries | Status |
 |---|---|---|
 | **v0.4.0 — Truth & Soundness** | Wave A (truth reset) + Wave B (analyzer/codegen soundness, B1–B6 — **complete 2026-07-01**) + Wave B residue (#309 #310 #311 #313) | **shipped 2026-07-02** (tag v0.4.0) |
-| **v0.5.0 — Runtime Contract & Dogfood** | Wave C (effect ABI / structured errors / schema / provider authority / store / EventStore, C1–C6) + Wave D (dogfood conformance gate) | active |
-| **v1.0.0-rc.2 — True release candidate** | Wave F — freeze + RC; cut only when all blockers are green; no feature work | gated |
-| **v1.0.0 Release** | GA after rc.2 soaks | gated |
+| **v0.5.0 — Runtime Contract & Dogfood** | Wave C (effect ABI / structured errors / schema / provider authority / store / EventStore, C1–C6) + Wave D (dogfood conformance gate) | **shipped 2026-07-02** (tag v0.5.0) |
+| **v1.0.0-rc.5 — True release candidate** | Wave F — freeze + RC (#332 #320 #334); cut only when all blockers are green; no feature work | **active** |
+| **v1.0.0 Release** | GA after rc.5 soaks | gated |
 
-Milestones live in `.github/milestones.json` (synced by `.github/workflows/milestones.yml`). Dogfood conformance (Wave D) is a **continuous gate** that begins in Wave A and stays green through every later wave — not a final cleanup pass. Note: the version is `0.4.0` (the stale `1.0.0-rc.4` holdover was corrected when the v0.4.0 release was cut).
+Milestones live in `.github/milestones.json` (synced by `.github/workflows/milestones.yml`). Dogfood conformance (Wave D) is a **continuous gate** that begins in Wave A and stays green through every later wave — not a final cleanup pass. Note: the RC milestone was renamed from `v1.0.0-rc.2` on 2026-07-02 — tags `v1.0.0-rc.2`–`rc.4` already exist from the pre-reset June train, so the next RC tag is `v1.0.0-rc.5`.
 
 ### The v1.0 thesis
 
@@ -77,7 +77,7 @@ Under the `docs/STABILITY.md` freeze, tagging 1.0 with these in place would make
 
 ## Path to v1.0.0 — the contract-first waves (A–F)
 
-Ordered as a dependency graph, not a feature theme list; earlier waves unblock later ones. TDD + property tests mandatory. Milestone mapping: **v0.4.0** = Waves A+B, **v0.5.0** = Waves C+D, **v1.0.0-rc.2** = Wave F (Wave E was retired when [#300](https://github.com/kormie/Skein/issues/300) resolved as Alternative B). Every 1.0 blocker must have measurable acceptance criteria and an automated release gate before it is considered done. The B/C status below is from the **2026-06-19 source-verified audit** — earlier "done" prose that source contradicts has been corrected.
+Ordered as a dependency graph, not a feature theme list; earlier waves unblock later ones. TDD + property tests mandatory. Milestone mapping: **v0.4.0** = Waves A+B, **v0.5.0** = Waves C+D, **v1.0.0-rc.5** = Wave F (Wave E was retired when [#300](https://github.com/kormie/Skein/issues/300) resolved as Alternative B). Every 1.0 blocker must have measurable acceptance criteria and an automated release gate before it is considered done. The B/C status below is from the **2026-06-19 source-verified audit** — earlier "done" prose that source contradicts has been corrected.
 
 **Wave A — Truth reset & surface cuts** *(1.0 blocker — **COMPLETE** with the 2026-07-02 close-out sweep)* — milestone v0.4.0:
 - ~~Stop RC-promotion framing across `docs/ROADMAP.md`, the docs-site roadmap, `docs/STABILITY.md`, `CONTRIBUTING.md`, `README.md`.~~ — done (spec banner/site stability 2026-06-19; README + CONTRIBUTING corrected by 2026-07-02; the retired v0.6.0 row removed from CONTRIBUTING).
@@ -122,15 +122,17 @@ Ordered as a dependency graph, not a feature theme list; earlier waves unblock l
 **Wave E — retired (2026-07-02).** [#300](https://github.com/kormie/Skein/issues/300) resolved as **Alternative B**: the FablePool-capable promise is out of 1.0, there is no v0.6.0 milestone, and the train goes v0.5.0 → RC. The canonical-substrate items ([#256](https://github.com/kormie/Skein/issues/256), [#245](https://github.com/kormie/Skein/issues/245), [#246](https://github.com/kormie/Skein/issues/246), [#250](https://github.com/kormie/Skein/issues/250), [#251](https://github.com/kormie/Skein/issues/251)) stay in v1.1; any one is promotable only if a checked-in conformance program proves it indispensable. The reduced FablePool dogfood program (string-fingerprint canonicalization stub) remains in the Wave D gate — it exercises the language-stressing parts without the substrate.
 - Scope controls: no general FFI; no signing/keygen/custody/secure-RNG in 1.0 ([#257](https://github.com/kormie/Skein/issues/257) is 1.1); no FablePool-specific store/log/provenance/grant/redaction APIs.
 
-**Wave F — Stability freeze, true RC & soak** *(1.0 blocker)* — milestones v1.0.0-rc.2 → v1.0.0:
+**Wave F — Stability freeze, true RC & soak** *(1.0 blocker — the ACTIVE gate since v0.5.0 shipped)* — milestones v1.0.0-rc.5 → v1.0.0 *(the RC milestone was renamed from v1.0.0-rc.2 on 2026-07-02: tags rc.2–rc.4 exist from the pre-reset June train, so the next RC tag is rc.5)*:
+- [#332](https://github.com/kormie/Skein/issues/332) — the freeze itself: verify + declare every frozen surface with executable gates — grammar/keywords, diagnostic meanings + fields, effect ABI + error shapes, JSON Schema derivation + vectors, CLI/JSON/config, compiled-metadata classes, EventStore persisted vectors (flip the Pre-stable STABILITY row), and the pinned dogfood revisions — only after every preceding contract is executable and green.
 - [#320](https://github.com/kormie/Skein/issues/320) — agent-writability benchmark *(added 2026-07-02: the P6 pitch gets a measurement — generate-compile-fix-loop harness reporting first-try compile rate and iterations-to-green; runs in release-readiness so RC quality is measured, not asserted)*.
-- Freeze grammar/keywords, diagnostic meanings + fields, effect ABI + error shapes, JSON Schema derivation + vectors, CLI/JSON/config, compiled-metadata classes, EventStore persisted vectors, and the pinned dogfood revisions — only after every preceding contract is executable and green. No feature work in the RC milestone; run the exact GA release-readiness workflow and soak the same candidate.
+- [#334](https://github.com/kormie/Skein/issues/334) — live-backend verification of `llm.stream` (dogfood finding kormie/skein-testing#26: 120s timeout against the real Anthropic backend while chat/json worked; blocker-fix scope, since CI never exercises live backends).
+- No feature work in the RC milestone; run the exact GA release-readiness workflow and soak the same candidate.
 
 ### Cut from the minimal 1.0 surface (→ 1.1)
 
 "FablePool-capable" was sharpened to "minimal substrate," moving these out of 1.0 (preserved on their issues, retargeted to v1.1):
 - [#248](https://github.com/kormie/Skein/issues/248) closures — 1.1 unless the conformance suite (#262) proves them a hard blocker.
-- [#257](https://github.com/kormie/Skein/issues/257) effectful crypto (RNG/keygen/signing), content-addressed store (needs a fresh tracking issue — [#255](https://github.com/kormie/Skein/issues/255) was consumed by C5's typed store tables and is closed), [#141](https://github.com/kormie/Skein/issues/141) general FFI (the 1.0 crypto route is the internal `:crypto` wrapper in #245, not `extern`).
+- [#257](https://github.com/kormie/Skein/issues/257) effectful crypto (RNG/keygen/signing), [#333](https://github.com/kormie/Skein/issues/333) content-addressed store tables (successor to the content half of [#255](https://github.com/kormie/Skein/issues/255), which C5's typed store tables consumed), [#141](https://github.com/kormie/Skein/issues/141) general FFI (the 1.0 crypto route is the internal `:crypto` wrapper in #245, not `extern`).
 - Language ergonomics from dogfooding: [#251](https://github.com/kormie/Skein/issues/251) record update, [#249](https://github.com/kormie/Skein/issues/249) module constants, [#247](https://github.com/kormie/Skein/issues/247) enum variant payloads — 1.1 unless conformance proves one a hard blocker.
 - `via` / `via Module` / behavioural stateful stubs (the superseded design) — reconsider in 1.1 only if still useful after scenario environments ship.
 
@@ -185,7 +187,7 @@ Cut from the minimal 1.0 surface by the reset, plus well-scoped gaps with no des
 
 - [#248](https://github.com/kormie/Skein/issues/248) — closures / anonymous functions — 1.1 unless conformance (#262) proves them a hard 1.0 blocker — L
 - [#257](https://github.com/kormie/Skein/issues/257) — effectful crypto capability (secure RNG, key generation/custody, signing) — XL
-- Content-addressed / non-Uuid-`@primary` store — M *(needs a fresh tracking issue: [#255](https://github.com/kormie/Skein/issues/255) was consumed by C5's typed store tables in v0.5.0 and is closed)*
+- [#333](https://github.com/kormie/Skein/issues/333) — content-addressed store tables (hash-derived keys; depends on #245/#256) — M *(successor to the content half of [#255](https://github.com/kormie/Skein/issues/255), which C5's typed store tables consumed in v0.5.0; generic declared `@primary` key types already shipped there)*
 - [#251](https://github.com/kormie/Skein/issues/251) record update · [#249](https://github.com/kormie/Skein/issues/249) module constants · [#247](https://github.com/kormie/Skein/issues/247) enum variant payloads — language ergonomics surfaced by dogfooding (1.1 unless conformance promotes one) — M each
 - `via` / `via Module` / behavioural stateful effect stubs — reconsider only if still useful after scenario environments ship
 - [#145](https://github.com/kormie/Skein/issues/145) — `llm.rerank` for RAG pipelines — M, depends on #146
