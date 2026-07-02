@@ -30,7 +30,13 @@ skein/
 │   │   │   │   ├── lexer.ex         # Tokenizer (hand-written binary matching)
 │   │   │   │   ├── parser.ex        # AST construction
 │   │   │   │   ├── ast.ex           # AST node type definitions
-│   │   │   │   ├── analyzer.ex      # Type, capability, and transition checking
+│   │   │   │   ├── effect_abi.ex    # THE effect-ABI registry (C1): effect/store methods, provider contracts, error enums, spec §6 lines
+│   │   │   │   ├── analyzer.ex      # Type, capability, and transition checking (core inference + pass driver)
+│   │   │   │   ├── analyzer/
+│   │   │   │   │   ├── purity.ex        # E0029 purity + E0038/E0020 provider contracts
+│   │   │   │   │   ├── capabilities.ex  # Pass 3 capability checking (E0012/E0014/E0015/E0017/E0043)
+│   │   │   │   │   ├── agent_checks.ex  # Transition/phase/handler passes (E0030–E0034/E0036/E0039)
+│   │   │   │   │   └── warnings.ex      # W0001/W0002/W0004
 │   │   │   │   ├── codegen/
 │   │   │   │   │   ├── core_erlang.ex   # AST -> Core Erlang
 │   │   │   │   │   └── schema_gen.ex    # Type -> JSON Schema
@@ -50,23 +56,31 @@ skein/
 │   │   │   │       ├── memory.ex        # Scoped KV memory (single :skein_memory ETS table)
 │   │   │   │       ├── trace.ex         # Trace facade over EventStore
 │   │   │   │       ├── event_store.ex   # Unified append-only event log (size-bounded)
-│   │   │   │       ├── event_store/     # SQLite persistence backend
+│   │   │   │       ├── event_store/     # persistence.ex (opt-in SQLite write-through, C6) + sqlite_backend.ex
 │   │   │   │       ├── llm.ex           # LLM client, JSON decoding, streaming
 │   │   │   │       ├── llm/             # Anthropic/OpenAI-compatible/Bedrock backends, response parsing
-│   │   │   │       ├── store.ex         # Storage abstraction (single :skein_store ETS table)
-│   │   │   │       ├── store_ecto.ex    # Ecto-backed storage implementation
+│   │   │   │       ├── json_schema.ex   # THE recursive schema validator/decoder (C3) — req.json[T]/llm.json[T]/tool I/O
+│   │   │   │       ├── store.ex         # Storage abstraction (single :skein_store ETS table; schema-checked typed writes, C5)
+│   │   │   │       ├── store_ecto.ex    # Ecto-backed storage implementation (library code, unwired)
 │   │   │   │       ├── ecto_schema.ex   # Dynamic Ecto schema creation
 │   │   │   │       ├── migration_gen.ex # Database migration generation
 │   │   │   │       ├── repo.ex          # Ecto repository (SQLite3)
 │   │   │   │       ├── http.ex          # Outbound HTTP (:httpc wrapper)
 │   │   │   │       ├── router.ex        # HTTP routing (Plug)
-│   │   │   │       ├── server.ex        # Server infrastructure (Bandit)
+│   │   │   │       ├── server.ex        # Server infrastructure (Bandit); boots SupervisorHost supervisors
 │   │   │   │       ├── request.ex       # HTTP request handling
 │   │   │   │       ├── queue.ex         # Queue dispatch (supervised GenServer)
 │   │   │   │       ├── topic.ex         # Pub/sub fan-out (supervised GenServer)
 │   │   │   │       ├── schedule.ex      # Scheduling (supervised GenServer)
 │   │   │   │       ├── timer.ex         # Timers (supervised GenServer)
 │   │   │   │       ├── process.ex       # process.spawn (DynamicSupervisor)
+│   │   │   │       ├── supervisor_host.ex # __supervisors__/0 -> real OTP supervisors (#325)
+│   │   │   │       ├── capability_stack.ex # Dynamic capability stack (scenario envelopes, C4)
+│   │   │   │       ├── nondeterminism.ex   # Controlled nondeterminism resolution (implement -> replay -> test-default -> live)
+│   │   │   │       ├── spawn_context.ex    # Capability-context propagation into spawned tasks
+│   │   │   │       ├── live_effect_error.ex # Uncatchable blocked-live raise (frozen decision)
+│   │   │   │       ├── uuid.ex          # uuid.new() capability-gated effect
+│   │   │   │       ├── instant.ex       # instant.now() capability-gated effect
 │   │   │   │       ├── idempotent.ex    # idempotent(key) TTL tracking
 │   │   │   │       ├── replay.ex        # Event replay
 │   │   │   │       └── stdlib/          # Stdlib runtime modules (String, List, ...)
@@ -74,7 +88,7 @@ skein/
 │   │   │   │   └── application.ex   # Supervises Queue/Topic/Schedule/Timer/Process
 │   │   │   └── skein_runtime.ex
 │   │   └── test/
-│   ├── skein_cli/               # CLI tooling (skein new, build, test, deploy)
+│   ├── skein_cli/               # CLI tooling (skein new, build, test, run, trace, ...)
 │   │   ├── lib/
 │   │   │   ├── skein_cli.ex
 │   │   │   └── skein/
@@ -82,6 +96,8 @@ skein/
 │   │   │           ├── main.ex
 │   │   │           ├── agents_md.ex     # AGENTS.md scaffolding/regen (skein new / skein agents)
 │   │   │           ├── config.ex        # skein.toml parsing + [env.<name>.llm] profiles
+│   │   │           ├── json.ex          # --json output rendering
+│   │   │           ├── render.ex        # Human-readable diagnostic/trace rendering
 │   │   │           └── mcp.ex           # MCP stdio server (skein mcp)
 │   │   └── test/
 │   └── skein_lsp/               # Language Server Protocol implementation
@@ -443,7 +459,7 @@ Accumulated learnings, gotchas, and project state are stored in `.claude/memory/
 
 - GitHub issues are the unit of work; `docs/ROADMAP.md` is the prioritized index, and every active roadmap item links its tracking issue. Keep the two in sync when scope changes.
 - Labels: `type/{bug,feature,chore}`, `area/{compiler,runtime,cli,docs,ci,security}`, `priority/{p0,p1,p2}`, plus `status/triage` (auto-applied by the issue forms; remove after setting priority + milestone).
-- Milestones (after the 2026-06-15 roadmap reset): **v0.1 Alpha**, **v0.2 Beta**, **v1.0.0-rc Release** (closed — shipped). Active dev gates (contract-first, re-baselined 2026-06-19): **v0.4.0 — Truth & Soundness** (Wave A truth reset + Wave B analyzer/codegen soundness B1–B6), then **v0.5.0 — Runtime Contract & Dogfood** (Wave C effect-ABI/structured-error/schema/store/EventStore honesty C1–C6 + Wave D continuous dogfood gate), then **v1.0.0-rc.2 — True release candidate** (Wave F freeze; the conditional v0.6.0 canonical-substrate milestone was retired 2026-07-02 when #300 resolved as Alternative B — substrate items live in v1.1), then **v1.0.0 Release** (GA, not imminent). Post-1.0: **v1.1: Hardening & Language**, **v1.2: Interop & Agent Workflows**, **Future: Platform**. v1.0 GA is a sound/honest/deterministic/dogfood-proven core with scenario-scoped capability environments (NOT the superseded `via` design). Wave B (B1–B6) completed 2026-07-01 and was source-verified by the 2026-07-02 sanity check (`docs/audits/2026-07-post-wave-b-sanity-check.md`); the runtime effect/schema/store/EventStore contracts remain drifted (C1–C6, except C4 whose analyzer half landed in B6) — see `docs/ROADMAP.md`. Defined in `.github/milestones.json` and synced by `.github/workflows/milestones.yml` (renames via `previous_titles`, closing via `state`) — edit the JSON rather than creating milestones by hand.
+- Milestones (after the 2026-06-15 roadmap reset): **v0.1 Alpha**, **v0.2 Beta**, **v1.0.0-rc Release**, **v0.4.0 — Truth & Soundness** (all closed — shipped; v0.4.0 released 2026-07-02 via #328 with Wave A truth reset + Wave B analyzer/codegen soundness B1–B6, source-verified by `docs/audits/2026-07-post-wave-b-sanity-check.md`). **v0.5.0 — Runtime Contract & Dogfood** landed 2026-07-02 (Wave C effect-ABI/structured-error/schema/store/EventStore honesty C1–C6 + Wave D continuous dogfood gate — the runtime contract drift is closed; release pending). The next active dev gate is **v1.0.0-rc.2 — True release candidate** (Wave F freeze; the conditional v0.6.0 canonical-substrate milestone was retired 2026-07-02 when #300 resolved as Alternative B — substrate items live in v1.1), then **v1.0.0 Release** (GA, not imminent). Post-1.0: **v1.1: Hardening & Language**, **v1.2: Interop & Agent Workflows**, **Future: Platform**. v1.0 GA is a sound/honest/deterministic/dogfood-proven core with scenario-scoped capability environments (NOT the superseded `via` design). See `docs/ROADMAP.md`. Defined in `.github/milestones.json` and synced by `.github/workflows/milestones.yml` (renames via `previous_titles`, closing via `state`) — edit the JSON rather than creating milestones by hand.
 - The contributor-facing version of this workflow lives in `CONTRIBUTING.md`.
 
 ## What Not To Do

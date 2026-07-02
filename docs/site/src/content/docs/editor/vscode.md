@@ -23,16 +23,16 @@ code --install-extension skein-vscode.vsix
 ```bash
 cd editors/vscode
 npm install
-npm run compile
+npm run package   # bundles the extension and builds the .vsix via vsce
 ```
 
-Then in VS Code, use **Extensions: Install from VSIX** or run:
+This writes `skein-lang-<version>.vsix` to `editors/vscode/`. Then in VS Code, use **Extensions: Install from VSIX** or run:
 
 ```bash
-code --install-extension skein-vscode.vsix
+code --install-extension skein-lang-<version>.vsix
 ```
 
-(`skein-vscode.vsix` is also attached to every [GitHub release](https://github.com/kormie/Skein/releases).)
+(A prebuilt `skein-vscode.vsix` is also attached to every [GitHub release](https://github.com/kormie/Skein/releases).)
 
 ### Requirements
 

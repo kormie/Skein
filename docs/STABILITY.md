@@ -4,10 +4,11 @@
 tagged 2026-06-12 but the 2026-06-15 roadmap reset determined GA is not imminent (see
 `docs/ROADMAP.md`). Until 1.0 tags, the language/runtime/CLI surface is still **pre-1.0 and may
 change** — notably the scenario testing surface (scenario-scoped capability environments replacing
-`given`/`via`; see `docs/design/scenario-capability-environments.md`) and the runtime contract
-work (Wave C — effect ABI, structured errors, schema validation, typed store, EventStore
-persistence; analyzer/codegen soundness itself completed 2026-07-01 and is source-verified).
-The freeze promises below bind once 1.0 is tagged, not before.
+`given`/`via`; see `docs/design/scenario-capability-environments.md`). Analyzer/codegen soundness
+(Wave B) completed 2026-07-01, and the runtime contract work (Wave C — effect ABI, structured
+errors, schema validation, typed store, EventStore persistence) landed 2026-07-02 for v0.5.0;
+the structured-error ABI row below is already declared frozen. The remaining freeze promises
+bind once 1.0 is tagged, not before.
 
 Skein is a language, a runtime, and a toolchain that ship together as one
 versioned artifact. "Semver" therefore means more here than it does for a

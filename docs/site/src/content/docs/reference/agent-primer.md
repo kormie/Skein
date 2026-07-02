@@ -189,8 +189,9 @@ Memory keys are automatically scoped per agent instance.
   BEAM crash. This is the single most common trap.
 - **No `if`/`else`.** Conditionals are `match` on a `Bool`:
   `match cond { true -> ... false -> ... }`.
-- **`store.<t>.get` not-found is `Err(_)`**, not a named `NotFound`
-  variant — write `Err(_) -> ...`, not `Err(NotFound) -> ...`.
+- **`store.<t>.get` not-found is a named variant**: match it as
+  `Err(StoreError.NotFound) -> ...` (or the bare `Err(NotFound)`);
+  `Err(_)` still works as a catch-all.
 - `input` is a keyword — never use it as a parameter or binding name (use
   `ctx`, `data`, or a typed name).
 - `stop()` must be called with parentheses.

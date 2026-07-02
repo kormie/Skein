@@ -13,7 +13,7 @@ The Skein runtime (`skein_runtime`) provides the libraries that compiled Skein c
 - **Handler dispatch** -- routing HTTP requests to compiled handler functions
 - **Queue dispatch** -- subscribing to named queues and dispatching messages via `Skein.Runtime.Queue`
 - **Schedule dispatch** -- cron-based scheduling and handler triggering via `Skein.Runtime.Schedule`
-- **Store** -- pluggable storage with ETS (default) and Ecto/SQLite backends, capability enforcement
+- **Store** -- typed, schema-checked ETS-backed storage with capability enforcement (the Ecto/SQLite path is unwired library code)
 - **Memory** -- scoped KV storage with namespace isolation via `Skein.Runtime.Memory`
 - **LLM client** -- provider-agnostic LLM calls with schema-constrained JSON via `Skein.Runtime.Llm`
 - **HTTP server** -- Bandit + Plug HTTP server for serving Skein handlers
@@ -440,6 +440,20 @@ Skein.Runtime.Trace.record_span(%{kind: :http, method: :get, url: "/test"})
 - `{:ok, _}` -> outcome `:ok`
 - `{:error, _}` -> outcome `:error`
 - Exception -> outcome `:error` with message, then re-raises
+
+### Other Runtime Modules
+
+| Module | Purpose |
+|--------|---------|
+| `Skein.Runtime.Topic` | In-memory pub/sub topic dispatch — published messages fan out to **all** subscribers of a topic |
+| `Skein.Runtime.Timer` | One-shot (`after`) and recurring (`interval`) timers with cancellation, tracked in ETS |
+| `Skein.Runtime.Process` | `process.spawn` — short-lived tasks under a DynamicSupervisor with crash isolation and tracing |
+| `Skein.Runtime.Tool` | Tool registry and dispatch — `call/3` executes registered tools with schema-checked input/output |
+| `Skein.Runtime.Idempotent` | `idempotent(key)` guard — tracks processed keys in ETS so handlers skip duplicates |
+| `Skein.Runtime.Replay` | Replay engine for golden trace tests — deterministic playback of recorded event streams |
+| `Skein.Runtime.SupervisorHost` | Boots real OTP supervisors from compiled `supervisor` declarations ([#325](https://github.com/kormie/Skein/issues/325)) — restart policies, `max_restarts` intensity, `:child_started` events |
+| `Skein.Runtime.JsonSchema` | The one recursive schema validator/decoder (C3) shared by `req.json[T]`, `llm.json[T]`, and tool input/output |
+| `Skein.Runtime.EventStore.Persistence` | Opt-in SQLite write-through for the event log (C6) — enabled by default under `skein run` |
 
 ## How Compiled Code Uses the Runtime
 

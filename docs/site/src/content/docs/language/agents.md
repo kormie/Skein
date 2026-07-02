@@ -520,7 +520,7 @@ Skein.Runtime.Agent.get_events(pid)
 
 ## Supervision
 
-Supervisor declarations can name agents as children. In 1.0 the declaration is validated at compile time and emitted as `__supervisors__/0` metadata for the host application to materialize — the Skein runtime does not restart agents from it:
+Supervisor declarations can name agents as children. The declaration is validated at compile time and emitted as `__supervisors__/0` metadata, and under `skein run` the runtime boots a real OTP supervisor from it ([#325](https://github.com/kormie/Skein/issues/325)) — `Skein.Runtime.SupervisorHost` starts each child agent with its declared restart policy (`permanent`, `transient`, `temporary`), applies the `strategy:` and `max_restarts:` intensity, and appends a `:child_started` event to the EventStore on every start and restart:
 
 ```skein
 supervisor RefundPool {

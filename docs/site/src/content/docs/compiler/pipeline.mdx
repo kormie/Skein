@@ -84,13 +84,13 @@ See [Parser](/Skein/compiler/parser/) for details.
 **Input:** AST
 **Output:** `{:ok, annotated_ast}` or `{:error, [Error.t()]}`
 
-The analyzer performs five passes over the AST:
+The analyzer runs a suite of passes over the AST (Passes 0a–10 in the module pass driver, plus a dedicated agent pass suite for agent bodies). Broadly, the passes group into five areas:
 
-1. **Pass 1: Name resolution** -- builds a symbol table of all declarations (functions, types, enums), resolves identifier references, and reports unknown identifiers (E0010) and unknown types (E0024)
-2. **Pass 2: Type checking** -- validates function return types, operator types, match arm consistency, and function call arity, reporting type mismatches (E0020) and match exhaustiveness warnings (E0021; E0024 for enums)
-3. **Pass 3: Capability checking** -- walks function bodies to find effect calls (`http.*`, `store.*`, `memory.*`, `llm.*`, `tool.*`, `queue.*`, `topic.*`, `event.*`, `process.*`, `timer.*`), verifies each has a covering capability declaration, and reports missing capabilities (E0012) with `fix_code` for agent auto-fix
-4. **Pass 4: Transition checking** -- validates agent `Phase` enum transitions, ensuring `transition(Phase)` calls reference valid target phases reachable from the current phase (E0030)
-5. **Pass 5: Lint warnings** -- detects unused bindings (W0001), unused capabilities (W0002), and unreachable code after `stop()` (W0003)
+1. **Name resolution** -- builds a symbol table of all declarations (functions, types, enums), resolves identifier references, and reports unknown identifiers (E0010) and unknown types (E0024)
+2. **Type checking** -- validates function return types, operator types, match arm consistency, and function call arity, reporting type mismatches (E0020) and match exhaustiveness warnings (E0021; E0024 for enums)
+3. **Capability checking** -- walks function bodies to find effect calls (`http.*`, `store.*`, `memory.*`, `llm.*`, `tool.*`, `queue.*`, `topic.*`, `event.*`, `process.*`, `timer.*`, `uuid.*`, `instant.*`), verifies each has a covering capability declaration, and reports missing capabilities (E0012) with `fix_code` for agent auto-fix
+4. **Transition checking** -- validates agent `Phase` enum transitions, ensuring `transition(Phase)` calls reference valid target phases reachable from the current phase (E0030)
+5. **Lint warnings** -- detects unused bindings (W0001), unused capabilities (W0002), and unreachable code after `stop()` (W0003)
 
 ### Stage 4: Code Generator
 

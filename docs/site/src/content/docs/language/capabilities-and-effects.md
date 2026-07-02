@@ -343,9 +343,10 @@ The analyzer recognizes this pattern and checks it against declared capabilities
 
 ### Return Values
 
-**HTTP** effect calls return `Result[String, String]`:
-- `{:ok, body}` on success (HTTP 2xx)
-- `{:error, reason}` on failure (HTTP errors, network errors, capability violations)
+**HTTP** effect calls return `Result[HttpResponse, HttpError]`. Since C2 (#297) the
+error side is the frozen structured-error ABI, not a bare string:
+- `{:ok, response}` on success — an `HttpResponse` record with `status`, `body`, and `headers`
+- `{:error, <HttpError variant>}` on failure — `Timeout`, `ConnectionFailed`, `Status(code, body)` for non-2xx responses, `InvalidRequest(reason)`, or `Denied(reason)` for capability violations; each lowers to its snake_case tuple (e.g. `{:status, 404, body}`, `{:denied, reason}`) so Skein `Err(HttpError.Status(code, body))` arms really match
 
 **Memory** effect calls return `Result` tuples typed `Result[T, MemoryError]`:
 - `memory.get` returns `{:ok, value}` or `{:error, :not_found}` — matched as `Err(MemoryError.NotFound)` (or the bare `Err(NotFound)`) in Skein
@@ -426,7 +427,7 @@ module Service {
 1. The code generator embeds capabilities in each module via `__capabilities__/0`
 2. Effect calls compile to runtime module calls with capabilities as a parameter
 3. The runtime validates the URL host against declared hosts
-4. Blocked requests return `{:error, "Host 'x' not declared in http.out capabilities"}`
+4. Blocked requests return `{:error, {:denied, "Host 'x' not declared in http.out capabilities"}}` — `Err(HttpError.Denied(reason))` in Skein
 
 ## Effect Tracing
 

@@ -89,6 +89,11 @@ string      = "..." with ${ident} interpolation    -- "hello ${name}", "${user.i
 boolean     = true | false
 ```
 
+String literals support exactly five escape sequences: `\n` (newline), `\t`
+(tab), `\\` (backslash), `\"` (double quote), and `\$` (literal dollar sign,
+suppressing interpolation). Any other `\x` pair is two literal characters.
+Raw newlines inside a string literal are allowed and kept verbatim.
+
 Number literals are unsigned; negative numbers use the prefix `-` operator
 (`-3`, `-1.5`), which is part of the expression grammar (§3.11), not the token.
 
@@ -181,11 +186,15 @@ remains the only ambient dependency.
 ### 3.2 Capabilities
 
 ```
-capability  = "capability" cap_kind "(" cap_params ")"
+capability  = "capability" cap_kind [ "(" cap_params ")" ]
+              -- the parenthesized params are optional: `capability uuid`,
+              -- `capability instant`, and an unscoped `capability memory.kv`
+              -- are written bare
 cap_kind    = "http.out" | "http.in" | "store.table" | "memory.kv"
             | "event.log" | "topic.publish" | "topic.consume"
             | "queue.publish" | "queue.consume" | "schedule.trigger"
             | "model" | "tool.use" | "process.spawn" | "timer"
+            | "uuid" | "instant"
 cap_params  = (string | identifier | named_arg) ("," (string | identifier | named_arg))*
               -- tool.use params are dotted identifiers: tool.use(Stripe.CreateRefund)
               -- store.table takes the table name AND its record type: store.table("users", User)

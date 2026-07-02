@@ -20,7 +20,7 @@ Skein is designed around six ranked principles:
 
 ## What Works Today
 
-The compilation pipeline is fully operational. You can write `.skein` files with modules, functions, types, tools, supervisors, HTTP/queue/schedule handlers, store operations, and agents — compile them to BEAM bytecode, and run them on a Bandit + Plug HTTP server. Store operations run against the ETS-backed runtime store (typed/database-backed tables are roadmap item C5, v0.5.0). The CLI tooling provides project scaffolding, building, testing, running, and trace inspection. Test constructs include `test`, `scenario` (with `given`/`expect`), and `golden` trace tests with a deterministic replay engine.
+The compilation pipeline is fully operational. You can write `.skein` files with modules, functions, types, tools, supervisors, HTTP/queue/schedule handlers, store operations, and agents — compile them to BEAM bytecode, and run them on a Bandit + Plug HTTP server. Store tables are typed — `capability store.table("users", User)` names the record type, operations are type-checked at compile time, and writes are schema-checked at runtime — backed by the in-memory ETS runtime store. The CLI tooling provides project scaffolding, building, testing, running, and trace inspection. Test constructs include `test`, `scenario` (with `given`/`expect`), and `golden` trace tests with a deterministic replay engine.
 
 **Language constructs:**
 
@@ -84,10 +84,12 @@ The compilation pipeline is fully operational. You can write `.skein` files with
 - Handler dispatch with route matching and path parameters
 - Queue dispatch with subscribe/publish for event-driven handlers
 - Schedule dispatch with cron expression parsing for time-triggered handlers
-- ETS-backed store with capability-gated CRUD operations
+- ETS-backed store with capability-gated CRUD operations and schema-checked typed-table writes
 - Scoped KV memory with namespace isolation and capability enforcement
-- LLM client with pluggable backends (production Anthropic backend included) and schema-constrained JSON responses
+- LLM client with pluggable backends — Anthropic (production default), OpenAI-compatible (local model servers + embeddings), and AWS Bedrock — and schema-validated JSON responses
 - Agent runtime wrapping `:gen_statem` for phase-based state machines
+- Real OTP supervision from `supervisor` declarations — `skein run` boots them via `Skein.Runtime.SupervisorHost` with restart policies and `max_restarts` intensity
+- Opt-in SQLite persistence for the event log — `skein run` writes events to `.skein/events.db` by default (`--no-persist` opts out) and reloads history on restart
 - Bandit + Plug HTTP server with `req.json[T]` body validation
 - Trace recording with timing, outcome, and token usage metadata
 - Trace enrichment with model-specific usage data (input/output tokens, cost)

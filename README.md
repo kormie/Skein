@@ -11,50 +11,57 @@
 Skein compiles to BEAM bytecode and runs on the Erlang VM — the same battle-tested runtime behind WhatsApp, Discord, and millions of telecom systems. It's designed for building cloud services where reliability matters and AI agents do real work.
 
 ```rust
-agent RefundAgent {
-  capability model("anthropic", "claude-opus-4-8")
-  capability store.table("tickets", Ticket)
-
-  state {
-    ticket_id: String
+module Refunds {
+  type Ticket {
+    id: String @primary
+    details: String
   }
 
-  enum Phase {
-    Analyze -> [Refund, Done, Failed]
-    Refund  -> [Done, Failed]
-    Failed  -> [Analyze]
-    Done    -> []
-  }
+  agent RefundAgent {
+    capability model("anthropic", "claude-opus-4-8")
+    capability store.table("tickets", Ticket)
 
-  on start(ticket_id: String) -> {
-    transition(Phase.Analyze)
-  }
-
-  on phase(Phase.Analyze) -> {
-    let ticket = store.tickets.get(state.ticket_id)!
-    let decision = llm.chat(
-      "claude-opus-4-8",
-      "Decide if this refund is warranted. Reply approve or deny.",
-      ticket
-    )!
-    match decision {
-      "approve" -> transition(Phase.Refund)
-      "deny"    -> transition(Phase.Done)
-      _         -> transition(Phase.Failed)
+    state {
+      ticket_id: String
     }
-  }
 
-  on phase(Phase.Refund) -> {
-    emit RefundIssued { ticket_id: state.ticket_id }
-    transition(Phase.Done)
-  }
+    enum Phase {
+      Analyze -> [Refund, Done, Failed]
+      Refund  -> [Done, Failed]
+      Failed  -> [Analyze]
+      Done    -> []
+    }
 
-  on phase(Phase.Failed) -> {
-    suspend("Needs human review")
-  }
+    on start(ticket_id: String) -> {
+      transition(Phase.Analyze)
+    }
 
-  on phase(Phase.Done) -> {
-    stop()
+    on phase(Phase.Analyze) -> {
+      let ticket = store.tickets.get(state.ticket_id)!
+      let decision = llm.chat(
+        "claude-opus-4-8",
+        "Decide if this refund is warranted. Reply approve or deny.",
+        ticket.details
+      )!
+      match decision {
+        "approve" -> transition(Phase.Refund)
+        "deny"    -> transition(Phase.Done)
+        _         -> transition(Phase.Failed)
+      }
+    }
+
+    on phase(Phase.Refund) -> {
+      emit RefundIssued { ticket_id: state.ticket_id }
+      transition(Phase.Done)
+    }
+
+    on phase(Phase.Failed) -> {
+      suspend("Needs human review")
+    }
+
+    on phase(Phase.Done) -> {
+      stop()
+    }
   }
 }
 ```
@@ -362,7 +369,7 @@ Every LLM call is capability-gated, type-checked, and automatically traced with 
 
 ## Project Status
 
-> **Release posture: Skein is pre-1.0.** The current version is **`0.4.0`** — the "Truth & Soundness" development release, which reset a prematurely-tagged RC line and landed analyzer/codegen soundness (Wave B). The release train from here is **v0.4.0 → v0.5.0 (Runtime Contract & Dogfood) → a true v1.0.0-rc.2 → v1.0.0 GA — and GA is not imminent.** The runtime effect/schema/store/EventStore contracts are still drifted from the spec, and nothing is "frozen" yet. The path to a sound, honest, dogfood-proven 1.0 is the contract-first wave plan in [docs/ROADMAP.md](docs/ROADMAP.md).
+> **Release posture: Skein is pre-1.0.** The current version is **`0.4.0`** — the "Truth & Soundness" development release, which reset a prematurely-tagged RC line and landed analyzer/codegen soundness (Wave B). The v0.5.0 wave (Runtime Contract & Dogfood) landed next: the runtime effect/schema/store/EventStore contracts now match the spec — one authoritative effect-ABI registry, a frozen structured-error ABI, one recursive schema engine, typed store tables, EventStore persistence, real OTP supervision, and a continuous dogfood gate. The release train from here is **v0.5.0 → a true RC (Wave F freeze) → v1.0.0 GA — and GA is not imminent.** Only the structured-error ABI is frozen so far; the full freeze is the RC gate. The path to a sound, honest, dogfood-proven 1.0 is the contract-first wave plan in [docs/ROADMAP.md](docs/ROADMAP.md).
 
 The compilation pipeline was built in phases — the *pipeline* is complete end-to-end — but the soundness and runtime-contract hardening for a stable 1.0 is in progress. [docs/ROADMAP.md](docs/ROADMAP.md) tracks what's next:
 
@@ -380,8 +387,8 @@ The compilation pipeline was built in phases — the *pipeline* is complete end-
 | **8d** | **Canonical examples** — 5 working `.skein` programs with integration tests | Complete |
 | **8e** | **Queue & schedule handlers** — event-driven and cron-triggered execution | Complete |
 | **8f** | **LLM streaming** — `llm.stream` with chunked responses and trace spans | Complete |
-| **8b** | **Storage backend** — Ecto/SQLite layer (schema + migration generation); built as library code, not yet wired into the `store.*` path (roadmap C5, #255) | Complete |
-| **9-10** | **Stdlib, error codes, unified event store** — 11 stdlib modules (101 functions), the structured error/warning registry (aligned with the spec §7 table, including E0028/E0029), single append-only event log (ETS; SQLite persistence is opt-in and currently not on the ordinary append path) | Pipeline complete; contracts hardening |
+| **8b** | **Storage backend** — Ecto/SQLite layer (schema + migration generation); built as library code — typed store tables landed on the ETS store instead (C5, #255) | Complete |
+| **9-10** | **Stdlib, error codes, unified event store** — 11 stdlib modules (101 functions), the structured error/warning registry (aligned with the spec §7 table, including E0028/E0029), single append-only event log (ETS; opt-in SQLite persistence on the ordinary append path, enabled by default under `skein run` — #299) | Complete |
 
 The full test suite (unit, property-based, and integration) runs green in CI on every change — see the CI badge above for current totals. The compilation pipeline works end-to-end — from `.skein` source to running BEAM bytecode with real LLM calls and capability-checked storage. See [`examples/`](examples/README.md) for sixteen working programs, all covered by integration tests, and [docs/ROADMAP.md](docs/ROADMAP.md) for what's next.
 

@@ -102,12 +102,21 @@ defmodule Skein.ExamplesTest do
       assert {:respond_json, 200, "hello"} = result
     end
 
-    test "echo handler returns received" do
+    test "echo handler returns the request body" do
       {:module, mod} =
         Compiler.compile_file(Path.join(project_root(), "examples/hello_http.skein"))
 
       result = mod.__handler_2__(%{body: "test data"})
-      assert {:respond_json, 200, "received"} = result
+      assert {:respond_json, 200, "test data"} = result
+    end
+
+    test "classify handler classifies the path parameter" do
+      {:module, mod} =
+        Compiler.compile_file(Path.join(project_root(), "examples/hello_http.skein"))
+
+      assert {:respond_json, 200, "non-negative"} = mod.__handler_3__(%{params: %{n: "7"}})
+      assert {:respond_json, 200, "negative"} = mod.__handler_3__(%{params: %{n: "-3"}})
+      assert {:respond_json, 400, "not a number"} = mod.__handler_3__(%{params: %{n: "abc"}})
     end
 
     test "page handler returns HTML" do

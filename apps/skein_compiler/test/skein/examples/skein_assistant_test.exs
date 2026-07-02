@@ -39,7 +39,7 @@ defmodule Skein.Examples.SkeinAssistantTest do
       {:module, mod} = compile()
       handlers = mod.__handlers__()
       routes = Enum.map(handlers, & &1.route)
-      assert "/ask" in routes
+      assert "/ask/:session_id" in routes
       assert "/history/:session_id" in routes
       assert "/health" in routes
     end
@@ -56,7 +56,7 @@ defmodule Skein.Examples.SkeinAssistantTest do
       {:module, mod} = compile()
 
       result =
-        call_handler(mod, "/ask", %{
+        call_handler(mod, "/ask/:session_id", %{
           params: %{session_id: "sess-1"},
           body: "How do I write a module?"
         })
@@ -71,7 +71,10 @@ defmodule Skein.Examples.SkeinAssistantTest do
       {:module, mod} = compile()
 
       # First ask a question to populate memory
-      call_handler(mod, "/ask", %{params: %{session_id: "sess-hist"}, body: "What is Skein?"})
+      call_handler(mod, "/ask/:session_id", %{
+        params: %{session_id: "sess-hist"},
+        body: "What is Skein?"
+      })
 
       # Then get history — it contains the question and the answer
       result = call_handler(mod, "/history/:session_id", %{params: %{session_id: "sess-hist"}})

@@ -69,8 +69,8 @@ Each keyword tokenizes to its corresponding atom: `"module"` becomes `{:module, 
 {:upper_ident, {1, 1}, "UserService"}
 ```
 
-Lowercase identifiers start with `[a-z]` and may contain `[a-z0-9_]`.
-Uppercase identifiers start with `[A-Z]` and may contain `[a-zA-Z0-9]`.
+Lowercase identifiers start with `[a-z_]` and may contain `[a-zA-Z0-9_]` — a leading underscore marks a deliberately-unused binding (spec §2.2, W0001).
+Uppercase identifiers start with `[A-Z]` and may contain `[a-zA-Z0-9_]`.
 
 ### Literals
 

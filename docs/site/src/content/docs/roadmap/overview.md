@@ -7,7 +7,7 @@ Skein's compilation pipeline, runtime, standard library, editor tooling, and dis
 
 ## Current State
 
-The end-to-end pipeline works: `.skein` source files lex, parse, analyze, generate Core Erlang, compile to BEAM bytecode, and execute on OTP. The runtime supports agents, HTTP handlers, queue/schedule/topic handlers, storage (ETS-backed; the Ecto/SQLite typed-table path is unwired library code, C5 #255), LLM integration (production Anthropic backend with streaming, AWS Bedrock, and an OpenAI-compatible backend for local models), tool calling, memory, tracing, replayable event sourcing, and guard expressions in match arms.
+The end-to-end pipeline works: `.skein` source files lex, parse, analyze, generate Core Erlang, compile to BEAM bytecode, and execute on OTP. The runtime supports agents, HTTP handlers, queue/schedule/topic handlers, typed store tables (schema-checked ETS, C5 [#255](https://github.com/kormie/Skein/issues/255)), LLM integration (production Anthropic backend with streaming, AWS Bedrock, and an OpenAI-compatible backend for local models), tool calling, memory, tracing, replayable event sourcing with opt-in SQLite persistence, real OTP supervision from `supervisor` declarations, and guard expressions in match arms.
 
 The full test suite (unit, property-based, and integration) runs green in CI on every change — see the CI badge on the README for current totals; counts aren't tracked here because they grow with every change.
 
@@ -15,31 +15,31 @@ The full test suite (unit, property-based, and integration) runs green in CI on 
 
 ## Release Status
 
-The release train so far: **v0.2.0** and **v0.3.0** shipped 2026-06-11, and **v1.0.0-rc.1** was tagged 2026-06-12. **A 2026-06-15 roadmap reset re-sequenced the path to 1.0.** A source-verified dogfooding audit of the skein-testing and FablePool ports reclassified GA from a docs-accuracy cleanup into a soundness + honesty + observability + conformance gate. **v1.0.0 GA is not imminent, and the next release is a development release (v0.4.0), not another RC.** The earlier "the rc soaks, then promotes to 1.0" plan is superseded.
+The release train so far: **v0.2.0** and **v0.3.0** shipped 2026-06-11, **v1.0.0-rc.1** was tagged 2026-06-12, and **v0.4.0 — Truth & Soundness** shipped 2026-07-02. **A 2026-06-15 roadmap reset re-sequenced the path to 1.0.** A source-verified dogfooding audit of the skein-testing and FablePool ports reclassified GA from a docs-accuracy cleanup into a soundness + honesty + observability + conformance gate. **v1.0.0 GA is not imminent; the next release is v0.5.0 — Runtime Contract & Dogfood, a development release, not another RC.** The earlier "the rc soaks, then promotes to 1.0" plan is superseded.
 
 ---
 
 ## What's Next
 
-The path to 1.0 runs through the contract-first waves: **v0.4.0 — Truth & Soundness** (complete), then **v0.5.0 — Runtime Contract & Dogfood**, then a true RC (**v1.0.0-rc.2**, the Wave F freeze), then GA — which is **not imminent**. The canonical detail (waves, acceptance criteria, citations) lives in [`docs/ROADMAP.md`](https://github.com/kormie/Skein/blob/main/docs/ROADMAP.md).
+The path to 1.0 runs through the contract-first waves: **v0.4.0 — Truth & Soundness** (shipped 2026-07-02), then **v0.5.0 — Runtime Contract & Dogfood** (complete — shipping as the next release), then a true RC (the Wave F freeze), then GA — which is **not imminent**. The canonical detail (waves, acceptance criteria, citations) lives in [`docs/ROADMAP.md`](https://github.com/kormie/Skein/blob/main/docs/ROADMAP.md).
 
 ### v0.4.0 — Truth & Soundness (complete)
 
 Wave A (truth reset: honest docs/spec/stability framing, surface cuts like tool `policy` blocks) and Wave B (analyzer/codegen soundness, B1–B6) landed — Wave B completed 2026-07-01 and was source-verified by the 2026-07-02 sanity check, with its residual holes (#309–#311, #313, #318, #319) closed. `?` truly early-returns, unknown/widened types cannot cross declared boundaries (E0037), call arguments are type-checked everywhere, the analyzer-accept ⇒ BEAM-load bridge holds, records are nominal, and tool/provider bodies are checked against their contracts (E0038).
 
-### v0.5.0 — Runtime Contract & Dogfood (next)
+### v0.5.0 — Runtime Contract & Dogfood (complete)
 
-Wave C makes the runtime expose exactly the contract the analyzer and spec claim, plus Wave D's continuous dogfood gate:
+Wave C made the runtime expose exactly the contract the analyzer and spec claim, plus Wave D's continuous dogfood gate — all landed 2026-07-02:
 
-- **C1** — authoritative effect-ABI registry (one source of truth; analyzer/spec/runtime drift becomes a CI failure)
-- **C2** — one structured-error ABI (LLM/tool/provider errors become matchable, not raw Elixir structs)
-- **C3** — one recursive schema engine (`req.json[T]`, `llm.json[T]`, tool input *and* output share a real validator — today `llm.json[T]` parses + atomizes but does not validate, [#298](https://github.com/kormie/Skein/issues/298))
-- **C5** — typed store tables ([#255](https://github.com/kormie/Skein/issues/255)): the analyzer learns table types so store methods type as `Result[T, StoreError]`; today the Ecto path is dead code
-- **C6** — EventStore persistence ([#299](https://github.com/kormie/Skein/issues/299), landed 2026-07-02): the SQLite backend is wired onto the ordinary append path — opt-in via `Persistence.enable/1`, enabled by default by `skein run` (`.skein/events.db`, `--no-persist` opts out), with persisted history reloaded on restart; the persisted shapes freeze at Wave F
-- **#325** — wire `supervisor` declarations into real OTP supervision
-- **Wave D / [#262](https://github.com/kormie/Skein/issues/262)** — the continuous dogfood conformance gate: compile + load + **run** reduced, pinned programs from Skein examples, skein-testing, and FablePool-skein on every change
+- **C1** — authoritative effect-ABI registry (`Skein.EffectABI`, [#296](https://github.com/kormie/Skein/issues/296)): one source of truth for effect signatures, store methods, provider contracts, and error enums; analyzer/spec/runtime drift is a CI failure
+- **C2** — one structured-error ABI ([#297](https://github.com/kormie/Skein/issues/297)): LLM/tool/provider/store/HTTP errors are matchable nominal enum variants (`Err(LlmError.RateLimit(ms))`), not raw Elixir structs; the variant registry is frozen
+- **C3** — one recursive schema engine ([#298](https://github.com/kormie/Skein/issues/298)): `req.json[T]`, `llm.json[T]`, and tool input *and* output all validate through the same recursive validator (`Skein.Runtime.JsonSchema`)
+- **C5** — typed store tables ([#255](https://github.com/kormie/Skein/issues/255)): `capability store.table("games", Game)` names a record type; store methods type as `Result[T, StoreError]` and writes are schema-checked at runtime — landed on the ETS store compiled programs actually use, not the unwired Ecto path
+- **C6** — EventStore persistence ([#299](https://github.com/kormie/Skein/issues/299)): the SQLite backend is wired onto the ordinary append path — opt-in via `Persistence.enable/1`, enabled by default by `skein run` (`.skein/events.db`, `--no-persist` opts out), with persisted history reloaded on restart; the persisted shapes freeze at Wave F
+- **#325** — `supervisor` declarations boot real OTP supervisors under `skein run` ([#325](https://github.com/kormie/Skein/issues/325))
+- **Wave D / [#262](https://github.com/kormie/Skein/issues/262)** — the continuous dogfood conformance gate: compile + load + **run** reduced, pinned programs from the checked-in dungeon and fablepool ports on every change
 
-### v1.0.0-rc.2 and GA
+### v1.0.0-rc.2 and GA (next)
 
 Wave F freezes grammar, diagnostics, effect ABI + error shapes, schema derivation, CLI/JSON/config, and persisted vectors — only after every preceding contract is executable and green — then the RC soaks and promotes to GA. The canonical-substrate question was resolved out of 1.0 ([#300](https://github.com/kormie/Skein/issues/300) closed as Alternative B): the substrate items live in v1.1, and there is no v0.6.0 milestone.
 
@@ -47,7 +47,7 @@ Wave F freezes grammar, diagnostics, effect ABI + error shapes, schema derivatio
 
 Tracked in [`docs/ROADMAP.md`](https://github.com/kormie/Skein/blob/main/docs/ROADMAP.md) with linked issues:
 
-- **v1.1: Hardening & Language** — closures (#248), effectful crypto (#257), content-addressed store (#255), language ergonomics (#251/#249/#247), `via` if still useful, `llm.rerank` (#145), docs/spec drift guards (#202), LSP rename/references (#240)
+- **v1.1: Hardening & Language** — closures (#248), effectful crypto (#257), content-addressed store (needs a fresh tracking issue; #255 was consumed by C5's typed store tables), language ergonomics (#251/#249/#247), `via` if still useful, `llm.rerank` (#145), docs/spec drift guards (#202), LSP rename/references (#240)
 - **v1.2: Interop & Agent Workflows** — Erlang/Elixir FFI (`extern`, #141), human-in-the-loop approval workflows (#144), web trace viewer (#143), Raxol CLI TUI (#171, separately gated), structural codemod (#241)
 - **Future: Platform** — hot code upgrades (#142), managed deployment platform (#148), tool/connector marketplace (#149)
 
@@ -74,7 +74,7 @@ Everything below is implemented and tested.
 | Sub-phase | Name | Summary |
 |-----------|------|---------|
 | 8a | Test Infrastructure | Scenario tests (`given`/`expect`), golden trace tests, replay engine (trace loading + memory rebuild) |
-| 8b | Storage Backend | Ecto schema generation, migrations, SQLite via `ecto_sqlite3` (library code — not yet wired into compiled programs; typed tables are C5 #255, EventStore persistence landed via #299) |
+| 8b | Storage Backend | Ecto schema generation, migrations, SQLite via `ecto_sqlite3` (library code only — typed tables landed on the ETS store instead, C5 #255; EventStore persistence uses its own SQLite backend, #299) |
 | 8c | HTTP Server | Bandit + Plug integration, `req.json[T]` body validation |
 | 8d | Canonical Examples | 14 working programs with integration tests |
 | 8e | Queue & Schedule | `handler queue` and `handler schedule` constructs |

@@ -1,13 +1,15 @@
 ---
 title: Storage
-description: How Skein's store.table operations execute against the ETS-backed runtime store, and the status of the unwired Ecto/SQLite typed-table path.
+description: How Skein's typed, schema-checked store.table operations execute against the ETS-backed runtime store, and the status of the unwired Ecto/SQLite path.
 ---
 
 ## Overview
 
 Skein provides storage through the `store.table` capability. Store tables are typed: every declaration names both the table and the record type it stores — `capability store.table("users", User)` — where the record type is a declared `type` in the same module with exactly one `@primary` field (the get/delete key). The analyzer type-checks every `store.<table>` operation against that record type, and writes are schema-checked at runtime. At runtime, every compiled `store.*` call executes against `Skein.Runtime.Store` — an ETS-backed key-value store (a single `:skein_store` table keyed by string table names) with capability enforcement and tracing. That is the only storage path compiled programs hit today.
 
-An Ecto/SQLite persistent-table layer also exists in the codebase (`StoreEcto`, `EctoSchema`, `MigrationGen`, `Repo`), but it is **not wired into compilation or boot** — nothing registers schemas or runs migrations for compiled programs, and there is no backend-selection mechanism. It is library code exercised only by its own tests. The compiler half of typed store tables is roadmap item C5 ([#255](https://github.com/kormie/Skein/issues/255)); wiring the persistence path remains future work.
+Note the storage is **in-memory**: store tables do not survive a restart. Typed store tables (C5, [#255](https://github.com/kormie/Skein/issues/255)) shipped as schema-checked ETS — durable persistence for store tables was deliberately **not** part of C5 and is not planned as such. (The [EventStore](/Skein/runtime/overview/) has opt-in SQLite persistence, but that is a different subsystem: it persists the event log, not store tables.)
+
+An Ecto/SQLite persistent-table layer also exists in the codebase (`StoreEcto`, `EctoSchema`, `MigrationGen`, `Repo`), but it is **not wired into compilation or boot** — nothing registers schemas or runs migrations for compiled programs, and there is no backend-selection mechanism. It is library code exercised only by its own tests, and the C5 typed-table work deliberately did not revive it.
 
 ## Architecture
 
@@ -17,7 +19,7 @@ The live store module:
 |--------|---------|
 | `Skein.Runtime.Store` | ETS-backed CRUD operations (get, put, delete, query) with capability enforcement and tracing — the target of every compiled `store.*` call |
 
-The unwired Ecto layer (dead library code today, the intended basis for C5 typed tables):
+The unwired Ecto layer (dead library code today — typed tables (C5) landed on the ETS store instead, and this path was deliberately not revived):
 
 | Module | Purpose |
 |--------|---------|
@@ -145,7 +147,7 @@ Where `Capabilities` is a literal list built from the module's `capability` decl
 
 ## The ETS Store
 
-`Skein.Runtime.Store` is the store: an in-memory, ETS-backed key-value implementation that every compiled `store.*` call targets. It requires no database setup. There is no backend-selection or dispatch mechanism — compiled code calls `Skein.Runtime.Store` directly, so data does not survive a restart. Persistent, typed tables are the C5 roadmap work ([#255](https://github.com/kormie/Skein/issues/255), v0.5.0).
+`Skein.Runtime.Store` is the store: an in-memory, ETS-backed key-value implementation that every compiled `store.*` call targets. It requires no database setup. There is no backend-selection or dispatch mechanism — compiled code calls `Skein.Runtime.Store` directly, so data does not survive a restart. Typed, schema-checked tables landed with C5 ([#255](https://github.com/kormie/Skein/issues/255)), but on this ETS store — there is no durable persistence for store tables. Only the EventStore (a separate subsystem for the event log) offers SQLite persistence.
 
 ## Configuration
 
@@ -158,4 +160,4 @@ config :skein_runtime, Skein.Runtime.Repo,
   pool_size: 5
 ```
 
-Other database adapters (e.g. Postgres) are a possible future direction; SQLite3 is the adapter the C5 typed-table work would build on.
+Other database adapters (e.g. Postgres) are a possible future direction, but nothing currently builds on this layer — typed store tables (C5) run on the ETS store.

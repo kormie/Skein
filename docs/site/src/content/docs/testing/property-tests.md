@@ -27,6 +27,7 @@ apps/skein_compiler/test/skein/
   lexer_property_test.exs            # StreamData
   parser_property_test.exs           # StreamData
   analyzer_property_test.exs         # StreamData
+  codegen_soundness_property_test.exs # StreamData (B4)
   codegen/
     core_erlang_property_test.exs    # StreamData
     schema_gen_property_test.exs     # StreamData
