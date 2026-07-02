@@ -1,5 +1,118 @@
 # Changelog
 
+## v0.5.0 (2026-07-02)
+
+**Runtime Contract & Dogfood.** The complete **v0.5.0 — Runtime Contract &
+Dogfood** milestone: Wave C makes the runtime expose exactly the contract the
+analyzer and spec claim (C1–C6), Wave D adds a continuous executable dogfood
+gate, and `supervisor` declarations become real OTP supervision. The runtime
+contract drift found by the 2026-06-19 audit is closed; the structured-error
+ABI is the first frozen surface on the road to 1.0.
+
+### Language & Compiler
+
+- **One authoritative effect ABI (C1):** `Skein.EffectABI` is the single
+  registry for every effect method signature, store method, scenario provider
+  contract, and effect error enum. The analyzer's effect/store/provider tables
+  and codegen's dispatch maps are derived from it, spec §6 signature lines are
+  drift-tested in both directions, and a runtime ABI matrix pins every
+  method's live success/failure shape with registry-enforced completeness —
+  editing any copy alone fails CI. Contract fixes shipped by the registry:
+  `timer.cancel` returns `Result[String, String]` (`Ok` = the ref, idempotent)
+  and `event.log` returns `Result[String, String]` (`Ok` = the event name, so
+  a scope denial is visible).
+- **Typed store tables (C5):** `capability store.table("games", Game)` names a
+  declared record type with exactly one `@primary` field (violations are the
+  new **E0043**). Store methods are typed against it — `get`/`put` as
+  `Result[Game, StoreError]`, `delete` as `Result[PK, StoreError]`, `query` as
+  `Result[List[Game], StoreError]` — with records and keys argument-checked
+  (E0020). Codegen threads the record's derived JSON Schema into every `put`
+  and the runtime schema-checks each write (defense in depth behind the
+  compile-time gate). **Breaking:** untyped `store.table("name")` declarations
+  no longer compile.
+- **Analyzer factoring (#315):** the contiguous pass groups are real
+  submodules (`Purity`, `Capabilities`, `AgentChecks`, `Warnings`), the
+  hand-maintained registries ride the C1 registry, and `assert` is a
+  first-class `AST.Assert` node (the `__assert__` parser desugar — the one
+  "no desugaring in the parser" violation — is gone).
+- **Wider soundness property gate (#314):** the B4 analyzer-accept ⇒
+  BEAM-load generator now also produces guarded match arms, typed string
+  interpolation, `Float` arithmetic, `?`-propagating `Result` fns,
+  capability-gated `memory`/`uuid` effects, nested agents with generated
+  phase enums, tools with randomized I/O, and HTTP handlers.
+
+### Runtime
+
+- **One structured-error ABI (C2, frozen):** every effect error is matchable
+  from Skein. The builtin error enums (`HttpError`, `LlmError`, `ToolError`,
+  `StoreError`, `MemoryError`, `PublishError`, `NotFound`) are real enum
+  declarations materialized from the C1 registry; variants lower to
+  snake_case atoms/tuples and the runtime converts its internal error structs
+  at every public boundary — `Err(LlmError.RateLimit(ms))`,
+  `Err(ToolError.ValidationError(t, violations))`, and
+  `Err(HttpError.Status(code, body))` arms really match. Store/memory write
+  failures are structured (`Failed(reason)`/`Denied(reason)`), never bare
+  strings. The variant registry is frozen (see `docs/STABILITY.md`), and the
+  blocked-live `LiveEffectError` raise is documented and frozen as
+  intentionally uncatchable.
+- **One recursive schema engine (C3):** `req.json[T]`, `llm.json[T]`, and
+  tool input **and output** all validate through the same recursive
+  validator/decoder (`Skein.Runtime.JsonSchema`) — nested objects/arrays,
+  `required`, `enum`, min/max, `uniqueItems`, string formats, `oneOf`,
+  `additionalProperties`. `llm.json[T]` schema violations are
+  `Err(LlmError.InvalidSchema(violations))`; a wrong-shaped tool
+  implementation result is `Err(ToolError.ValidationError)` with
+  `output:`-prefixed violations.
+- **EventStore persistence (C6):** the SQLite backend is wired onto the
+  ordinary append path. Opt-in via `Persistence.enable/1`; `skein run`
+  enables it by default at `<project>/.skein/events.db` (`--no-persist` opts
+  out) and reloads persisted history on restart (deduplicated). Restart
+  durability is tested; persisted shapes stay Pre-stable until the Wave F
+  freeze.
+- **Real OTP supervision (#325):** `supervisor` declarations boot real
+  supervisors under `skein run` (`Skein.Runtime.SupervisorHost`). Children
+  resolve to compiled nested agents by convention, brace-block entries are
+  `on start(...)` args with `restart:` selecting the OTP policy, declared
+  strategy and `max_restarts` intensity are enforced, every (re)start appends
+  a `:supervisor`/`:child_started` event, and `memory.kv` state survives
+  restarts.
+- **C4 remainder (#279):** `llm.embed` resolves past a scenario `model`
+  provider to the deterministic backend (there is no embed provider form —
+  `LlmResponse` is text-only, spec §6.4), and `given` is confirmed as the
+  home for seeding stateful scenario fixtures with its evaluation
+  order/scoping specified (§3.10).
+
+### Testing & CI
+
+- **Continuous dogfood gate (Wave D/#262):** both external dogfood ports
+  (skein-testing's Dungeon, FablePool) were migrated to current Skein and
+  pass against main. Checked-in reduced ports run inside every `mix test`
+  with exact pinned test counts (`conformance/dogfood/`,
+  `conformance/dogfood.json`), and a dedicated CI job additionally clones
+  both upstream repos at machine-readable pins and executes their suites
+  (external half armed by the `DOGFOOD_GITHUB_TOKEN` secret).
+- Every complete-module ` ```skein ` fence in the docs site and spec now
+  compiles in CI (`docs_fences_test.exs`), error-demo fences must emit their
+  annotated codes, and the negative corpus asserts the complete diagnostic
+  set per fixture plus the structured-diagnostic contract.
+
+### Spec & Docs
+
+- Spec §6 signatures are registry-pinned; §6 documents the frozen effect
+  error enums; §3.10 specifies `given` and the frozen `LiveEffectError`
+  decision; §3.9 documents live supervisor semantics; §3.2 documents typed
+  `store.table` params and the full capability-kind list (including
+  `uuid`/`instant`); §2.6 documents the five string escape sequences; §7
+  gains the E0043 row.
+- The docs site, README, ROADMAP, ARCHITECTURE, STABILITY, and CONTRIBUTING
+  were release-readiness-swept: every page that described the pre-C1–C6
+  contracts (string HTTP errors, unvalidated `llm.json`, unwired
+  persistence, metadata-only supervisors, untyped store) now documents the
+  landed behavior, and the broken canonical examples were fixed
+  (`skein_assistant` route is `POST /ask/:session_id`; the README RefundAgent
+  snippet genuinely compiles; `hello_http`'s `/echo` and `/classify` do what
+  their comments say).
+
 ## v0.4.0 (2026-07-02)
 
 **Truth & Soundness.** This release *renumbers downward on purpose*: the
