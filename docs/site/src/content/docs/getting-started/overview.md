@@ -57,7 +57,7 @@ The compilation pipeline is fully operational. You can write `.skein` files with
 - Type checking at function boundaries and operator validation
 - Type inference — field access resolves types through record definitions
 - JSON schema derivation from type declarations
-- Constraint annotations: `@min`, `@max`, `@one_of`, `@default`
+- Constraint annotations: `@min`, `@max`, `@one_of`, `@default`, `@primary`, `@unique`, `@description`
 
 **Capabilities and effects:**
 
@@ -65,7 +65,7 @@ The compilation pipeline is fully operational. You can write `.skein` files with
 - HTTP effect calls: `http.get`, `http.post`, `http.put`, `http.patch`, `http.delete`
 - Store effect calls: `store.<table>.get`, `store.<table>.put`, `store.<table>.delete`, `store.<table>.query`
 - Memory effect calls: `memory.put`, `memory.get`, `memory.delete`, `memory.list`
-- LLM effect calls: `llm.chat`, `llm.json`, `llm.stream`
+- LLM effect calls: `llm.chat`, `llm.json`, `llm.stream`, `llm.embed`
 - Runtime capability enforcement across all subsystems (HTTP, store, memory, LLM)
 - Automatic trace recording for every effect call with timing, outcome, and token usage
 

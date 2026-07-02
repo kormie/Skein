@@ -30,7 +30,7 @@ Token categories:
 # Keywords (reserved, cannot be used as identifiers)
 :module, :fn, :let, :match, :type, :enum, :handler, :agent, :tool,
 :capability, :supervisor, :test, :scenario, :golden, :on, :emit,
-:transition, :stop, :suspend, :resume, :implement, :idempotent,
+:transition, :stop, :suspend, :implement, :idempotent,
 :true, :false
 
 # Operators and punctuation

@@ -7,7 +7,7 @@ description: The Skein runtime library -- agents, HTTP client, handler dispatch,
 
 The Skein runtime (`skein_runtime`) provides the libraries that compiled Skein code calls at execution time. It handles:
 
-- **Agent runtime** -- GenStateMachine-based state machines for Skein agents via `Skein.Runtime.Agent`
+- **Agent runtime** -- state machines for Skein agents via `Skein.Runtime.Agent`, built directly on OTP's `:gen_statem` behaviour
 - **HTTP client** -- making outbound HTTP requests via `Skein.Runtime.Http`
 - **Capability enforcement** -- validating effect calls against declared capabilities
 - **Handler dispatch** -- routing HTTP requests to compiled handler functions

@@ -75,7 +75,7 @@ generated.
 OTP behaviours and libraries that compiled Skein programs link against:
 the `gen_statem`-based agent runtime, handler dispatch (HTTP/queue/schedule),
 the tool registry, runtime capability enforcement, scoped KV memory, the
-store (ETS or Ecto/SQLite-backed), the LLM client with pluggable backends,
+schema-checked ETS-backed store, the LLM client with pluggable backends,
 the trace/event store with replay, and the Bandit + Plug HTTP server.
 
 ## CLI App (`apps/skein_cli/`)
