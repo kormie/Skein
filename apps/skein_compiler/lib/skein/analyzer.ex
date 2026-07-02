@@ -28,7 +28,7 @@ defmodule Skein.Analyzer do
   - E0017: Duplicate scoped capability declaration (memory.kv, event.log, process.spawn, timer)
 
   ### Type Checking (E002x)
-  - E0020: Type mismatch (return type, match arm types, operator types, arity, argument types for fn/stdlib/effect/fn-typed-variable calls, wrong-shape callbacks in higher-order slots, tool implement bodies vs the Result[output, error] contract, provider bodies vs their declared return, a bare fn name or bare Ok/Err used as a value, calling a non-function value)
+  - E0020: Type mismatch (return type, match arm types, operator types, arity, argument types for fn/stdlib/effect/fn-typed-variable calls, wrong-shape callbacks in higher-order slots, tool implement bodies vs the Result[output, error] contract, provider bodies vs their declared return, a bare fn name or bare Ok/Err used as a value, non-scalar interpolation segments, calling a non-function value)
   - E0021: Non-exhaustive match (warning)
   - E0022: Invalid `!` on non-Result type
   - E0023: Invalid `?` on non-Result type (or enclosing fn doesn't return Result)
@@ -1200,8 +1200,9 @@ defmodule Skein.Analyzer do
   #   * string patterns must be literal — an interpolated pattern has no
   #     match-time value (codegen lowers string patterns byte-by-byte)
   #
-  # Scope checking of lowercase references stays in check_interpolation
-  # (it needs the binding environment that only type inference tracks).
+  # Scope and TYPE checking of lowercase references happens in the infer
+  # path (interpolation_segment_errors, #310) — it needs the binding
+  # environment that only type inference tracks.
   defp check_interpolation_shapes(declarations, env) do
     declarations
     |> Enum.flat_map(&interpolation_shape_errors(&1, env))
@@ -2156,11 +2157,12 @@ defmodule Skein.Analyzer do
   defp infer_type(%AST.BoolLit{}, _env), do: {:bool, []}
 
   defp infer_type(%AST.StringLit{segments: segments}, env) do
-    # Check interpolation references are valid
+    # Each interpolation segment is fully inferred and held to the
+    # interpolable set (#310) — see interpolation_segment_errors/2.
     errors =
       segments
       |> Enum.flat_map(fn
-        {:interpolation, token} -> check_interpolation(token, env)
+        {:interpolation, expr} -> interpolation_segment_errors(expr, env)
         {:literal, _} -> []
       end)
 
@@ -4112,30 +4114,70 @@ defmodule Skein.Analyzer do
   # check_interpolation_shapes pass owns that rejection, so it fires
   # uniformly for bodies this type-inference pass never visits (agent
   # handlers, test blocks).
-  defp check_interpolation(%AST.Identifier{name: name, meta: meta}, env) do
-    cond do
-      String.match?(name, ~r/^[A-Z]/) ->
-        []
+  # Interpolation renders exactly the scalar types with one canonical text
+  # rendering (#310). Everything else — records, maps, lists, fn refs,
+  # Option/Result, enums (their runtime atom leaks the lowered name), Duration
+  # (its runtime value is a bare number) — is E0020 at the segment. Before
+  # this, those segments compiled, loaded, and crashed at runtime with
+  # {:unsupported_interpolation, value}; a fn NAME segment even reached the
+  # codegen unbound-identifier invariant. The codegen coercion whitelist
+  # (binary/integer/float/atom) stays as the runtime guard for the :dynamic
+  # seam; the allowed-set tests in analyzer_interpolation_test.exs run the
+  # rendered programs, pinning the two lists together.
+  @interpolable_types [:string, :int, :float, :bool, :uuid, :instant]
 
-      Map.has_key?(env.variables, name) or Map.has_key?(env.functions, name) ->
-        []
+  # Uppercase-rooted segments ("${Foo}", "${Foo.bar}") are owned by the
+  # scope-independent shape pass (check_interpolation_shapes, #234).
+  defp interpolation_segment_errors(%AST.Identifier{name: <<c, _::binary>>}, _env)
+       when c in ?A..?Z,
+       do: []
 
-      true ->
-        [
-          %Error{
-            code: "E0010",
-            severity: :error,
-            message: "Unknown identifier '#{name}' in string interpolation",
-            location: location_from_meta(meta, env.file),
-            fix_hint: "Did you mean to declare this variable?",
-            fix_code: "let #{name} = value"
-          }
-        ]
-    end
+  defp interpolation_segment_errors(
+         %AST.FieldAccess{subject: %AST.Identifier{name: <<c, _::binary>>}},
+         _env
+       )
+       when c in ?A..?Z,
+       do: []
+
+  defp interpolation_segment_errors(expr, env) do
+    {segment_type, segment_errors} = infer_type(expr, env)
+
+    type_errors =
+      cond do
+        segment_type in @interpolable_types ->
+          []
+
+        permissive_type?(segment_type) ->
+          []
+
+        true ->
+          [
+            %Error{
+              code: "E0020",
+              severity: :error,
+              message:
+                "Cannot interpolate a #{format_type(segment_type)} value — ${...} renders String, Int, Float, Bool, Uuid, and Instant",
+              location: location_from_meta(Map.get(expr, :meta), env.file),
+              fix_hint: interpolation_fix_hint(segment_type),
+              fix_code: nil
+            }
+          ]
+      end
+
+    segment_errors ++ type_errors
   end
 
-  defp check_interpolation(%AST.FieldAccess{subject: subject}, env) do
-    check_interpolation(subject, env)
+  defp interpolation_fix_hint({:option, _}),
+    do: "Match on the Option (Some/None) and interpolate the inner value"
+
+  defp interpolation_fix_hint({:result, _, _}),
+    do: "Unwrap with ! or ? (or match on Ok/Err) before interpolating"
+
+  defp interpolation_fix_hint(:duration),
+    do: "A Duration's runtime value is a bare number — use Duration.to_string(value)"
+
+  defp interpolation_fix_hint(_) do
+    "Convert the value to a scalar first, or match on it and interpolate a field"
   end
 
   # ------------------------------------------------------------------

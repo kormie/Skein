@@ -148,7 +148,7 @@ The `fix_code` field is especially useful for LLM agents -- it provides the exac
 
 | Code | Severity | Description |
 |------|----------|-------------|
-| E0020 | error | Type mismatch (including wrong argument counts or types for fn, stdlib, effect, and fn-typed-variable calls, wrong-shape callbacks in higher-order slots, interpolation in string patterns, tool `implement` bodies vs the `Result[output, error]` contract, provider bodies vs their declared return, a bare fn name used as a value, and calling a non-function value) |
+| E0020 | error | Type mismatch (including wrong argument counts or types for fn, stdlib, effect, and fn-typed-variable calls, wrong-shape callbacks in higher-order slots, interpolation in string patterns, non-scalar interpolation segments, tool `implement` bodies vs the `Result[output, error]` contract, provider bodies vs their declared return, a bare fn name used as a value, and calling a non-function value) |
 | E0021 | warning | Non-exhaustive match |
 | E0022 | error | Invalid `!` on non-Result |
 | E0023 | error | Invalid `?` on non-Result, enclosing fn doesn't return Result, or the propagated error type is incompatible with the enclosing Result's error type |

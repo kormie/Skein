@@ -88,6 +88,14 @@ boolean     = true | false
 Number literals are unsigned; negative numbers use the prefix `-` operator
 (`-3`, `-1.5`), which is part of the expression grammar (§3.11), not the token.
 
+**Interpolation is typed.** `${...}` renders exactly the scalar types with one
+canonical text rendering: `String`, `Int`, `Float`, `Bool`, `Uuid`, and
+`Instant`. Any other segment type — a record, map, list, `&fn` reference,
+`Option`, `Result`, enum (its runtime atom would leak the lowered variant
+name), or `Duration` (its runtime value is a bare number; use
+`Duration.to_string`) — is a compile error (`E0020`) with a conversion hint.
+Match or convert the value first.
+
 ---
 
 ## 3. Grammar
@@ -880,7 +888,7 @@ edits generically — no per-error-code logic.
 | E0015 | Tool | error | Duplicate short tool name in `capability tool.use` params |
 | E0016 | Name | error | Cross-module function call (functions are module-private; expose a tool instead) |
 | E0017 | Capability | error | Duplicate scoped capability declaration (`memory.kv`, `event.log`, `process.spawn`, `timer` allow one per module or agent) |
-| E0020 | Type | error | Type mismatch (including wrong argument counts or types for fn, stdlib, effect, and fn-typed-variable calls, wrong-shape callbacks in higher-order slots, interpolation in string patterns, tool `implement` bodies vs the `Result[output, error]` contract, provider bodies vs their declared return, a bare fn name used as a value, and calling a non-function value) |
+| E0020 | Type | error | Type mismatch (including wrong argument counts or types for fn, stdlib, effect, and fn-typed-variable calls, wrong-shape callbacks in higher-order slots, interpolation in string patterns, non-scalar interpolation segments (§2.6), tool `implement` bodies vs the `Result[output, error]` contract, provider bodies vs their declared return, a bare fn name used as a value, and calling a non-function value) |
 | E0021 | Type | error | Non-exhaustive match on a closed type (`Bool`, enum, `Result`, `Option`) with no `_` wildcard |
 | E0022 | Type | error | Invalid `!` on non-Result |
 | E0023 | Type | error | Invalid `?` on non-Result, enclosing fn doesn't return Result, or the propagated error type is incompatible with the enclosing Result's error type |
