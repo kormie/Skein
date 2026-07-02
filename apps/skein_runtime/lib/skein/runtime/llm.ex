@@ -147,7 +147,7 @@ defmodule Skein.Runtime.Llm do
           {:ok, [float()]} | {:error, Error.abi()}
   def embed(model, input, capabilities)
       when is_binary(model) and is_binary(input) and is_list(capabilities) do
-    backend = resolve_backend(model)
+    backend = resolve_embed_backend(model)
     span = Map.merge(%{kind: :llm, method: :embed, model: model}, backend_span_meta(backend))
 
     Trace.with_recorded_span(span, fn ->
@@ -209,6 +209,22 @@ defmodule Skein.Runtime.Llm do
       match?({:implement, _}, CapabilityStack.resolve("model")) ->
         Skein.Runtime.Llm.ProviderBackend
 
+      Replay.active?() ->
+        Skein.Runtime.Llm.ReplayBackend
+
+      true ->
+        enforce_live_policy(get_backend(), model)
+    end
+  end
+
+  # `llm.embed` has no `implement` provider form — `LlmResponse` is
+  # text-only (#279) — so it resolves PAST a scenario `model` provider,
+  # through the normal remaining order: replay, then the configured
+  # backend under the live policy (a live backend stays blocked under
+  # `skein test` unless `--allow-live model`). This keeps embeds
+  # deterministic offline inside scenario envelopes instead of erroring.
+  defp resolve_embed_backend(model) do
+    cond do
       Replay.active?() ->
         Skein.Runtime.Llm.ReplayBackend
 

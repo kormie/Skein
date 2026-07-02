@@ -11,8 +11,10 @@ defmodule Skein.Runtime.Llm.ProviderBackend do
   carries the completion, which `llm.json[T]` then decodes against the target
   schema exactly as a live response would be.
 
-  `llm.embed` has no `implement` provider — `LlmResponse` is text-only — so it
-  returns a structured error here.
+  `llm.embed` has no `implement` provider — `LlmResponse` is text-only — so
+  `Skein.Runtime.Llm.embed/3` never resolves to this backend (#279): it
+  resolves past the provider (replay → configured backend under the live
+  policy). The `embed/2` callback below is defensive only.
   """
 
   @behaviour Skein.Runtime.Llm.Backend
