@@ -1,5 +1,115 @@
 # Changelog
 
+## v0.4.0 (2026-07-02)
+
+**Truth & Soundness.** This release *renumbers downward on purpose*: the
+2026-06-15/19 audits found the rc line was tagged prematurely (analyzer/
+codegen soundness was not established; runtime contracts had drifted), so
+the release train was reset to development releases — v0.4.0, then v0.5.0
+(Runtime Contract & Dogfood), then a true v1.0.0-rc.2. v0.4.0 packages the
+complete **v0.4.0 — Truth & Soundness** milestone: the Wave A truth reset,
+the full Wave B analyzer/codegen soundness program (B1–B6, adversarially
+audit-verified), its residue, and the pre-freeze surface cuts.
+
+### Language & Compiler
+
+- **Soundness (Wave B, B1–B6):** `?` truly early-returns from every user
+  body with the propagated error type checked (E0023); internal
+  `:unknown`/widened types can no longer cross declared boundaries
+  (new E0037) and `Json` no longer downcasts silently; call arguments are
+  type-checked for local, effect, and callback calls in every body kind,
+  with a real `{:fn, params, ret}` callable type for `&fn` references;
+  analyzer acceptance now guarantees Core Erlang generation, BEAM
+  compilation, and load (unknown references are site errors in every body
+  kind; codegen's unbound-variable fallbacks became compiler-bug
+  invariants; a StreamData property gate plus a positive conformance
+  corpus pin the bridge); records are nominal (`TypeName { ... }` is the
+  one construction form) with total `Option` handling across
+  construction, JSON, store, and tool boundaries; tool `implement` bodies
+  are checked against `Result[output, error]` field-by-field, scenario
+  provider bodies against exact per-capability contracts (new E0038), and
+  purity checking is transitive through local calls and `&fn` references
+  (E0029 reports the call chain).
+- **Effect honesty:** effect calls are typed as `Result`, so a missing
+  `!`/`?` is a compile error instead of a runtime crash; `String +
+  String` is a compile error (build strings with interpolation);
+  `uuid.new()` / `instant.now()` are capability-gated effects — ambient
+  `Uuid.new()` is gone; non-exhaustive matches on closed types are
+  errors.
+- **Interpolation is typed:** `${...}` renders exactly the canonical
+  scalars (`String`, `Int`, `Float`, `Bool`, `Uuid`, `Instant`); records,
+  fn references, `Option`/`Result`, enums, and `Duration` are compile
+  errors with conversion hints instead of runtime
+  `:unsupported_interpolation` crashes. Bare `Ok`/`Err` used as a value
+  is rejected instead of silently lowering to an atom.
+- **Expression termination is specified (new spec §3.12):** field access,
+  `|>`, and binary operators continue across newlines on either side; a
+  line-initial call `(`, type-argument `[`, and postfix `!`/`?` never
+  continue the previous expression (a line-initial `!` used to be
+  silently stolen as an unwrap — prefix not is also `!`). Parser property
+  tests pin every rule.
+- **Surface cuts (pre-freeze, breaking):** the pre-paren unwrap spellings
+  `method!(args)` / `method?(args)` were deleted — `get(k)!` is the one
+  spelling, postfix `!`/`?` now continue the postfix chain
+  (`get(id)!.name`), and the vestigial `get!`/`put!` methods are gone
+  from the registries, runtime, and spec; tool `policy` blocks were cut
+  from the grammar (parsing one is a targeted error); `resume` is
+  de-reserved and usable as an ordinary identifier (agents remain resumed
+  host-side via `Agent.resume/2`). `supervisor` stays: its declaration
+  contract is pinned in spec §3.9 as the frozen surface, with runtime
+  wiring tracked for v0.5.0 (#325).
+- **Agent-writability:** `fix_code` is never a prose placeholder — it is
+  applicable Skein or `nil` (guidance lives in `fix_hint`); the E0028/
+  E0029 registry rows exist in spec §7 and the docs site; a newline-`(`
+  no longer parses as a call of the previous expression (#311).
+
+### Runtime
+
+- **Scenario-scoped capability environments are real:** a dynamic
+  capability-context stack resolves every effect
+  (`implement → replay → test-default → live`), scenario `implement`
+  providers compile into capability envelopes, spawned work inherits the
+  scenario context, and blocked live effects raise a deliberate
+  `LiveEffectError`. The old `Dependencies`/`with_overrides` override
+  plane is retired.
+- **Deterministic test runner:** `skein test` runs every
+  `scenario`/`golden` under a conservative effect policy (no accidental
+  network; `--allow-live` opts in), with scenario-local state isolation;
+  golden bodies genuinely replay recorded traces.
+- HTTP non-2xx responses are `Err(Status(code, body))` per spec §6.1;
+  store/memory misses return `Err(NotFound)`-matchable results;
+  `req.json[T]` enforces `@`-constraints and coerces `Option` fields.
+- EventStore durability language is honest: the log is in-memory only
+  (the SQLite backend is not wired into the append path — #299 tracks
+  persistence), and the docs/STABILITY classification says so.
+
+### CLI
+
+- Versioned `--json` output for `compile`/`build`/`test`/`trace` — the
+  stable agent contract for driving Skein from tooling (#284) — plus a
+  framework-neutral `skein trace` renderer (and a crash fix).
+
+### Testing
+
+- The negative conformance corpus (pinned diagnostics per fixture) and a
+  positive corpus (compile → load → run) gate the GA invariants; the
+  suite grew to ~2,400 tests + 210 properties. Schedule auto-fire tests
+  are immune to wall-clock ticks (crons pinned to a simulated past date)
+  and the Topic state-leak flake is fixed.
+
+### Spec & Docs
+
+- Truthful pre-1.0 posture everywhere: the spec banner, README,
+  CONTRIBUTING, STABILITY, and the roadmap all state that GA is not
+  imminent and nothing is frozen yet; the roadmap is re-planned around
+  contract-first waves (A–F) with v0.4.0/v0.5.0 development milestones
+  (the conditional canonical-substrate milestone was retired — #300
+  resolved as Alternative B).
+- New: first-principles P4 ("all nondeterminism is controlled"), the
+  scenario-capability-environments design doc, the post-Wave-B sanity
+  check audit (`docs/audits/`), spec §3.12, and the pinned supervisor
+  declaration contract (§3.9).
+
 ## v1.0.0-rc.4 (2026-06-14)
 
 Completing two rc.3 findings that shipped only partially (the
