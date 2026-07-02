@@ -103,7 +103,7 @@ defmodule Skein.Runtime.AgentEventStoreTest do
         }
 
         on phase(Phase.Exploding) -> {
-          let boom = memory.get!("no_such_key")
+          let boom = memory.get("no_such_key")!
           stop()
         }
       }

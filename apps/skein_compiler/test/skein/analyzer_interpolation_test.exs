@@ -198,7 +198,7 @@ defmodule Skein.AnalyzerInterpolationTest do
                module M {
                  capability memory.kv
                  fn f() -> String {
-                   let v = memory.get!("k")
+                   let v = memory.get("k")!
                    "value: ${v}"
                  }
                }

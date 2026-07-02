@@ -284,7 +284,6 @@ defmodule Skein.Lsp.Completions do
         "memory" ->
           [
             {"get", "Get a value from memory", "memory.get(key)"},
-            {"get!", "Get a value or raise", "memory.get!(key)"},
             {"put", "Store a value in memory", "memory.put(key, value)"},
             {"delete", "Delete a key from memory", "memory.delete(key)"},
             {"list", "List keys by prefix", "memory.list(prefix)"}

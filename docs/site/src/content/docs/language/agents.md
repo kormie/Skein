@@ -106,7 +106,7 @@ agent OrderProcessor {
   }
 
   on phase(Phase.Validate) -> {
-    let amount = memory.get!("amount")
+    let amount = memory.get("amount")!
     match amount > 0 {
       true -> transition(Phase.Process)
       false -> transition(Phase.Reject)
@@ -192,8 +192,8 @@ agent RefundBot {
   }
 
   on phase(Phase.Analyze) -> {
-    let ticket_id = memory.get!("ticket_id")
-    let customer_id = memory.get!("customer_id")
+    let ticket_id = memory.get("ticket_id")!
+    let customer_id = memory.get("customer_id")!
     transition(Phase.Done)
   }
 
@@ -230,7 +230,7 @@ agent Classifier {
   }
 
   on phase(Phase.Classify) -> {
-    let text = memory.get!("text")
+    let text = memory.get("text")!
     let label = llm.chat("claude-opus-4-8", "Classify this text.", text)!
     memory.put("latest_label", label)
     stop()
@@ -246,7 +246,7 @@ Agents can call LLM models for decision-making via the `llm.*` effects:
 
 ```skein
 on phase(Phase.Analyze) -> {
-  let text = memory.get!("text")
+  let text = memory.get("text")!
   let analysis = llm.chat("claude-opus-4-8", "Analyze this input", text)!
   -- analysis is a String
 }
@@ -262,7 +262,7 @@ type Decision {
 }
 
 on phase(Phase.Decide) -> {
-  let description = memory.get!("ticket_description")
+  let description = memory.get("ticket_description")!
   let decision = llm.json[Decision](
     "claude-opus-4-8",
     "Decide if this warrants a refund",
@@ -276,7 +276,7 @@ on phase(Phase.Decide) -> {
 
 ```skein
 on phase(Phase.Generate) -> {
-  let data = memory.get!("data")
+  let data = memory.get("data")!
   let result = llm.stream("claude-opus-4-8", "Generate a report", data)
   -- chunks are delivered to the runtime callback; result is the assembled text
 }
@@ -302,7 +302,7 @@ agent SessionTracker {
   }
 
   on phase(Phase.Active) -> {
-    let user = memory.get!("current_user")
+    let user = memory.get("current_user")!
     let keys = memory.list("user:")
     memory.delete("old_key")
     stop()
@@ -318,8 +318,8 @@ Use `emit` to record domain events. Events are append-only and queryable via `ge
 
 ```skein
 on phase(Phase.Approved) -> {
-  let ticket_id = memory.get!("ticket_id")
-  let amount = memory.get!("amount")
+  let ticket_id = memory.get("ticket_id")!
+  let amount = memory.get("amount")!
   emit RefundIssued {
     ticket_id: ticket_id,
     amount: amount,
@@ -353,8 +353,8 @@ agent PaymentAgent {
   }
 
   on phase(Phase.Refund) -> {
-    let customer_id = memory.get!("customer_id")
-    let amount = memory.get!("amount")
+    let customer_id = memory.get("customer_id")!
+    let amount = memory.get("amount")!
     let result = tool.call(Stripe.CreateRefund, {
       customer_id: customer_id,
       amount: amount
@@ -439,7 +439,7 @@ module Refunds {
     }
 
     on phase(Phase.Analyze) -> {
-      let ticket_id = memory.get!("ticket_id")
+      let ticket_id = memory.get("ticket_id")!
       let decision = llm.json[RefundDecision](
         "claude-opus-4-8",
         "Decide if this ticket warrants a refund.",
@@ -454,9 +454,9 @@ module Refunds {
     }
 
     on phase(Phase.Refund) -> {
-      let ticket_id = memory.get!("ticket_id")
-      let customer_id = memory.get!("customer_id")
-      let amount = memory.get!("decision_amount")
+      let ticket_id = memory.get("ticket_id")!
+      let customer_id = memory.get("customer_id")!
+      let amount = memory.get("decision_amount")!
       let result = tool.call(Stripe.CreateRefund, {
         customer_id: customer_id,
         amount: amount

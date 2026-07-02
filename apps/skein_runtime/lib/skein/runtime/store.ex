@@ -47,19 +47,6 @@ defmodule Skein.Runtime.Store do
   end
 
   @doc """
-  Retrieves a record by its primary key, raising on a missing record or
-  missing capability. Backs the `store.<table>.get!(id)` form in Skein
-  source (let-it-crash semantics).
-  """
-  @spec get!(String.t(), any(), [map()]) :: map()
-  def get!(table_name, id, capabilities) do
-    case get(table_name, id, capabilities) do
-      {:ok, record} -> record
-      {:error, reason} -> raise RuntimeError, error_message(reason)
-    end
-  end
-
-  @doc """
   Inserts or updates a record. The record must be a map with an `:id` field
   (or `"id"` key) used as the primary key.
 
@@ -86,18 +73,6 @@ defmodule Skein.Runtime.Store do
           error
       end
     end)
-  end
-
-  @doc """
-  Inserts or updates a record, raising on failure. Backs the
-  `store.<table>.put!(record)` form in Skein source.
-  """
-  @spec put!(String.t(), map(), [map()]) :: map()
-  def put!(table_name, record, capabilities) do
-    case put(table_name, record, capabilities) do
-      {:ok, stored} -> stored
-      {:error, reason} -> raise RuntimeError, error_message(reason)
-    end
   end
 
   @doc """
@@ -195,12 +170,6 @@ defmodule Skein.Runtime.Store do
   defp extract_id(record) when is_map(record) do
     Map.get(record, :id) || Map.get(record, "id")
   end
-
-  # The `!` forms raise; the message must be a string even though a miss is now
-  # the atom `:not_found`.
-  defp error_message(:not_found), do: "not_found"
-  defp error_message(reason) when is_binary(reason), do: reason
-  defp error_message(reason), do: inspect(reason)
 
   # Validate that every filter key names a field the table actually has.
   #

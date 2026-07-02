@@ -485,47 +485,52 @@ defmodule Skein.ParserTest do
       assert %AST.Block{expressions: [%AST.UnaryOp{op: :propagate}]} = fn_decl.body
     end
 
-    test "method!(args) parses as unwrap of the call" do
+    test "method!(args) is a structured error pointing at the postfix form (#268)" do
       source = "module M { fn f(id: String) -> Int { store.users.get!(id) } }"
 
-      assert {:ok, %AST.Module{declarations: [fn_decl]}} = parse(source)
-
-      assert %AST.Block{
-               expressions: [
-                 %AST.UnaryOp{
-                   op: :unwrap,
-                   operand: %AST.Call{
-                     target: %AST.FieldAccess{
-                       subject: %AST.FieldAccess{
-                         subject: %AST.Identifier{name: "store"},
-                         field: "users"
-                       },
-                       field: "get"
-                     },
-                     args: [%AST.Identifier{name: "id"}]
-                   }
-                 }
-               ]
-             } = fn_decl.body
+      assert {:error, [error]} = parse(source)
+      assert error.code == "E0001"
+      assert error.message =~ "get(...)!"
+      assert error.fix_hint =~ "after the closing"
     end
 
-    test "method?(args) parses as propagate of the call" do
+    test "method?(args) is a structured error pointing at the postfix form (#268)" do
       source = "module M { fn f(k: String) -> Int { memory.get?(k) } }"
 
+      assert {:error, [error]} = parse(source)
+      assert error.code == "E0001"
+      assert error.message =~ "get(...)?"
+    end
+
+    test "chained postfix after a postfix-unwrapped call continues the chain (#268)" do
+      source = "module M { fn f(id: String) -> Int { store.users.get(id)!.name } }"
+
       assert {:ok, %AST.Module{declarations: [fn_decl]}} = parse(source)
 
       assert %AST.Block{
                expressions: [
-                 %AST.UnaryOp{
-                   op: :propagate,
-                   operand: %AST.Call{args: [%AST.Identifier{name: "k"}]}
+                 %AST.FieldAccess{
+                   subject: %AST.UnaryOp{
+                     op: :unwrap,
+                     operand: %AST.Call{
+                       target: %AST.FieldAccess{
+                         subject: %AST.FieldAccess{
+                           subject: %AST.Identifier{name: "store"},
+                           field: "users"
+                         },
+                         field: "get"
+                       },
+                       args: [%AST.Identifier{name: "id"}]
+                     }
+                   },
+                   field: "name"
                  }
                ]
              } = fn_decl.body
     end
 
-    test "chained postfix after bang-call continues the chain" do
-      source = "module M { fn f(id: String) -> Int { store.users.get!(id).name } }"
+    test "a second unwrap can follow a chained call (#268)" do
+      source = "module M { fn f(k: String) -> Int { memory.get(k)!.load()!.value } }"
 
       assert {:ok, %AST.Module{declarations: [fn_decl]}} = parse(source)
 
@@ -533,7 +538,7 @@ defmodule Skein.ParserTest do
                expressions: [
                  %AST.FieldAccess{
                    subject: %AST.UnaryOp{op: :unwrap, operand: %AST.Call{}},
-                   field: "name"
+                   field: "value"
                  }
                ]
              } = fn_decl.body

@@ -699,12 +699,14 @@ wildcard.
 ```
 -- Requires: capability store.table(name)
 store.<table>.get(id: Uuid) -> Result[T, NotFound]
-store.<table>.get!(id: Uuid) -> T                  -- raises on miss
 store.<table>.put(record: T) -> Result[T, StoreError]
-store.<table>.put!(record: T) -> T                 -- raises on failure
 store.<table>.delete(id: Uuid) -> Result[Uuid, StoreError]
 store.<table>.query(filters: Map) -> Result[List[T], StoreError]
 ```
+
+There are no separate `get!`/`put!` methods (#268): the postfix `!`/`?`
+operators (§3.11) unwrap any `Result`-returning effect — `store.users.get(id)!`
+crashes on miss, `store.users.put(r)?` propagates the error.
 
 ### 6.3 Memory
 
@@ -716,10 +718,11 @@ store.<table>.query(filters: Map) -> Result[List[T], StoreError]
 -- Outside agent context: no scoping applied (backward compatible).
 memory.put(key: String, value: T) -> Result[T, MemoryError]
 memory.get(key: String) -> Result[T, NotFound]
-memory.get!(key: String) -> T
 memory.delete(key: String) -> Result[String, MemoryError]
 memory.list(prefix: String) -> List[String]
 ```
+
+As everywhere, unwrap with the postfix operator: `memory.get("k")!`.
 
 ### 6.4 LLM
 
@@ -988,7 +991,7 @@ module UserService {
   }
 
   handler http GET "/users/:id" (req) -> {
-    let id = Uuid.parse!(req.params.id)
+    let id = Uuid.parse(req.params.id)!
     let user = store.users.get(id)
     match user {
       Ok(u)           -> respond.json(200, u)
@@ -1128,8 +1131,8 @@ module RefundService {
     }
 
     on phase(Phase.Analyze) -> {
-      let ticket_id = memory.get!("ticket_id")
-      let ticket = store.tickets.get!(ticket_id)
+      let ticket_id = memory.get("ticket_id")!
+      let ticket = store.tickets.get(ticket_id)!
 
       let decision = llm.json[RefundDecision](
         model: "claude-opus-4-8",
@@ -1153,8 +1156,8 @@ module RefundService {
     }
 
     on phase(Phase.Refund) -> {
-      let d = memory.get!("decision")
-      let customer_id = memory.get!("customer_id")
+      let d = memory.get("decision")!
+      let customer_id = memory.get("customer_id")!
       let result = tool.call(Stripe.CreateRefund, {
         customer_id: customer_id,
         amount: d.amount
@@ -1162,12 +1165,12 @@ module RefundService {
 
       match result {
         Ok(refund) -> {
-          let tid = memory.get!("ticket_id")
+          let tid = memory.get("ticket_id")!
           emit RefundIssued { ticket_id: tid, refund_id: refund.id }
           transition(Phase.Done)
         }
         Err(e) -> {
-          let tid = memory.get!("ticket_id")
+          let tid = memory.get("ticket_id")!
           emit RefundFailed { ticket_id: tid }
           transition(Phase.Failed)
         }

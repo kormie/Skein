@@ -36,7 +36,7 @@ defmodule Skein.SpecExamplesTest do
        }
 
        handler http GET "/users/:id" (req) -> {
-         let id = Uuid.parse!(req.params.id)
+         let id = Uuid.parse(req.params.id)!
          let user = store.users.get(id)
          match user {
            Ok(u)           -> respond.json(200, u)
@@ -167,8 +167,8 @@ defmodule Skein.SpecExamplesTest do
          }
 
          on phase(Phase.Analyze) -> {
-           let ticket_id = memory.get!("ticket_id")
-           let ticket = store.tickets.get!(ticket_id)
+           let ticket_id = memory.get("ticket_id")!
+           let ticket = store.tickets.get(ticket_id)!
 
            let decision = llm.json[RefundDecision](
              model: "claude-opus-4-8",
@@ -192,8 +192,8 @@ defmodule Skein.SpecExamplesTest do
          }
 
          on phase(Phase.Refund) -> {
-           let d = memory.get!("decision")
-           let customer_id = memory.get!("customer_id")
+           let d = memory.get("decision")!
+           let customer_id = memory.get("customer_id")!
            let result = tool.call(Stripe.CreateRefund, {
              customer_id: customer_id,
              amount: d.amount
@@ -201,12 +201,12 @@ defmodule Skein.SpecExamplesTest do
 
            match result {
              Ok(refund) -> {
-               let tid = memory.get!("ticket_id")
+               let tid = memory.get("ticket_id")!
                emit RefundIssued { ticket_id: tid, refund_id: refund.id }
                transition(Phase.Done)
              }
              Err(e) -> {
-               let tid = memory.get!("ticket_id")
+               let tid = memory.get("ticket_id")!
                emit RefundFailed { ticket_id: tid }
                transition(Phase.Failed)
              }

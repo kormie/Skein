@@ -111,29 +111,6 @@ defmodule Skein.Runtime.MemoryTest do
   end
 
   # ------------------------------------------------------------------
-  # get!/3
-  # ------------------------------------------------------------------
-
-  describe "get!/3" do
-    test "retrieves a stored value directly" do
-      Memory.put("sessions", "hello", "world", @valid_capabilities)
-      assert "world" = Memory.get!("sessions", "hello", @valid_capabilities)
-    end
-
-    test "raises on missing key" do
-      assert_raise RuntimeError, ~r/not_found/, fn ->
-        Memory.get!("sessions", "nonexistent", @valid_capabilities)
-      end
-    end
-
-    test "raises on missing capability" do
-      assert_raise RuntimeError, ~r/memory.kv/, fn ->
-        Memory.get!("sessions", "key", @no_capabilities)
-      end
-    end
-  end
-
-  # ------------------------------------------------------------------
   # delete/3
   # ------------------------------------------------------------------
 

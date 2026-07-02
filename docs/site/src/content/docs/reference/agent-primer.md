@@ -57,7 +57,7 @@ module UserService {
   }
 
   handler http GET "/users/:id" (req) -> {
-    let id = Uuid.parse!(req.params.id)
+    let id = Uuid.parse(req.params.id)!
     match store.users.get(id) {
       Ok(u)  -> respond.json(200, u)
       Err(_) -> respond.json(404, { error: "not found" })
@@ -103,7 +103,7 @@ module or agent. There are no exceptions.
 | `http.in` | Declaring `handler http ...` |
 | `http.out("host")` | `http.get/post/put/delete` to that host |
 | `store.table("name")` | `store.<name>.get/put/delete/query` |
-| `memory.kv("namespace")` | `memory.put/get/get!/delete/list` |
+| `memory.kv("namespace")` | `memory.put/get/delete/list` |
 | `model("provider", "model")` | `llm.chat/json/stream/embed` |
 | `tool.use(Mod.ToolName)` | `tool.call(Mod.ToolName, { ... })` |
 | `queue.publish("name")` / `queue.consume("name")` | `queue.publish` / `handler queue` |

@@ -2248,28 +2248,41 @@ defmodule Skein.Parser do
 
   defp parse_unary_expr(tokens, file) do
     case parse_postfix_expr(tokens, file) do
-      {:ok, expr, [{:bang, {line, col}} | rest]} ->
-        node = %AST.UnaryOp{
-          op: :unwrap,
-          operand: expr,
-          meta: %{line: line, col: col, file: file}
-        }
-
-        {:ok, node, rest}
-
-      {:ok, expr, [{:question, {line, col}} | rest]} ->
-        node = %AST.UnaryOp{
-          op: :propagate,
-          operand: expr,
-          meta: %{line: line, col: col, file: file}
-        }
-
-        {:ok, node, rest}
-
-      other ->
-        other
+      {:ok, expr, rest} -> parse_unwrap_suffix(expr, rest, file)
+      {:error, _} = error -> error
     end
   end
+
+  # Postfix `!` (unwrap) and `?` (propagate) bind to the expression before
+  # them, and the postfix chain may continue afterwards — `get(id)!.name`,
+  # `memory.get(k)!.load()!.value` (#268: `get(k)!` is the one spelling).
+  defp parse_unwrap_suffix(expr, [{:bang, {line, col}} | rest], file) do
+    node = %AST.UnaryOp{
+      op: :unwrap,
+      operand: expr,
+      meta: %{line: line, col: col, file: file}
+    }
+
+    case parse_postfix_chain(node, rest, file) do
+      {:ok, chained, rest2} -> parse_unwrap_suffix(chained, rest2, file)
+      {:error, _} = error -> error
+    end
+  end
+
+  defp parse_unwrap_suffix(expr, [{:question, {line, col}} | rest], file) do
+    node = %AST.UnaryOp{
+      op: :propagate,
+      operand: expr,
+      meta: %{line: line, col: col, file: file}
+    }
+
+    case parse_postfix_chain(node, rest, file) do
+      {:ok, chained, rest2} -> parse_unwrap_suffix(chained, rest2, file)
+      {:error, _} = error -> error
+    end
+  end
+
+  defp parse_unwrap_suffix(expr, tokens, _file), do: {:ok, expr, tokens}
 
   # ------------------------------------------------------------------
   # Postfix: call f(...), field access x.y
@@ -2285,14 +2298,15 @@ defmodule Skein.Parser do
     end
   end
 
-  # method!(args) / method?(args): the bang or question mark binds to the
-  # result of the call — `store.users.get!(id)` is "call get, then unwrap".
-  defp parse_postfix_chain(expr, [{:bang, {bline, bcol}}, {:lparen, _} = lparen | rest], file) do
-    parse_unwrapped_call(expr, :unwrap, {bline, bcol}, [lparen | rest], file)
+  # The pre-paren forms `method!(args)` / `method?(args)` were removed
+  # (#268): `!`/`?` come after the closing paren — `get(k)!` is the one
+  # spelling. A parse of the removed form gets a targeted structured error.
+  defp parse_postfix_chain(expr, [{:bang, {bline, bcol}}, {:lparen, _} | _], file) do
+    removed_prefix_unwrap_error(expr, "!", {bline, bcol}, file)
   end
 
-  defp parse_postfix_chain(expr, [{:question, {qline, qcol}}, {:lparen, _} = lparen | rest], file) do
-    parse_unwrapped_call(expr, :propagate, {qline, qcol}, [lparen | rest], file)
+  defp parse_postfix_chain(expr, [{:question, {qline, qcol}}, {:lparen, _} | _], file) do
+    removed_prefix_unwrap_error(expr, "?", {qline, qcol}, file)
   end
 
   defp parse_postfix_chain(expr, [{:lparen, {line, _col}} | _] = tokens, file) do
@@ -2407,31 +2421,28 @@ defmodule Skein.Parser do
     end
   end
 
-  # Shared body for `target!(args)` and `target?(args)`: parse the call,
-  # wrap its result in the unary op, then continue the postfix chain so
-  # forms like `store.users.get!(id).name` keep working.
-  defp parse_unwrapped_call(expr, op, {line, col}, [{:lparen, {pline, pcol}} | rest], file) do
-    case parse_args(rest, file, []) do
-      {:ok, args, rest2} ->
-        args = maybe_convert_tool_ref_arg(expr, args)
+  # The removed `method!(args)` / `method?(args)` spelling (#268): name the
+  # method in the message and point at the postfix form.
+  defp removed_prefix_unwrap_error(expr, op_text, {line, col}, file) do
+    method =
+      case expr do
+        %AST.FieldAccess{field: field} -> field
+        %AST.Identifier{name: name} -> name
+        _ -> "method"
+      end
 
-        call = %AST.Call{
-          target: expr,
-          args: args,
-          meta: %{line: pline, col: pcol, file: file}
-        }
-
-        wrapped = %AST.UnaryOp{
-          op: op,
-          operand: call,
-          meta: %{line: line, col: col, file: file}
-        }
-
-        parse_postfix_chain(wrapped, rest2, file)
-
-      {:error, _} = error ->
-        error
-    end
+    {:error,
+     [
+       %Error{
+         code: "E0001",
+         severity: :error,
+         message:
+           "'#{method}#{op_text}(...)' is not valid Skein — write '#{method}(...)#{op_text}'",
+         location: %{file: file, line: line, col: col},
+         fix_hint: "'#{op_text}' comes after the closing paren: it unwraps the call's result",
+         fix_code: nil
+       }
+     ]}
   end
 
   # ------------------------------------------------------------------

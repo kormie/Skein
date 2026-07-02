@@ -386,7 +386,7 @@ call 'Elixir.Skein.Runtime.Http':'get'(
 |-----------|---------------|------------|
 | `http` | `Skein.Runtime.Http` | `get`, `post`, `put`, `patch`, `delete` |
 | `store.<table>` | `Skein.Runtime.Store` | `get`, `put`, `delete`, `query` |
-| `memory` | `Skein.Runtime.Memory` | `put`, `get`, `get!`, `delete`, `list` |
+| `memory` | `Skein.Runtime.Memory` | `put`, `get`, `delete`, `list` |
 | `llm` | `Skein.Runtime.Llm` | `chat`, `json`, `stream`, `embed` |
 | `tool` | `Skein.Runtime.Tool` | `call`, `list`, `schema` |
 | `topic` | `Skein.Runtime.Topic` | `publish` |

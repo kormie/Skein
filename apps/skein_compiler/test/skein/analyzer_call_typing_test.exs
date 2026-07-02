@@ -136,7 +136,7 @@ defmodule Skein.AnalyzerCallTypingTest do
                  }
 
                  fn run() -> Int {
-                   bump(memory.get!("count"))
+                   bump(memory.get("count")!)
                  }
                }
                """)

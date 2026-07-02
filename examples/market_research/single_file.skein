@@ -180,8 +180,8 @@ module MarketResearch {
     }
 
     on phase(Phase.Briefing) -> {
-      let topic = memory.get!("topic")
-      let industry = memory.get!("industry")
+      let topic = memory.get("topic")!
+      let industry = memory.get("industry")!
 
       -- Ask LLM if scope is focused enough
       let scope_check = llm.chat(
@@ -205,8 +205,8 @@ module MarketResearch {
     }
 
     on phase(Phase.Gathering) -> {
-      let topic = memory.get!("topic")
-      let industry = memory.get!("industry")
+      let topic = memory.get("topic")!
+      let industry = memory.get("industry")!
 
       -- Use tool to search market data
       let search_result = tool.call(Research.SearchMarket, {
@@ -230,8 +230,8 @@ module MarketResearch {
     }
 
     on phase(Phase.Analyzing) -> {
-      let competitors = memory.get!("competitors")
-      let topic = memory.get!("topic")
+      let competitors = memory.get("competitors")!
+      let topic = memory.get("topic")!
 
       -- Use tool to analyze competitors
       let analysis_result = tool.call(Research.AnalyzeCompetitor, {
@@ -253,8 +253,8 @@ module MarketResearch {
     }
 
     on phase(Phase.Reporting) -> {
-      let analysis = memory.get!("analysis")
-      let trends = memory.get!("trends")
+      let analysis = memory.get("analysis")!
+      let trends = memory.get("trends")!
 
       -- Use tool to generate SWOT analysis
       let swot_result = tool.call(Research.GenerateSwot, {
@@ -266,7 +266,7 @@ module MarketResearch {
         Ok(swot) -> {
           memory.put("swot", swot)
           memory.put("phase_status", "report_complete")
-          let topic = memory.get!("topic")
+          let topic = memory.get("topic")!
           emit ReportGenerated { topic: topic }
           transition(Phase.Complete)
         }
