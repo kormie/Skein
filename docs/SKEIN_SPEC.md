@@ -868,7 +868,10 @@ All errors are JSON-serializable with this structure:
 
 `span` and `edit_kind` are present when the `fix_code` is an exact,
 machine-applicable edit (they are `null` when `fix_code` is an
-illustrative template). `span` is 1-based with an exclusive end column;
+illustrative template). `fix_code` itself is `null` when no concrete
+snippet or template can be derived — the guidance then lives in
+`fix_hint`; `fix_code` is never prose. `span` is 1-based with an
+exclusive end column;
 `edit_kind` is one of `replace` (swap the spanned text for `fix_code`;
 empty `fix_code` deletes it), `insert_before` / `insert_after` (insert
 `fix_code` at the span's start/end), `insert_line` (insert `fix_code` as
