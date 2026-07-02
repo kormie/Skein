@@ -1,0 +1,10 @@
+-- expect: E0020
+-- #309: a bare `Ok`/`Err` identifier used as a value is a structured error —
+-- it previously compiled silently to a bare atom (:ok/:error) that flowed
+-- through dynamic seams and even rendered as "ok" in interpolation.
+module BareResultConstructor {
+  fn f() -> Int {
+    let _x = Ok
+    42
+  }
+}

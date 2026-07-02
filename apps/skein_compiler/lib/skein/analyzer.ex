@@ -28,7 +28,7 @@ defmodule Skein.Analyzer do
   - E0017: Duplicate scoped capability declaration (memory.kv, event.log, process.spawn, timer)
 
   ### Type Checking (E002x)
-  - E0020: Type mismatch (return type, match arm types, operator types, arity, argument types for fn/stdlib/effect/fn-typed-variable calls, wrong-shape callbacks in higher-order slots, tool implement bodies vs the Result[output, error] contract, provider bodies vs their declared return, a bare fn name used as a value, calling a non-function value)
+  - E0020: Type mismatch (return type, match arm types, operator types, arity, argument types for fn/stdlib/effect/fn-typed-variable calls, wrong-shape callbacks in higher-order slots, tool implement bodies vs the Result[output, error] contract, provider bodies vs their declared return, a bare fn name or bare Ok/Err used as a value, calling a non-function value)
   - E0021: Non-exhaustive match (warning)
   - E0022: Invalid `!` on non-Result type
   - E0023: Invalid `?` on non-Result type (or enclosing fn doesn't return Result)
@@ -2203,7 +2203,22 @@ defmodule Skein.Analyzer do
 
           :error ->
             if name in ["Ok", "Err"] do
-              {:unknown, []}
+              # A bare `Ok`/`Err` is not a value — it would lower to a bare
+              # atom and flow through dynamic seams as silent nonsense (#309).
+              # The constructors must be called; patterns and calls never
+              # reach this clause.
+              {:unknown,
+               [
+                 %Error{
+                   code: "E0020",
+                   severity: :error,
+                   message:
+                     "'#{name}' is a Result constructor and must be called: #{name}(value)",
+                   location: location_from_meta(meta, env.file),
+                   fix_hint: "Wrap a value: #{name}(value)",
+                   fix_code: "#{name}(value)"
+                 }
+               ]}
             else
               {:unknown, [unknown_constructor_error(name, meta, meta, env)]}
             end
