@@ -153,7 +153,7 @@ defmodule Skein.AST do
   end
 
   defmodule ToolDecl do
-    @moduledoc "A tool declaration with input/output schemas, errors, and policy."
+    @moduledoc "A tool declaration with input/output schemas and errors."
 
     @type t :: %__MODULE__{
             name: String.t(),
@@ -161,12 +161,11 @@ defmodule Skein.AST do
             input: [Skein.AST.Field.t()],
             output: [Skein.AST.Field.t()],
             errors: [term()],
-            policy: Skein.AST.expr() | nil,
             implement: Skein.AST.expr() | nil,
             meta: Skein.AST.meta()
           }
 
-    defstruct [:name, :description, :input, :output, :errors, :policy, :implement, :meta]
+    defstruct [:name, :description, :input, :output, :errors, :implement, :meta]
   end
 
   defmodule Supervisor do

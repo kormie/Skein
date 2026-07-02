@@ -586,7 +586,6 @@ defmodule Skein.Parser do
              input: nil,
              output: nil,
              errors: [],
-             policy: nil,
              implement: nil
            }),
          {:ok, _rbrace, rest} <- expect(:rbrace, rest, file) do
@@ -638,7 +637,6 @@ defmodule Skein.Parser do
             input: tool_parts.input,
             output: tool_parts.output,
             errors: tool_parts.errors,
-            policy: tool_parts.policy,
             implement: tool_parts.implement,
             meta: %{line: line, col: col, file: file}
           }
@@ -740,6 +738,23 @@ defmodule Skein.Parser do
       {:error, _} = error ->
         error
     end
+  end
+
+  # Tool `policy` blocks were cut from the language (#319) — a parse of the
+  # removed form gets a targeted structured error, not the generic fallback.
+  defp parse_tool_body([{:ident, {line, col}, "policy"} | _], file, _acc) do
+    {:error,
+     [
+       %Error{
+         code: "E0001",
+         severity: :error,
+         message: "Tool 'policy' blocks are not part of the language",
+         location: %{file: file, line: line, col: col},
+         fix_hint:
+           "Delete the policy block. Tool sections are: description, input, output, errors, implement",
+         fix_code: nil
+       }
+     ]}
   end
 
   # A known section name not followed by its required token gets a targeted
@@ -1224,7 +1239,7 @@ defmodule Skein.Parser do
 
   # Handle keywords used as annotation names (e.g., @description where description is a keyword)
   defp parse_annotations([{:at, _}, {keyword, {line, col}} | rest], file)
-       when keyword in [:description, :input, :output, :errors, :policy, :implement] do
+       when keyword in [:description, :input, :output, :errors, :implement] do
     name = Atom.to_string(keyword)
 
     case rest do

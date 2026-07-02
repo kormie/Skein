@@ -57,7 +57,7 @@ construct and are ordinary identifiers everywhere else (`let input = 1` is
 valid Skein):
 
 ```
-input  output  errors  policy  description  state  strategy  child
+input  output  errors  description  state  strategy  child
 replay  given  expect  assert
 ```
 
@@ -264,14 +264,17 @@ under the parent.
 ```
 tool_decl   = "tool" dotted_name "{" tool_body "}"
 dotted_name = UpperIdent ("." UpperIdent)*
-tool_body   = description_block? input_block output_block errors_block? policy_block? implement_block
+tool_body   = description_block? input_block output_block errors_block? implement_block
 description_block = "description:" string
 input_block   = "input" "{" field* "}"
 output_block  = "output" "{" field* "}"
 errors_block  = "errors" "{" UpperIdent* "}"
-policy_block  = "policy" "{" policy_entry* "}"
 implement_block = "implement" block
 ```
+
+> Tool `policy` blocks were removed from the language before the freeze
+> (#319): nothing consumed them, and a silently-inert declared surface
+> teaches agents a false model. Parsing one is a structured error.
 
 ### 3.9 Supervisors
 
@@ -282,6 +285,25 @@ child_decl  = "child" expr ["{" named_arg* "}"]
 strategy_decl = "strategy:" ("one_for_one" | "one_for_all" | "rest_for_one")
 max_restarts_decl = "max_restarts:" integer "per" integer "s"
 ```
+
+**This declaration surface is the frozen contract** (surface review #319,
+2026-07-02 — supervision is core to the agent thesis and stays in the
+language):
+
+- A `child` target is an expression naming what to start — an agent
+  reference (`child Worker { ... }`) with optional named start arguments
+  in its brace block.
+- `strategy:` takes exactly the three OTP strategies shown; anything else
+  is E0040. It may be omitted; the wiring issue (#325) pins the runtime
+  default as `one_for_one` when it lands.
+- `max_restarts: N per M s` is OTP restart intensity/period; both must be
+  positive integers (E0041). A supervisor with no children warns (E0042).
+
+**Current semantics: metadata only.** Declarations compile to a
+`__supervisors__/0` metadata function; the runtime does not yet boot them
+as OTP supervisors. The wiring — real supervised agent children under
+`skein run`, restarts per the declared strategy, trace events on restart —
+is tracked by #325 (v0.5.0) and is additive on this surface.
 
 ### 3.10 Tests
 

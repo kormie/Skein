@@ -19,8 +19,6 @@ defmodule Skein.LexerPropertyTest do
     true false implement idempotent
   )
 
-  @contextual_keywords ~w(input output errors policy description state strategy child replay given expect assert)
-
   defp lower_ident_gen do
     gen all(
           first <- StreamData.member_of(Enum.to_list(?a..?z)),

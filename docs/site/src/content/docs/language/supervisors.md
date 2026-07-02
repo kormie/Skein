@@ -7,7 +7,7 @@ description: Declaring supervision trees for agent pools and crash recovery in S
 
 Supervisor declarations describe groups of child processes and the crash-recovery strategies a host should apply to them, following the standard OTP supervision model. You declare supervisors alongside your other module-level constructs.
 
-In 1.0, supervisor declarations are **compile-time constructs**: the compiler parses and validates them (see [Analyzer Validation](#analyzer-validation)) and emits the tree as [`__supervisors__/0` metadata](#runtime-metadata) on the compiled module. The Skein runtime does not itself start OTP supervision trees from these declarations — materializing the tree (e.g. mapping it onto `Supervisor.start_link/2`) is the host application's job. The behavior tables below document the *declared semantics* of each directive, i.e. what a host that honors the metadata applies.
+Today, supervisor declarations are **compile-time constructs**: the compiler parses and validates them (see [Analyzer Validation](#analyzer-validation)) and emits the tree as [`__supervisors__/0` metadata](#runtime-metadata) on the compiled module — the runtime does not yet start OTP supervision trees from these declarations. The declaration surface itself is frozen (spec §3.9); wiring it into real supervision under `skein run` is tracked by [#325](https://github.com/kormie/Skein/issues/325). Until that lands, materializing the tree (e.g. mapping it onto `Supervisor.start_link/2`) is the host application's job, and the behavior tables below document the *declared semantics* a host that honors the metadata applies.
 
 ## Syntax
 
