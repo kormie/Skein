@@ -128,6 +128,8 @@ All error codes are aligned with the language specification. Agents can rely on 
 | E0014 | error | Tool name not declared |
 | E0015 | error | Duplicate tool short name |
 | E0017 | error | Duplicate scoped capability declaration (`memory.kv`, `event.log`, `process.spawn`, `timer` allow one per module or agent) |
+| E0028 | error | Scenario capability envelope missing/incomplete: a tool the scenario calls has no `capability tool.use(T)` envelope, or the envelope does not cover the tool's transitive effect summary |
+| E0029 | error | Effect in a pure context: a `test` body or a scenario `implement` provider block reaches a capability-gated effect, directly or transitively through local fn calls/`&fn` references — effects belong in `scenario`, and providers must be pure |
 
 Example:
 

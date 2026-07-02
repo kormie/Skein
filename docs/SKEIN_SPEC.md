@@ -287,11 +287,11 @@ max_restarts_decl = "max_restarts:" integer "per" integer "s"
 > `capability tool.use(T) { capability <effect>(...) { implement(...) } }` tree, with `test` reserved
 > for pure unit tests (no effects). The grammar below is implemented (parser/AST, #280); the analyzer
 > computes each tool's transitive effect summary and rejects a scenario whose envelope does not cover
-> it (E0028, #281). Provider purity and the runtime resolution stack land in later work packages; the
-> superseded `via` design is **not** the 1.0 surface (and is a structured parse error). See
-> `docs/design/scenario-capability-environments.md` and `docs/ROADMAP.md` (Wave 2/3). The runtime
-> resolution stack (#282), provider purity (E0029), and the test-runner default policy + live-effect
-> blocking (#283) are landed.
+> it (E0028, #281). The runtime resolution stack (#282), provider purity — transitive through local
+> fn calls (E0029, #295) — provider contracts (E0038, #295), and the test-runner default policy +
+> live-effect blocking (#283) are all landed; the superseded `via` design is **not** the 1.0 surface
+> (and is a structured parse error). See `docs/design/scenario-capability-environments.md` and
+> `docs/ROADMAP.md`.
 
 ```
 test_decl     = "test" string block
@@ -899,6 +899,8 @@ edits generically — no per-error-code logic.
 | E0025 | Type | error | Constraint annotation on wrong type |
 | E0026 | Type | error | Invalid named argument (unknown/duplicate name, positional after named, callee without named-argument support) |
 | E0027 | Type | error | Invalid guard expression (guards allow literals, bindings, field access, comparisons, boolean operators, and `+`/`-`/`*` arithmetic) |
+| E0028 | Capability | error | Scenario capability envelope missing/incomplete: a tool the scenario calls has no `capability tool.use(T)` envelope, or the envelope does not cover the tool's transitive effect summary (§3.10) |
+| E0029 | Capability | error | Effect in a pure context: a `test` body or a scenario `implement` provider block reaches a capability-gated effect, directly or transitively through local fn calls/`&fn` references — effects belong in `scenario`, and providers must be pure (§4.3 rule 13) |
 | E0030 | Agent | error | Invalid phase transition |
 | E0031 | Agent | warning | Unreachable phase |
 | E0032 | Agent | error | Phase handler missing |
