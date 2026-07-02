@@ -31,6 +31,8 @@ defmodule Skein.Parser do
 
   @spec parse(tokens(), String.t()) :: parse_result()
   def parse(tokens, file) do
+    register_line_initial_tokens(tokens)
+
     case tokens do
       [{:agent, _} | _] ->
         case parse_agent(tokens, file) do
@@ -43,6 +45,42 @@ defmodule Skein.Parser do
           {:ok, ast, _rest} -> {:ok, ast}
           {:error, errors} -> {:error, errors}
         end
+    end
+  end
+
+  # ------------------------------------------------------------------
+  # Line-initial tokens (spec §3.12, expression termination)
+  #
+  # The parser is otherwise newline-blind, but four postfix continuations
+  # terminate at a newline: a call "(" (#311), a type-argument "[", and the
+  # unwrap operators "!"/"?" never continue the previous expression when
+  # they start a new line — a line-initial "(" is grouping, "[" a list
+  # literal, "!" prefix not. parse/2 records which token positions begin
+  # their line so those rules are O(1) lookups during descent.
+  # ------------------------------------------------------------------
+
+  defp register_line_initial_tokens(tokens) do
+    {set, _} =
+      Enum.reduce(tokens, {MapSet.new(), 0}, fn token, {set, prev_line} ->
+        {line, col} = token_position(token)
+
+        if line > prev_line do
+          {MapSet.put(set, {line, col}), line}
+        else
+          {set, prev_line}
+        end
+      end)
+
+    Process.put(:skein_parser_line_initial, set)
+  end
+
+  defp token_position({_, {line, col}}), do: {line, col}
+  defp token_position({_, {line, col}, _}), do: {line, col}
+
+  defp line_initial?({line, col}) do
+    case Process.get(:skein_parser_line_initial) do
+      %MapSet{} = set -> MapSet.member?(set, {line, col})
+      _ -> false
     end
   end
 
@@ -586,7 +624,6 @@ defmodule Skein.Parser do
              input: nil,
              output: nil,
              errors: [],
-             policy: nil,
              implement: nil
            }),
          {:ok, _rbrace, rest} <- expect(:rbrace, rest, file) do
@@ -638,7 +675,6 @@ defmodule Skein.Parser do
             input: tool_parts.input,
             output: tool_parts.output,
             errors: tool_parts.errors,
-            policy: tool_parts.policy,
             implement: tool_parts.implement,
             meta: %{line: line, col: col, file: file}
           }
@@ -740,6 +776,23 @@ defmodule Skein.Parser do
       {:error, _} = error ->
         error
     end
+  end
+
+  # Tool `policy` blocks were cut from the language (#319) — a parse of the
+  # removed form gets a targeted structured error, not the generic fallback.
+  defp parse_tool_body([{:ident, {line, col}, "policy"} | _], file, _acc) do
+    {:error,
+     [
+       %Error{
+         code: "E0001",
+         severity: :error,
+         message: "Tool 'policy' blocks are not part of the language",
+         location: %{file: file, line: line, col: col},
+         fix_hint:
+           "Delete the policy block. Tool sections are: description, input, output, errors, implement",
+         fix_code: nil
+       }
+     ]}
   end
 
   # A known section name not followed by its required token gets a targeted
@@ -1224,7 +1277,7 @@ defmodule Skein.Parser do
 
   # Handle keywords used as annotation names (e.g., @description where description is a keyword)
   defp parse_annotations([{:at, _}, {keyword, {line, col}} | rest], file)
-       when keyword in [:description, :input, :output, :errors, :policy, :implement] do
+       when keyword in [:description, :input, :output, :errors, :implement] do
     name = Atom.to_string(keyword)
 
     case rest do
@@ -2233,28 +2286,52 @@ defmodule Skein.Parser do
 
   defp parse_unary_expr(tokens, file) do
     case parse_postfix_expr(tokens, file) do
-      {:ok, expr, [{:bang, {line, col}} | rest]} ->
-        node = %AST.UnaryOp{
-          op: :unwrap,
-          operand: expr,
-          meta: %{line: line, col: col, file: file}
-        }
-
-        {:ok, node, rest}
-
-      {:ok, expr, [{:question, {line, col}} | rest]} ->
-        node = %AST.UnaryOp{
-          op: :propagate,
-          operand: expr,
-          meta: %{line: line, col: col, file: file}
-        }
-
-        {:ok, node, rest}
-
-      other ->
-        other
+      {:ok, expr, rest} -> parse_unwrap_suffix(expr, rest, file)
+      {:error, _} = error -> error
     end
   end
+
+  # Postfix `!` (unwrap) and `?` (propagate) bind to the expression before
+  # them, and the postfix chain may continue afterwards — `get(id)!.name`,
+  # `memory.get(k)!.load()!.value` (#268: `get(k)!` is the one spelling).
+  defp parse_unwrap_suffix(expr, [{:bang, {line, col}} | rest] = tokens, file) do
+    # A "!" that starts a new line never continues the previous expression:
+    # it is the prefix not of the NEXT expression (spec §3.12).
+    if line_initial?({line, col}) do
+      {:ok, expr, tokens}
+    else
+      node = %AST.UnaryOp{
+        op: :unwrap,
+        operand: expr,
+        meta: %{line: line, col: col, file: file}
+      }
+
+      case parse_postfix_chain(node, rest, file) do
+        {:ok, chained, rest2} -> parse_unwrap_suffix(chained, rest2, file)
+        {:error, _} = error -> error
+      end
+    end
+  end
+
+  defp parse_unwrap_suffix(expr, [{:question, {line, col}} | rest] = tokens, file) do
+    # Same-line rule as "!" (spec §3.12).
+    if line_initial?({line, col}) do
+      {:ok, expr, tokens}
+    else
+      node = %AST.UnaryOp{
+        op: :propagate,
+        operand: expr,
+        meta: %{line: line, col: col, file: file}
+      }
+
+      case parse_postfix_chain(node, rest, file) do
+        {:ok, chained, rest2} -> parse_unwrap_suffix(chained, rest2, file)
+        {:error, _} = error -> error
+      end
+    end
+  end
+
+  defp parse_unwrap_suffix(expr, tokens, _file), do: {:ok, expr, tokens}
 
   # ------------------------------------------------------------------
   # Postfix: call f(...), field access x.y
@@ -2270,14 +2347,25 @@ defmodule Skein.Parser do
     end
   end
 
-  # method!(args) / method?(args): the bang or question mark binds to the
-  # result of the call — `store.users.get!(id)` is "call get, then unwrap".
-  defp parse_postfix_chain(expr, [{:bang, {bline, bcol}}, {:lparen, _} = lparen | rest], file) do
-    parse_unwrapped_call(expr, :unwrap, {bline, bcol}, [lparen | rest], file)
+  # The pre-paren forms `method!(args)` / `method?(args)` were removed
+  # (#268): `!`/`?` come after the closing paren — `get(k)!` is the one
+  # spelling. A parse of the removed form gets a targeted structured error.
+  # A line-initial `!`/`?` is not the removed form: it belongs to the NEXT
+  # expression (prefix not / nothing), so the chain simply ends (§3.12).
+  defp parse_postfix_chain(expr, [{:bang, {bline, bcol}}, {:lparen, _} | _] = tokens, file) do
+    if line_initial?({bline, bcol}) do
+      {:ok, expr, tokens}
+    else
+      removed_prefix_unwrap_error(expr, "!", {bline, bcol}, file)
+    end
   end
 
-  defp parse_postfix_chain(expr, [{:question, {qline, qcol}}, {:lparen, _} = lparen | rest], file) do
-    parse_unwrapped_call(expr, :propagate, {qline, qcol}, [lparen | rest], file)
+  defp parse_postfix_chain(expr, [{:question, {qline, qcol}}, {:lparen, _} | _] = tokens, file) do
+    if line_initial?({qline, qcol}) do
+      {:ok, expr, tokens}
+    else
+      removed_prefix_unwrap_error(expr, "?", {qline, qcol}, file)
+    end
   end
 
   defp parse_postfix_chain(expr, [{:lparen, {line, _col}} | _] = tokens, file) do
@@ -2315,8 +2403,22 @@ defmodule Skein.Parser do
   end
 
   # Type-parameterized postfix: expr[TypeExpr](args...)
-  # Used for llm.json[T](...) syntax
-  defp parse_postfix_chain(expr, [{:lbracket, _}, {:upper_ident, _, _} | _] = tokens, file) do
+  # Used for llm.json[T](...) syntax. A "[" that starts a new line never
+  # continues the previous expression — it is the list literal of the NEXT
+  # expression (spec §3.12).
+  defp parse_postfix_chain(expr, [{:lbracket, {bl, bc}}, {:upper_ident, _, _} | _] = tokens, file) do
+    if line_initial?({bl, bc}) do
+      {:ok, expr, tokens}
+    else
+      parse_type_param_postfix(expr, tokens, file)
+    end
+  end
+
+  defp parse_postfix_chain(expr, rest, _file) do
+    {:ok, expr, rest}
+  end
+
+  defp parse_type_param_postfix(expr, tokens, file) do
     [{:lbracket, _} | rest] = tokens
 
     case parse_type_expr(rest, file) do
@@ -2355,10 +2457,6 @@ defmodule Skein.Parser do
     end
   end
 
-  defp parse_postfix_chain(expr, rest, _file) do
-    {:ok, expr, rest}
-  end
-
   # Call targets are identifiers or dotted chains; their metas point at the
   # final token of the chain (FieldAccess meta is the FIELD's position), so a
   # legal call's "(" always shares that line. Any other node as a call target
@@ -2392,31 +2490,28 @@ defmodule Skein.Parser do
     end
   end
 
-  # Shared body for `target!(args)` and `target?(args)`: parse the call,
-  # wrap its result in the unary op, then continue the postfix chain so
-  # forms like `store.users.get!(id).name` keep working.
-  defp parse_unwrapped_call(expr, op, {line, col}, [{:lparen, {pline, pcol}} | rest], file) do
-    case parse_args(rest, file, []) do
-      {:ok, args, rest2} ->
-        args = maybe_convert_tool_ref_arg(expr, args)
+  # The removed `method!(args)` / `method?(args)` spelling (#268): name the
+  # method in the message and point at the postfix form.
+  defp removed_prefix_unwrap_error(expr, op_text, {line, col}, file) do
+    method =
+      case expr do
+        %AST.FieldAccess{field: field} -> field
+        %AST.Identifier{name: name} -> name
+        _ -> "method"
+      end
 
-        call = %AST.Call{
-          target: expr,
-          args: args,
-          meta: %{line: pline, col: pcol, file: file}
-        }
-
-        wrapped = %AST.UnaryOp{
-          op: op,
-          operand: call,
-          meta: %{line: line, col: col, file: file}
-        }
-
-        parse_postfix_chain(wrapped, rest2, file)
-
-      {:error, _} = error ->
-        error
-    end
+    {:error,
+     [
+       %Error{
+         code: "E0001",
+         severity: :error,
+         message:
+           "'#{method}#{op_text}(...)' is not valid Skein — write '#{method}(...)#{op_text}'",
+         location: %{file: file, line: line, col: col},
+         fix_hint: "'#{op_text}' comes after the closing paren: it unwraps the call's result",
+         fix_code: nil
+       }
+     ]}
   end
 
   # ------------------------------------------------------------------

@@ -41,7 +41,7 @@ agent RefundBot {
   }
 
   on phase(Phase.Review) -> {
-    let amount = memory.get!("amount")
+    let amount = memory.get("amount")!
     let decision = llm.chat("claude-opus-4-8", "Evaluate refund. Reply approve or deny.", amount)
     match decision {
       Ok("approve") -> transition(Phase.Approved)
@@ -50,13 +50,13 @@ agent RefundBot {
   }
 
   on phase(Phase.Approved) -> {
-    let amount = memory.get!("amount")
+    let amount = memory.get("amount")!
     emit RefundApproved { amount: amount }
     transition(Phase.Done)
   }
 
   on phase(Phase.Denied) -> {
-    let amount = memory.get!("amount")
+    let amount = memory.get("amount")!
     emit RefundDenied { amount: amount }
     transition(Phase.Done)
   }
@@ -246,8 +246,8 @@ agent SessionTracker {
   }
 
   on phase(Phase.Active) -> {
-    let session_id = memory.get!("current")
-    let data = memory.get!(session_id)
+    let session_id = memory.get("current")!
+    let data = memory.get(session_id)!
     trace.annotate("session_data", data)
     stop()
   }
@@ -281,7 +281,7 @@ module ClassifyService {
     }
 
     on phase(Phase.Classify) -> {
-      let text = memory.get!("text")
+      let text = memory.get("text")!
 
       -- Unstructured text response
       let analysis = llm.chat("claude-opus-4-8", "Classify this input", text)

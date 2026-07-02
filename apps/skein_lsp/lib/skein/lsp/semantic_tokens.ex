@@ -97,7 +97,6 @@ defmodule Skein.Lsp.SemanticTokens do
               :transition,
               :stop,
               :suspend,
-              :resume,
               :implement,
               :phase,
               :pub,

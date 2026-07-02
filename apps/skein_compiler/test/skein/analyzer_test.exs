@@ -4183,7 +4183,7 @@ defmodule Skein.AnalyzerTest do
                    }
 
                    on phase(Phase.Review) -> {
-                     let order = memory.get!("order_id")
+                     let order = memory.get("order_id")!
                      let decision = llm.chat("claude-opus-4-8", "decide", order)
                      let n = String.length(decision)
                      transition(Phase.Done)
@@ -4218,7 +4218,7 @@ defmodule Skein.AnalyzerTest do
                    }
 
                    on phase(Phase.Review) -> {
-                     let order = memory.get!("order_id")
+                     let order = memory.get("order_id")!
                      let decision = llm.chat("claude-opus-4-8", "decide", order)!
                      let n = String.length(decision)
                      transition(Phase.Done)
@@ -5627,7 +5627,7 @@ defmodule Skein.AnalyzerTest do
 
           fn f(n: Int) -> String {
             match n {
-              x if memory.get!("flag") -> "flagged"
+              x if memory.get("flag")! -> "flagged"
               _ -> "plain"
             }
           }

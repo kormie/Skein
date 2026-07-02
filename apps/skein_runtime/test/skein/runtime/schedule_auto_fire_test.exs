@@ -125,13 +125,18 @@ defmodule Skein.Runtime.ScheduleAutoFireTest do
 
   # ------------------------------------------------------------------
   # Ticking and dedup
+  #
+  # Every deterministic test pins its cron to the simulated date
+  # (2026-06-10 12:xx — forever in the past), so no stray wall-clock
+  # tick, whatever its source, can ever match and fire it (#272). Only
+  # the dedicated auto-tick test registers a wall-clock-matching cron.
   # ------------------------------------------------------------------
 
   describe "tick_at/1" do
     test "fires matching handlers and skips non-matching ones" do
       parent = self()
-      :ok = Schedule.register_fn("*/10 * * * *", fn _ -> send(parent, :every_ten) end)
-      :ok = Schedule.register_fn("7 * * * *", fn _ -> send(parent, :at_seven) end)
+      :ok = Schedule.register_fn("*/10 12 10 6 *", fn _ -> send(parent, :every_ten) end)
+      :ok = Schedule.register_fn("7 12 10 6 *", fn _ -> send(parent, :at_seven) end)
 
       Schedule.tick_at(dt(20))
       assert_receive :every_ten
@@ -140,7 +145,7 @@ defmodule Skein.Runtime.ScheduleAutoFireTest do
 
     test "fires at most once within the same cron minute" do
       parent = self()
-      :ok = Schedule.register_fn("* * * * *", fn _ -> send(parent, :fired) end)
+      :ok = Schedule.register_fn("* 12 10 6 *", fn _ -> send(parent, :fired) end)
 
       Schedule.tick_at(dt(5, second: 0))
       Schedule.tick_at(dt(5, second: 1))
@@ -152,7 +157,7 @@ defmodule Skein.Runtime.ScheduleAutoFireTest do
 
     test "fires again in the next matching minute" do
       parent = self()
-      :ok = Schedule.register_fn("* * * * *", fn _ -> send(parent, :fired) end)
+      :ok = Schedule.register_fn("* 12 10 6 *", fn _ -> send(parent, :fired) end)
 
       Schedule.tick_at(dt(5))
       Schedule.tick_at(dt(6))
@@ -166,10 +171,10 @@ defmodule Skein.Runtime.ScheduleAutoFireTest do
 
     test "manual trigger/1 still works and is not deduplicated" do
       parent = self()
-      :ok = Schedule.register_fn("*/5 * * * *", fn _ -> send(parent, :manual) end)
+      :ok = Schedule.register_fn("*/5 12 10 6 *", fn _ -> send(parent, :manual) end)
 
-      Schedule.trigger("*/5 * * * *")
-      Schedule.trigger("*/5 * * * *")
+      Schedule.trigger("*/5 12 10 6 *")
+      Schedule.trigger("*/5 12 10 6 *")
 
       assert_receive :manual
       assert_receive :manual
@@ -204,7 +209,8 @@ defmodule Skein.Runtime.ScheduleAutoFireTest do
       Schedule.reset_all()
       parent = self()
       ref = make_ref()
-      :ok = Schedule.register_fn("*/#{n} * * * *", fn _ -> send(parent, {:fired, ref}) end)
+      # Day/month pinned to the simulated date — immune to wall-clock ticks.
+      :ok = Schedule.register_fn("*/#{n} * 10 6 *", fn _ -> send(parent, {:fired, ref}) end)
 
       base = DateTime.new!(~D[2026-06-10], ~T[00:00:00], "Etc/UTC")
 

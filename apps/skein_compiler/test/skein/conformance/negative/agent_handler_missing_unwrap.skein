@@ -16,7 +16,7 @@ module AgentHandlerMissingUnwrap {
     }
 
     on phase(Phase.Review) -> {
-      let order = memory.get!("order_id")
+      let order = memory.get("order_id")!
       let decision = llm.chat("claude-opus-4-8", "decide", order)
       let n = String.length(decision)
       transition(Phase.Done)

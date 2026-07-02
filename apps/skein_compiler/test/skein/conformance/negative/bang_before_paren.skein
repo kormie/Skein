@@ -1,0 +1,11 @@
+-- expect: E0001
+-- #268: the pre-paren unwrap spelling `method!(args)` was deleted —
+-- `get(k)!` is the one spelling. The removed form is a structured
+-- parse error pointing at the postfix position.
+module BangBeforeParen {
+  capability memory.kv("ns")
+
+  fn f() -> String {
+    memory.get!("k")
+  }
+}

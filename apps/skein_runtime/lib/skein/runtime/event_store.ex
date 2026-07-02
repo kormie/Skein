@@ -24,9 +24,11 @@ defmodule Skein.Runtime.EventStore do
 
       config :skein_runtime, :event_store_max_events, 100_000
 
-  Long-running services that need the full history should enable the SQLite
-  backend (`Skein.Runtime.EventStore.SqliteBackend`), which persists every
-  event before it ages out of the in-memory window.
+  **The log is in-memory only.** Events older than the bound are gone, and
+  nothing survives a VM restart. The SQLite backend module
+  (`Skein.Runtime.EventStore.SqliteBackend`) exists but is NOT wired into
+  the ordinary append path — the runtime neither starts nor writes to it
+  today. Durable persistence is tracked by issue #299 (roadmap C6).
 
   Every event gets automatic metadata:
   - `id` — unique hex identifier

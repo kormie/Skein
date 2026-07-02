@@ -62,7 +62,7 @@ defmodule Skein.AnalyzerBoundaryTest do
                  capability memory.kv("cache")
 
                  fn read_count() -> Int {
-                   memory.get!("count")
+                   memory.get("count")!
                  }
                }
                """)

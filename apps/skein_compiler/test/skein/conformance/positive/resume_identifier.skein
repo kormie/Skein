@@ -1,0 +1,13 @@
+-- Positive corpus (#301): `resume` is de-reserved — a program using it as
+-- an ordinary identifier (binding, parameter, and fn name) must compile,
+-- load, and run. Agent resumption stays host-side (Agent.resume/2, §6.8).
+module ResumeIdentifier {
+  fn resume(checkpoint: Int) -> Int {
+    let resume = checkpoint + 1
+    resume
+  }
+
+  fn main() -> Int {
+    resume(41)
+  }
+}

@@ -212,7 +212,7 @@ This is the entire surface area. Every valid Skein program is composed of these 
 | Capability | `capability <kind>(<params>)` | `capability http.out("api.stripe.com")` |
 | Supervisor | `supervisor Name { ... }` | `supervisor Main { ... }` |
 | Test | `test "description" { ... }` | `test "refund eligible order" { ... }` |
-| Binding | `let name = expr` | `let user = User.get!(id)` |
+| Binding | `let name = expr` | `let user = User.get(id)!` |
 | Match | `match expr { pattern -> expr, ... }` | `match phase { Phase.Act -> act() }` |
 | Pipe | `expr \|> fn(args)` | `data \|> transform() \|> validate()` |
 
@@ -319,7 +319,7 @@ Fallible operations return `Result[T, E]`. The convention for propagation:
 ```
 -- The ! suffix unwraps a Result, crashing the process on Err.
 -- This is the "let it crash" path — use inside supervised processes.
-let user = User.get!(id)
+let user = User.get(id)!
 
 -- Explicit match for controlled error handling at boundaries.
 let user = match User.get(id) {
@@ -461,7 +461,7 @@ agent RefundAgent {
   }
 
   on phase(Phase.Analyze) -> {
-    let ticket = Tickets.get!(state.ticket_id)
+    let ticket = Tickets.get(state.ticket_id)!
 
     let decision = llm.json[RefundDecision](
       model: "claude-opus-4-8",
@@ -478,7 +478,7 @@ agent RefundAgent {
   }
 
   on phase(Phase.Refund) -> {
-    let decision = memory.get!("decision")
+    let decision = memory.get("decision")!
 
     let result = tool.call(Stripe.CreateRefund, {
       customer_id: state.customer_id,
@@ -521,7 +521,7 @@ Agent memory is scoped automatically. No manual key construction, no risk of cro
 ```
 -- Inside an agent, memory is implicitly scoped to the agent instance.
 memory.put("decision", decision)           -- stored as "RefundAgent:<instance_id>:decision"
-let d = memory.get!("decision")            -- reads from the same scoped namespace
+let d = memory.get("decision")!            -- reads from the same scoped namespace
 
 -- Explicit cross-agent read (requires capability)
 let other = memory.read("TriageAgent", other_instance_id, "summary")
@@ -544,7 +544,7 @@ LLM responses often stream token-by-token. Skein handles this with `stream` bloc
 
 ```
 on phase(Phase.Summarize) -> {
-  let ctx = memory.get!("context")
+  let ctx = memory.get("context")!
 
   -- stream collects tokens and produces the final result
   let summary = llm.stream[IncidentSummary](
@@ -645,7 +645,7 @@ Handlers are the entry points for external events. They follow the universal `ke
 ```
 handler http GET "/users/:id" (req) -> {
   let id = req.params.id       -- typed as String, parse explicitly
-  let user = User.get!(Uuid.parse!(id))
+  let user = User.get(Uuid.parse(id)!)!
   respond.json(200, user)
 }
 
@@ -1097,7 +1097,7 @@ module IncidentTriage {
     }
 
     on phase(Phase.Gather) -> {
-      let incident = Incident.get!(state.incident_id)
+      let incident = Incident.get(state.incident_id)!
       let deploys = http.get("https://api.github.com/repos/koho/core/deployments")
       let recent = deploys?
         |> List.filter(fn d -> { d.created_at > incident.created_at - Duration.hours(6) })
@@ -1107,7 +1107,7 @@ module IncidentTriage {
     }
 
     on phase(Phase.Summarize) -> {
-      let ctx = memory.get!("context")
+      let ctx = memory.get("context")!
 
       let summary = llm.json[TriageSummary](
         model: "claude-opus-4-8",
@@ -1131,7 +1131,7 @@ module IncidentTriage {
     }
 
     on phase(Phase.Act) -> {
-      let s = memory.get!("summary")
+      let s = memory.get("summary")!
 
       match s.recommended_action {
         Action.CreateTicket -> {

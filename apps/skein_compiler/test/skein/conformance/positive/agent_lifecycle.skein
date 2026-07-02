@@ -21,7 +21,7 @@ module AgentLifecycle {
     }
 
     on phase(Phase.Work) -> {
-      let n = memory.get!("n")
+      let n = memory.get("n")!
       let d = double(2)
       memory.put("doubled", d)
       transition(Phase.Done)

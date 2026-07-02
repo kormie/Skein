@@ -1288,7 +1288,7 @@ defmodule Skein.CodeGen.CoreErlangTest do
           capability store.table("users")
 
           fn find(id: String) -> String {
-            store.users.get!(id)
+            store.users.get(id)!
           }
         }
         """)
@@ -1308,7 +1308,7 @@ defmodule Skein.CodeGen.CoreErlangTest do
           capability store.table("users")
 
           fn save(id: String) -> String {
-            store.users.put!({ id: id, status: "active" })
+            store.users.put({ id: id, status: "active" })!
           }
         }
         """)

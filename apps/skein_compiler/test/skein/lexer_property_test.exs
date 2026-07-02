@@ -16,10 +16,8 @@ defmodule Skein.LexerPropertyTest do
   @keywords ~w(
     module fn let match type enum handler agent tool capability
     supervisor test scenario golden on emit transition stop suspend
-    resume true false implement idempotent
+    true false implement idempotent
   )
-
-  @contextual_keywords ~w(input output errors policy description state strategy child replay given expect assert)
 
   defp lower_ident_gen do
     gen all(

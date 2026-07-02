@@ -45,15 +45,19 @@ Reserved words — these cannot be used as identifiers:
 ```
 module  fn  let  match  type  enum  handler  agent  tool  capability
 supervisor  test  scenario  golden  on  emit  transition  stop  suspend
-resume  true  false  implement  idempotent
+true  false  implement  idempotent
 ```
+
+> `resume` was de-reserved before the freeze (#301): there is no in-agent
+> `resume` construct (agents are resumed host-side, §6.8), so it is an
+> ordinary identifier.
 
 **Contextual keywords.** The following words have meaning only inside their
 construct and are ordinary identifiers everywhere else (`let input = 1` is
 valid Skein):
 
 ```
-input  output  errors  policy  description  state  strategy  child
+input  output  errors  description  state  strategy  child
 replay  given  expect  assert
 ```
 
@@ -260,14 +264,17 @@ under the parent.
 ```
 tool_decl   = "tool" dotted_name "{" tool_body "}"
 dotted_name = UpperIdent ("." UpperIdent)*
-tool_body   = description_block? input_block output_block errors_block? policy_block? implement_block
+tool_body   = description_block? input_block output_block errors_block? implement_block
 description_block = "description:" string
 input_block   = "input" "{" field* "}"
 output_block  = "output" "{" field* "}"
 errors_block  = "errors" "{" UpperIdent* "}"
-policy_block  = "policy" "{" policy_entry* "}"
 implement_block = "implement" block
 ```
+
+> Tool `policy` blocks were removed from the language before the freeze
+> (#319): nothing consumed them, and a silently-inert declared surface
+> teaches agents a false model. Parsing one is a structured error.
 
 ### 3.9 Supervisors
 
@@ -278,6 +285,25 @@ child_decl  = "child" expr ["{" named_arg* "}"]
 strategy_decl = "strategy:" ("one_for_one" | "one_for_all" | "rest_for_one")
 max_restarts_decl = "max_restarts:" integer "per" integer "s"
 ```
+
+**This declaration surface is the frozen contract** (surface review #319,
+2026-07-02 — supervision is core to the agent thesis and stays in the
+language):
+
+- A `child` target is an expression naming what to start — an agent
+  reference (`child Worker { ... }`) with optional named start arguments
+  in its brace block.
+- `strategy:` takes exactly the three OTP strategies shown; anything else
+  is E0040. It may be omitted; the wiring issue (#325) pins the runtime
+  default as `one_for_one` when it lands.
+- `max_restarts: N per M s` is OTP restart intensity/period; both must be
+  positive integers (E0041). A supervisor with no children warns (E0042).
+
+**Current semantics: metadata only.** Declarations compile to a
+`__supervisors__/0` metadata function; the runtime does not yet boot them
+as OTP supervisors. The wiring — real supervised agent children under
+`skein run`, restarts per the declared strategy, trace events on restart —
+is tracked by #325 (v0.5.0) and is additive on this surface.
 
 ### 3.10 Tests
 
@@ -364,6 +390,9 @@ call_expr     = (ident | field_access) "(" args ")"
                 -- (grouping), never a call of the previous one
 binary_op     = expr op expr
 unary_op      = ("-" | "!") expr | expr ("!" | "?")
+                -- postfix "!"/"?" must start on the same line as the
+                -- expression's final token (§3.12); a line-initial "!"
+                -- is the prefix form
 field_access  = expr "." lower_ident
 fn_ref        = "&" lower_ident
 block         = "{" expr* "}"
@@ -429,6 +458,40 @@ Because a guarded arm only matches conditionally, it does not count toward
 exhaustiveness: a `match` whose variant or `Bool` coverage relies on a guarded
 arm is still non-exhaustive (`E0021`/`E0024`; `W0004` for value-level gaps), and
 at runtime a `match` where every arm's guard fails raises `case_clause`.
+
+### 3.12 Expression Termination
+
+Skein has no statement terminator; a block is a sequence of expressions
+and newlines are ordinarily insignificant. The rules for when an
+expression *continues* across a newline are fixed per production (#318):
+
+**These continue across a newline, on either side of the operator:**
+
+| Production | Example |
+|---|---|
+| Field access `.` | `u`↵`.name` and `u.`↵`name` |
+| Pipe `\|>` | `items`↵`\|> List.map(&f)` |
+| Binary operators `+ - * / == != < > <= >= && \|\|` | `a +`↵`b` and `a`↵`+ b` |
+
+Note the corollary: a line beginning with `-` continues the previous
+expression as *subtraction* (there is no line-initial unary-minus
+statement; negative literals appear after `=`, `(`, `,`, or an operator).
+
+**These never continue across a newline** — the token must start on the
+same line as the token it follows, because each has a different
+line-initial meaning:
+
+| Token | Line-initial meaning |
+|---|---|
+| Call `(` | grouping paren of the next expression (#311) |
+| Type-argument `[` | list literal of the next expression |
+| Unwrap `!` | prefix `not` of the next expression |
+| Propagate `?` | nothing — a line-initial `?` is a parse error |
+
+So `memory.get(k)!` unwraps, but `memory.get(k)`↵`!flag` is two
+expressions: the un-unwrapped call, then `not flag`. The compiler's
+parser property suite pins every rule in this table; changing one is a
+spec change.
 
 ---
 
@@ -673,12 +736,14 @@ wildcard.
 ```
 -- Requires: capability store.table(name)
 store.<table>.get(id: Uuid) -> Result[T, NotFound]
-store.<table>.get!(id: Uuid) -> T                  -- raises on miss
 store.<table>.put(record: T) -> Result[T, StoreError]
-store.<table>.put!(record: T) -> T                 -- raises on failure
 store.<table>.delete(id: Uuid) -> Result[Uuid, StoreError]
 store.<table>.query(filters: Map) -> Result[List[T], StoreError]
 ```
+
+There are no separate `get!`/`put!` methods (#268): the postfix `!`/`?`
+operators (§3.11) unwrap any `Result`-returning effect — `store.users.get(id)!`
+crashes on miss, `store.users.put(r)?` propagates the error.
 
 ### 6.3 Memory
 
@@ -690,10 +755,11 @@ store.<table>.query(filters: Map) -> Result[List[T], StoreError]
 -- Outside agent context: no scoping applied (backward compatible).
 memory.put(key: String, value: T) -> Result[T, MemoryError]
 memory.get(key: String) -> Result[T, NotFound]
-memory.get!(key: String) -> T
 memory.delete(key: String) -> Result[String, MemoryError]
 memory.list(prefix: String) -> List[String]
 ```
+
+As everywhere, unwrap with the postfix operator: `memory.get("k")!`.
 
 ### 6.4 LLM
 
@@ -770,9 +836,10 @@ suspend(reason: String) -> ()
 There is no in-agent `resume` call. `suspend` hands control back to the
 host, and a suspended agent is resumed *from outside* by the host-side
 runtime API — `Skein.Runtime.Agent.resume(pid, next_phase)` — which
-moves the agent into the given phase. The `resume` keyword is nonetheless
-**reserved** (§1 keyword list): it is intentionally burned for 1.0 so a future
-1.x in-agent `resume` form can claim it without a breaking keyword addition.
+moves the agent into the given phase. `resume` is **not** a reserved word
+(de-reserved by #301): it is an ordinary identifier in Skein source. A
+future in-agent resumption construct, if one ships, will pick its own
+surface (see the human-in-the-loop roadmap item).
 
 ### 6.9 Idempotency
 
@@ -961,7 +1028,7 @@ module UserService {
   }
 
   handler http GET "/users/:id" (req) -> {
-    let id = Uuid.parse!(req.params.id)
+    let id = Uuid.parse(req.params.id)!
     let user = store.users.get(id)
     match user {
       Ok(u)           -> respond.json(200, u)
@@ -1101,8 +1168,8 @@ module RefundService {
     }
 
     on phase(Phase.Analyze) -> {
-      let ticket_id = memory.get!("ticket_id")
-      let ticket = store.tickets.get!(ticket_id)
+      let ticket_id = memory.get("ticket_id")!
+      let ticket = store.tickets.get(ticket_id)!
 
       let decision = llm.json[RefundDecision](
         model: "claude-opus-4-8",
@@ -1126,8 +1193,8 @@ module RefundService {
     }
 
     on phase(Phase.Refund) -> {
-      let d = memory.get!("decision")
-      let customer_id = memory.get!("customer_id")
+      let d = memory.get("decision")!
+      let customer_id = memory.get("customer_id")!
       let result = tool.call(Stripe.CreateRefund, {
         customer_id: customer_id,
         amount: d.amount
@@ -1135,12 +1202,12 @@ module RefundService {
 
       match result {
         Ok(refund) -> {
-          let tid = memory.get!("ticket_id")
+          let tid = memory.get("ticket_id")!
           emit RefundIssued { ticket_id: tid, refund_id: refund.id }
           transition(Phase.Done)
         }
         Err(e) -> {
-          let tid = memory.get!("ticket_id")
+          let tid = memory.get("ticket_id")!
           emit RefundFailed { ticket_id: tid }
           transition(Phase.Failed)
         }
@@ -1206,6 +1273,6 @@ with `tool.call` — there is no cross-module function access to test against.
 *End of Skein Language Specification — v1.0 draft (pre-release; not yet frozen).*
 
 > The 1.0 spec is **not** finally frozen. v1.0.0-rc.1 was tagged but the 2026-06-15 roadmap reset
-> determined GA is not imminent; the scenario-testing surface (§3.10/§8.5), the fate of `given`/
-> `resume`, and the soundness fixes in flight may still change before the freeze. See
+> determined GA is not imminent; the scenario-testing surface (§3.10/§8.5), the fate of `given`,
+> and the soundness fixes in flight may still change before the freeze. See
 > `docs/STABILITY.md` and `docs/ROADMAP.md`.

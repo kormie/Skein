@@ -19,7 +19,7 @@ defmodule Skein.ParserPropertyTest do
   @keywords ~w(
     module fn let match type enum handler agent tool capability
     supervisor test scenario golden on emit transition stop suspend
-    resume true false implement input output errors policy description
+    true false implement input output errors description
     state strategy child replay given expect assert
   )
 

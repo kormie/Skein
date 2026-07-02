@@ -3,7 +3,8 @@ defmodule Skein.Runtime.Memory do
   Runtime scoped KV memory for Skein agents and modules.
 
   Provides per-namespace key-value storage used by `memory.put`, `memory.get`,
-  `memory.get!`, `memory.delete`, and `memory.list` effect calls in Skein source.
+  `memory.delete`, and `memory.list` effect calls in Skein source
+  (`memory.get(key)!` unwraps via the postfix `!` operator).
 
   ## Dual Storage Architecture
 
@@ -91,22 +92,6 @@ defmodule Skein.Runtime.Memory do
           error
       end
     end)
-  end
-
-  @doc """
-  Retrieves a value by key, raising on missing key or missing capability.
-
-  Returns the value directly or raises `RuntimeError`.
-  """
-  @spec get!(String.t(), String.t(), [map()]) :: any()
-  def get!(namespace, key, capabilities)
-      when is_binary(namespace) and is_binary(key) and is_list(capabilities) do
-    case get(namespace, key, capabilities) do
-      {:ok, value} -> value
-      {:error, :not_found} -> raise RuntimeError, "not_found"
-      {:error, reason} when is_binary(reason) -> raise RuntimeError, reason
-      {:error, reason} -> raise RuntimeError, inspect(reason)
-    end
   end
 
   @doc """

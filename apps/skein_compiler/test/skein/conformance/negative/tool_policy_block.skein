@@ -1,0 +1,17 @@
+-- expect: E0001
+-- #319: tool `policy` blocks were cut from the language pre-freeze.
+-- The removed form gets a targeted structured error, not a generic
+-- unexpected-token fallback.
+module PolicyCut {
+  capability tool.use(Acme.Do)
+
+  tool Acme.Do {
+    description: "does a thing"
+    input { a: Int }
+    output { b: Int }
+    policy {
+      max_calls: 5
+    }
+    implement { Ok({ b: input.a }) }
+  }
+}

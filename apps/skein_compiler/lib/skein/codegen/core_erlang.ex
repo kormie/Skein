@@ -1965,7 +1965,7 @@ defmodule Skein.CodeGen.CoreErlang do
          },
          scope
        )
-       when method in ["get", "get!", "put", "put!", "delete", "query"] do
+       when method in ["get", "put", "delete", "query"] do
     method_atom = String.to_atom(method)
     args_exprs = Enum.map(args, &generate_expr(&1, scope))
 
@@ -1992,7 +1992,7 @@ defmodule Skein.CodeGen.CoreErlang do
          },
          scope
        )
-       when method in ["put", "get", "get!", "delete", "list"] do
+       when method in ["put", "get", "delete", "list"] do
     method_atom = String.to_atom(method)
     args_exprs = Enum.map(args, &generate_expr(&1, scope))
 

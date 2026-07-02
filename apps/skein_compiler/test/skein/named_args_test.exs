@@ -100,7 +100,7 @@ defmodule Skein.NamedArgsTest do
         parse("""
         module M {
           capability memory.kv("ns")
-          fn g() -> String { memory.get!(key: "k") }
+          fn g() -> String { memory.get(key: "k")! }
         }
         """)
 

@@ -25,10 +25,10 @@ defmodule Skein.Lexer do
   @keywords ~w(
     module fn let match type enum handler agent tool capability
     supervisor test scenario golden on emit transition stop suspend
-    resume true false implement idempotent
+    true false implement idempotent
   )a
 
-  # Contextual keywords (input, output, errors, policy, description, state,
+  # Contextual keywords (input, output, errors, description, state,
   # strategy, child, replay, given, expect, assert, if) are NOT in @keywords.
   # They are emitted as :ident tokens and recognised contextually by the parser.
   # See expect_ident_value/3 and direct {:ident, _, "word"} matches in parser.

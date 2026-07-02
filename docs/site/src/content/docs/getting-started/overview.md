@@ -75,7 +75,7 @@ The compilation pipeline is fully operational. You can write `.skein` files with
 - `on start(params)` and `on phase(Phase)` handlers
 - Compile-time phase transition validation
 - `transition(Phase)`, `stop()`, `suspend(reason)`, `emit(event)`, `state.field` access
-- `suspend(reason)` / `resume(pid, phase)` for human-in-the-loop workflows
+- `suspend(reason)` for human-in-the-loop workflows — the host resumes a suspended agent from outside via `Skein.Runtime.Agent.resume(pid, phase)`
 - `gen_statem`-based runtime with automatic phase handler dispatch
 
 **Runtime:**

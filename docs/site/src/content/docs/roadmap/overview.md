@@ -53,7 +53,7 @@ Everything below is implemented and tested.
 | 2 | Type System | Type checking, schemas, constraint annotations, `Option[T]`, `Result[T, E]`, `!`/`?` operators |
 | 3 | Capabilities & Effects | Capability declarations, compile-time checking (modules + agents), HTTP client, tracing |
 | 4 | Handlers & HTTP | HTTP handlers with routing, request dispatch, Bandit + Plug server |
-| 5 | Storage | ETS-backed `store.table` with get, get!, put, put!, delete, query |
+| 5 | Storage | ETS-backed `store.table` with get, put, delete, query |
 | 6 | Agents | Agent state machines, phases, transitions, memory, LLM, tools, events |
 | 7 | Testing & CLI | Test constructs, full CLI (new, build, test, run, trace) |
 
@@ -87,7 +87,7 @@ Everything below is implemented and tested.
 | Float division codegen | `/` uses Erlang `/` for floats, `div` for integers |
 | String-literal match patterns | `match s { "approve" -> ... }` compiles to proper binary patterns |
 | `state.field` everywhere | Agent state access works in nested expression positions |
-| `method!(args)` parsing | `store.users.get!(id)` parses as unwrap-of-call (likewise `?`) |
+| Postfix `!`/`?` unwrap | `store.users.get(id)!` parses as unwrap-of-call and the chain continues (likewise `?`); the pre-paren `get!(id)` spelling was removed (#268) |
 | Contextual keywords | `input`, `output`, `state`, etc. no longer globally reserved |
 | Multiple `emit` per handler | All events accumulated, not just the last |
 | Agent instance-scoped memory | Keys scoped as `{agent}:{instance}:{key}`; concurrent instances don't collide |

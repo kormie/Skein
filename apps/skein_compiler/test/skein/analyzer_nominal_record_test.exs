@@ -137,7 +137,7 @@ defmodule Skein.AnalyzerNominalRecordTest do
                  type Point { x: Int, y: Int }
 
                  fn load() -> Point {
-                   memory.get!("origin")
+                   memory.get("origin")!
                  }
                }
                """)

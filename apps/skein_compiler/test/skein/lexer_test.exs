@@ -8,7 +8,7 @@ defmodule Skein.LexerTest do
       keywords = ~w(
         module fn let match type enum handler agent tool capability
         supervisor test scenario golden on emit transition stop suspend
-        resume true false implement idempotent
+        true false implement idempotent
       )
 
       for kw <- keywords do
@@ -19,11 +19,15 @@ defmodule Skein.LexerTest do
 
     test "contextual keywords tokenize as identifiers" do
       contextual =
-        ~w(input output errors policy description state strategy child replay given expect assert)
+        ~w(input output errors description state strategy child replay given expect assert)
 
       for kw <- contextual do
         assert {:ok, [{:ident, {1, 1}, ^kw}, {:eof, _}]} = Lexer.tokenize(kw)
       end
+    end
+
+    test "resume is de-reserved and tokenizes as an ordinary identifier (#301)" do
+      assert {:ok, [{:ident, {1, 1}, "resume"}, {:eof, _}]} = Lexer.tokenize("resume")
     end
   end
 

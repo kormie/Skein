@@ -30,12 +30,12 @@ automatically; a maintainer then sets priority and milestone and removes the tri
 ## Milestones
 
 - **v0.4.0 — Truth & Soundness** — the active gate (Wave A truth reset + Wave B analyzer/codegen
-  soundness, B1–B6). The 2026-06-19 audit found soundness is **not** yet established.
+  soundness — B1–B6 complete and source-verified 2026-07-02 — plus the Wave B residue).
 - **v0.5.0 — Runtime Contract & Dogfood** — next (Wave C effect-ABI/structured-error/schema/store/
-  EventStore honesty, C1–C6 + scenario-provider analyzer soundness; Wave D continuous dogfood gate).
-- **v0.6.0 — Canonical Substrate** *(conditional)* — created **only if** the FablePool-capable promise
-  is kept (open decision); otherwise this work stays in v1.1.
-- **v1.0.0-rc.2 — True release candidate** — cut only when every 1.0 blocker is green; no feature work.
+  EventStore honesty, C1–C6 + supervisor wiring #325; Wave D continuous dogfood gate).
+- **v1.0.0-rc.2 — True release candidate** — cut only when every 1.0 blocker is green; no feature
+  work. (The conditional v0.6.0 canonical-substrate milestone was retired 2026-07-02 when #300
+  resolved as Alternative B — the substrate items live in v1.1.)
 - **v1.0.0 Release** — GA, after rc.2 soaks (not imminent).
 - **v1.1: Hardening & Language** / **v1.2: Interop & Agent Workflows** / **Future: Platform** —
   the post-1.0 backlog, in priority order.

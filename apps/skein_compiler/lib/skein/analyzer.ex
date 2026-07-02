@@ -112,7 +112,7 @@ defmodule Skein.Analyzer do
   # Known effect methods per namespace
   @effect_methods %{
     "http" => ["get", "post", "put", "patch", "delete"],
-    "memory" => ["put", "get", "get!", "delete", "list"],
+    "memory" => ["put", "get", "delete", "list"],
     "llm" => ["chat", "json", "stream", "embed"],
     "tool" => ["call", "list", "schema"],
     "topic" => ["publish"],
@@ -126,7 +126,7 @@ defmodule Skein.Analyzer do
   }
 
   # Store operations: store.<table>.<method>(...)
-  @store_methods ["get", "get!", "put", "put!", "delete", "query"]
+  @store_methods ["get", "put", "delete", "query"]
 
   # Declared return types per effect method (spec §6). Effects return
   # `Result[T, E]`, so a missing `!`/`?` (or `match`) is a *compile* error
@@ -683,7 +683,6 @@ defmodule Skein.Analyzer do
     {"http", "delete"} => ["url"],
     {"memory", "put"} => ["key", "value"],
     {"memory", "get"} => ["key"],
-    {"memory", "get!"} => ["key"],
     {"memory", "delete"} => ["key"],
     {"memory", "list"} => ["prefix"],
     {"llm", "chat"} => ["model", "system", "input"],
@@ -727,7 +726,6 @@ defmodule Skein.Analyzer do
     {"http", "delete"} => [:string],
     {"memory", "put"} => [:string, :dynamic],
     {"memory", "get"} => [:string],
-    {"memory", "get!"} => [:string],
     {"memory", "delete"} => [:string],
     {"memory", "list"} => [:string],
     {"llm", "chat"} => [:string, :string, :dynamic],
@@ -1031,9 +1029,9 @@ defmodule Skein.Analyzer do
   # have their own checks and are skipped here.
   # The declared return type of an effect call (spec §6). `llm.json[T]` reads
   # its success type from the type parameter; everything else comes from the
-  # static table. Unmapped-but-known methods (e.g. the `!` forms, `memory.get!`,
-  # event.log, trace.annotate) fall back to `:dynamic` — they are real runtime
-  # calls whose shape the table does not pin yet (C1), not inference failures.
+  # static table. Unmapped-but-known methods (e.g. event.log, trace.annotate)
+  # fall back to `:dynamic` — they are real runtime calls whose shape the
+  # table does not pin yet (C1), not inference failures.
   defp effect_call_return_type("llm", "json", %AST.TypeRef{} = type_param, env) do
     {:result, resolve_type(type_param, env.types), :dynamic}
   end
