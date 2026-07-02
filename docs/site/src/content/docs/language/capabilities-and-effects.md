@@ -21,7 +21,7 @@ module UserService {
   capability http.out("api.example.com")
   capability http.out("auth.example.com")
 
-  fn fetch_user(id: String) -> String {
+  fn fetch_user(id: String) -> Result[String, String] {
     http.get("https://api.example.com/users/${id}")
   }
 }
@@ -61,7 +61,7 @@ A capability without parameters acts as a wildcard:
 module OpenClient {
   capability http.out  -- allows HTTP to any host
 
-  fn fetch(url: String) -> String {
+  fn fetch(url: String) -> Result[String, String] {
     http.get(url)
   }
 }
@@ -128,8 +128,8 @@ module RefundService {
 
   capability model("anthropic", "claude-opus-4-8")
 
-  fn decide(ticket: String) -> String {
-    llm.json[RefundDecision]("claude-opus-4-8", "Decide if this warrants a refund.", ticket)
+  fn decide(ticket: String) -> RefundDecision {
+    llm.json[RefundDecision]("claude-opus-4-8", "Decide if this warrants a refund.", ticket)!
   }
 }
 ```
@@ -250,9 +250,9 @@ agent RefundAgent {
   }
 
   on phase(Phase.Review) -> {
-    let order = memory.get("order_id")
+    let order = memory.get("order_id")!
     trace.annotate("ticket_id", order)
-    let decision = llm.chat("claude-opus-4-8", "Evaluate refund", order)
+    let decision = llm.chat("claude-opus-4-8", "Evaluate refund", order)!
     trace.annotate("decision", decision)
     memory.put("decision", decision)
     transition(Phase.Approved)
@@ -272,7 +272,7 @@ agent RefundAgent {
 module BackgroundWorker {
   capability process.spawn("workers")
 
-  fn start_task(data: String) -> String {
+  fn start_task(data: String) -> Result[String, String] {
     process.spawn(data)
   }
 }
@@ -288,7 +288,7 @@ Timer effects schedule one-shot or recurring callbacks:
 module TimerService {
   capability timer("maintenance")
 
-  fn schedule_task() -> String {
+  fn schedule_task() -> Result[String, String] {
     timer.after(5000, "callback")       -- fires once after 5 seconds
     timer.interval(30000, "callback")   -- fires every 30 seconds
     timer.cancel("timer-ref")           -- cancels a timer by ref
@@ -348,7 +348,7 @@ The analyzer recognizes this pattern and checks it against declared capabilities
 - `{:error, reason}` on failure (HTTP errors, network errors, capability violations)
 
 **Memory** effect calls return `Result` tuples:
-- `memory.get` returns `{:ok, value}` or `{:error, "not_found"}`
+- `memory.get` returns `{:ok, value}` or `{:error, :not_found}` (an atom, matched as `Err(_)` in Skein)
 - `memory.put` returns `{:ok, value}`
 - `memory.delete` returns `{:ok, key}`
 - `memory.list` returns a list of matching keys
@@ -367,7 +367,7 @@ The analyzer's capability checking pass (Pass 3) walks every function body looki
 
 ```skein
 module BadService {
-  fn fetch(url: String) -> String {
+  fn fetch(url: String) -> Result[String, String] {
     http.get(url)  -- ERROR: E0012
   }
 }
@@ -393,7 +393,7 @@ The analyzer detects effect calls in all positions:
 - Top-level expressions in function bodies
 - Inside `let` bindings: `let result = http.get(url)`
 - Inside `match` arms: `true -> http.get(url)`
-- Inside pipe chains: `url |> http.get(url)`
+- Inside pipe chains: `url |> http.get()` (the piped value becomes the call's first argument)
 - Nested within other expressions
 
 ## Runtime Enforcement
@@ -408,7 +408,7 @@ When compiled code calls `http.get(url)`, the code generator emits a call to `Sk
 module Service {
   capability http.out("api.allowed.com")
 
-  fn fetch(url: String) -> String {
+  fn fetch(url: String) -> Result[String, String] {
     http.get("https://api.blocked.com/data")
   }
 }

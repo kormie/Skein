@@ -168,8 +168,8 @@ There is no negative-literal token: negative numbers are written with prefix
 | 1 | `\|>` | Left |
 | 2 | `\|\|` | Left |
 | 3 | `&&` | Left |
-| 4 | `==`, `!=` | None |
-| 5 | `<`, `>`, `<=`, `>=` | None |
+| 4 | `==`, `!=` | Left |
+| 5 | `<`, `>`, `<=`, `>=` | Left |
 | 6 | `+`, `-` | Left |
 | 7 | `*`, `/` | Left |
 | 8 | `!`, `-` (prefix) | Prefix |
@@ -229,11 +229,13 @@ agent RefundBot {
 
   on start(request_id: String, amount: Int) -> {
     memory.put("request_id", request_id)
+    memory.put("amount", amount)
     transition(Phase.Review)
   }
 
   on phase(Phase.Review) -> {
-    let decision = llm.chat("claude-opus-4-8", "Evaluate this refund", state.request_id)!
+    let request_id = memory.get("request_id")!
+    let decision = llm.chat("claude-opus-4-8", "Evaluate this refund", request_id)!
     match decision {
       "approve" -> transition(Phase.Approved)
       _ -> transition(Phase.Denied)
@@ -241,7 +243,8 @@ agent RefundBot {
   }
 
   on phase(Phase.Approved) -> {
-    emit RefundApproved { amount: state.amount }
+    let amount = memory.get("amount")!
+    emit RefundApproved { amount: amount }
     transition(Phase.Done)
   }
 
@@ -260,7 +263,7 @@ Key features:
 - `on start(name: Type, ...) -> { ... }` handler with typed parameters runs when the agent starts
 - `on phase(Phase.X) -> { ... }` handlers run when entering each phase
 - `transition(Phase.X)` moves to a new phase (invalid transitions are compiler errors)
-- `state.field` for reading agent state (state is initialized from the start parameters; there is no assignment)
+- `state.field` reads agent state, which starts **empty** at runtime — start parameters are NOT copied into state, and a `state.field` read only sees what a handler has explicitly returned as state. The durable pattern (shown above) is `memory.put(...)` in `on start` and `memory.get(...)!` in phase handlers, which requires a `capability memory.kv(...)` declaration
 - `emit EventName { field: value }` for domain events
 - `stop()` to terminate the agent
 

@@ -145,23 +145,28 @@ Skein.Runtime.Tool.register_module(mod)
 
 ### From Skein Code
 
-Use the `tool.*` effect calls to interact with tools at runtime:
+Use the `tool.*` effect calls to interact with tools at runtime. All three return a `Result`, so handle it with `match` or unwrap with `!`, and `tool.call` takes its arguments as a map literal:
 
 ```skein
 module AgentService {
   capability tool.use(CreateRefund)
 
-  fn process_refund(args: String) -> String {
-    let result = tool.call(CreateRefund, args)
-    result
+  fn process_refund(customer: String) -> String {
+    match tool.call(CreateRefund, { customer_id: customer, amount: 500 }) {
+      Ok(_) -> "refund created"
+      Err(_) -> "refund failed"
+    }
   }
 
   fn list_available() -> String {
-    tool.list()
+    match tool.list() {
+      Ok(_) -> "tools listed"
+      Err(_) -> "listing failed"
+    }
   }
 
-  fn get_schema() -> String {
-    tool.schema(CreateRefund)
+  fn get_schema() -> Map[String, String] {
+    tool.schema(CreateRefund)!
   }
 }
 ```

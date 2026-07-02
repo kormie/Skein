@@ -20,7 +20,7 @@ agent RefundAgent {
   }
 
   enum Phase {
-    Analyze -> [Refund, Done]
+    Analyze -> [Refund, Done, Failed]
     Refund  -> [Done, Failed]
     Failed  -> [Analyze]
     Done    -> []
@@ -31,15 +31,16 @@ agent RefundAgent {
   }
 
   on phase(Phase.Analyze) -> {
-    let ticket = store.tickets.get!(state.ticket_id)
+    let ticket = store.tickets.get(state.ticket_id)!
     let decision = llm.chat(
       "claude-opus-4-8",
       "Decide if this refund is warranted. Reply approve or deny.",
       ticket
-    )
+    )!
     match decision {
       "approve" -> transition(Phase.Refund)
       "deny"    -> transition(Phase.Done)
+      _         -> transition(Phase.Failed)
     }
   }
 
@@ -67,6 +68,7 @@ stateDiagram-v2
     [*] --> Analyze
     Analyze --> Refund : approve
     Analyze --> Done : deny
+    Analyze --> Failed : unclear
     Refund --> Done : success
     Refund --> Failed : error
     Failed --> Analyze : retry
@@ -94,8 +96,8 @@ Most languages treat AI agents as library code running inside a general-purpose 
 ### 12 constructs. One way to do things.
 
 ```rust
--- Bindings are immutable
-let user = store.users.get!(id)
+-- Bindings are immutable; effects return Result and unwrap with postfix !
+let user = store.users.get(id)!
 
 -- Pattern matching is the only conditional
 match user.status {
@@ -105,11 +107,12 @@ match user.status {
 }
 
 -- Pipes compose operations
-request.body
+let order = request.body
   |> validate[CreateOrderInput]
   |> enrich_with_inventory
-  |> store.orders.put!
-  |> respond.json(201)
+
+store.orders.put(order)!
+respond.json(201, order)
 ```
 
 ### Types as contracts
@@ -175,27 +178,34 @@ handler schedule "0 9 * * MON" (tick) -> {
 ### Tools separate contract from implementation
 
 ```rust
-tool Stripe.CreateRefund {
-  description: "Creates a refund via Stripe."
+module Payments {
+  tool Stripe.CreateRefund {
+    description: "Creates a refund via Stripe."
 
-  input {
-    customer_id: String  @description("Stripe customer ID")
-    amount: Int          @description("Amount in cents") @min(1)
+    input {
+      customer_id: String  @description("Stripe customer ID")
+      amount: Int          @description("Amount in cents") @min(1)
+    }
+
+    output {
+      id: String
+      amount: Int
+      status: String
+    }
+
+    errors { StripeError }
+
+    implement {
+      let response = http.post("https://api.stripe.com/v1/refunds", {
+        customer: customer_id,
+        amount: amount
+      })
+      match response {
+        Ok(r)  -> Ok({ id: r.body.id, amount: r.body.amount, status: r.body.status })
+        Err(e) -> Err(StripeError.from(e))
+      }
+    }
   }
-
-  output {
-    id: String
-    amount: Int
-    status: String
-  }
-
-  policy {
-    require_approval: true
-    rate_limit: 10 per minute
-    audit_level: full
-  }
-
-  implement { ... }
 }
 ```
 
@@ -352,7 +362,7 @@ Every LLM call is capability-gated, type-checked, and automatically traced with 
 
 ## Project Status
 
-> **Release posture (2026-06-19): Skein is pre-1.0.** The version string (`1.0.0-rc.4`) is a holdover from a prematurely-tagged RC; **v1.0.0 GA is not imminent and the next release is a development release (`0.4.0`), not another RC.** A source-verified audit found that analyzer/codegen soundness is not yet established and the runtime effect/schema/store/EventStore contracts are drifted from the spec; nothing is "frozen" yet. The path to a sound, honest, dogfood-proven 1.0 is the contract-first wave plan in [docs/ROADMAP.md](docs/ROADMAP.md).
+> **Release posture: Skein is pre-1.0.** The current version is **`0.4.0`** — the "Truth & Soundness" development release, which reset a prematurely-tagged RC line and landed analyzer/codegen soundness (Wave B). The release train from here is **v0.4.0 → v0.5.0 (Runtime Contract & Dogfood) → a true v1.0.0-rc.2 → v1.0.0 GA — and GA is not imminent.** The runtime effect/schema/store/EventStore contracts are still drifted from the spec, and nothing is "frozen" yet. The path to a sound, honest, dogfood-proven 1.0 is the contract-first wave plan in [docs/ROADMAP.md](docs/ROADMAP.md).
 
 The compilation pipeline was built in phases — the *pipeline* is complete end-to-end — but the soundness and runtime-contract hardening for a stable 1.0 is in progress. [docs/ROADMAP.md](docs/ROADMAP.md) tracks what's next:
 
@@ -370,10 +380,10 @@ The compilation pipeline was built in phases — the *pipeline* is complete end-
 | **8d** | **Canonical examples** — 5 working `.skein` programs with integration tests | Complete |
 | **8e** | **Queue & schedule handlers** — event-driven and cron-triggered execution | Complete |
 | **8f** | **LLM streaming** — `llm.stream` with chunked responses and trace spans | Complete |
-| **8b** | **Storage backend** — Ecto/SQLite integration, schema + migration generation | Complete |
-| **9-10** | **Stdlib, error codes, unified event store** — 11 stdlib modules (101 functions), the structured error/warning registry (spec §7 alignment is being reconciled — E0028/E0029 are implemented but not yet listed in the table), single append-only event log (ETS; SQLite persistence is opt-in and currently not on the ordinary append path) | Pipeline complete; contracts hardening |
+| **8b** | **Storage backend** — Ecto/SQLite layer (schema + migration generation); built as library code, not yet wired into the `store.*` path (roadmap C5, #255) | Complete |
+| **9-10** | **Stdlib, error codes, unified event store** — 11 stdlib modules (101 functions), the structured error/warning registry (aligned with the spec §7 table, including E0028/E0029), single append-only event log (ETS; SQLite persistence is opt-in and currently not on the ordinary append path) | Pipeline complete; contracts hardening |
 
-The full test suite (unit, property-based, and integration) runs green in CI on every change — see the CI badge above for current totals. The compilation pipeline works end-to-end — from `.skein` source to running BEAM bytecode with real LLM calls and database storage. See [`examples/`](examples/README.md) for sixteen working programs, all covered by integration tests, and [docs/ROADMAP.md](docs/ROADMAP.md) for what's next.
+The full test suite (unit, property-based, and integration) runs green in CI on every change — see the CI badge above for current totals. The compilation pipeline works end-to-end — from `.skein` source to running BEAM bytecode with real LLM calls and capability-checked storage. See [`examples/`](examples/README.md) for sixteen working programs, all covered by integration tests, and [docs/ROADMAP.md](docs/ROADMAP.md) for what's next.
 
 ---
 
@@ -392,7 +402,7 @@ graph TD
     style G fill:#9f9,stroke:#333
 ```
 
-The compiler is written in Elixir. The runtime is a set of OTP behaviours — agents run as supervised `gen_statem` processes, HTTP goes through Bandit + Plug, storage through Ecto.
+The compiler is written in Elixir. The runtime is a set of OTP behaviours — agents run as `gen_statem` processes, HTTP goes through Bandit + Plug, storage through a capability-checked ETS-backed store.
 
 See [ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full picture.
 

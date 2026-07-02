@@ -295,7 +295,7 @@ The Skein runtime is an OTP application that provides behaviours, services, and 
 │  └──────────────┘  └──────────────┘  └──────────────┘  │
 │                                                         │
 │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  │
-│  │ Store (Ecto) │  │ Memory (KV)  │  │ LLM Client   │  │
+│  │ Store (ETS)  │  │ Memory (KV)  │  │ LLM Client   │  │
 │  └──────────────┘  └──────────────┘  └──────────────┘  │
 └─────────────────────────────────────────────────────────┘
 ```
@@ -472,18 +472,25 @@ end
 
 Tool execution is wrapped in:
 1. Capability check (is the caller allowed to use this tool?)
-2. Policy enforcement (rate limit, approval requirement)
-3. Input validation (against declared schema)
-4. Trace span
-5. Output validation
-6. Result return
+2. Trace span (recorded, so live traces are replayable)
+3. Scenario capability envelope (scenario-provided `implement` providers, if any — a transparent no-op in production)
+4. Replay interception (an active replay context serves recorded results instead of executing the implementation)
+5. Input validation (against the declared schema)
+6. Output coercion (declared `Option` fields come back total) and result return
+
+(Tool `policy { ... }` blocks were removed from the language in #319 — there is no rate-limit/approval policy layer.)
 
 ### 2.6 Store (`Skein.Runtime.Store`)
 
-Thin wrapper around Ecto providing the `store.*` API.
+ETS-backed dynamic store providing the `store.*` API.
 
-Compile-time: Skein type declarations with `@primary` generate Ecto schema modules.
-Runtime: `store.users.get(id)` compiles to `Skein.Runtime.Store.get(UsersSchema, id)`.
+Codegen emits calls like `Skein.Runtime.Store.get("users", id, capabilities)` — table names are plain strings (never converted to atoms, since they can come from arbitrary program input and atoms are not garbage-collected). All logical tables share a single ETS table (`:skein_store`, owned by `EtsTables`) keyed by `{table_name, id}`. Every operation is:
+
+1. Checked against the caller's declared `store.table(...)` capabilities
+2. Wrapped in a trace span (timing, metadata, outcome)
+3. Returned as `{:ok, result}` or `{:error, reason}` — a `get` miss is `{:error, :not_found}`, matching the spec's `Result[T, NotFound]` contract
+
+An Ecto/SQLite typed-table path (`Skein.Runtime.StoreEcto`, `EctoSchema`, `MigrationGen`, `Repo`) exists in the runtime as library code, but it has no production callers — codegen never routes `store.*` calls through it. Wiring typed tables into the store contract is roadmap item C5 (#255), targeted at v0.5.0.
 
 ### 2.7 Memory (`Skein.Runtime.Memory`)
 
@@ -649,24 +656,18 @@ Outside this tree:
 
 ---
 
-## 4. File Layout for a Compiled Skein Service
+## 4. Build Output for a Compiled Skein Service
 
-After `skein build`, a service is packaged as a standard OTP release:
+`skein build <project> --output <dir>` compiles every `.skein` file under `src/` and writes one `.beam` file per generated module into the output directory (a source file with nested agents produces several):
 
 ```
-_build/
-├── rel/
-│   └── my_service/
-│       ├── bin/my_service          # Start script
-│       ├── lib/
-│       │   ├── my_service-0.1.0/   # Compiled .beam files from .skein sources
-│       │   ├── skein_runtime-0.1.0/ # Skein runtime .beam files
-│       │   └── ...                  # Elixir/OTP dependencies
-│       └── releases/
-│           └── 0.1.0/
-│               ├── sys.config
-│               └── vm.args
+_build/beam/
+├── Elixir.Skein.User.MyService.beam
+├── Elixir.Skein.Agent.MyService.MyAgent.beam
+└── ...
 ```
+
+That is the entire build artifact — there is no OTP release assembly (no `bin/` start scripts, no `releases/<vsn>/sys.config`, no `vm.args`). To run a service, `skein run <project>` compiles the project and starts the runtime in the foreground (Bandit HTTP server plus queue/schedule/timer dispatch). Packaging a self-contained OTP release around the compiled `.beam` files is future work, not a current capability.
 
 ---
 
@@ -701,8 +702,8 @@ scenario "refund flow" {
 
 Variables from the `given` block are in scope during the `expect` block. Kind: `:scenario`.
 
-> **In flight (1.0): scenario-scoped capability environments.** The reset (2026-06-15) replaces the
-> superseded `via &stub` override design with **nested capability envelopes** scoped to the tool
+> **Scenario-scoped capability environments (shipped — #282/#283).** The 2026-06-15 reset replaced
+> the superseded `via &stub` override design with **nested capability envelopes** scoped to the tool
 > under test:
 >
 > ```skein
@@ -723,8 +724,8 @@ Variables from the `given` block are in scope during the `expect` block. Kind: `
 > production callers still declare only `capability tool.use(T)`. The analyzer computes a tool
 > **effect summary** (transitive) and rejects incomplete envelopes; the runtime maintains a
 > **dynamic capability stack** resolving each effect `implement → replay → test-default → live →
-> structured failure`, retiring `Skein.Runtime.Dependencies`/`with_overrides`. The fate of `given`
-> and whether seed-only stateful state ships in 1.0 are open. Full design:
+> structured failure` (the former `Skein.Runtime.Dependencies`/`with_overrides` mechanism was
+> retired). Full design:
 > [`docs/design/scenario-capability-environments.md`](design/scenario-capability-environments.md).
 
 ### 5.3 Golden Trace Tests (`golden`)
