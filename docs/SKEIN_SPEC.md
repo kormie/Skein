@@ -390,6 +390,9 @@ call_expr     = (ident | field_access) "(" args ")"
                 -- (grouping), never a call of the previous one
 binary_op     = expr op expr
 unary_op      = ("-" | "!") expr | expr ("!" | "?")
+                -- postfix "!"/"?" must start on the same line as the
+                -- expression's final token (§3.12); a line-initial "!"
+                -- is the prefix form
 field_access  = expr "." lower_ident
 fn_ref        = "&" lower_ident
 block         = "{" expr* "}"
@@ -455,6 +458,40 @@ Because a guarded arm only matches conditionally, it does not count toward
 exhaustiveness: a `match` whose variant or `Bool` coverage relies on a guarded
 arm is still non-exhaustive (`E0021`/`E0024`; `W0004` for value-level gaps), and
 at runtime a `match` where every arm's guard fails raises `case_clause`.
+
+### 3.12 Expression Termination
+
+Skein has no statement terminator; a block is a sequence of expressions
+and newlines are ordinarily insignificant. The rules for when an
+expression *continues* across a newline are fixed per production (#318):
+
+**These continue across a newline, on either side of the operator:**
+
+| Production | Example |
+|---|---|
+| Field access `.` | `u`↵`.name` and `u.`↵`name` |
+| Pipe `\|>` | `items`↵`\|> List.map(&f)` |
+| Binary operators `+ - * / == != < > <= >= && \|\|` | `a +`↵`b` and `a`↵`+ b` |
+
+Note the corollary: a line beginning with `-` continues the previous
+expression as *subtraction* (there is no line-initial unary-minus
+statement; negative literals appear after `=`, `(`, `,`, or an operator).
+
+**These never continue across a newline** — the token must start on the
+same line as the token it follows, because each has a different
+line-initial meaning:
+
+| Token | Line-initial meaning |
+|---|---|
+| Call `(` | grouping paren of the next expression (#311) |
+| Type-argument `[` | list literal of the next expression |
+| Unwrap `!` | prefix `not` of the next expression |
+| Propagate `?` | nothing — a line-initial `?` is a parse error |
+
+So `memory.get(k)!` unwraps, but `memory.get(k)`↵`!flag` is two
+expressions: the un-unwrapped call, then `not flag`. The compiler's
+parser property suite pins every rule in this table; changing one is a
+spec change.
 
 ---
 

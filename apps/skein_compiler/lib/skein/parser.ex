@@ -31,6 +31,8 @@ defmodule Skein.Parser do
 
   @spec parse(tokens(), String.t()) :: parse_result()
   def parse(tokens, file) do
+    register_line_initial_tokens(tokens)
+
     case tokens do
       [{:agent, _} | _] ->
         case parse_agent(tokens, file) do
@@ -43,6 +45,42 @@ defmodule Skein.Parser do
           {:ok, ast, _rest} -> {:ok, ast}
           {:error, errors} -> {:error, errors}
         end
+    end
+  end
+
+  # ------------------------------------------------------------------
+  # Line-initial tokens (spec §3.12, expression termination)
+  #
+  # The parser is otherwise newline-blind, but four postfix continuations
+  # terminate at a newline: a call "(" (#311), a type-argument "[", and the
+  # unwrap operators "!"/"?" never continue the previous expression when
+  # they start a new line — a line-initial "(" is grouping, "[" a list
+  # literal, "!" prefix not. parse/2 records which token positions begin
+  # their line so those rules are O(1) lookups during descent.
+  # ------------------------------------------------------------------
+
+  defp register_line_initial_tokens(tokens) do
+    {set, _} =
+      Enum.reduce(tokens, {MapSet.new(), 0}, fn token, {set, prev_line} ->
+        {line, col} = token_position(token)
+
+        if line > prev_line do
+          {MapSet.put(set, {line, col}), line}
+        else
+          {set, prev_line}
+        end
+      end)
+
+    Process.put(:skein_parser_line_initial, set)
+  end
+
+  defp token_position({_, {line, col}}), do: {line, col}
+  defp token_position({_, {line, col}, _}), do: {line, col}
+
+  defp line_initial?({line, col}) do
+    case Process.get(:skein_parser_line_initial) do
+      %MapSet{} = set -> MapSet.member?(set, {line, col})
+      _ -> false
     end
   end
 
@@ -2256,29 +2294,40 @@ defmodule Skein.Parser do
   # Postfix `!` (unwrap) and `?` (propagate) bind to the expression before
   # them, and the postfix chain may continue afterwards — `get(id)!.name`,
   # `memory.get(k)!.load()!.value` (#268: `get(k)!` is the one spelling).
-  defp parse_unwrap_suffix(expr, [{:bang, {line, col}} | rest], file) do
-    node = %AST.UnaryOp{
-      op: :unwrap,
-      operand: expr,
-      meta: %{line: line, col: col, file: file}
-    }
+  defp parse_unwrap_suffix(expr, [{:bang, {line, col}} | rest] = tokens, file) do
+    # A "!" that starts a new line never continues the previous expression:
+    # it is the prefix not of the NEXT expression (spec §3.12).
+    if line_initial?({line, col}) do
+      {:ok, expr, tokens}
+    else
+      node = %AST.UnaryOp{
+        op: :unwrap,
+        operand: expr,
+        meta: %{line: line, col: col, file: file}
+      }
 
-    case parse_postfix_chain(node, rest, file) do
-      {:ok, chained, rest2} -> parse_unwrap_suffix(chained, rest2, file)
-      {:error, _} = error -> error
+      case parse_postfix_chain(node, rest, file) do
+        {:ok, chained, rest2} -> parse_unwrap_suffix(chained, rest2, file)
+        {:error, _} = error -> error
+      end
     end
   end
 
-  defp parse_unwrap_suffix(expr, [{:question, {line, col}} | rest], file) do
-    node = %AST.UnaryOp{
-      op: :propagate,
-      operand: expr,
-      meta: %{line: line, col: col, file: file}
-    }
+  defp parse_unwrap_suffix(expr, [{:question, {line, col}} | rest] = tokens, file) do
+    # Same-line rule as "!" (spec §3.12).
+    if line_initial?({line, col}) do
+      {:ok, expr, tokens}
+    else
+      node = %AST.UnaryOp{
+        op: :propagate,
+        operand: expr,
+        meta: %{line: line, col: col, file: file}
+      }
 
-    case parse_postfix_chain(node, rest, file) do
-      {:ok, chained, rest2} -> parse_unwrap_suffix(chained, rest2, file)
-      {:error, _} = error -> error
+      case parse_postfix_chain(node, rest, file) do
+        {:ok, chained, rest2} -> parse_unwrap_suffix(chained, rest2, file)
+        {:error, _} = error -> error
+      end
     end
   end
 
@@ -2301,12 +2350,22 @@ defmodule Skein.Parser do
   # The pre-paren forms `method!(args)` / `method?(args)` were removed
   # (#268): `!`/`?` come after the closing paren — `get(k)!` is the one
   # spelling. A parse of the removed form gets a targeted structured error.
-  defp parse_postfix_chain(expr, [{:bang, {bline, bcol}}, {:lparen, _} | _], file) do
-    removed_prefix_unwrap_error(expr, "!", {bline, bcol}, file)
+  # A line-initial `!`/`?` is not the removed form: it belongs to the NEXT
+  # expression (prefix not / nothing), so the chain simply ends (§3.12).
+  defp parse_postfix_chain(expr, [{:bang, {bline, bcol}}, {:lparen, _} | _] = tokens, file) do
+    if line_initial?({bline, bcol}) do
+      {:ok, expr, tokens}
+    else
+      removed_prefix_unwrap_error(expr, "!", {bline, bcol}, file)
+    end
   end
 
-  defp parse_postfix_chain(expr, [{:question, {qline, qcol}}, {:lparen, _} | _], file) do
-    removed_prefix_unwrap_error(expr, "?", {qline, qcol}, file)
+  defp parse_postfix_chain(expr, [{:question, {qline, qcol}}, {:lparen, _} | _] = tokens, file) do
+    if line_initial?({qline, qcol}) do
+      {:ok, expr, tokens}
+    else
+      removed_prefix_unwrap_error(expr, "?", {qline, qcol}, file)
+    end
   end
 
   defp parse_postfix_chain(expr, [{:lparen, {line, _col}} | _] = tokens, file) do
@@ -2344,8 +2403,22 @@ defmodule Skein.Parser do
   end
 
   # Type-parameterized postfix: expr[TypeExpr](args...)
-  # Used for llm.json[T](...) syntax
-  defp parse_postfix_chain(expr, [{:lbracket, _}, {:upper_ident, _, _} | _] = tokens, file) do
+  # Used for llm.json[T](...) syntax. A "[" that starts a new line never
+  # continues the previous expression — it is the list literal of the NEXT
+  # expression (spec §3.12).
+  defp parse_postfix_chain(expr, [{:lbracket, {bl, bc}}, {:upper_ident, _, _} | _] = tokens, file) do
+    if line_initial?({bl, bc}) do
+      {:ok, expr, tokens}
+    else
+      parse_type_param_postfix(expr, tokens, file)
+    end
+  end
+
+  defp parse_postfix_chain(expr, rest, _file) do
+    {:ok, expr, rest}
+  end
+
+  defp parse_type_param_postfix(expr, tokens, file) do
     [{:lbracket, _} | rest] = tokens
 
     case parse_type_expr(rest, file) do
@@ -2382,10 +2455,6 @@ defmodule Skein.Parser do
         # Not a valid type parameter, stop the chain
         {:ok, expr, tokens}
     end
-  end
-
-  defp parse_postfix_chain(expr, rest, _file) do
-    {:ok, expr, rest}
   end
 
   # Call targets are identifiers or dotted chains; their metas point at the
