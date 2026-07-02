@@ -107,8 +107,14 @@ const GATES_PROMPT =
   '3. `mix compile --warnings-as-errors`\n' +
   '4. `mix test` (the full umbrella suite; record the totals line)\n' +
   '5. `bash .claude/skills/bump-version/check-release.sh` (release preflight: version agreement, dated CHANGELOG, banner drift)\n' +
+  '6. Freeze gates (#332): from each app directory run its freeze suite and report one gate entry per app — ' +
+  '`cd apps/skein_compiler && mix test test/skein/freeze` (keywords, diagnostics registry, effect ABI, ' +
+  'JSON Schema vectors, metadata classes), `cd apps/skein_runtime && mix test test/skein/runtime/event_store_freeze_test.exs` ' +
+  '(persisted event vectors), `cd apps/skein_cli && mix test test/cli/cli_surface_freeze_test.exs test/cli/dogfood_pins_freeze_test.exs` ' +
+  '(CLI/config surface, dogfood pins). These compare the live surfaces against the frozen vectors in ' +
+  'conformance/freeze/ — a failure means a frozen surface drifted and the release CANNOT be GO.\n' +
   (TARGET_VERSION
-    ? '6. Version staging for the intended release v' + TARGET_VERSION + ': the `version:` in BOTH mix.exs and ' +
+    ? '7. Version staging for the intended release v' + TARGET_VERSION + ': the `version:` in BOTH mix.exs and ' +
       'apps/skein_cli/mix.exs must equal "' + TARGET_VERSION + '" (fail with what they actually say if not — ' +
       'that means the bump PR has not landed), and `git ls-remote --tags origin refs/tags/v' + TARGET_VERSION + '` ' +
       'must come back empty (fail if the tag already exists).\n'
@@ -128,7 +134,11 @@ const E2E_PROMPT =
   'directory under conformance/dogfood/ — each must report 0 failed and 0 compile failures, ' +
   'and the total per project must equal its `expected_tests` in conformance/dogfood.json. ' +
   'One gate entry per project. Release-readiness CANNOT report GO without these.\n' +
-  '5. Clean up /tmp/skein_rc_smoke.\n' +
+  '5. Agent-writability benchmark (#320): `mix skein.bench -- --report /tmp/skein_bench_report.json` ' +
+  '(replay mode — deterministic, no LLM calls) — must exit 0 with every task green. Put the ' +
+  'first-try compile rate and mean-iterations-to-green from the printed summary in detail: ' +
+  'they are the measured RC writability quality. Clean up the report file.\n' +
+  '6. Clean up /tmp/skein_rc_smoke.\n' +
   '\nStructured output only.'
 
 const INVENTORY_PROMPT =

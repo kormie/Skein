@@ -381,7 +381,7 @@ each read, so handing a copy to a concurrent task would double-serve events.
 
 ### 2.3 Unified Event Store (`Skein.Runtime.EventStore`)
 
-All runtime events — effect spans, trace annotations, user-defined events, and memory state changes — flow through a single append-only event log backed by one ETS ordered set (`:skein_events`), with opt-in SQLite persistence on the ordinary append path (C6/#299): when `Skein.Runtime.EventStore.Persistence` is enabled, every `append/1` write-through-persists asynchronously to `events.db`, `enable/1` reloads persisted history into ETS on restart (deduplicated by event id), and `skein run` enables it by default at `<project>/.skein/events.db` (`--no-persist` opts out). The persisted/reloaded shapes stay Pre-stable until the Wave F freeze (`docs/STABILITY.md`).
+All runtime events — effect spans, trace annotations, user-defined events, and memory state changes — flow through a single append-only event log backed by one ETS ordered set (`:skein_events`), with opt-in SQLite persistence on the ordinary append path (C6/#299): when `Skein.Runtime.EventStore.Persistence` is enabled, every `append/1` write-through-persists asynchronously to `events.db`, `enable/1` reloads persisted history into ETS on restart (deduplicated by event id), and `skein run` enables it by default at `<project>/.skein/events.db` (`--no-persist` opts out). The persisted/reloaded shapes are FROZEN as of the Wave F gate (#332): frozen vectors in `event_store_freeze_test.exs` pin the reloaded map per persisted class, and shapes only gain fields within a major (`docs/STABILITY.md`).
 
 ```elixir
 defmodule Skein.Runtime.EventStore do

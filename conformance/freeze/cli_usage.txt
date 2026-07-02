@@ -1,0 +1,31 @@
+Skein 0.5.0 — AI-native language for the BEAM
+
+Usage: skein <command> [options]
+
+Commands:
+  compile <file.skein>       Compile a single .skein file
+  new <project-dir>          Scaffold a new Skein project
+  build [project-dir]        Compile all .skein files in a project (default: .)
+  test [project-dir]         Run all tests in a project (default: .)
+  run [project-dir]          Start the Skein service (default: .)
+  agents [project-dir]       Create or refresh AGENTS.md (default: .)
+  mcp                        Start the MCP server (stdio, for coding agents)
+  lsp                        Start the language server (stdio, for editors)
+  trace [options]            View recent trace spans
+  completions zsh            Print the zsh completion script
+  version                    Print version
+  help                       Show this help
+
+Options:
+  new --backend <name>       LLM backend in skein.toml: anthropic (default),
+                             bedrock, openai_compatible, test
+  new --no-agents            Skip generating AGENTS.md / CLAUDE.md
+  new --no-git               Skip git init (a .gitignore is always written)
+  build --output <dir>       Write .beam files to directory
+  run --port <port>          Server port (default: 4000)
+  run --no-persist           Skip SQLite event persistence (default:
+                             events persist to .skein/events.db)
+  trace --last <n>           Number of traces (default: 10)
+  trace --kind <kind>        Filter by span kind
+  --json                     Machine-readable JSON output (compile, build,
+                             test, trace) — a versioned, documented envelope

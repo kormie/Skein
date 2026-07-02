@@ -1,0 +1,65 @@
+# On-demand LIVE run of the agent-writability benchmark (#320).
+#
+# CI and release-readiness run the benchmark in replay mode (deterministic,
+# no LLM calls — bench_replay_test.exs and the release-readiness workflow).
+# This workflow is the manual path that actually calls the Anthropic API:
+# run it to re-measure against a live model and to refresh the recordings.
+# The refreshed recordings.json is uploaded as an artifact — land it via a
+# normal PR (the replay test pins it), never auto-committed.
+
+name: Writability Bench (live)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  MIX_ENV: dev
+  OTP_VERSION: "28.1"
+  ELIXIR_VERSION: "1.19.5-otp-28"
+
+jobs:
+  bench:
+    name: Live generate-compile-fix benchmark
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Erlang & Elixir
+        uses: erlef/setup-beam@v1
+        with:
+          otp-version: ${{ env.OTP_VERSION }}
+          elixir-version: ${{ env.ELIXIR_VERSION }}
+
+      - name: Cache deps and build
+        uses: actions/cache@v5
+        with:
+          path: |
+            deps
+            _build
+          key: ${{ runner.os }}-mix-dev-${{ hashFiles('mix.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-mix-dev-
+
+      - name: Install dependencies
+        run: |
+          mix local.hex --force
+          mix local.rebar --force
+          mix deps.get
+
+      - name: Run the benchmark live
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: mix skein.bench -- --live --report bench_report.json
+
+      - name: Upload report and refreshed recordings
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: writability-bench
+          path: |
+            bench_report.json
+            conformance/writability/recordings.json

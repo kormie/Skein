@@ -105,6 +105,9 @@ defmodule Skein.MixProject do
       "skein.test": ["run -e 'Skein.CLI.Main.dispatch([\"test\" | System.argv()])'"],
       "skein.run": ["run -e 'Skein.CLI.Main.dispatch([\"run\" | System.argv()])'"],
       "skein.trace": ["run -e 'Skein.CLI.Main.dispatch([\"trace\" | System.argv()])'"],
+      # Dev/release tooling, not part of the frozen `skein` CLI surface:
+      # the agent-writability benchmark (#320), replay mode by default.
+      "skein.bench": ["run -e 'Skein.CLI.Bench.main(System.argv())'"],
       docs: ["docs"]
     ]
   end

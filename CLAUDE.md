@@ -405,6 +405,11 @@ mix format
 mix skein.compile path/to/file.skein
 mix skein.test path/to/project
 
+# Agent-writability benchmark (#320) — dev tooling, not part of the frozen
+# `skein` CLI surface. Replay mode by default (deterministic, no LLM calls);
+# `-- --live` re-records against the Anthropic backend (needs ANTHROPIC_API_KEY).
+mix skein.bench
+
 # Or the standalone binary (additionally: skein lsp, skein mcp, skein agents, skein version)
 skein build my_project --output _build/beam
 ```

@@ -1,14 +1,15 @@
 # Skein Stability and Versioning Policy
 
-**Status:** applies **from v1.0.0 onward**. v1.0.0 has **not** been released yet — v1.0.0-rc.1 was
-tagged 2026-06-12 but the 2026-06-15 roadmap reset determined GA is not imminent (see
-`docs/ROADMAP.md`). Until 1.0 tags, the language/runtime/CLI surface is still **pre-1.0 and may
-change** — notably the scenario testing surface (scenario-scoped capability environments replacing
-`given`/`via`; see `docs/design/scenario-capability-environments.md`). Analyzer/codegen soundness
-(Wave B) completed 2026-07-01, and the runtime contract work (Wave C — effect ABI, structured
-errors, schema validation, typed store, EventStore persistence) landed 2026-07-02 for v0.5.0;
-the structured-error ABI row below is already declared frozen. The remaining freeze promises
-bind once 1.0 is tagged, not before.
+**Status: FROZEN at the v1.0.0-rc.5 gate** (Wave F, 2026-07-02, #332). Every Stable surface in
+the table below is now declared frozen and guarded by an **executable gate**, not prose: the
+frozen vectors under `conformance/freeze/` (reserved + contextual keywords, the diagnostics
+registry and structured-error fields, the full effect ABI + error shapes, JSON Schema derivation
+vectors, CLI commands/flags + `skein.toml` keys + `--json` shapes, compiled-metadata classes, and
+EventStore persisted event vectors) fail the test suite on any drift, and release-readiness
+asserts them before a tag. Between rc.5 and v1.0.0 GA a frozen surface changes only for a
+release-blocking defect, with the vector diff called out in the CHANGELOG; the semver *promises*
+below bind when v1.0.0 tags. v1.0.0 has **not** been released yet — the rc soaks first (see
+`docs/ROADMAP.md`).
 
 Skein is a language, a runtime, and a toolchain that ship together as one
 versioned artifact. "Semver" therefore means more here than it does for a
@@ -44,7 +45,7 @@ Every public surface belongs to one of three classes:
 | Error and warning codes (`E####`/`W####`) | **Stable, append-only** | See "Error codes" below |
 | Structured-error ABI (effect error enum variants + their lowered tuple forms, spec §6) | **Stable** | The matchable forms are pinned by `Skein.EffectABI.error_enums/0` and the runtime ABI-matrix tests (C2/#297). New variants in minors; existing variants never change shape. The blocked-live `LiveEffectError` raise stays uncatchable — a frozen decision |
 | Compiled-module metadata (`__handlers__/0`, `__tools__/0`, `__tests__/0`, `__supervisors__/0`) | **Evolving** | Entries may gain fields in minors; existing fields never change meaning |
-| EventStore persisted event shapes (SQLite) | **Pre-stable** | The SQLite backend IS wired onto the ordinary append path, opt-in via `Persistence.enable/1` — `skein run` enables it by default (#299, landed 2026-07-02) — but the persisted/reloaded shapes freeze with the Wave F gate, not before. Replay depends on them; see "Stored traces" below |
+| EventStore persisted event shapes (SQLite) | **Stable** | Frozen at the Wave F gate (#332): the persisted-and-reloaded shapes are pinned by frozen vectors (`conformance/freeze/event_store_vectors.json` + the persistence round-trip tests). The SQLite backend rides the ordinary append path (`Persistence.enable/1`; `skein run` enables it by default, #299). Shapes gain fields in minors, never change or lose them before a major. Replay depends on them; see "Stored traces" below |
 | `skein.toml` format | **Stable** | New keys in minors; unknown keys are never errors |
 | CLI commands and flags | **Stable** | New commands/flags in minors; removals/renames major |
 | JSON Schema derivation | **Stable** | The schema derived from a given type declaration only changes in a major |

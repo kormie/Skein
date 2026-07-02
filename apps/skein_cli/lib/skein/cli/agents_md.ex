@@ -34,6 +34,16 @@ defmodule Skein.CLI.AgentsMd do
              end
            end).(File.read!(@primer_path))
 
+  @doc """
+  The embedded language primer body (markerless).
+
+  Also the generation context of the agent-writability benchmark
+  (`Skein.CLI.Bench`), so the benchmark measures writing Skein from
+  exactly the context every scaffolded project hands its agents.
+  """
+  @spec primer() :: String.t()
+  def primer, do: @primer
+
   @doc "The start marker delimiting the generated block."
   @spec start_marker() :: String.t()
   def start_marker, do: @start_marker
