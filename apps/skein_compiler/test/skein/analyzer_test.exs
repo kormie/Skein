@@ -3155,7 +3155,9 @@ defmodule Skein.AnalyzerTest do
       assert error.message =~ "metrics"
       assert error.severity == :error
       assert error.fix_hint != nil
-      assert error.fix_code != nil
+      # No mechanically-applicable snippet exists for a duplicate scoped
+      # capability; the guidance lives in fix_hint (#313).
+      assert error.fix_code == nil
     end
 
     test "two process.spawn capabilities produce E0017" do

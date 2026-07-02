@@ -50,6 +50,14 @@ defmodule Skein.ErrorSpanTest do
              "#{label}: span end before start"
     end
 
+    if error.fix_code do
+      # fix_code is "Exact code to add or change" (spec §7): applicable Skein
+      # or a template — never a prose placeholder dressed as a comment (#313).
+      refute error.fix_code =~ ~r{\A\s*//},
+             "#{label}: fix_code must be applicable Skein or nil, " <>
+               "got placeholder #{inspect(error.fix_code)}"
+    end
+
     if error.edit_kind do
       assert error.edit_kind in Error.edit_kinds(),
              "#{label}: unknown edit_kind #{inspect(error.edit_kind)}"
@@ -165,6 +173,42 @@ defmodule Skein.ErrorSpanTest do
      }
      """},
     {"analyzer type mismatch", "module M { fn f() -> Int { \"nope\" } }"},
+    {"analyzer numeric operator mismatch", "module M { fn f(a: Bool) -> Int { a + 1 } }"},
+    {"analyzer string concat", "module M { fn f(a: String, b: String) -> String { a + b } }"},
+    {"analyzer incomparable operands", "module M { fn f(s: String) -> Bool { 1 < s } }"},
+    {"analyzer non-bool logical operand", "module M { fn f() -> Bool { 1 && true } }"},
+    {"analyzer heterogeneous list", "module M { fn f() -> List[Int] { [1, \"x\"] } }"},
+    {"analyzer field access on non-record", "module M { fn f(x: Int) -> Int { x.foo } }"},
+    {"analyzer match arm type mismatch",
+     """
+     module M {
+       fn f(b: Bool) -> Int {
+         match b {
+           true -> 1
+           false -> "no"
+         }
+       }
+     }
+     """},
+    {"analyzer duplicate definition",
+     """
+     module M {
+       fn f() -> Int { 1 }
+       fn f() -> Int { 2 }
+     }
+     """},
+    {"analyzer duplicate scoped capability",
+     """
+     module M {
+       capability memory.kv("a")
+       capability memory.kv("b")
+
+       fn f() -> String {
+         memory.put("k", "v")
+         memory.get("k")!
+       }
+     }
+     """},
     {"analyzer non-bool guard",
      """
      module M {
@@ -201,6 +245,69 @@ defmodule Skein.ErrorSpanTest do
         assert errors != [], "#{label}: expected diagnostics, got none"
         Enum.each(errors, &assert_invariants(&1, label))
       end
+    end
+  end
+
+  # ------------------------------------------------------------------
+  # Placeholder-free fix_code (#313): where no applicable snippet can be
+  # derived, fix_code is nil and the guidance lives in fix_hint.
+  # ------------------------------------------------------------------
+
+  describe "fix_code placeholder removal (#313)" do
+    test "E0020 with no derivable snippet leaves fix_code nil" do
+      errors = diagnostics("module M { fn f() -> Bool { 1 && true } }")
+      error = Enum.find(errors, &(&1.code == "E0020"))
+
+      assert error, "expected an E0020 for a non-Bool logical operand"
+      assert error.fix_code == nil
+      assert is_binary(error.fix_hint)
+    end
+
+    test "string '+' keeps its real interpolation snippet" do
+      errors = diagnostics("module M { fn f(a: String, b: String) -> String { a + b } }")
+      error = Enum.find(errors, &(&1.code == "E0020"))
+
+      assert error
+      assert error.fix_code == ~s("${a}${b}")
+    end
+
+    test "the retired E0020 enrichment no longer fabricates a fix_code" do
+      # Provider return mismatch constructs E0020 with fix_code: nil; the old
+      # enrichment pass rewrote that nil into "// Change expression type to X".
+      source = """
+      module M {
+        capability tool.use(Ids.New)
+        capability uuid
+
+        tool Ids.New {
+          input { kind: String }
+          output { id: Uuid }
+          implement { Ok({ id: uuid.new() }) }
+        }
+
+        scenario "provider contract" {
+          capability tool.use(Ids.New) {
+            capability uuid {
+              implement() -> Uuid {
+                42
+              }
+            }
+          }
+          expect {
+            let r = tool.call(Ids.New, { kind: "x" })!
+            assert true
+          }
+        }
+      }
+      """
+
+      # The enrichment pass only runs when the compiler threads source lines,
+      # so this must go through the full compile path, not diagnostics/1.
+      assert {:error, errors} = Skein.Compiler.compile_string(source)
+      e0020s = Enum.filter(errors, &(&1.code == "E0020"))
+
+      assert e0020s != [], "expected a provider-return E0020"
+      assert Enum.all?(e0020s, &(&1.fix_code == nil))
     end
   end
 

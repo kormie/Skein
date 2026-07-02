@@ -639,27 +639,10 @@ defmodule Skein.Analyzer do
   defp enrich_errors(errors, %{source_lines: nil}), do: errors
 
   defp enrich_errors(errors, %{source_lines: source_lines}) do
-    Enum.map(errors, fn error ->
-      error
-      |> enrich_error_context(source_lines)
-      |> enrich_fix_code()
-    end)
+    Enum.map(errors, &enrich_error_context(&1, source_lines))
   end
 
   defp enrich_errors(errors, _env), do: errors
-
-  defp enrich_fix_code(%Error{code: "E0020", fix_code: nil} = error) do
-    %{error | fix_code: extract_type_mismatch_fix(error.message)}
-  end
-
-  defp enrich_fix_code(error), do: error
-
-  defp extract_type_mismatch_fix(message) do
-    case Regex.run(~r/expected (\w+)/i, message) do
-      [_, expected_type] -> "// Change expression type to #{expected_type}"
-      _ -> "// Fix the type mismatch"
-    end
-  end
 
   defp filter_result(errors, ast, env) do
     errors = enrich_errors(errors, env)
@@ -2326,11 +2309,7 @@ defmodule Skein.Analyzer do
                   "Operator '#{op}' requires numeric operands, got #{format_type(left_type)} and #{format_type(right_type)}",
                 location: location_from_meta(meta, env.file),
                 fix_hint: fix_hint,
-                fix_code:
-                  if(string_concat?,
-                    do: ~s("${a}${b}"),
-                    else: "// Convert both operands of '#{op}' to Int or Float"
-                  )
+                fix_code: if(string_concat?, do: ~s("${a}${b}"), else: nil)
               }
             ]
         }
@@ -2371,7 +2350,7 @@ defmodule Skein.Analyzer do
                  "Operator '#{op}' cannot compare #{format_type(left_type)} and #{format_type(right_type)}",
                location: location_from_meta(meta, env.file),
                fix_hint: "Ensure operands have compatible types",
-               fix_code: "// Compare values of the same type with '#{op}'"
+               fix_code: nil
              }
            ]}
     end
@@ -2396,7 +2375,7 @@ defmodule Skein.Analyzer do
               message: "Operator '#{op}' requires Bool operands, got #{format_type(left_type)}",
               location: location_from_meta(meta, env.file),
               fix_hint: "Ensure both operands are Bool",
-              fix_code: "// Use Bool operands with '#{op}'"
+              fix_code: nil
             }
           ]
 
@@ -2408,7 +2387,7 @@ defmodule Skein.Analyzer do
               message: "Operator '#{op}' requires Bool operands, got #{format_type(right_type)}",
               location: location_from_meta(meta, env.file),
               fix_hint: "Ensure both operands are Bool",
-              fix_code: "// Use Bool operands with '#{op}'"
+              fix_code: nil
             }
           ]
 
@@ -2434,7 +2413,7 @@ defmodule Skein.Analyzer do
             message: "Operator '!' requires Bool operand, got #{format_type(operand_type)}",
             location: location_from_meta(meta, env.file),
             fix_hint: "Ensure the operand is Bool",
-            fix_code: "// Use a Bool operand with '!'"
+            fix_code: nil
           }
         ]
       end
@@ -2768,7 +2747,7 @@ defmodule Skein.Analyzer do
                           "Type mismatch in call to '#{mod_name}.#{fn_name}': expected #{format_type(expected)}, got #{format_type(actual)}",
                         location: location_from_meta(meta, env.file),
                         fix_hint: "Pass a value of type #{format_type(expected)}",
-                        fix_code: "// Pass a #{format_type(expected)} value"
+                        fix_code: nil
                       }
                     ]
                   else
@@ -3088,7 +3067,7 @@ defmodule Skein.Analyzer do
           location: location_from_meta(meta, env.file),
           fix_hint:
             "Every element of a List[#{format_type(canonical)}] must be a #{format_type(canonical)}",
-          fix_code: "// Use elements that are all #{format_type(canonical)}"
+          fix_code: nil
         }
       end)
 
@@ -3355,7 +3334,7 @@ defmodule Skein.Analyzer do
                 message: "Cannot access field '#{field}' on type #{format_type(other)}",
                 location: location_from_meta(meta, env.file),
                 fix_hint: "Field access is only supported on user-defined types",
-                fix_code: "// Access fields only on user-defined types"
+                fix_code: nil
               }
             ]
         }
@@ -4062,7 +4041,7 @@ defmodule Skein.Analyzer do
                        "Match arm type mismatch: expected #{format_type(acc_type)}, got #{format_type(t)}",
                      location: location_from_meta(meta, env.file),
                      fix_hint: "Ensure all match arms return the same type",
-                     fix_code: "// Return #{format_type(acc_type)} from this arm"
+                     fix_code: nil
                    }
                  ]}
 
@@ -5224,7 +5203,7 @@ defmodule Skein.Analyzer do
                 "Tool names must be unique within a module.",
             location: location_from_meta(cap_meta, env.file),
             fix_hint: "Rename one of the tools to avoid the naming conflict",
-            fix_code: "// Rename one of: #{Enum.join(full_names, ", ")}"
+            fix_code: nil
           }
         ]
       else
@@ -5268,7 +5247,7 @@ defmodule Skein.Analyzer do
             fix_hint:
               "Remove this declaration or merge its uses into " <>
                 "#{kind}(#{inspect(first_label)})",
-            fix_code: "// Remove: capability #{kind}(#{inspect(scoped_capability_label(cap))})"
+            fix_code: nil
           }
         end)
     end)
@@ -5770,7 +5749,7 @@ defmodule Skein.Analyzer do
             message: "Duplicate definition: #{kind} '#{name}' is already defined in this scope",
             location: location_from_meta(meta, env.file),
             fix_hint: "Rename this #{kind} or remove the duplicate definition",
-            fix_code: "// Remove or rename the duplicate #{kind} '#{name}'"
+            fix_code: nil
           }
         end)
       else

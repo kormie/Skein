@@ -2,10 +2,12 @@ defmodule Skein.AnalyzerFixCodeTest do
   @moduledoc """
   Structured-error contract sweep for the analyzer.
 
-  CLAUDE.md design constraint #5: every compiler error must carry both
-  `fix_hint` and `fix_code`. Each bad program below triggers a different
-  analyzer error path; the sweep asserts the contract holds for every
-  error and warning produced.
+  CLAUDE.md design constraint #5: every compiler error must carry a
+  `fix_hint`. `fix_code` is "Exact code to add or change" (spec §7) — it is
+  present when a concrete snippet or template can be derived and `nil`
+  otherwise (#313); it is never a prose placeholder dressed as a comment.
+  Each bad program below triggers a different analyzer error path; the
+  sweep asserts the contract holds for every error and warning produced.
   """
   use ExUnit.Case, async: true
 
@@ -284,7 +286,7 @@ defmodule Skein.AnalyzerFixCodeTest do
   end
 
   for {description, source} <- @bad_programs ++ @agent_programs do
-    test "#{description}: every error carries fix_hint and fix_code" do
+    test "#{description}: every error carries fix_hint and a non-placeholder fix_code" do
       errors = analyze_errors(unquote(source))
 
       assert errors != [], "expected at least one error/warning from this program"
@@ -293,8 +295,11 @@ defmodule Skein.AnalyzerFixCodeTest do
         assert error.fix_hint != nil,
                "#{error.code} '#{error.message}' is missing fix_hint"
 
-        assert error.fix_code != nil,
-               "#{error.code} '#{error.message}' is missing fix_code"
+        if error.fix_code do
+          refute error.fix_code =~ ~r{\A\s*//},
+                 "#{error.code} '#{error.message}' carries a placeholder fix_code: " <>
+                   inspect(error.fix_code)
+        end
       end
     end
   end
