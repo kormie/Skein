@@ -20,7 +20,7 @@ Skein is designed around six ranked principles:
 
 ## What Works Today
 
-The compilation pipeline is fully operational. You can write `.skein` files with modules, functions, types, tools, supervisors, HTTP/queue/schedule handlers, store operations, and agents — compile them to BEAM bytecode, and run them on a Bandit + Plug HTTP server. Store operations can be backed by ETS (default) or Ecto/SQLite for real database persistence. The CLI tooling provides project scaffolding, building, testing, running, and trace inspection. Test constructs include `test`, `scenario` (with `given`/`expect`), and `golden` trace tests with a deterministic replay engine.
+The compilation pipeline is fully operational. You can write `.skein` files with modules, functions, types, tools, supervisors, HTTP/queue/schedule handlers, store operations, and agents — compile them to BEAM bytecode, and run them on a Bandit + Plug HTTP server. Store operations run against the ETS-backed runtime store (typed/database-backed tables are roadmap item C5, v0.5.0). The CLI tooling provides project scaffolding, building, testing, running, and trace inspection. Test constructs include `test`, `scenario` (with `given`/`expect`), and `golden` trace tests with a deterministic replay engine.
 
 **Language constructs:**
 
@@ -118,7 +118,8 @@ See the [Editor Support](/Skein/editor/vscode/) docs for setup instructions.
 ## What's Not Built Yet
 
 - Agent pool supervision (`AgentPool` with max concurrency)
-- Tool policies (rate limits, approval workflows)
+
+Tool `policy` blocks (rate limits, approval workflows) were **cut from the language** (#319) — runtime policy enforcement is out of the language surface, not forthcoming.
 
 See the [Roadmap](/Skein/roadmap/overview/) for the full plan.
 

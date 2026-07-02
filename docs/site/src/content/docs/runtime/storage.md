@@ -1,15 +1,23 @@
 ---
 title: Storage
-description: How Skein's store.table operations map to Ecto and SQLite at runtime, including schema generation, migrations, and queries.
+description: How Skein's store.table operations execute against the ETS-backed runtime store, and the status of the unwired Ecto/SQLite typed-table path.
 ---
 
 ## Overview
 
-Skein provides typed database storage through the `store.table` capability. At compile time, type declarations generate database schemas. At runtime, `store.*` operations execute real database queries via Ecto against SQLite3.
+Skein provides storage through the `store.table` capability. At runtime, every compiled `store.*` call executes against `Skein.Runtime.Store` — an ETS-backed key-value store (a single `:skein_store` table keyed by string table names) with capability enforcement and tracing. That is the only storage path compiled programs hit today.
+
+An Ecto/SQLite typed-table layer also exists in the codebase (`StoreEcto`, `EctoSchema`, `MigrationGen`, `Repo`), but it is **not wired into compilation or boot** — nothing registers schemas or runs migrations for compiled programs, and there is no backend-selection mechanism. It is library code exercised only by its own tests. Typed store tables are roadmap item C5 ([#255](https://github.com/kormie/Skein/issues/255)), targeted at v0.5.0.
 
 ## Architecture
 
-The storage system has four runtime modules:
+The live store module:
+
+| Module | Purpose |
+|--------|---------|
+| `Skein.Runtime.Store` | ETS-backed CRUD operations (get, put, delete, query) with capability enforcement and tracing — the target of every compiled `store.*` call |
+
+The unwired Ecto layer (dead library code today, the intended basis for C5 typed tables):
 
 | Module | Purpose |
 |--------|---------|
@@ -18,11 +26,13 @@ The storage system has four runtime modules:
 | `Skein.Runtime.MigrationGen` | Generates and executes Ecto migrations to create/modify tables |
 | `Skein.Runtime.Repo` | Ecto Repo configured for SQLite3 via `ecto_sqlite3` |
 
-## How It Works
+## The Unwired Ecto Path
+
+The sections below describe what the Ecto modules do when called directly (as their tests do). Compiled Skein programs do **not** invoke any of this today.
 
 ### 1. Schema Generation
 
-When a Skein module declares `capability store.table("users")` with a `type User { ... }`, the compiler extracts the type's fields and annotations. At runtime, `EctoSchema.build_schema/2` creates a dynamic Ecto schema module.
+Given a table name and field descriptions (the shape the compiler could extract from a `type` declaration), `EctoSchema.build_schema/2` creates a dynamic Ecto schema module.
 
 ```elixir
 fields = [
@@ -60,10 +70,10 @@ fields = [
 
 ### 3. CRUD Operations
 
-`StoreEcto` provides the standard `store.*` API:
+`StoreEcto` mirrors the `store.*` API, but requires manual schema registration — nothing does this automatically for compiled programs:
 
 ```elixir
-# Register the schema (done automatically during compilation)
+# Register the schema (manual — only the StoreEcto tests do this today)
 StoreEcto.register_schema("users", schema_mod)
 
 # Insert or upsert a record
@@ -131,13 +141,13 @@ call 'Elixir.Skein.Runtime.Store':'get'("users", Id, Capabilities)
 
 Where `Capabilities` is a literal list built from the module's `capability` declarations at compile time.
 
-## ETS Backend
+## The ETS Store
 
-For testing and simple use cases, `Skein.Runtime.Store` provides an ETS-backed in-memory store with the same API. This is the default backend and requires no database setup.
+`Skein.Runtime.Store` is the store: an in-memory, ETS-backed key-value implementation that every compiled `store.*` call targets. It requires no database setup. There is no backend-selection or dispatch mechanism — compiled code calls `Skein.Runtime.Store` directly, so data does not survive a restart. Persistent, typed tables are the C5 roadmap work ([#255](https://github.com/kormie/Skein/issues/255), v0.5.0).
 
 ## Configuration
 
-The Ecto backend uses SQLite3 -- the `ecto_sqlite3` adapter is hardcoded in `Skein.Runtime.Repo` at compile time, and `postgrex` is not a dependency. Connection options (database path, pool size) come from standard Ecto config:
+The (unwired) Ecto layer uses SQLite3 -- the `ecto_sqlite3` adapter is hardcoded in `Skein.Runtime.Repo` at compile time, and `postgrex` is not a dependency. If you start the Repo yourself, connection options (database path, pool size) come from standard Ecto config:
 
 ```elixir
 # Skein.Runtime.Repo configuration
@@ -146,4 +156,4 @@ config :skein_runtime, Skein.Runtime.Repo,
   pool_size: 5
 ```
 
-Other database adapters (e.g. Postgres) are a possible future direction; today, SQLite3 is the storage backend.
+Other database adapters (e.g. Postgres) are a possible future direction; SQLite3 is the adapter the C5 typed-table work would build on.

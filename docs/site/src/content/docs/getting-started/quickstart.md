@@ -14,7 +14,7 @@ curl -fsSL https://kormie.github.io/Skein/install.sh | sh
 skein version  # → skein 0.4.0
 ```
 
-Pin a version with `SKEIN_VERSION=1.0.0-rc.3`, or change the destination with
+Pin a version with `SKEIN_VERSION=0.4.0`, or change the destination with
 `SKEIN_BIN_DIR=/usr/local/bin`. The script is
 [`install.sh`](https://github.com/kormie/Skein/blob/main/install.sh) if you
 want to read it first.
@@ -181,6 +181,8 @@ Options:
   run --port <port>          Server port (default: 4000)
   trace --last <n>           Number of traces (default: 10)
   trace --kind <kind>        Filter by span kind
+  --json                     Machine-readable JSON output (compile, build,
+                             test, trace) — a versioned, documented envelope
 ```
 
 ## Building from Source
