@@ -16,7 +16,7 @@ This is the forward-looking work list for Skein. Items are ordered by impact —
 | **v1.0.0-rc.2 — True release candidate** | Wave F — freeze + RC; cut only when all blockers are green; no feature work | gated |
 | **v1.0.0 Release** | GA after rc.2 soaks | gated |
 
-Milestones live in `.github/milestones.json` (synced by `.github/workflows/milestones.yml`). Dogfood conformance (Wave D) is a **continuous gate** that begins in Wave A and stays green through every later wave — not a final cleanup pass. Note: `mix.exs` is at `1.0.0-rc.4` — a holdover from the pre-reset RC race; the next tag should be `0.4.0` (a version bump is release mechanics, tracked separately, and intentionally not part of this planning re-baseline).
+Milestones live in `.github/milestones.json` (synced by `.github/workflows/milestones.yml`). Dogfood conformance (Wave D) is a **continuous gate** that begins in Wave A and stays green through every later wave — not a final cleanup pass. Note: the version is `0.4.0` (the stale `1.0.0-rc.4` holdover was corrected when the v0.4.0 release was cut).
 
 ### The v1.0 thesis
 

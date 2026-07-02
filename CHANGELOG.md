@@ -35,7 +35,10 @@ audit-verified), its residue, and the pre-freeze surface cuts.
   String` is a compile error (build strings with interpolation);
   `uuid.new()` / `instant.now()` are capability-gated effects — ambient
   `Uuid.new()` is gone; non-exhaustive matches on closed types are
-  errors.
+  errors; the type lattice is invariant (#259). **Breaking:**
+  `List.reduce` now calls its callback as `f(acc, element)`, matching
+  spec §5.4 (it previously passed the arguments reversed). `emit` is
+  agent-only (new E0039) — module code records events with `event.log`.
 - **Interpolation is typed:** `${...}` renders exactly the canonical
   scalars (`String`, `Int`, `Float`, `Bool`, `Uuid`, `Instant`); records,
   fn references, `Option`/`Result`, enums, and `Duration` are compile

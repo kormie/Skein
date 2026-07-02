@@ -1,0 +1,10 @@
+-- expect: E0039
+-- #328 release-readiness blocker: `emit` outside an agent handler used to
+-- crash codegen with an unstructured FunctionClauseError. It is an
+-- agent-only construct and must be a structured error at the site.
+module EmitOutsideAgent {
+  fn f() -> String {
+    emit Ping { note: "hi" }
+    "ok"
+  }
+}

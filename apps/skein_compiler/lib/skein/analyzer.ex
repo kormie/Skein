@@ -49,6 +49,7 @@ defmodule Skein.Analyzer do
   - E0036: `stop()` outside agent
   - E0037: Unverified type at a declared boundary (`:unknown` or an incompatible branch widening crossing a declared fn return)
   - E0038: Provider contract violation (a scenario `implement` block whose signature does not match its capability's provider contract, or under a capability with no provider contract)
+  - E0039: `emit` outside agent (agent-only construct; module code records events with `event.log`)
 
   ### Supervisor (E004x)
   - E0040: Invalid supervisor strategy
@@ -6069,6 +6070,7 @@ defmodule Skein.Analyzer do
     |> Enum.flat_map(fn
       %AST.Fn{body: body} -> collect_agent_only_calls(body)
       %AST.Handler{body: body} -> collect_agent_only_calls(body)
+      %AST.ToolDecl{implement: body} -> collect_agent_only_calls(body)
       _ -> []
     end)
     |> Enum.map(fn {kind, meta} -> agent_only_call_error(kind, meta, env) end)
@@ -6109,9 +6111,23 @@ defmodule Skein.Analyzer do
     }
   end
 
+  defp agent_only_call_error(:emit, meta, env) do
+    %Error{
+      code: "E0039",
+      severity: :error,
+      message: "emit can only be used in agent handlers, not in module functions or handlers",
+      location: location_from_meta(meta, env.file),
+      fix_hint:
+        "Move the emit into an agent handler (on start/on phase); " <>
+          "outside agents, record events with event.log(name, data)",
+      fix_code: nil
+    }
+  end
+
   defp collect_agent_only_calls(%AST.Transition{meta: meta}), do: [{:transition, meta}]
   defp collect_agent_only_calls(%AST.Suspend{meta: meta}), do: [{:suspend, meta}]
   defp collect_agent_only_calls(%AST.Stop{meta: meta}), do: [{:stop, meta}]
+  defp collect_agent_only_calls(%AST.Emit{meta: meta}), do: [{:emit, meta}]
 
   defp collect_agent_only_calls(%AST.Block{expressions: exprs}),
     do: Enum.flat_map(exprs, &collect_agent_only_calls/1)
