@@ -1,19 +1,33 @@
-# On-demand LIVE run of the agent-writability benchmark (#320).
+# LIVE runs of the agent-writability benchmark (#320) — scheduled + on-demand.
 #
 # CI and release-readiness run the benchmark in replay mode (deterministic,
 # no LLM calls — bench_replay_test.exs and the release-readiness workflow).
-# This workflow is the manual path that actually calls the Anthropic API:
-# run it to re-measure against a live model and to refresh the recordings.
-# The refreshed recordings.json is uploaded as an artifact — land it via a
-# normal PR (the replay test pins it), never auto-committed.
+# This workflow is the path that actually calls the Anthropic API: it
+# re-measures against a live model, refreshes recordings/history/chart,
+# and OPENS A PR with the result. Nothing is committed to main directly —
+# the replay pin (bench_replay_test.exs) validates every refresh on its
+# own PR before it lands, and the trend line grows one point per merge.
+#
+# Requires the ANTHROPIC_API_KEY repo secret and the repo setting
+# "Allow GitHub Actions to create and approve pull requests"
+# (Settings → Actions → General → Workflow permissions).
 
 name: Writability Bench (live)
 
 on:
   workflow_dispatch:
+  schedule:
+    # Mondays and Thursdays, 09:00 UTC. Secrets are never exposed to fork
+    # PRs on these triggers. Dial the cadence here after the rc.5 soak.
+    - cron: "0 9 * * 1,4"
 
 permissions:
-  contents: read
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: writability-bench-live
+  cancel-in-progress: false
 
 env:
   MIX_ENV: dev
@@ -63,3 +77,42 @@ jobs:
           path: |
             bench_report.json
             conformance/writability/recordings.json
+            conformance/writability/history.jsonl
+            docs/site/public/writability-history.svg
+
+      # Land the refresh through a normal PR: the branch carries only the
+      # benchmark outputs, and the PR's own CI (bench_replay_test.exs)
+      # proves the new recordings replay deterministically before merge.
+      - name: Open a refresh PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- conformance/writability docs/site/public/writability-history.svg; then
+            echo "Benchmark outputs unchanged — nothing to land."
+            exit 0
+          fi
+
+          SUMMARY="$(jq -r '.summary | "\(.green)/\(.tasks) green, \(.first_try)/\(.tasks) first-try, mean iterations \(.mean_iterations_to_green)"' bench_report.json)"
+          BRANCH="bench/live-$(date -u +%Y%m%d-%H%M%S)"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$BRANCH"
+          git add conformance/writability docs/site/public/writability-history.svg
+          git commit -m "[bench] live writability run: $SUMMARY"
+          git push -u origin "$BRANCH"
+
+          {
+            echo "Automated live run of the agent-writability benchmark (#320)."
+            echo
+            echo "**Result: $SUMMARY** (model: $(jq -r '.model' bench_report.json), trigger: ${{ github.event_name }})"
+            echo
+            echo "Refreshes \`conformance/writability/recordings.json\` + \`history.jsonl\` and regenerates the trend chart. This PR's CI replays the new recordings deterministically (\`bench_replay_test.exs\`) — a green run here is the proof the refresh is sound."
+            echo
+            echo "Full report in the \`writability-bench\` artifact on the triggering run."
+          } > pr_body.md
+
+          gh pr create --base main --head "$BRANCH" \
+            --title "[bench] Live writability refresh: $SUMMARY" \
+            --body-file pr_body.md
