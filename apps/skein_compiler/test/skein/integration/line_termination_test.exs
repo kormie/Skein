@@ -7,6 +7,10 @@ defmodule Skein.Integration.LineTerminationTest do
   existed solely to turn well-intentioned two-line programs into misleading
   rejections. Same-line calls, multi-line argument lists, and the
   `expr[T](args)` form are unaffected.
+
+  The Skein module name (`LineTermM`) must stay unique to this file:
+  this async suite runs compiled code, and a shared name gets purge-killed
+  by other suites' `:code.load_binary` reloads (#338).
   """
   use ExUnit.Case, async: true
 
@@ -16,7 +20,7 @@ defmodule Skein.Integration.LineTerminationTest do
     test "a paren group on its own line after a let is a new expression" do
       assert {:module, mod} =
                Compiler.compile_string("""
-               module M {
+               module LineTermM {
                  fn f() -> Int {
                    let _s = "not a callee"
                    (1 + 2) * 10
@@ -30,7 +34,7 @@ defmodule Skein.Integration.LineTerminationTest do
     test "a paren group on its own line after a call result is a new expression" do
       assert {:module, mod} =
                Compiler.compile_string("""
-               module M {
+               module LineTermM {
                  fn one() -> Int { 1 }
                  fn f() -> Int {
                    let _x = one()
@@ -45,7 +49,7 @@ defmodule Skein.Integration.LineTerminationTest do
     test "a fn name followed by a newline paren group is NOT a call (bare-fn error, not a misparse)" do
       assert {:error, errors} =
                Compiler.compile_string("""
-               module M {
+               module LineTermM {
                  fn g() -> Int { 1 }
                  fn f() -> Int {
                    let _x = g
@@ -65,7 +69,7 @@ defmodule Skein.Integration.LineTerminationTest do
     test "plain, dotted, and unwrapped calls still parse as calls" do
       assert {:module, mod} =
                Compiler.compile_string("""
-               module M {
+               module LineTermM {
                  fn double(n: Int) -> Int { n * 2 }
                  fn half(n: Int) -> Result[Int, String] { Ok(n / 2) }
                  fn f() -> Int {
@@ -82,7 +86,7 @@ defmodule Skein.Integration.LineTerminationTest do
     test "a call may still spread its ARGUMENTS across lines" do
       assert {:module, mod} =
                Compiler.compile_string("""
-               module M {
+               module LineTermM {
                  fn add(a: Int, b: Int) -> Int { a + b }
                  fn f() -> Int {
                    add(
@@ -100,7 +104,7 @@ defmodule Skein.Integration.LineTerminationTest do
       # req.json[T] inside a handler — the [T](...) production.
       assert {:module, _} =
                Compiler.compile_string("""
-               module M {
+               module LineTermM {
                  capability http.in
                  type User { name: String }
                  handler http POST "/u" (req) -> {

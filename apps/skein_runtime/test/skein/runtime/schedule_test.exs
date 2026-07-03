@@ -4,6 +4,10 @@ defmodule Skein.Runtime.ScheduleTest do
   alias Skein.Runtime.Schedule
 
   setup do
+    # Reset BEFORE each test as well as after: the Schedule registry is
+    # app-global and other suites can leave registrations behind. The
+    # list_schedules/0 emptiness test depends on this pre-test reset (#338).
+    Schedule.reset_all()
     on_exit(fn -> Schedule.reset_all() end)
   end
 

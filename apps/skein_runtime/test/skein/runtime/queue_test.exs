@@ -4,7 +4,10 @@ defmodule Skein.Runtime.QueueTest do
   alias Skein.Runtime.Queue
 
   setup do
-    # Clean up any leftover queues between tests
+    # Reset BEFORE each test as well as after: the Queue registry is
+    # app-global and other suites can leave registrations behind. The
+    # list_queues/0 emptiness test depends on this pre-test reset (#338).
+    Queue.reset_all()
     on_exit(fn -> Queue.reset_all() end)
   end
 

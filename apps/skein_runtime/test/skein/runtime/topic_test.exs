@@ -4,7 +4,11 @@ defmodule Skein.Runtime.TopicTest do
   alias Skein.Runtime.Topic
 
   setup do
-    # Clean up any leftover topics between tests
+    # Reset BEFORE each test as well as after: the Topic registry is
+    # app-global, and other suites (e.g. compiled modules mounted by
+    # ServerTest) can leave subscriptions behind. The list_topics/0
+    # emptiness test below depends on this pre-test reset (#338).
+    Topic.reset_all()
     on_exit(fn -> Topic.reset_all() end)
   end
 
