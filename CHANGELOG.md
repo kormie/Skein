@@ -1,5 +1,83 @@
 # Changelog
 
+## v1.0.0-rc.5 (2026-07-02)
+
+**The true release candidate.** The Wave F stability freeze: every surface
+`docs/STABILITY.md` promises is now declared frozen and guarded by an
+executable gate, agent-writability is measured rather than asserted, and the
+release-blocking contract mismatches found on the way are fixed. From here the
+candidate soaks; the semver promises bind when v1.0.0 tags.
+
+### Stability Freeze (Wave F, #332)
+
+- Frozen vectors under `conformance/freeze/` with exact-equality drift gates,
+  regenerated only deliberately (`FREEZE_REGEN=1`): reserved + contextual
+  keywords (`Skein.Lexer.keywords/0` is new; spec §2.3 is drift-tested in both
+  directions), the diagnostics registry (39 codes, append-only from
+  E0044/W0005, plus the structured-error field set and `edit_kind` inventory),
+  the full effect ABI (every effect/store method signature, provider contract,
+  and error enum), JSON Schema derivation vectors for a canonical declaration
+  set, the CLI surface (help text + zsh completions verbatim, `--json` schema
+  versions, `skein.toml` keys), compiled-module metadata classes, EventStore
+  persisted event shapes (Pre-stable → **Stable**), and the dogfood pins.
+- Spec §2.3's contextual-keyword inventory corrected to the complete
+  parser-matched set (gains `start`/`phase`/`from`/`trace`/`per`/`max_restarts`,
+  drops `replay`, which no construct recognizes); `Json` added to the §4.1
+  built-in types table; §6.2's store capability header shows the typed two-arg
+  form.
+- `docs/STABILITY.md`, the docs-site stability page, and the spec
+  banner/footer flipped from "nothing is frozen yet" to the frozen-at-rc.5
+  state; release-readiness runs the freeze suites as a mechanical gate.
+
+### Agent-Writability Benchmark (#320)
+
+- `mix skein.bench` runs a 12-task generate-compile-fix loop spanning the
+  language surface: generate a module from the scaffolded AGENTS.md primer,
+  compile, mechanically apply machine-applicable fixes
+  (`Skein.Error.Edit.apply_fix/2`), feed the structured diagnostics back, and
+  iterate to green. The report carries first-try compile rate, mean
+  iterations-to-green, mechanical-fix work, and non-converging diagnostics.
+- Replay mode (the default) re-runs checked-in recordings
+  (`conformance/writability/recordings.json`) deterministically — pinned on
+  every PR by `bench_replay_test.exs` and reported by release-readiness; live
+  runs (`-- --live`, or the on-demand Writability Bench GitHub workflow)
+  re-measure and refresh the recordings, append to the run history, and
+  regenerate the trend chart embedded in the README and the new
+  `reference/writability-benchmark` docs page.
+- Measured (live, claude-opus-4-8): 12/12 tasks green, 9/12 first-try, mean
+  1.17 iterations-to-green — after fixing the diagnostics defects the first
+  run exposed.
+
+### Language & Compiler
+
+- Benchmark-found diagnostics fixes (#336): `Some(...)`/`None` in construction
+  position teach the bare-inner-value/omit-the-field rule instead of a wrong
+  machine-applicable variant replacement; unknown-constructor suggestions are
+  levenshtein-gated; `input.<field>` in tool `implement` bodies names the
+  in-scope input fields; E0029 and the scenario-body E0001 steer to the
+  `expect { ... }` block with valid Skein fix templates.
+- Typed store tables key rows by the declared `@primary` field (#340): codegen
+  threads the record type's primary-field name into every compiled `put`
+  alongside the C5 schema (`Store.put/5`), so a `sku: String @primary` table
+  round-trips instead of failing at runtime on a hard-coded `id` lookup.
+
+### Runtime
+
+- `llm.stream` verified against the live Anthropic backend (#334): the
+  dogfood-reported 120s timeout does not reproduce — the original hang was
+  fixed by the `AsyncBody` receive-loop rework and is regression-pinned by the
+  stub SSE tests. Live runs stay manual; CI remains stub/replay only.
+
+### Docs
+
+- Release-readiness sweep corrections across the README, CONTRIBUTING, spec,
+  ARCHITECTURE, and the docs site: current release posture (v0.5.0 shipped,
+  rc.5 gate active), the frozen-inventory keyword lists, E0021/E0024 severity,
+  the full annotation and LLM-effect inventories, honest ETS-only store
+  language, the real `skein test` output format, `uuid`/`instant` capability
+  rows, `:gen_statem` (not GenStateMachine) agent runtime wording, and the
+  agent primer's tool-input/interpolation guidance.
+
 ## v0.5.0 (2026-07-02)
 
 **Runtime Contract & Dogfood.** The complete **v0.5.0 — Runtime Contract &

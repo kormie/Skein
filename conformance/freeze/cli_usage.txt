@@ -1,4 +1,4 @@
-Skein 0.5.0 — AI-native language for the BEAM
+Skein <version> — AI-native language for the BEAM
 
 Usage: skein <command> [options]
 
