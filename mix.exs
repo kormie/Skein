@@ -4,7 +4,7 @@ defmodule Skein.MixProject do
   def project do
     [
       apps_path: "apps",
-      version: "0.5.0",
+      version: "1.0.0-rc.5",
       start_permanent: Mix.env() == :prod,
       deps: deps(),
       aliases: aliases(),

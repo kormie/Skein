@@ -278,7 +278,8 @@ end
 # All tests including properties
 mix test
 
-# Just property tests
+# Just the StreamData property tests (the `property` macro tags these;
+# the PropCheck stateful suites are plain tests and are NOT selected here)
 mix test --only property
 
 # With more iterations (default is 100)

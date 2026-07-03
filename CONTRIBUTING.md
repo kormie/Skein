@@ -1,6 +1,6 @@
 # Contributing to Skein
 
-Skein is **pre-1.0**, in active development toward a smaller, stronger first stable release (see the [roadmap reset](docs/ROADMAP.md), 2026-06-15). v1.0.0-rc.1 was tagged but **GA is not imminent** and the spec is **not** finally frozen — the soundness, scenario-testing (capability environments), observability, and conformance work in flight may still change surface. Please report anything that contradicts the spec or docs. This page covers the
+Skein is **pre-1.0** at v0.5.0 (Runtime Contract & Dogfood, shipped 2026-07-02; see the [roadmap](docs/ROADMAP.md)). The spec surface is **frozen at the v1.0.0-rc.5 gate** (Wave F/#332) with executable drift gates — the frozen vectors under `conformance/freeze/` plus the registry drift tests — and changes only for release-blocking defects until GA, which follows after the rc soaks and is **not imminent**. Please report anything that contradicts the spec or docs. This page covers the
 workflow; for environment setup, building, and running tests, see the
 [development guide](https://kormie.github.io/Skein/contributing/development/).
 

@@ -99,15 +99,14 @@ The test runner:
 4. Runs each test function and reports aggregate results
 
 ```
-Running 5 tests across 3 files...
-  PASS  add returns correct sum
-  PASS  double works
-  PASS  greet returns greeting
-  FAIL  wrong assertion
-  PASS  classify positive
-
-4 passed, 1 failed, 0 compile errors
+Tests: 4 passed, 1 failed (5 total)
+  FAIL: wrong assertion (src/math.skein:12) — Assertion failed: expected 5, got 4
 ```
+
+Passing tests print no per-test lines; failures go to stderr with their
+location and error, files that fail to compile are listed as
+`N file(s) failed to compile and were not tested:` followed by their
+diagnostics, and the exit code is non-zero when anything failed.
 
 ### Programmatically
 

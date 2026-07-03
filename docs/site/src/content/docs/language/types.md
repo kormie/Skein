@@ -176,9 +176,9 @@ Type declarations automatically generate JSON schemas via `Skein.CodeGen.SchemaG
 Skein.CodeGen.SchemaGen.to_json_schema(%AST.TypeDecl{
   name: "User",
   fields: [
-    %AST.Field{name: "id", type: %AST.TypeRef{name: "Uuid"}, annotations: []},
-    %AST.Field{name: "email", type: %AST.TypeRef{name: "String"}, annotations: []},
-    %AST.Field{name: "name", type: %AST.TypeRef{name: "String"}, annotations: []}
+    %AST.Field{name: "id", type: %AST.TypeRef{name: "Uuid", params: []}, annotations: []},
+    %AST.Field{name: "email", type: %AST.TypeRef{name: "String", params: []}, annotations: []},
+    %AST.Field{name: "name", type: %AST.TypeRef{name: "String", params: []}, annotations: []}
   ]
 })
 ```

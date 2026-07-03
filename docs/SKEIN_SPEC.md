@@ -557,6 +557,7 @@ spec change.
 | `Result[T, E]` | Ok(T) or Err(E) | — (not serialized directly) |
 | `List[T]` | Ordered list | `{"type": "array", "items": {...}}` |
 | `Map[K, V]` | Key-value map | `{"type": "object"}` |
+| `Json` | Arbitrary JSON value (boundary seam; decode with `req.json[T]`/`llm.json[T]` before typed use) | `{}` (permits anything) |
 | `Set[T]` | Unique set | `{"type": "array", "uniqueItems": true}` |
 
 ### 4.2 Constraint Annotations
@@ -783,7 +784,7 @@ wildcard.
 ### 6.2 Store
 
 ```
--- Requires: capability store.table(name)
+-- Requires: capability store.table(name, RecordType)
 store.<table>.get(id: Uuid) -> Result[T, StoreError]
 store.<table>.put(record: T) -> Result[T, StoreError]
 store.<table>.delete(id: Uuid) -> Result[Uuid, StoreError]
@@ -1380,9 +1381,9 @@ with `tool.call` — there is no cross-module function access to test against.
 
 ---
 
-*End of Skein Language Specification — v1.0 draft (pre-release; not yet frozen).*
+*End of Skein Language Specification — v1.0 release candidate (frozen at the v1.0.0-rc.5 gate, Wave F/#332, 2026-07-02).*
 
-> The 1.0 spec is **not** finally frozen. v1.0.0-rc.1 was tagged but the 2026-06-15 roadmap reset
-> determined GA is not imminent; the scenario-testing surface (§3.10/§8.5), the fate of `given`,
-> and the soundness fixes in flight may still change before the freeze. See
+> The surfaces this spec describes are frozen with executable drift gates (the registry drift
+> tests plus the frozen vectors under `conformance/freeze/`); between rc.5 and GA they change
+> only for release-blocking defects. The semver promises bind when v1.0.0 tags — see
 > `docs/STABILITY.md` and `docs/ROADMAP.md`.

@@ -24,8 +24,11 @@ effects, and scenario capability environments — the harness runs a
 generate-compile-fix loop:
 
 1. Ask a code-generating model for a complete Skein module. The generation
-   context is exactly the [agent primer](/Skein/reference/agent-primer/) that
-   `skein new` scaffolds into every project as `AGENTS.md`.
+   context is the [agent primer](/Skein/reference/agent-primer/) that
+   `skein new` scaffolds into every project as `AGENTS.md`; tasks whose
+   surface the primer only sketches (tools, handlers, the typed store,
+   `llm.chat`, scenarios) carry a short fixed crib of the relevant effect
+   signatures, checked in with the suite.
 2. Compile it and collect the structured diagnostics.
 3. Mechanically apply every machine-applicable fix (`span` + `edit_kind` +
    `fix_code`), the way the LSP and MCP consumers do.

@@ -55,7 +55,7 @@ suspend true     false    implement  idempotent
 
 Each keyword tokenizes to its corresponding atom: `"module"` becomes `{:module, {line, col}}`.
 
-**Contextual keywords** are not reserved. The words `input`, `output`, `errors`, `description`, `state`, `strategy`, `child`, `replay`, `given`, `expect`, and `assert` have meaning only inside their construct and tokenize as ordinary `:ident` tokens — `let input = 1` is valid Skein. The parser recognizes them contextually. `if` is likewise contextual: it introduces a guard in match arms and is an ordinary identifier elsewhere.
+**Contextual keywords** are not reserved. The frozen inventory (spec §2.3, drift-tested against `conformance/freeze/keywords.json`) is `input`, `output`, `errors`, `description`, `state`, `strategy`, `child`, `given`, `expect`, `assert`, `start`, `phase`, `from`, `trace`, `per`, `max_restarts`, and `if` — each has meaning only in its construct and tokenizes as an ordinary `:ident` token (`let input = 1` is valid Skein; `if` introduces match-arm guards). The parser recognizes them positionally. (`replay`, listed in earlier drafts, is not contextual — no construct recognizes it.)
 
 ### Identifiers
 

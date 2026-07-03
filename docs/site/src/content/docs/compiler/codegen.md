@@ -418,7 +418,7 @@ store.users.get(id)
 call 'Elixir.Skein.Runtime.Store':'get'("users", Id, Capabilities)
 ```
 
-For typed tables (C5), `put` carries one extra argument: the table's derived JSON Schema is compiled in immediately before the capabilities — `call 'Elixir.Skein.Runtime.Store':'put'("users", Record, Schema, Capabilities)` — so the runtime schema-checks every write (defense in depth behind the analyzer's record typing, and a guard for dynamic data that reached the record through `Json` seams).
+For typed tables (C5), `put` carries two extra arguments immediately before the capabilities: the table's derived JSON Schema, so the runtime schema-checks every write (defense in depth behind the analyzer's record typing, and a guard for dynamic data that reached the record through `Json` seams), and the record type's `@primary` field name (#340), so rows are keyed by the declared primary rather than a hard-coded `id` — `call 'Elixir.Skein.Runtime.Store':'put'("users", Record, Schema, Primary, Capabilities)`.
 
 ### Memory effect compilation
 

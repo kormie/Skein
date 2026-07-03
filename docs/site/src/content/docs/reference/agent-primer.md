@@ -111,6 +111,7 @@ module or agent. There are no exceptions.
 | `schedule.trigger("name")` | `handler schedule` |
 | `event.log("stream")` | `event.log(name, data)` |
 | `process.spawn` / `timer` | `process.spawn` / `timer.after/interval/cancel` |
+| `uuid` / `instant` | `uuid.new()` / `instant.now()` — all nondeterminism is capability-gated (deterministic under `skein test`) |
 
 `emit EventName { field: value }` and `trace.annotate(key, value)` need no
 capability. `idempotent(key)` (handlers only) skips re-processing a key.

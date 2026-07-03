@@ -36,7 +36,16 @@ defmodule Skein.CLI.SurfaceFreezeTest do
   end
 
   test "the help text (command/flag inventory) is frozen" do
-    pin_text(@usage_vector, Skein.CLI.Main.usage_text(), "skein usage text")
+    # The banner's version number is release-churn, not frozen surface —
+    # normalize it so the pin survives version bumps.
+    normalized =
+      Regex.replace(
+        ~r/\ASkein \S+ —/,
+        Skein.CLI.Main.usage_text(),
+        "Skein <version> —"
+      )
+
+    pin_text(@usage_vector, normalized, "skein usage text")
   end
 
   test "the zsh completions (per-command flag surface) are frozen" do

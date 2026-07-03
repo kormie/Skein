@@ -15,19 +15,19 @@ The full test suite (unit, property-based, and integration) runs green in CI on 
 
 ## Release Status
 
-The release train so far: **v0.2.0** and **v0.3.0** shipped 2026-06-11, **v1.0.0-rc.1** was tagged 2026-06-12, and **v0.4.0 — Truth & Soundness** shipped 2026-07-02. **A 2026-06-15 roadmap reset re-sequenced the path to 1.0.** A source-verified dogfooding audit of the skein-testing and FablePool ports reclassified GA from a docs-accuracy cleanup into a soundness + honesty + observability + conformance gate. **v1.0.0 GA is not imminent; the next release is v0.5.0 — Runtime Contract & Dogfood, a development release, not another RC.** The earlier "the rc soaks, then promotes to 1.0" plan is superseded.
+The release train so far: **v0.2.0** and **v0.3.0** shipped 2026-06-11, **v1.0.0-rc.1** was tagged 2026-06-12, and both **v0.4.0 — Truth & Soundness** and **v0.5.0 — Runtime Contract & Dogfood** shipped 2026-07-02. **A 2026-06-15 roadmap reset re-sequenced the path to 1.0.** A source-verified dogfooding audit of the skein-testing and FablePool ports reclassified GA from a docs-accuracy cleanup into a soundness + honesty + observability + conformance gate. **The active gate is v1.0.0-rc.5 — True release candidate** (the Wave F freeze: executable gates for every frozen surface, the agent-writability benchmark, and live-backend verification — [#332](https://github.com/kormie/Skein/issues/332)/[#320](https://github.com/kormie/Skein/issues/320)/[#334](https://github.com/kormie/Skein/issues/334)); GA follows only after the RC soaks and is **not imminent**. (Tags rc.2–rc.4 exist from the pre-reset June train, so the next RC tag is rc.5.)
 
 ---
 
 ## What's Next
 
-The path to 1.0 runs through the contract-first waves: **v0.4.0 — Truth & Soundness** (shipped 2026-07-02), then **v0.5.0 — Runtime Contract & Dogfood** (complete — shipping as the next release), then a true RC (the Wave F freeze), then GA — which is **not imminent**. The canonical detail (waves, acceptance criteria, citations) lives in [`docs/ROADMAP.md`](https://github.com/kormie/Skein/blob/main/docs/ROADMAP.md).
+The path to 1.0 runs through the contract-first waves: **v0.4.0 — Truth & Soundness** (shipped 2026-07-02), then **v0.5.0 — Runtime Contract & Dogfood** (shipped 2026-07-02), and now the true RC — **v1.0.0-rc.5**, the Wave F freeze — then GA after the candidate soaks, which is **not imminent**. The canonical detail (waves, acceptance criteria, citations) lives in [`docs/ROADMAP.md`](https://github.com/kormie/Skein/blob/main/docs/ROADMAP.md).
 
 ### v0.4.0 — Truth & Soundness (complete)
 
 Wave A (truth reset: honest docs/spec/stability framing, surface cuts like tool `policy` blocks) and Wave B (analyzer/codegen soundness, B1–B6) landed — Wave B completed 2026-07-01 and was source-verified by the 2026-07-02 sanity check, with its residual holes (#309–#311, #313, #318, #319) closed. `?` truly early-returns, unknown/widened types cannot cross declared boundaries (E0037), call arguments are type-checked everywhere, the analyzer-accept ⇒ BEAM-load bridge holds, records are nominal, and tool/provider bodies are checked against their contracts (E0038).
 
-### v0.5.0 — Runtime Contract & Dogfood (complete)
+### v0.5.0 — Runtime Contract & Dogfood (shipped 2026-07-02)
 
 Wave C made the runtime expose exactly the contract the analyzer and spec claim, plus Wave D's continuous dogfood gate — all landed 2026-07-02:
 
@@ -39,9 +39,9 @@ Wave C made the runtime expose exactly the contract the analyzer and spec claim,
 - **#325** — `supervisor` declarations boot real OTP supervisors under `skein run` ([#325](https://github.com/kormie/Skein/issues/325))
 - **Wave D / [#262](https://github.com/kormie/Skein/issues/262)** — the continuous dogfood conformance gate: compile + load + **run** reduced, pinned programs from the checked-in dungeon and fablepool ports on every change
 
-### v1.0.0-rc.5 and GA (next)
+### v1.0.0-rc.5 and GA
 
-Wave F freezes grammar, diagnostics, effect ABI + error shapes, schema derivation, CLI/JSON/config, and persisted vectors — only after every preceding contract is executable and green — then the RC soaks and promotes to GA. The canonical-substrate question was resolved out of 1.0 ([#300](https://github.com/kormie/Skein/issues/300) closed as Alternative B): the substrate items live in v1.1, and there is no v0.6.0 milestone.
+The Wave F freeze **landed 2026-07-02**: grammar/keywords, the diagnostics registry, the full effect ABI + error shapes, schema derivation, the CLI/JSON/config surface, compiled-metadata classes, and the EventStore persisted shapes are all declared frozen with executable drift gates against the vectors under `conformance/freeze/` ([#332](https://github.com/kormie/Skein/issues/332)), agent-writability is measured rather than asserted ([#320](https://github.com/kormie/Skein/issues/320) — see the [writability benchmark](/Skein/reference/writability-benchmark/)), and `llm.stream` was live-verified against the production backend ([#334](https://github.com/kormie/Skein/issues/334)). What remains is release mechanics: cut the rc.5 tag, soak the candidate, then promote to GA. The canonical-substrate question was resolved out of 1.0 ([#300](https://github.com/kormie/Skein/issues/300) closed as Alternative B): the substrate items live in v1.1, and there is no v0.6.0 milestone.
 
 ### Post-1.0 Backlog
 
@@ -132,7 +132,7 @@ Everything below is implemented and tested.
 
 ### Standard Library
 
-11 modules with 101 functions:
+11 modules:
 
 | Module | Purpose |
 |--------|---------|
