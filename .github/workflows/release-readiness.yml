@@ -90,6 +90,25 @@ jobs:
       - name: Run tests
         run: mix test
 
+      # The freeze gates and the benchmark replay all run inside `mix test`
+      # above — the named steps below re-run each one standalone so a
+      # frozen-surface regression or a replay drift is attributable at a
+      # glance in the job log, not buried in the umbrella run.
+      - name: Freeze gate — compiler frozen-surface vectors
+        working-directory: apps/skein_compiler
+        run: mix test test/skein/freeze
+
+      - name: Freeze gate — runtime EventStore shapes
+        working-directory: apps/skein_runtime
+        run: mix test test/skein/runtime/event_store_freeze_test.exs
+
+      - name: Freeze gate — CLI surface + dogfood pins
+        working-directory: apps/skein_cli
+        run: mix test test/cli/cli_surface_freeze_test.exs test/cli/dogfood_pins_freeze_test.exs
+
+      - name: Writability benchmark replay
+        run: mix skein.bench -- --report "$RUNNER_TEMP/writability-report.json"
+
   release-gates:
     name: Release gates
     runs-on: ubuntu-latest
