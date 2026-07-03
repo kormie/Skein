@@ -3,6 +3,10 @@ defmodule Skein.Integration.RecordLiteralTest do
   End-to-end tests for nominal record-literal construction:
   `TypeName { field: expr, ... }`. Covers parsing, analyzer field checking,
   and codegen (the value is an atom-keyed map that field access reads back).
+
+  The Skein module name (`RecordLitM`) must stay unique to this file:
+  this async suite runs compiled code, and a shared name gets purge-killed
+  by other suites' `:code.load_binary` reloads (#338).
   """
   use ExUnit.Case, async: true
 
@@ -27,7 +31,7 @@ defmodule Skein.Integration.RecordLiteralTest do
   describe "parsing" do
     test "parses a record literal with fields" do
       source = """
-      module M {
+      module RecordLitM {
         type Point { x: Int, y: Int }
         fn origin() -> Point { Point { x: 0, y: 0 } }
       }
@@ -41,7 +45,7 @@ defmodule Skein.Integration.RecordLiteralTest do
 
     test "parses an empty record literal" do
       source = """
-      module M {
+      module RecordLitM {
         type Empty { }
         fn make() -> Empty { Empty { } }
       }
@@ -57,7 +61,7 @@ defmodule Skein.Integration.RecordLiteralTest do
       # Arms are patterns (`Variant -> ...`), never `ident :`, so the
       # disambiguation keeps this a Match node.
       source = """
-      module M {
+      module RecordLitM {
         enum Color {
           Red
           Green
@@ -82,7 +86,7 @@ defmodule Skein.Integration.RecordLiteralTest do
     test "a well-formed record literal type-checks" do
       assert [] =
                errors("""
-               module M {
+               module RecordLitM {
                  type Point { x: Int, y: Int }
                  fn origin() -> Point { Point { x: 0, y: 0 } }
                }
@@ -92,7 +96,7 @@ defmodule Skein.Integration.RecordLiteralTest do
     test "a missing required field is a structured error" do
       errs =
         errors("""
-        module M {
+        module RecordLitM {
           type Point { x: Int, y: Int }
           fn bad() -> Point { Point { x: 0 } }
         }
@@ -106,7 +110,7 @@ defmodule Skein.Integration.RecordLiteralTest do
     test "an Option field may be omitted" do
       assert [] =
                errors("""
-               module M {
+               module RecordLitM {
                  type User { name: String, nickname: Option[String] }
                  fn make() -> User { User { name: "ada" } }
                }
@@ -118,7 +122,7 @@ defmodule Skein.Integration.RecordLiteralTest do
       # like JSON decode (#294 / B5). The literal supplies the inner value.
       assert [] =
                errors("""
-               module M {
+               module RecordLitM {
                  type User { name: String, nickname: Option[String] }
                  fn make() -> User { User { name: "ada", nickname: "Bob" } }
                }
@@ -128,7 +132,7 @@ defmodule Skein.Integration.RecordLiteralTest do
     test "a present Option field with the wrong inner type is a structured error" do
       errs =
         errors("""
-        module M {
+        module RecordLitM {
           type User { name: String, nickname: Option[String] }
           fn bad() -> User { User { name: "ada", nickname: 42 } }
         }
@@ -145,7 +149,7 @@ defmodule Skein.Integration.RecordLiteralTest do
       # double-wrap it.
       errs =
         errors("""
-        module M {
+        module RecordLitM {
           type User { name: String, nickname: Option[String] }
           fn make(nick: Option[String]) -> User {
             User { name: "ada", nickname: nick }
@@ -161,7 +165,7 @@ defmodule Skein.Integration.RecordLiteralTest do
     test "an unknown field is a structured error" do
       errs =
         errors("""
-        module M {
+        module RecordLitM {
           type Point { x: Int, y: Int }
           fn bad() -> Point { Point { x: 0, y: 0, z: 0 } }
         }
@@ -173,7 +177,7 @@ defmodule Skein.Integration.RecordLiteralTest do
     test "a field type mismatch is a structured error" do
       errs =
         errors("""
-        module M {
+        module RecordLitM {
           type Point { x: Int, y: Int }
           fn bad() -> Point { Point { x: "nope", y: 0 } }
         }
@@ -185,7 +189,7 @@ defmodule Skein.Integration.RecordLiteralTest do
     test "constructing an unknown type is a structured error" do
       errs =
         errors("""
-        module M {
+        module RecordLitM {
           fn bad() -> Nope { Nope { x: 0 } }
         }
         """)
@@ -198,7 +202,7 @@ defmodule Skein.Integration.RecordLiteralTest do
     test "a constructed record round-trips through field access" do
       mod =
         case Compiler.compile_string("""
-             module M {
+             module RecordLitM {
                type Point { x: Int, y: Int }
                fn make(a: Int, b: Int) -> Point { Point { x: a, y: b } }
                fn sum(a: Int, b: Int) -> Int {
@@ -218,7 +222,7 @@ defmodule Skein.Integration.RecordLiteralTest do
     test "absent Option fields are constructed as None (total records, #294)" do
       mod =
         case Compiler.compile_string("""
-             module M {
+             module RecordLitM {
                type User { name: String, nickname: Option[String] }
                fn make() -> User { User { name: "ada" } }
              }
@@ -233,7 +237,7 @@ defmodule Skein.Integration.RecordLiteralTest do
     test "present Option fields are constructed as Some" do
       mod =
         case Compiler.compile_string("""
-             module M {
+             module RecordLitM {
                type User { name: String, nickname: Option[String] }
                fn make(nick: String) -> User { User { name: "ada", nickname: nick } }
              }
@@ -248,7 +252,7 @@ defmodule Skein.Integration.RecordLiteralTest do
     test "Some/None match on a constructed record's Option field" do
       mod =
         case Compiler.compile_string("""
-             module M {
+             module RecordLitM {
                type User { name: String, nickname: Option[String] }
 
                fn greet(u: User) -> String {

@@ -392,8 +392,7 @@ defmodule Skein.Runtime.SupervisorHostTest do
     test "Skein.Runtime.Server boots declared supervisors for mounted modules" do
       mod = compile!(pool_source("SupHostServer"))
 
-      port = Enum.random(10_000..60_000)
-      {:ok, server} = Skein.Runtime.Server.start_link(modules: [mod], port: port)
+      {:ok, server} = Skein.Runtime.Server.start_link(modules: [mod], port: 0)
 
       # The supervisor's agent child started under the server
       wait_until(fn -> child_started_events() != [] end)

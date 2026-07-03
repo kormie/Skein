@@ -6,6 +6,11 @@ defmodule Skein.Runtime.TimerTest do
   alias Skein.Runtime.Timer
 
   setup do
+    # Reset BEFORE each test as well as after: the Timer registry is
+    # app-global and other suites can leave timers behind. The
+    # list_timers/0 emptiness test depends on this pre-test reset (#338).
+    Timer.reset_all()
+
     on_exit(fn ->
       Timer.reset_all()
       CapabilityStack.clear()

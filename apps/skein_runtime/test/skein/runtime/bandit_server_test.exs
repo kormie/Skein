@@ -18,10 +18,8 @@ defmodule Skein.Runtime.BanditServerTest do
   defp analyze_ok!({:ok, ast, _warnings}), do: ast
   defp analyze_ok!({:error, errors}), do: raise("Compilation failed: #{inspect(errors)}")
 
-  # Use a unique port per test to avoid conflicts
-  defp unique_port do
-    Enum.random(10_000..60_000)
-  end
+  # Servers bind port 0; read the OS-assigned port back (#338)
+  defp server_port(server), do: Skein.Runtime.TestPorts.server_port(server)
 
   # Helper to make HTTP requests using :httpc
   defp http_get(port, path) do
@@ -70,8 +68,8 @@ defmodule Skein.Runtime.BanditServerTest do
         }
         """)
 
-      port = unique_port()
-      {:ok, pid} = Server.start_link(module: mod, port: port)
+      {:ok, pid} = Server.start_link(module: mod, port: 0)
+      port = server_port(pid)
 
       # Give Bandit time to start accepting
       Process.sleep(100)
@@ -95,8 +93,8 @@ defmodule Skein.Runtime.BanditServerTest do
         }
         """)
 
-      port = unique_port()
-      {:ok, pid} = Server.start_link(module: mod, port: port)
+      {:ok, pid} = Server.start_link(module: mod, port: 0)
+      port = server_port(pid)
       Process.sleep(100)
 
       {status, body} = http_post(port, "/items", ~s({"name":"test"}))
@@ -118,8 +116,8 @@ defmodule Skein.Runtime.BanditServerTest do
         }
         """)
 
-      port = unique_port()
-      {:ok, pid} = Server.start_link(module: mod, port: port)
+      {:ok, pid} = Server.start_link(module: mod, port: 0)
+      port = server_port(pid)
       Process.sleep(100)
 
       {status, _body} = http_get(port, "/greet/world")
@@ -140,8 +138,8 @@ defmodule Skein.Runtime.BanditServerTest do
         }
         """)
 
-      port = unique_port()
-      {:ok, pid} = Server.start_link(module: mod, port: port)
+      {:ok, pid} = Server.start_link(module: mod, port: 0)
+      port = server_port(pid)
       Process.sleep(100)
 
       {status, body} = http_get(port, "/does-not-exist")
@@ -171,8 +169,8 @@ defmodule Skein.Runtime.BanditServerTest do
         }
         """)
 
-      port = unique_port()
-      {:ok, pid} = Server.start_link(module: mod, port: port)
+      {:ok, pid} = Server.start_link(module: mod, port: 0)
+      port = server_port(pid)
       Process.sleep(100)
 
       {status_a, body_a} = http_get(port, "/a")
@@ -203,8 +201,8 @@ defmodule Skein.Runtime.BanditServerTest do
         }
         """)
 
-      port = unique_port()
-      {:ok, pid} = Server.start_link(module: mod, port: port)
+      {:ok, pid} = Server.start_link(module: mod, port: 0)
+      port = server_port(pid)
       Process.sleep(100)
 
       {status, body} = http_get(port, "/add")
@@ -231,8 +229,8 @@ defmodule Skein.Runtime.BanditServerTest do
         }
         """)
 
-      port = unique_port()
-      {:ok, pid} = Server.start_link(module: mod, port: port)
+      {:ok, pid} = Server.start_link(module: mod, port: 0)
+      port = server_port(pid)
       Process.sleep(100)
 
       {status, body} = http_get(port, "/greet")
@@ -258,8 +256,8 @@ defmodule Skein.Runtime.BanditServerTest do
         }
         """)
 
-      port = unique_port()
-      {:ok, pid} = Server.start_link(module: mod, port: port)
+      {:ok, pid} = Server.start_link(module: mod, port: 0)
+      port = server_port(pid)
       Process.sleep(100)
 
       # Make a request that will be traced
@@ -289,8 +287,8 @@ defmodule Skein.Runtime.BanditServerTest do
         }
         """)
 
-      port = unique_port()
-      {:ok, pid} = Server.start_link(module: mod, port: port)
+      {:ok, pid} = Server.start_link(module: mod, port: 0)
+      port = server_port(pid)
       Process.sleep(100)
 
       # Launch 10 concurrent requests

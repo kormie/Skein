@@ -46,15 +46,8 @@ defmodule Skein.Runtime.Llm.AwsSsoProviderTest do
   end
 
   defp start_stub(respond) do
-    port = Enum.random(10_000..60_000)
-
-    {:ok, pid} =
-      Bandit.start_link(
-        plug: {StubServer, [owner: self(), respond: respond]},
-        port: port,
-        ip: {127, 0, 0, 1},
-        startup_log: false
-      )
+    {pid, port} =
+      Skein.Runtime.TestPorts.start_bandit!(plug: {StubServer, [owner: self(), respond: respond]})
 
     on_exit(fn ->
       try do

@@ -8,6 +8,10 @@ defmodule Skein.AnalyzerUnresolvedTest do
   path, bare fn names used as values, and unknown store-table methods were all
   accepted by the analyzer and died in `:compile.forms/2` with
   `{:unbound_var, ...}` surfaced as a raw E0001.
+
+  The Skein module name (`UnresolvedM`) must stay unique to this file:
+  this async suite runs compiled code, and a shared name gets purge-killed
+  by other suites' `:code.load_binary` reloads (#338).
   """
   use ExUnit.Case, async: true
 
@@ -29,7 +33,7 @@ defmodule Skein.AnalyzerUnresolvedTest do
     test "in a fn body" do
       errs =
         errors("""
-        module M {
+        module UnresolvedM {
           fn f() -> Int {
             let g = &nope
             1
@@ -44,7 +48,7 @@ defmodule Skein.AnalyzerUnresolvedTest do
     test "in a handler body" do
       errs =
         errors("""
-        module M {
+        module UnresolvedM {
           capability http.in
           handler http GET "/x" (req) -> {
             let g = &nope
@@ -77,7 +81,7 @@ defmodule Skein.AnalyzerUnresolvedTest do
     test "in a test body" do
       errs =
         errors("""
-        module M {
+        module UnresolvedM {
           fn f() -> Int { 1 }
           test "t" {
             let g = &nope
@@ -93,7 +97,7 @@ defmodule Skein.AnalyzerUnresolvedTest do
     test "passed to process.spawn" do
       errs =
         errors("""
-        module M {
+        module UnresolvedM {
           capability process.spawn
           fn go() -> String {
             process.spawn("t", &nope)!
@@ -108,7 +112,7 @@ defmodule Skein.AnalyzerUnresolvedTest do
     test "in a scenario provider body" do
       errs =
         errors("""
-        module M {
+        module UnresolvedM {
           capability tool.use(Ids.New)
           capability uuid
 
@@ -142,7 +146,7 @@ defmodule Skein.AnalyzerUnresolvedTest do
     test "a &ref to a declared fn stays clean" do
       assert {:module, _} =
                Compiler.compile_string("""
-               module M {
+               module UnresolvedM {
                  fn incr(n: Int) -> Int { n + 1 }
                  fn f() -> List[Int] {
                    List.map([1, 2], &incr)
@@ -156,7 +160,7 @@ defmodule Skein.AnalyzerUnresolvedTest do
     test "off the boundary path (discarded let)" do
       errs =
         errors("""
-        module M {
+        module UnresolvedM {
           fn f() -> Int {
             let _x = mystery()
             1
@@ -171,7 +175,7 @@ defmodule Skein.AnalyzerUnresolvedTest do
     test "in a handler body" do
       errs =
         errors("""
-        module M {
+        module UnresolvedM {
           capability http.in
           handler http GET "/x" (req) -> {
             let _x = mystery()
@@ -187,7 +191,7 @@ defmodule Skein.AnalyzerUnresolvedTest do
     test "suggests a declared fn for a typo" do
       errs =
         errors("""
-        module M {
+        module UnresolvedM {
           fn greet(name: String) -> String { name }
           fn f() -> Int {
             let _x = gret("a")
@@ -204,7 +208,7 @@ defmodule Skein.AnalyzerUnresolvedTest do
     test "a fn name without & is rejected with the &name fix" do
       errs =
         errors("""
-        module M {
+        module UnresolvedM {
           fn a() -> Int { 1 }
           fn f() -> Int {
             let _x = a
@@ -222,7 +226,7 @@ defmodule Skein.AnalyzerUnresolvedTest do
     test "a call through a fn-typed variable types as the fn's return" do
       assert {:module, mod} =
                Compiler.compile_string("""
-               module M {
+               module UnresolvedM {
                  fn one() -> Int { 1 }
                  fn f() -> Int {
                    let g = &one
@@ -237,7 +241,7 @@ defmodule Skein.AnalyzerUnresolvedTest do
     test "wrong argument arity through a fn-typed variable is E0020" do
       errs =
         errors("""
-        module M {
+        module UnresolvedM {
           fn one() -> Int { 1 }
           fn f() -> Int {
             let g = &one
@@ -253,7 +257,7 @@ defmodule Skein.AnalyzerUnresolvedTest do
     test "calling a non-function variable is E0020" do
       errs =
         errors("""
-        module M {
+        module UnresolvedM {
           fn f() -> Int {
             let n = 42
             n()
@@ -270,7 +274,7 @@ defmodule Skein.AnalyzerUnresolvedTest do
     test "a bare Ok value binding is rejected with the constructor fix" do
       errs =
         errors("""
-        module M {
+        module UnresolvedM {
           fn f() -> Int {
             let _x = Ok
             42
@@ -288,7 +292,7 @@ defmodule Skein.AnalyzerUnresolvedTest do
     test "a bare Err in a test body is rejected (no boundary needed)" do
       errs =
         errors("""
-        module M {
+        module UnresolvedM {
           fn f() -> Int { 1 }
           test "t" {
             let _x = Err
@@ -304,7 +308,7 @@ defmodule Skein.AnalyzerUnresolvedTest do
     test "a bare Ok flowing into a dynamic seam is rejected at the site" do
       errs =
         errors("""
-        module M {
+        module UnresolvedM {
           capability memory.kv
           fn f() -> Int {
             let x = Ok
@@ -321,7 +325,7 @@ defmodule Skein.AnalyzerUnresolvedTest do
     test "Ok/Err calls and patterns are unaffected" do
       assert {:module, mod} =
                Skein.Compiler.compile_string("""
-               module M {
+               module UnresolvedM {
                  fn half(n: Int) -> Result[Int, String] {
                    match n {
                      0 -> Err("zero")
@@ -347,7 +351,7 @@ defmodule Skein.AnalyzerUnresolvedTest do
     test "store.<table>.<unknown>() is rejected with the method list" do
       errs =
         errors("""
-        module M {
+        module UnresolvedM {
           capability store
           fn f() -> Int {
             let _x = store.users.frobnicate("k")

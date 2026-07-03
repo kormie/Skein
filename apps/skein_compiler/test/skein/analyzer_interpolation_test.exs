@@ -11,6 +11,14 @@ defmodule Skein.AnalyzerInterpolationTest do
   The "allowed" tests double as the drift pin against codegen's coercion
   whitelist: they compile AND RUN, so an allowed type that stops coercing
   fails here, not in production.
+
+  The Skein module name here (`InterpSegM`) must stay UNIQUE to this file
+  (#338): `compile_string` loads via `:code.load_binary`, and loading the
+  same module name a third time purge-kills any process still executing
+  the first version's code. This suite is async and RUNS compiled code,
+  so sharing a module name (the old `module M`) with the ~20 other suites
+  that compile one meant a rare mid-call `** (EXIT) killed`. Any async
+  suite that executes compiled Skein code must use a file-unique name.
   """
   use ExUnit.Case, async: true
 
@@ -31,7 +39,7 @@ defmodule Skein.AnalyzerInterpolationTest do
     test "a fn reference value" do
       errs =
         interpolation_errors("""
-        module M {
+        module InterpSegM {
           fn g() -> Int { 1 }
           fn f() -> String {
             let h = &g
@@ -46,7 +54,7 @@ defmodule Skein.AnalyzerInterpolationTest do
     test "a bare fn name (previously a codegen invariant crash)" do
       errs =
         errors("""
-        module M {
+        module InterpSegM {
           fn greet() -> String { "hi" }
           fn f() -> String { "${greet}" }
         }
@@ -59,7 +67,7 @@ defmodule Skein.AnalyzerInterpolationTest do
     test "a record value" do
       errs =
         interpolation_errors("""
-        module M {
+        module InterpSegM {
           type User { name: String }
           fn f() -> String {
             let u = User { name: "a" }
@@ -74,7 +82,7 @@ defmodule Skein.AnalyzerInterpolationTest do
     test "a map value" do
       errs =
         interpolation_errors("""
-        module M {
+        module InterpSegM {
           fn f() -> String {
             let m = { a: 1 }
             "map: ${m}"
@@ -88,7 +96,7 @@ defmodule Skein.AnalyzerInterpolationTest do
     test "a list value" do
       errs =
         interpolation_errors("""
-        module M {
+        module InterpSegM {
           fn f() -> String {
             let l = [1, 2]
             "list: ${l}"
@@ -102,7 +110,7 @@ defmodule Skein.AnalyzerInterpolationTest do
     test "an Option field, with a match hint" do
       errs =
         interpolation_errors("""
-        module M {
+        module InterpSegM {
           type User {
             name: String
             nickname: Option[String]
@@ -119,7 +127,7 @@ defmodule Skein.AnalyzerInterpolationTest do
     test "an unwrapped Result, with an unwrap hint" do
       errs =
         interpolation_errors("""
-        module M {
+        module InterpSegM {
           fn half(n: Int) -> Result[Int, String] { Ok(n / 2) }
           fn f() -> String {
             let r = half(4)
@@ -134,7 +142,7 @@ defmodule Skein.AnalyzerInterpolationTest do
     test "an enum value (its runtime atom leaks the lowered name)" do
       errs =
         interpolation_errors("""
-        module M {
+        module InterpSegM {
           enum Status { Active Idle }
           fn f() -> String {
             let s = Status.Active
@@ -149,7 +157,7 @@ defmodule Skein.AnalyzerInterpolationTest do
     test "a Duration (its runtime value is a bare number), with a to_string hint" do
       errs =
         interpolation_errors("""
-        module M {
+        module InterpSegM {
           fn f() -> String {
             let d = Duration.minutes(5)
             "took: ${d}"
@@ -165,7 +173,7 @@ defmodule Skein.AnalyzerInterpolationTest do
     test "String, Int, Float, and Bool segments render" do
       assert {:module, mod} =
                Compiler.compile_string("""
-               module M {
+               module InterpSegM {
                  fn f(s: String, n: Int, x: Float, b: Bool) -> String {
                    "${s} ${n} ${x} ${b}"
                  }
@@ -178,7 +186,7 @@ defmodule Skein.AnalyzerInterpolationTest do
     test "Uuid and Instant segments render their canonical strings" do
       assert {:module, mod} =
                Compiler.compile_string("""
-               module M {
+               module InterpSegM {
                  fn f() -> String {
                    let id = Uuid.parse("00000000-0000-4000-8000-000000000001")!
                    let at = Instant.parse("2026-01-01T00:00:00Z")!
@@ -195,7 +203,7 @@ defmodule Skein.AnalyzerInterpolationTest do
     test "a dynamic-typed segment stays allowed (sanctioned seam)" do
       assert {:module, _} =
                Compiler.compile_string("""
-               module M {
+               module InterpSegM {
                  capability memory.kv
                  fn f() -> String {
                    let v = memory.get("k")!
@@ -208,7 +216,7 @@ defmodule Skein.AnalyzerInterpolationTest do
     test "field access on a record still type-checks the segment" do
       assert {:module, mod} =
                Compiler.compile_string("""
-               module M {
+               module InterpSegM {
                  type User { name: String }
                  fn f() -> String {
                    let u = User { name: "ada" }

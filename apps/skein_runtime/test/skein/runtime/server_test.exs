@@ -47,11 +47,8 @@ defmodule Skein.Runtime.ServerTest do
     {String.to_integer(status_code), body}
   end
 
-  # Use a unique port per test to avoid conflicts
-  defp unique_port do
-    # Use a random high port
-    Enum.random(10_000..60_000)
-  end
+  # Servers bind port 0; read the OS-assigned port back (#338)
+  defp server_port(server), do: Skein.Runtime.TestPorts.server_port(server)
 
   describe "schedule handler registration" do
     test "starting a server registers its schedule handlers for auto-firing" do
@@ -72,8 +69,8 @@ defmodule Skein.Runtime.ServerTest do
         """)
 
       Skein.Runtime.Schedule.reset_all()
-      port = unique_port()
-      {:ok, pid} = Server.start_link(module: mod, port: port)
+      {:ok, pid} = Server.start_link(module: mod, port: 0)
+      port = server_port(pid)
 
       assert "*/7 * * * *" in Skein.Runtime.Schedule.list_schedules()
 
@@ -101,8 +98,8 @@ defmodule Skein.Runtime.ServerTest do
         """)
 
       Skein.Runtime.Queue.reset_all()
-      port = unique_port()
-      {:ok, pid} = Server.start_link(module: mod, port: port)
+      {:ok, pid} = Server.start_link(module: mod, port: 0)
+      port = server_port(pid)
 
       assert "server-reg-jobs" in Skein.Runtime.Queue.list_queues()
 
@@ -128,8 +125,8 @@ defmodule Skein.Runtime.ServerTest do
         """)
 
       Skein.Runtime.Topic.reset_all()
-      port = unique_port()
-      {:ok, pid} = Server.start_link(module: mod, port: port)
+      {:ok, pid} = Server.start_link(module: mod, port: 0)
+      port = server_port(pid)
 
       assert "server-reg-events" in Skein.Runtime.Topic.list_topics()
 
@@ -157,8 +154,8 @@ defmodule Skein.Runtime.ServerTest do
         """)
 
       Skein.Runtime.Queue.reset_all()
-      port = unique_port()
-      {:ok, pid} = Server.start_link(module: mod, port: port)
+      {:ok, pid} = Server.start_link(module: mod, port: 0)
+      port = server_port(pid)
 
       Skein.Runtime.Queue.publish("server-dispatch-jobs", %{ref: "msg-1"})
 
@@ -192,8 +189,8 @@ defmodule Skein.Runtime.ServerTest do
         """)
 
       Skein.Runtime.Topic.reset_all()
-      port = unique_port()
-      {:ok, pid} = Server.start_link(module: mod, port: port)
+      {:ok, pid} = Server.start_link(module: mod, port: 0)
+      port = server_port(pid)
 
       Skein.Runtime.Topic.publish("server-dispatch-events", %{ref: "msg-2"}, [
         %{kind: "topic.publish", params: ["server-dispatch-events"]}
@@ -253,8 +250,8 @@ defmodule Skein.Runtime.ServerTest do
         }
         """)
 
-      port = unique_port()
-      {:ok, pid} = Server.start_link(modules: [mod_c, mod_a, mod_b], port: port)
+      {:ok, pid} = Server.start_link(modules: [mod_c, mod_a, mod_b], port: 0)
+      port = server_port(pid)
       Process.sleep(50)
 
       assert {200, body_a} = http_request(port, :get, "/a")
@@ -282,8 +279,8 @@ defmodule Skein.Runtime.ServerTest do
         }
         """)
 
-      port = unique_port()
-      {:ok, pid} = Server.start_link(module: mod, port: port)
+      {:ok, pid} = Server.start_link(module: mod, port: 0)
+      port = server_port(pid)
 
       # Small delay to ensure server is ready
       Process.sleep(50)
@@ -307,8 +304,8 @@ defmodule Skein.Runtime.ServerTest do
         }
         """)
 
-      port = unique_port()
-      {:ok, pid} = Server.start_link(module: mod, port: port)
+      {:ok, pid} = Server.start_link(module: mod, port: 0)
+      port = server_port(pid)
       Process.sleep(50)
 
       {status, body} = http_request(port, :post, "/items", ~s({"name":"test"}))
@@ -330,8 +327,8 @@ defmodule Skein.Runtime.ServerTest do
         }
         """)
 
-      port = unique_port()
-      {:ok, pid} = Server.start_link(module: mod, port: port)
+      {:ok, pid} = Server.start_link(module: mod, port: 0)
+      port = server_port(pid)
       Process.sleep(50)
 
       {status, _body} = http_request(port, :get, "/greet/world")
@@ -352,8 +349,8 @@ defmodule Skein.Runtime.ServerTest do
         }
         """)
 
-      port = unique_port()
-      {:ok, pid} = Server.start_link(module: mod, port: port)
+      {:ok, pid} = Server.start_link(module: mod, port: 0)
+      port = server_port(pid)
       Process.sleep(50)
 
       {status, body} = http_request(port, :get, "/does-not-exist")
@@ -383,8 +380,8 @@ defmodule Skein.Runtime.ServerTest do
         }
         """)
 
-      port = unique_port()
-      {:ok, pid} = Server.start_link(module: mod, port: port)
+      {:ok, pid} = Server.start_link(module: mod, port: 0)
+      port = server_port(pid)
       Process.sleep(50)
 
       {status_a, body_a} = http_request(port, :get, "/a")
@@ -415,8 +412,8 @@ defmodule Skein.Runtime.ServerTest do
         }
         """)
 
-      port = unique_port()
-      {:ok, pid} = Server.start_link(module: mod, port: port)
+      {:ok, pid} = Server.start_link(module: mod, port: 0)
+      port = server_port(pid)
       Process.sleep(50)
 
       {status, body} = http_request(port, :get, "/add")
@@ -443,8 +440,8 @@ defmodule Skein.Runtime.ServerTest do
         }
         """)
 
-      port = unique_port()
-      {:ok, pid} = Server.start_link(module: mod, port: port)
+      {:ok, pid} = Server.start_link(module: mod, port: 0)
+      port = server_port(pid)
       Process.sleep(50)
 
       {status, body} = http_request(port, :get, "/greet")
@@ -470,8 +467,8 @@ defmodule Skein.Runtime.ServerTest do
         }
         """)
 
-      port = unique_port()
-      {:ok, pid} = Server.start_link(module: mod, port: port)
+      {:ok, pid} = Server.start_link(module: mod, port: 0)
+      port = server_port(pid)
       Process.sleep(50)
 
       # Make a request that will be traced
