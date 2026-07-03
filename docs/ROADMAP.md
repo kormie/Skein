@@ -192,6 +192,8 @@ Cut from the minimal 1.0 surface by the reset, plus well-scoped gaps with no des
 - `via` / `via Module` / behavioural stateful effect stubs — reconsider only if still useful after scenario environments ship
 - [#145](https://github.com/kormie/Skein/issues/145) — `llm.rerank` for RAG pipelines — M, depends on #146
 - [#202](https://github.com/kormie/Skein/issues/202) — Docs/spec drift guard (the broader registry/generation work; the *compile-every-fenced-block* subset is pulled into Wave D / v0.5.0) — L
+- [#341](https://github.com/kormie/Skein/issues/341) — Machine-checkable documentation evidence: tag normative docs/spec claims by evidence class (source-derived / test-proven / runtime-proven / manual-live-verified / planned), CI fails when stable-docs claims drift from registries or vectors — successor to the rc.5-era release-readiness docs sweeps (three releases in a row needed one); coordinate scope with #202 — L
+- [#342](https://github.com/kormie/Skein/issues/342) — Agent-safe edit protocol / context packs: bounded change requests over `skein mcp` + CLI (allowed/forbidden scope, intended invariants, check attestation, patch provenance) — explicitly tooling, NOT language syntax — XL
 - [#240](https://github.com/kormie/Skein/issues/240) — LSP rename + find-references + workspace symbol search — L
 
 ### Milestone: v1.2 — Interop & Agent Workflows
