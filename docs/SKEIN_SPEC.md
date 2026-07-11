@@ -1029,12 +1029,20 @@ All errors are JSON-serializable with this structure:
 }
 ```
 
+Every emitted `E####` error and `W####` warning is part of the diagnostics
+contract for automated repair agents. It MUST include a stable code, a
+precise 1-based source `location`, a precise `span`, a short human message,
+and a non-empty, agent-usable `fix_hint` that names the safe repair strategy.
+
 `span` and `edit_kind` are present when the `fix_code` is an exact,
 machine-applicable edit (they are `null` when `fix_code` is an
 illustrative template). `fix_code` itself is `null` when no concrete
 snippet or template can be derived — the guidance then lives in
-`fix_hint`; `fix_code` is never prose. `span` is 1-based with an
-exclusive end column;
+`fix_hint`; `fix_code` is never prose, a TODO, a comment placeholder, or
+syntax from another language. When a mechanical edit is safe, `fix_code`
+MUST be valid Skein for the target edit site and MUST be paired with an
+`edit_kind` so LSP/MCP/agent clients can apply it without per-code logic.
+`span` is 1-based with an exclusive end column;
 `edit_kind` is one of `replace` (swap the spanned text for `fix_code`;
 empty `fix_code` deletes it), `insert_before` / `insert_after` (insert
 `fix_code` at the span's start/end), `insert_line` (insert `fix_code` as

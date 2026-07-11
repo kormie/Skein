@@ -1,0 +1,27 @@
+-- expect: E0030
+-- Agents commonly invent a transition at the call site without updating the
+-- Phase transition table. The compiler must identify the exact transition and
+-- offer a repairable Phase-table hint.
+agent PhaseTransitionMistake {
+  enum Phase {
+    Start -> [Review]
+    Review -> []
+    Done -> []
+  }
+
+  on start(id: String) -> {
+    transition(Phase.Start)
+  }
+
+  on phase(Phase.Start) -> {
+    transition(Phase.Review)
+  }
+
+  on phase(Phase.Review) -> {
+    transition(Phase.Done)
+  }
+
+  on phase(Phase.Done) -> {
+    stop()
+  }
+}

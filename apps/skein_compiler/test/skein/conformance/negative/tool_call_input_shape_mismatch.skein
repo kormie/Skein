@@ -1,0 +1,20 @@
+-- expect: E0020
+-- Agents often call a tool with the wrong object shape. The input record must
+-- match the tool's declared `input` block field names and field types.
+module ToolInputShapeMismatch {
+  capability tool.use(Search)
+
+  tool Search {
+    input {
+      query: String
+      limit: Int
+    }
+    output { summary: String }
+    implement { Ok({ summary: query }) }
+  }
+
+  fn run() -> String {
+    let result = tool.call(Search, { query: 42, count: 10 })!
+    result.summary
+  }
+}

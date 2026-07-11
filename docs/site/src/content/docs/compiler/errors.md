@@ -38,10 +38,26 @@ This is a core feature of the language -- when an AI agent generates Skein code 
 | `message` | String | Human-readable description of the problem |
 | `location` | Map | Source file, line number, column number |
 | `context` | String or nil | The code around the error for display |
-| `fix_hint` | String or nil | Suggestion for how to fix the issue |
-| `fix_code` | String or nil | Exact code that would fix the issue |
+| `fix_hint` | String | Non-empty, agent-usable repair strategy for every emitted `E####`/`W####` diagnostic |
+| `fix_code` | String or nil | Exact Skein code for a safe mechanical edit, an illustrative Skein template, or `nil` when no safe code can be derived |
 | `span` | Map or nil | `%{start: %{line, col}, end: %{line, col}}` — the exact source extent (1-based; `end.col` exclusive) |
 | `edit_kind` | Atom or nil | How to apply `fix_code` as a mechanical edit (see below) |
+
+
+## Diagnostic Quality Gate
+
+The compiler test suite treats diagnostics as an automated-repair API. Every
+emitted `E####` error and `W####` warning must provide:
+
+- a stable diagnostic code matching `E####` or `W####`;
+- a precise `location` and `span` using 1-based columns with exclusive span ends;
+- a short human-readable `message`;
+- a non-empty `fix_hint` that tells an AI agent what repair strategy is safe; and
+- valid Skein `fix_code` whenever a mechanical edit is safe.
+
+`fix_code` must never be a prose placeholder, TODO, comment-only snippet, or
+syntax from another language. If the compiler cannot safely produce Skein code,
+it must set `fix_code` to `nil` and put the guidance in `fix_hint` instead.
 
 ## Machine-Applicable Fixes
 
