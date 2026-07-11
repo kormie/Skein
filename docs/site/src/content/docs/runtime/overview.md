@@ -84,11 +84,17 @@ Skein.Runtime.Http.delete(url, capabilities)
 
 Every call:
 1. Checks the URL against `capabilities` via `Skein.Runtime.Capability`
-2. If allowed, makes the HTTP request
-3. Records a trace span with timing and outcome
-4. Returns `{:ok, body}` for 2xx responses, `{:error, reason}` otherwise
+2. Resolves scenario providers, recorded replay data, or test policy before live I/O
+3. If live I/O is allowed, makes the HTTP request
+4. Records a replayable trace span with timing, outcome, and response payload fields
+5. Returns `{:ok, body}` for 2xx responses, `{:error, reason}` otherwise
 
 The runtime uses `:httpc` rather than a third-party HTTP library to minimize dependencies. The `:inets` and `:ssl` OTP applications are started automatically.
+
+
+### Replayable nondeterminism
+
+Agent-facing nondeterminism is always routed through capability-gated runtime modules. The runtime records replay data in the unified EventStore for external model calls, outbound HTTP, tool calls, UUID/instant generation, process spawning, timers, and queue/topic delivery. Golden replay uses `Skein.Runtime.Replay.with_replay/2` to consume those recorded events in order, validate call metadata, and return recorded outputs without making live calls, arming timers, or spawning background work. Exhausted or mismatched traces are reported as errors; they never silently fall through to live side effects.
 
 ### `Skein.Runtime.Capability`
 
@@ -450,7 +456,7 @@ Skein.Runtime.Trace.record_span(%{kind: :http, method: :get, url: "/test"})
 | `Skein.Runtime.Process` | `process.spawn` — short-lived tasks under a DynamicSupervisor with crash isolation and tracing |
 | `Skein.Runtime.Tool` | Tool registry and dispatch — `call/3` executes registered tools with schema-checked input/output |
 | `Skein.Runtime.Idempotent` | `idempotent(key)` guard — tracks processed keys in ETS so handlers skip duplicates |
-| `Skein.Runtime.Replay` | Replay engine for golden trace tests — deterministic playback of recorded event streams |
+| `Skein.Runtime.Replay` | Replay engine for golden trace tests — deterministic playback of recorded event streams; intercepts LLM, HTTP, tool, UUID, instant, process, and timer effects after capability checks |
 | `Skein.Runtime.SupervisorHost` | Boots real OTP supervisors from compiled `supervisor` declarations ([#325](https://github.com/kormie/Skein/issues/325)) — restart policies, `max_restarts` intensity, `:child_started` events |
 | `Skein.Runtime.JsonSchema` | The one recursive schema validator/decoder (C3) shared by `req.json[T]`, `llm.json[T]`, and tool input/output |
 | `Skein.Runtime.EventStore.Persistence` | Opt-in SQLite write-through for the event log (C6) — enabled by default under `skein run` |

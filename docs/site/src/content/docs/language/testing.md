@@ -243,6 +243,25 @@ Trace files contain event objects from the unified event store (`Skein.Runtime.E
 
 Supported event kinds: `effect`, `state_change`, `user_event`, `annotation`. Legacy span kinds (`handler`, `llm`, `memory`, `http`) are still accepted for traces recorded before the unified event store.
 
+### Replay Contract for Nondeterministic Effects
+
+Golden replay is not a loose fixture system: it is the contract for every nondeterministic source that agent code can touch. The compiler still threads the declared capability list into each runtime effect call, and the runtime performs the capability check before consuming a recorded event. A golden test therefore proves both that the program declared the effect and that the recorded effect sequence still matches the current code.
+
+Replayable effect events must include enough fields to match the live call and reconstruct the result without contacting an outside system or starting background work:
+
+| Source | Required capability | Replay event fields | Replay behavior |
+|---|---|---|---|
+| `llm.chat` / `llm.json` / `llm.stream` / `llm.embed` | `model(...)` | `kind: "llm"`, `method`, `model`, `response` | Returns the recorded response; streams deliver the recorded response as replayed chunks. |
+| `http.get` / `post` / `put` / `patch` / `delete` | `http.out(...)` | `kind: "http"`, `method`, `url`, `status`, `response_body`, optional `response_headers` | Reconstructs `Result[HttpResponse, HttpError]`; no network request is made. |
+| `tool.call` | `tool.use(...)` | `kind: "tool"`, `method: "call"`, `name`, `response` | Returns the recorded tool result; no registered live tool runs. |
+| `uuid.new()` | `uuid` | `kind: "uuid"`, `value` | Returns the recorded UUID value. |
+| `instant.now()` | `instant` | `kind: "instant"`, `value` | Returns the recorded instant. |
+| `process.spawn(...)` | `process.spawn(...)` | `kind: "process"`, `method: "spawn"`, optional `pool`, optional `task`, `result` / `spawn_id` | Returns an inert pid-shaped handle and does not start background work. |
+| `timer.after` / `timer.interval` / `timer.cancel` | `timer(...)` | `kind: "timer"`, `method`, `group`, delay/interval/ref fields, `timer_ref` | Returns the recorded timer ref/result and does not arm a live timer during replay. |
+| `queue.publish` / `topic.publish` delivery traces | `queue.publish(...)` / `topic.publish(...)` | `kind: "queue"` or `kind: "topic"`, queue/topic name, message/payload fields | Replays the recorded delivery order from EventStore data instead of depending on scheduler timing. |
+
+If a recorded event is exhausted or the next event's matching fields differ from the live call (for example a different model, URL, tool name, timer group, or task name), replay returns a structured error instead of falling through to live I/O. In `skein test`, unrecorded outbound HTTP/LLM/tool effects are blocked unless explicitly allowed by the test runner policy; UUID and clock effects use deterministic test defaults only when no recorded trace is active.
+
 ## Test Kind Field
 
 All three test forms (`test`, `scenario`, `golden`) compile to `__test_N__/0` functions and appear in `__tests__/0` metadata. Each entry includes a `:kind` field:

@@ -455,4 +455,47 @@ defmodule Skein.Runtime.ReplayInjectionTest do
 
     port
   end
+  # ------------------------------------------------------------------
+  # Process/timer replay
+  # ------------------------------------------------------------------
+
+  describe "process and timer replay interception" do
+    test "process.spawn replays without starting background work" do
+      parent = self()
+      trace = [
+        %{"kind" => "process", "method" => "spawn", "task" => "notify", "pool" => "workers", "result" => "ok"}
+      ]
+
+      Replay.with_replay(trace, fn ->
+        assert {:ok, pid} =
+                 Skein.Runtime.Process.spawn("workers", "notify", fn -> send(parent, :ran) end, [
+                   %{kind: "process.spawn", params: ["workers"]}
+                 ])
+
+        assert is_pid(pid)
+      end)
+
+      refute_received :ran
+    end
+
+    test "timer.after replays the recorded ref without scheduling a callback" do
+      parent = self()
+      trace = [
+        %{"kind" => "timer", "method" => "after", "delay_ms" => 1, "group" => "maintenance", "timer_ref" => "timer-123"}
+      ]
+
+      Replay.with_replay(trace, fn ->
+        assert {:ok, "timer-123"} =
+                 apply(Skein.Runtime.Timer, :after, [
+                   "maintenance",
+                   1,
+                   fn -> send(parent, :fired) end,
+                   [%{kind: "timer", params: ["maintenance"]}]
+                 ])
+      end)
+
+      refute_received :fired
+    end
+  end
+
 end

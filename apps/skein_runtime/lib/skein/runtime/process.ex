@@ -10,6 +10,7 @@ defmodule Skein.Runtime.Process do
 
   alias Skein.Runtime.Capability
   alias Skein.Runtime.SpawnContext
+  alias Skein.Runtime.Replay
   alias Skein.Runtime.Trace
 
   @doc """
@@ -41,16 +42,7 @@ defmodule Skein.Runtime.Process do
         # so the spawned body resolves effects identically to inline work (#282).
         bound = SpawnContext.bind(fun)
 
-        Trace.with_span(%{kind: :process, method: :spawn}, fn ->
-          case DynamicSupervisor.start_child(__MODULE__, %{
-                 id: make_ref(),
-                 start: {Task, :start_link, [bound]},
-                 restart: :temporary
-               }) do
-            {:ok, pid} -> {:ok, pid}
-            {:error, reason} -> {:error, inspect(reason)}
-          end
-        end)
+        replayable_spawn(%{kind: :process, method: :spawn}, fn -> start_supervised_task(bound) end)
 
       {:error, _reason} = error ->
         error
@@ -78,15 +70,8 @@ defmodule Skein.Runtime.Process do
       :ok ->
         ensure_started()
 
-        Trace.with_span(%{kind: :process, method: :spawn, task: task_name, pool: pool}, fn ->
-          case DynamicSupervisor.start_child(__MODULE__, %{
-                 id: make_ref(),
-                 start: {Task, :start_link, [fn -> :ok end]},
-                 restart: :temporary
-               }) do
-            {:ok, pid} -> {:ok, pid}
-            {:error, reason} -> {:error, inspect(reason)}
-          end
+        replayable_spawn(%{kind: :process, method: :spawn, task: task_name, pool: pool}, fn ->
+          start_supervised_task(fn -> :ok end)
         end)
 
       {:error, _reason} = error ->
@@ -100,16 +85,7 @@ defmodule Skein.Runtime.Process do
         ensure_started()
         bound = SpawnContext.bind(fn -> apply(fun, args) end)
 
-        Trace.with_span(%{kind: :process, method: :spawn}, fn ->
-          case DynamicSupervisor.start_child(__MODULE__, %{
-                 id: make_ref(),
-                 start: {Task, :start_link, [bound]},
-                 restart: :temporary
-               }) do
-            {:ok, pid} -> {:ok, pid}
-            {:error, reason} -> {:error, inspect(reason)}
-          end
-        end)
+        replayable_spawn(%{kind: :process, method: :spawn}, fn -> start_supervised_task(bound) end)
 
       {:error, _reason} = error ->
         error
@@ -138,7 +114,7 @@ defmodule Skein.Runtime.Process do
         # so the spawned body resolves effects identically to inline work (#282).
         bound = SpawnContext.bind(fun)
 
-        Trace.with_span(%{kind: :process, method: :spawn, task: task_name, pool: pool}, fn ->
+        replayable_spawn(%{kind: :process, method: :spawn, task: task_name, pool: pool}, fn ->
           start_supervised_task(bound)
         end)
 
@@ -146,6 +122,30 @@ defmodule Skein.Runtime.Process do
         error
     end
   end
+
+  defp replayable_spawn(metadata, start_fun) do
+    Trace.with_recorded_span(metadata, fn ->
+      case Replay.next_response(:process, Map.take(metadata, [:method, :task, :pool])) do
+        {:ok, _recorded} ->
+          # Golden replay must not spawn background work. Return the caller pid as
+          # an inert pid-shaped handle while marking the trace as replayed.
+          {{:ok, self()}, %{replayed: true, result: :ok}}
+
+        :no_replay ->
+          result = start_fun.()
+          {result, %{spawn_id: inspect(make_ref()), result: result_tag(result)}}
+
+        :exhausted ->
+          {{:error, "Replay trace exhausted: no recorded process spawn remains"}, %{replayed: true}}
+
+        {:mismatch, message} ->
+          {{:error, message}, %{replayed: true}}
+      end
+    end)
+  end
+
+  defp result_tag({:ok, _pid}), do: :ok
+  defp result_tag({:error, reason}), do: inspect(reason)
 
   @doc false
   # Runs `fun` in a temporary supervised Task — the crash-isolation primitive

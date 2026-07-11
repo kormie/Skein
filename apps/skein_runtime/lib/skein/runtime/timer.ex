@@ -10,6 +10,7 @@ defmodule Skein.Runtime.Timer do
   use GenServer
 
   alias Skein.Runtime.Capability
+  alias Skein.Runtime.Replay
   alias Skein.Runtime.SpawnContext
   alias Skein.Runtime.Trace
 
@@ -50,19 +51,16 @@ defmodule Skein.Runtime.Timer do
       :ok ->
         ensure_started()
 
-        Trace.with_span(
-          %{kind: :timer, method: :after, delay_ms: delay_ms, group: group},
-          fn ->
-            timer_ref = generate_ref()
-            fire = normalize_callback(callback)
+        replayable_schedule(%{kind: :timer, method: :after, delay_ms: delay_ms, group: group}, fn ->
+          timer_ref = generate_ref()
+          fire = normalize_callback(callback)
 
-            erlang_ref =
-              :erlang.send_after(delay_ms, __MODULE__, {:fire, timer_ref, :once, fire})
+          erlang_ref =
+            :erlang.send_after(delay_ms, __MODULE__, {:fire, timer_ref, :once, fire})
 
-            :ets.insert(@table, {timer_ref, erlang_ref, :once, fire, delay_ms})
-            {:ok, timer_ref}
-          end
-        )
+          :ets.insert(@table, {timer_ref, erlang_ref, :once, fire, delay_ms})
+          {:ok, timer_ref}
+        end)
 
       {:error, _reason} = error ->
         error
@@ -107,23 +105,20 @@ defmodule Skein.Runtime.Timer do
       :ok ->
         ensure_started()
 
-        Trace.with_span(
-          %{kind: :timer, method: :interval, interval_ms: interval_ms, group: group},
-          fn ->
-            timer_ref = generate_ref()
-            fire = normalize_callback(callback)
+        replayable_schedule(%{kind: :timer, method: :interval, interval_ms: interval_ms, group: group}, fn ->
+          timer_ref = generate_ref()
+          fire = normalize_callback(callback)
 
-            erlang_ref =
-              :erlang.send_after(
-                interval_ms,
-                __MODULE__,
-                {:fire, timer_ref, :recurring, fire}
-              )
+          erlang_ref =
+            :erlang.send_after(
+              interval_ms,
+              __MODULE__,
+              {:fire, timer_ref, :recurring, fire}
+            )
 
-            :ets.insert(@table, {timer_ref, erlang_ref, :recurring, fire, interval_ms})
-            {:ok, timer_ref}
-          end
-        )
+          :ets.insert(@table, {timer_ref, erlang_ref, :recurring, fire, interval_ms})
+          {:ok, timer_ref}
+        end)
 
       {:error, _reason} = error ->
         error
@@ -171,7 +166,7 @@ defmodule Skein.Runtime.Timer do
   defp cancel_impl(timer_ref) do
     ensure_started()
 
-    Trace.with_span(%{kind: :timer, method: :cancel, timer_ref: timer_ref}, fn ->
+    Trace.with_recorded_span(%{kind: :timer, method: :cancel, timer_ref: timer_ref}, fn ->
       case :ets.lookup(@table, timer_ref) do
         [{^timer_ref, erlang_ref, _type, _callback, _ms}] ->
           :erlang.cancel_timer(erlang_ref)
@@ -181,7 +176,7 @@ defmodule Skein.Runtime.Timer do
           :ok
       end
 
-      {:ok, timer_ref}
+      {{:ok, timer_ref}, %{timer_ref: timer_ref, result: :ok}}
     end)
   end
 
@@ -220,6 +215,26 @@ defmodule Skein.Runtime.Timer do
     # and the process is supervised — repeated stops would exhaust the
     # supervisor's restart intensity and take the whole application down.
     :ok
+  end
+
+  defp replayable_schedule(metadata, schedule_fun) do
+    Trace.with_recorded_span(metadata, fn ->
+      case Replay.next_response(:timer, Map.take(metadata, [:method, :group, :delay_ms, :interval_ms])) do
+        {:ok, recorded} ->
+          ref = recorded["timer_ref"] || "replayed-timer"
+          {{:ok, ref}, %{replayed: true, timer_ref: ref, result: :ok}}
+
+        :no_replay ->
+          result = schedule_fun.()
+          {result, %{timer_ref: elem(result, 1), result: :ok}}
+
+        :exhausted ->
+          {{:error, "Replay trace exhausted: no recorded timer event remains"}, %{replayed: true}}
+
+        {:mismatch, message} ->
+          {{:error, message}, %{replayed: true}}
+      end
+    end)
   end
 
   # ------------------------------------------------------------------
