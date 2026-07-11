@@ -1,0 +1,6 @@
+-- expect: E0016
+module AgentConsumer {
+  fn run() -> String {
+    BillingService.calculate("ticket-1")
+  }
+}

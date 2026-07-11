@@ -1,0 +1,22 @@
+-- expect: E0016
+module AgentComposition {
+  agent Worker {
+    enum Phase {
+      Start -> [Done]
+      Done -> []
+    }
+
+    on start(ticket: String) -> {
+      transition(Phase.Start)
+    }
+
+    on phase(Phase.Start) -> {
+      let status = BillingService.calculate("ticket-1")
+      transition(Phase.Done)
+    }
+
+    on phase(Phase.Done) -> {
+      stop()
+    }
+  }
+}

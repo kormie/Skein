@@ -96,6 +96,8 @@ Most languages treat AI agents as library code running inside a general-purpose 
 
 **The entire spec fits in a context window.** The complete language specification is under 128K tokens. An LLM can hold all of Skein in memory and generate valid code reliably.
 
+**For AI agents to build AI agents, tools are the composition boundary.** Skein 1.0 standardizes cross-module composition on typed tools: one module exposes a tool contract, another declares `capability tool.use(...)`, and agents call it with `tool.call(...)`. See [Tools as agent boundaries](docs/site/src/content/docs/language/agent-composition.md).
+
 ---
 
 ## Language at a Glance
