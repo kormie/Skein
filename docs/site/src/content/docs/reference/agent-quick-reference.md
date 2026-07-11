@@ -133,12 +133,12 @@ Every compiler error is a `%Skein.Error{}` struct with fields: `code`, `severity
 
 ## Current Status
 
-All phases complete — MVP reached. The full compilation pipeline supports:
+Pre-1.0 RC gate active. The end-to-end pipeline is functional and the frozen 1.0 surfaces are guarded by conformance tests; GA still waits on the rc.5 soak. The full compilation pipeline supports:
 - Modules with functions, let bindings, match expressions, pipes, string interpolation
 - Type checking with inference, JSON schema derivation, constraint annotations
 - Capability-based security with compile-time and runtime enforcement
 - HTTP/queue/schedule handlers with route matching and path parameters
-- ETS-backed store operations with capability gating and typed tables (C5, #255) — `capability store.table("users", User)` names the record type, operations are type-checked, writes are schema-checked at runtime (the Ecto/SQLite path remains unwired library code)
+- ETS-backed store operations with capability gating and typed tables (C5, #255) — `capability store.table("users", User)` names the record type, operations are type-checked, writes are schema-checked at runtime (compiled programs use the ETS path; EventStore persistence uses SQLite)
 - Agent state machines with phase transitions, compile-time transition validation
 - Scoped KV memory with namespace isolation
 - LLM client with pluggable backends, schema-validated JSON decoding for `llm.json[T]` (responses are recursively validated against the derived schema — C3, #298; violations are `Err(LlmError.InvalidSchema(violations))`), and streaming
