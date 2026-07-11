@@ -94,7 +94,7 @@ Most languages treat AI agents as library code running inside a general-purpose 
 
 **Types generate schemas.** Define a type once and Skein derives JSON encoders, LLM tool manifests, API contracts, and database migrations automatically. No serialization boilerplate.
 
-**The entire spec fits in a context window.** The complete language specification is under 128K tokens. An LLM can hold all of Skein in memory and generate valid code reliably.
+**The entire spec fits in a context window.** The complete language specification is under 128K tokens. An LLM can hold all of Skein in memory and generate valid code reliably. For agents that need one loadable working context, use the generated [Skein language pack](docs/generated/skein-language-pack.md), which bundles the grammar, keywords, type rules, effect ABI, stdlib signatures, diagnostics, canonical examples, scenario syntax, and CLI commands with executable size/example drift gates.
 
 ---
 

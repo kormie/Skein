@@ -1,3 +1,63 @@
+# Skein Language Pack (Generated)
+
+> Generated artifact for AI agents. This single file is intended to be loaded as the complete working language context for writing, reviewing, compiling, and testing Skein programs.
+
+**Context-window budget:** this pack must remain below **128K approximate tokens**. The executable size gate uses 4 bytes/token and therefore enforces a maximum of **524,288 bytes**.
+
+## How to use this pack
+
+1. Read the quick index and CLI commands below.
+2. Treat the embedded `SKEIN_SPEC.md` as normative for grammar, keywords, type rules, capabilities/effects, stdlib signatures, testing/scenario syntax, and diagnostics.
+3. Use the frozen registries for machine-checkable inventories (keywords, diagnostics, effect ABI).
+4. Use canonical examples as copyable starting points; every complete `skein` fence in this pack is drift-checked by the compiler test suite.
+
+## Quick index
+
+- Complete grammar: see embedded spec §2–§3.
+- Reserved and contextual keywords: see embedded spec §2.3 and frozen `keywords.json`.
+- Type system rules: see embedded spec §4.
+- Standard library signatures: see embedded spec §5.
+- Capability/effect ABI: see embedded spec §6 and frozen `effect_abi.json`.
+- Diagnostics table and structured diagnostic ABI: see embedded spec §7 and frozen `diagnostics.json`.
+- Testing/scenario/golden syntax: see embedded spec §3.10 and §8.
+- Canonical examples: see the examples section near the end of this pack.
+- Build/test/run/check commands: see the CLI section below.
+
+## CLI commands for build/test/run/check
+
+From the repository root during compiler development:
+
+```bash
+mix deps.get
+mix compile
+mix test
+mix test apps/skein_compiler/test/skein/conformance/docs_fences_test.exs
+mix test apps/skein_compiler/test/skein/language_pack_test.exs
+mix skein.compile examples/hello.skein
+mix skein.build path/to/project
+mix skein.test path/to/project
+mix skein.run path/to/project
+mix skein.trace path/to/trace.jsonl
+mix docs
+```
+
+From an installed Skein binary in a Skein project:
+
+```bash
+skein new my-service
+skein compile src/main.skein
+skein build
+skein test
+skein run
+skein trace traces/run.jsonl
+skein lsp
+skein mcp
+skein completions zsh
+skein help
+```
+
+---
+
 # SKEIN_SPEC.md — Complete Language Specification
 
 **Version 1.0 — release candidate (FROZEN at the v1.0.0-rc.5 gate, Wave F/#332, 2026-07-02).** v1.0.0 has not been released yet, but every surface this spec describes — the grammar and keyword inventory (§2–§3), the scenario-testing surface (§3.10), the effect/error ABI (§6, including the store contract §6.2), the error registry (§7), derived schemas, CLI/config, and persisted EventStore shapes — is now declared frozen and guarded by executable drift gates (the registry drift tests plus the frozen vectors under `conformance/freeze/`). Between rc.5 and GA these surfaces change only for release-blocking defects; the semver promises in `docs/STABILITY.md` bind when v1.0.0 tags.
@@ -1387,3 +1447,1350 @@ with `tool.call` — there is no cross-module function access to test against.
 > tests plus the frozen vectors under `conformance/freeze/`); between rc.5 and GA they change
 > only for release-blocking defects. The semver promises bind when v1.0.0 tags — see
 > `docs/STABILITY.md` and `docs/ROADMAP.md`.
+
+
+---
+
+# Frozen machine-readable registries
+
+## Reserved/contextual keywords (`conformance/freeze/keywords.json`)
+
+```json
+{
+  "comment": "Frozen keyword inventory (#332). reserved = Skein.Lexer.keywords/0; contextual words lex as identifiers and are recognised by position in the parser. Both lists are drift-tested against spec section 2.3.",
+  "contextual": [
+    "assert",
+    "child",
+    "description",
+    "errors",
+    "expect",
+    "from",
+    "given",
+    "if",
+    "input",
+    "max_restarts",
+    "output",
+    "per",
+    "phase",
+    "start",
+    "state",
+    "strategy",
+    "trace"
+  ],
+  "reserved": [
+    "agent",
+    "capability",
+    "emit",
+    "enum",
+    "false",
+    "fn",
+    "golden",
+    "handler",
+    "idempotent",
+    "implement",
+    "let",
+    "match",
+    "module",
+    "on",
+    "scenario",
+    "stop",
+    "supervisor",
+    "suspend",
+    "test",
+    "tool",
+    "transition",
+    "true",
+    "type"
+  ],
+  "strategy_values": [
+    "one_for_all",
+    "one_for_one",
+    "rest_for_one"
+  ]
+}
+
+```
+
+## Capability/effect ABI (`conformance/freeze/effect_abi.json`)
+
+```json
+{
+  "comment": "Frozen effect ABI (#332): the full Skein.EffectABI registry — every effect/store method signature, provider contract, and error enum variant (with its lowered shape pinned by the runtime ABI matrix). New methods/variants are minors; changing an existing one is major.",
+  "entries": [
+    {
+      "capability": "http.out",
+      "dispatch": "generic",
+      "method": "get",
+      "named_args": true,
+      "ns": "http",
+      "params": [
+        {
+          "name": "url",
+          "optional": false,
+          "type": ":string"
+        }
+      ],
+      "return": "{:result, :dynamic, {:user_type, \"HttpError\"}}",
+      "scoped": "host",
+      "spec_lines": [
+        "http.get(url: String) -> Result[HttpResponse, HttpError]"
+      ]
+    },
+    {
+      "capability": "http.out",
+      "dispatch": "generic",
+      "method": "post",
+      "named_args": true,
+      "ns": "http",
+      "params": [
+        {
+          "name": "url",
+          "optional": false,
+          "type": ":string"
+        },
+        {
+          "name": "json",
+          "optional": false,
+          "type": ":dynamic"
+        }
+      ],
+      "return": "{:result, :dynamic, {:user_type, \"HttpError\"}}",
+      "scoped": "host",
+      "spec_lines": [
+        "http.post(url: String, json: Map) -> Result[HttpResponse, HttpError]"
+      ]
+    },
+    {
+      "capability": "http.out",
+      "dispatch": "generic",
+      "method": "put",
+      "named_args": true,
+      "ns": "http",
+      "params": [
+        {
+          "name": "url",
+          "optional": false,
+          "type": ":string"
+        },
+        {
+          "name": "json",
+          "optional": false,
+          "type": ":dynamic"
+        }
+      ],
+      "return": "{:result, :dynamic, {:user_type, \"HttpError\"}}",
+      "scoped": "host",
+      "spec_lines": [
+        "http.put(url: String, json: Map) -> Result[HttpResponse, HttpError]"
+      ]
+    },
+    {
+      "capability": "http.out",
+      "dispatch": "generic",
+      "method": "patch",
+      "named_args": true,
+      "ns": "http",
+      "params": [
+        {
+          "name": "url",
+          "optional": false,
+          "type": ":string"
+        },
+        {
+          "name": "json",
+          "optional": false,
+          "type": ":dynamic"
+        }
+      ],
+      "return": "{:result, :dynamic, {:user_type, \"HttpError\"}}",
+      "scoped": "host",
+      "spec_lines": [
+        "http.patch(url: String, json: Map) -> Result[HttpResponse, HttpError]"
+      ]
+    },
+    {
+      "capability": "http.out",
+      "dispatch": "generic",
+      "method": "delete",
+      "named_args": true,
+      "ns": "http",
+      "params": [
+        {
+          "name": "url",
+          "optional": false,
+          "type": ":string"
+        }
+      ],
+      "return": "{:result, :dynamic, {:user_type, \"HttpError\"}}",
+      "scoped": "host",
+      "spec_lines": [
+        "http.delete(url: String) -> Result[HttpResponse, HttpError]"
+      ]
+    },
+    {
+      "capability": "memory.kv",
+      "dispatch": "special",
+      "method": "put",
+      "named_args": true,
+      "ns": "memory",
+      "params": [
+        {
+          "name": "key",
+          "optional": false,
+          "type": ":string"
+        },
+        {
+          "name": "value",
+          "optional": false,
+          "type": ":dynamic"
+        }
+      ],
+      "return": "{:result, :dynamic, {:user_type, \"MemoryError\"}}",
+      "scoped": "namespace",
+      "spec_lines": [
+        "memory.put(key: String, value: T) -> Result[T, MemoryError]"
+      ]
+    },
+    {
+      "capability": "memory.kv",
+      "dispatch": "special",
+      "method": "get",
+      "named_args": true,
+      "ns": "memory",
+      "params": [
+        {
+          "name": "key",
+          "optional": false,
+          "type": ":string"
+        }
+      ],
+      "return": "{:result, :dynamic, {:user_type, \"MemoryError\"}}",
+      "scoped": "namespace",
+      "spec_lines": [
+        "memory.get(key: String) -> Result[T, MemoryError]"
+      ]
+    },
+    {
+      "capability": "memory.kv",
+      "dispatch": "special",
+      "method": "delete",
+      "named_args": true,
+      "ns": "memory",
+      "params": [
+        {
+          "name": "key",
+          "optional": false,
+          "type": ":string"
+        }
+      ],
+      "return": "{:result, :string, {:user_type, \"MemoryError\"}}",
+      "scoped": "namespace",
+      "spec_lines": [
+        "memory.delete(key: String) -> Result[String, MemoryError]"
+      ]
+    },
+    {
+      "capability": "memory.kv",
+      "dispatch": "special",
+      "method": "list",
+      "named_args": true,
+      "ns": "memory",
+      "params": [
+        {
+          "name": "prefix",
+          "optional": false,
+          "type": ":string"
+        }
+      ],
+      "return": "{:list, :string}",
+      "scoped": "namespace",
+      "spec_lines": [
+        "memory.list(prefix: String) -> List[String]"
+      ]
+    },
+    {
+      "capability": "model",
+      "dispatch": "special",
+      "method": "chat",
+      "named_args": true,
+      "ns": "llm",
+      "params": [
+        {
+          "name": "model",
+          "optional": false,
+          "type": ":string"
+        },
+        {
+          "name": "system",
+          "optional": false,
+          "type": ":string"
+        },
+        {
+          "name": "input",
+          "optional": false,
+          "type": ":dynamic"
+        }
+      ],
+      "return": "{:result, :string, {:user_type, \"LlmError\"}}",
+      "scoped": null,
+      "spec_lines": [
+        "llm.chat(model: String, system: String, input: T) -> Result[String, LlmError]"
+      ]
+    },
+    {
+      "capability": "model",
+      "dispatch": "special",
+      "method": "json",
+      "named_args": true,
+      "ns": "llm",
+      "params": [
+        {
+          "name": "model",
+          "optional": false,
+          "type": ":string"
+        },
+        {
+          "name": "system",
+          "optional": false,
+          "type": ":string"
+        },
+        {
+          "name": "input",
+          "optional": false,
+          "type": ":dynamic"
+        }
+      ],
+      "return": ":from_type_param",
+      "scoped": null,
+      "spec_lines": [
+        "llm.json[T](model: String, system: String, input: U) -> Result[T, LlmError]"
+      ]
+    },
+    {
+      "capability": "model",
+      "dispatch": "special",
+      "method": "stream",
+      "named_args": true,
+      "ns": "llm",
+      "params": [
+        {
+          "name": "model",
+          "optional": false,
+          "type": ":string"
+        },
+        {
+          "name": "system",
+          "optional": false,
+          "type": ":string"
+        },
+        {
+          "name": "input",
+          "optional": false,
+          "type": ":dynamic"
+        },
+        {
+          "name": "on_chunk",
+          "optional": true,
+          "type": "{:fn, [:string], :dynamic}"
+        }
+      ],
+      "return": "{:result, :string, {:user_type, \"LlmError\"}}",
+      "scoped": null,
+      "spec_lines": [
+        "llm.stream(model: String, system: String, input: T) -> Result[String, LlmError]",
+        "llm.stream(model: String, system: String, input: T, on_chunk) -> Result[String, LlmError]"
+      ]
+    },
+    {
+      "capability": "model",
+      "dispatch": "special",
+      "method": "embed",
+      "named_args": true,
+      "ns": "llm",
+      "params": [
+        {
+          "name": "model",
+          "optional": false,
+          "type": ":string"
+        },
+        {
+          "name": "input",
+          "optional": false,
+          "type": ":string"
+        }
+      ],
+      "return": "{:result, {:list, :float}, {:user_type, \"LlmError\"}}",
+      "scoped": null,
+      "spec_lines": [
+        "llm.embed(model: String, input: String) -> Result[List[Float], LlmError]"
+      ]
+    },
+    {
+      "capability": "tool.use",
+      "dispatch": "special",
+      "method": "call",
+      "named_args": false,
+      "ns": "tool",
+      "params": [
+        {
+          "name": "name",
+          "optional": false,
+          "type": ":dynamic"
+        },
+        {
+          "name": "args",
+          "optional": false,
+          "type": ":dynamic"
+        }
+      ],
+      "return": "{:result, :dynamic, {:user_type, \"ToolError\"}}",
+      "scoped": null,
+      "spec_lines": [
+        "tool.call(name: ToolName, args: Map) -> Result[Map, ToolError]"
+      ]
+    },
+    {
+      "capability": "tool.use",
+      "dispatch": "special",
+      "method": "list",
+      "named_args": false,
+      "ns": "tool",
+      "params": [],
+      "return": "{:result, {:list, :dynamic}, {:user_type, \"ToolError\"}}",
+      "scoped": null,
+      "spec_lines": [
+        "tool.list() -> Result[List[ToolInfo], ToolError]"
+      ]
+    },
+    {
+      "capability": "tool.use",
+      "dispatch": "special",
+      "method": "schema",
+      "named_args": false,
+      "ns": "tool",
+      "params": [
+        {
+          "name": "name",
+          "optional": false,
+          "type": ":dynamic"
+        }
+      ],
+      "return": "{:result, :dynamic, {:user_type, \"ToolError\"}}",
+      "scoped": null,
+      "spec_lines": [
+        "tool.schema(name: ToolName) -> Result[Map, ToolError]"
+      ]
+    },
+    {
+      "capability": "topic.publish",
+      "dispatch": "generic",
+      "method": "publish",
+      "named_args": true,
+      "ns": "topic",
+      "params": [
+        {
+          "name": "name",
+          "optional": false,
+          "type": ":string"
+        },
+        {
+          "name": "data",
+          "optional": false,
+          "type": ":dynamic"
+        }
+      ],
+      "return": "{:result, :string, {:user_type, \"PublishError\"}}",
+      "scoped": null,
+      "spec_lines": [
+        "topic.publish(name: String, data: T) -> Result[String, PublishError]"
+      ]
+    },
+    {
+      "capability": "queue.publish",
+      "dispatch": "generic",
+      "method": "publish",
+      "named_args": true,
+      "ns": "queue",
+      "params": [
+        {
+          "name": "name",
+          "optional": false,
+          "type": ":string"
+        },
+        {
+          "name": "data",
+          "optional": false,
+          "type": ":dynamic"
+        }
+      ],
+      "return": "{:result, :string, {:user_type, \"PublishError\"}}",
+      "scoped": null,
+      "spec_lines": [
+        "queue.publish(name: String, data: T) -> Result[String, PublishError]"
+      ]
+    },
+    {
+      "capability": null,
+      "dispatch": "generic",
+      "method": "annotate",
+      "named_args": true,
+      "ns": "trace",
+      "params": [
+        {
+          "name": "key",
+          "optional": false,
+          "type": ":string"
+        },
+        {
+          "name": "value",
+          "optional": false,
+          "type": ":dynamic"
+        }
+      ],
+      "return": ":dynamic",
+      "scoped": null,
+      "spec_lines": [
+        "trace.annotate(key: String, value: String) -> ()"
+      ]
+    },
+    {
+      "capability": "event.log",
+      "dispatch": "generic",
+      "method": "log",
+      "named_args": true,
+      "ns": "event",
+      "params": [
+        {
+          "name": "name",
+          "optional": false,
+          "type": ":string"
+        },
+        {
+          "name": "data",
+          "optional": false,
+          "type": ":dynamic"
+        }
+      ],
+      "return": "{:result, :string, :dynamic}",
+      "scoped": "label",
+      "spec_lines": [
+        "event.log(name: String, data: T) -> Result[String, String]"
+      ]
+    },
+    {
+      "capability": "process.spawn",
+      "dispatch": "generic",
+      "method": "spawn",
+      "named_args": true,
+      "ns": "process",
+      "params": [
+        {
+          "name": "task",
+          "optional": false,
+          "type": ":string"
+        },
+        {
+          "name": "work",
+          "optional": true,
+          "type": "{:fn, [], :dynamic}"
+        }
+      ],
+      "return": "{:result, :dynamic, :string}",
+      "scoped": "label",
+      "spec_lines": [
+        "process.spawn(task: String) -> Result[_, String]",
+        "process.spawn(task: String, work) -> Result[_, String]"
+      ]
+    },
+    {
+      "capability": "timer",
+      "dispatch": "generic",
+      "method": "after",
+      "named_args": true,
+      "ns": "timer",
+      "params": [
+        {
+          "name": "delay_ms",
+          "optional": false,
+          "type": ":int"
+        },
+        {
+          "name": "task",
+          "optional": false,
+          "type": ":string"
+        },
+        {
+          "name": "work",
+          "optional": true,
+          "type": "{:fn, [], :dynamic}"
+        }
+      ],
+      "return": "{:result, :string, :string}",
+      "scoped": "label",
+      "spec_lines": [
+        "timer.after(delay_ms: Int, task: String) -> Result[String, String]",
+        "timer.after(delay_ms: Int, task: String, work) -> Result[String, String]"
+      ]
+    },
+    {
+      "capability": "timer",
+      "dispatch": "generic",
+      "method": "interval",
+      "named_args": true,
+      "ns": "timer",
+      "params": [
+        {
+          "name": "every_ms",
+          "optional": false,
+          "type": ":int"
+        },
+        {
+          "name": "task",
+          "optional": false,
+          "type": ":string"
+        },
+        {
+          "name": "work",
+          "optional": true,
+          "type": "{:fn, [], :dynamic}"
+        }
+      ],
+      "return": "{:result, :string, :string}",
+      "scoped": "label",
+      "spec_lines": [
+        "timer.interval(every_ms: Int, task: String) -> Result[String, String]",
+        "timer.interval(every_ms: Int, task: String, work) -> Result[String, String]"
+      ]
+    },
+    {
+      "capability": "timer",
+      "dispatch": "generic",
+      "method": "cancel",
+      "named_args": true,
+      "ns": "timer",
+      "params": [
+        {
+          "name": "ref",
+          "optional": false,
+          "type": ":dynamic"
+        }
+      ],
+      "return": "{:result, :string, :string}",
+      "scoped": "label",
+      "spec_lines": [
+        "timer.cancel(ref: String) -> Result[String, String]"
+      ]
+    },
+    {
+      "capability": "uuid",
+      "dispatch": "generic",
+      "method": "new",
+      "named_args": true,
+      "ns": "uuid",
+      "params": [],
+      "return": ":uuid",
+      "scoped": null,
+      "spec_lines": [
+        "uuid.new() -> Uuid"
+      ]
+    },
+    {
+      "capability": "instant",
+      "dispatch": "generic",
+      "method": "now",
+      "named_args": true,
+      "ns": "instant",
+      "params": [],
+      "return": ":instant",
+      "scoped": null,
+      "spec_lines": [
+        "instant.now() -> Instant"
+      ]
+    }
+  ],
+  "error_enums": {
+    "HttpError": [
+      {
+        "fields": [],
+        "name": "Timeout"
+      },
+      {
+        "fields": [],
+        "name": "ConnectionFailed"
+      },
+      {
+        "fields": [
+          {
+            "name": "code",
+            "type": "\"Int\""
+          },
+          {
+            "name": "body",
+            "type": "\"String\""
+          }
+        ],
+        "name": "Status"
+      },
+      {
+        "fields": [
+          {
+            "name": "reason",
+            "type": "\"String\""
+          }
+        ],
+        "name": "InvalidRequest"
+      },
+      {
+        "fields": [
+          {
+            "name": "reason",
+            "type": "\"String\""
+          }
+        ],
+        "name": "Denied"
+      }
+    ],
+    "LlmError": [
+      {
+        "fields": [
+          {
+            "name": "raw",
+            "type": "\"String\""
+          },
+          {
+            "name": "expected_type",
+            "type": "\"String\""
+          },
+          {
+            "name": "parse_error",
+            "type": "\"String\""
+          }
+        ],
+        "name": "ParseFailed"
+      },
+      {
+        "fields": [
+          {
+            "name": "reason",
+            "type": "\"String\""
+          }
+        ],
+        "name": "Refused"
+      },
+      {
+        "fields": [
+          {
+            "name": "retry_after_ms",
+            "type": "\"Int\""
+          }
+        ],
+        "name": "RateLimit"
+      },
+      {
+        "fields": [
+          {
+            "name": "elapsed_ms",
+            "type": "\"Int\""
+          }
+        ],
+        "name": "Timeout"
+      },
+      {
+        "fields": [
+          {
+            "name": "filter",
+            "type": "\"String\""
+          }
+        ],
+        "name": "ContentFiltered"
+      },
+      {
+        "fields": [
+          {
+            "name": "violations",
+            "type": "{\"List\", \"String\"}"
+          }
+        ],
+        "name": "InvalidSchema"
+      },
+      {
+        "fields": [
+          {
+            "name": "code",
+            "type": "\"String\""
+          },
+          {
+            "name": "message",
+            "type": "\"String\""
+          }
+        ],
+        "name": "ProviderError"
+      },
+      {
+        "fields": [
+          {
+            "name": "reason",
+            "type": "\"String\""
+          }
+        ],
+        "name": "Denied"
+      }
+    ],
+    "MemoryError": [
+      {
+        "fields": [],
+        "name": "NotFound"
+      },
+      {
+        "fields": [
+          {
+            "name": "reason",
+            "type": "\"String\""
+          }
+        ],
+        "name": "Failed"
+      },
+      {
+        "fields": [
+          {
+            "name": "reason",
+            "type": "\"String\""
+          }
+        ],
+        "name": "Denied"
+      }
+    ],
+    "NotFound": [
+      {
+        "fields": [],
+        "name": "NotFound"
+      }
+    ],
+    "PublishError": [
+      {
+        "fields": [
+          {
+            "name": "reason",
+            "type": "\"String\""
+          }
+        ],
+        "name": "Denied"
+      },
+      {
+        "fields": [
+          {
+            "name": "reason",
+            "type": "\"String\""
+          }
+        ],
+        "name": "Failed"
+      }
+    ],
+    "StoreError": [
+      {
+        "fields": [],
+        "name": "NotFound"
+      },
+      {
+        "fields": [
+          {
+            "name": "reason",
+            "type": "\"String\""
+          }
+        ],
+        "name": "Failed"
+      },
+      {
+        "fields": [
+          {
+            "name": "reason",
+            "type": "\"String\""
+          }
+        ],
+        "name": "Denied"
+      }
+    ],
+    "ToolError": [
+      {
+        "fields": [
+          {
+            "name": "name",
+            "type": "\"String\""
+          }
+        ],
+        "name": "NotFound"
+      },
+      {
+        "fields": [
+          {
+            "name": "tool",
+            "type": "\"String\""
+          },
+          {
+            "name": "violations",
+            "type": "{\"List\", \"String\"}"
+          }
+        ],
+        "name": "ValidationError"
+      },
+      {
+        "fields": [
+          {
+            "name": "tool",
+            "type": "\"String\""
+          },
+          {
+            "name": "error",
+            "type": "\"String\""
+          }
+        ],
+        "name": "ExecutionError"
+      },
+      {
+        "fields": [
+          {
+            "name": "reason",
+            "type": "\"String\""
+          }
+        ],
+        "name": "Denied"
+      }
+    ]
+  },
+  "provider_contracts": {
+    "http.out": {
+      "signature": "implement(req: HttpRequest) -> Result[HttpResponse, HttpError]"
+    },
+    "instant": {
+      "signature": "implement() -> Instant"
+    },
+    "model": {
+      "signature": "implement(req: LlmRequest) -> Result[LlmResponse, LlmError]"
+    },
+    "uuid": {
+      "signature": "implement() -> Uuid"
+    }
+  },
+  "store_entries": [
+    {
+      "method": "get",
+      "return": "{:result, :dynamic, {:user_type, \"StoreError\"}}",
+      "spec_lines": [
+        "store.<table>.get(id: Uuid) -> Result[T, StoreError]"
+      ]
+    },
+    {
+      "method": "put",
+      "return": "{:result, :dynamic, {:user_type, \"StoreError\"}}",
+      "spec_lines": [
+        "store.<table>.put(record: T) -> Result[T, StoreError]"
+      ]
+    },
+    {
+      "method": "delete",
+      "return": "{:result, :dynamic, {:user_type, \"StoreError\"}}",
+      "spec_lines": [
+        "store.<table>.delete(id: Uuid) -> Result[Uuid, StoreError]"
+      ]
+    },
+    {
+      "method": "query",
+      "return": "{:result, {:list, :dynamic}, {:user_type, \"StoreError\"}}",
+      "spec_lines": [
+        "store.<table>.query(filters: Map) -> Result[List[T], StoreError]"
+      ]
+    }
+  ]
+}
+
+```
+
+## Diagnostics registry (`conformance/freeze/diagnostics.json`)
+
+```json
+{
+  "codes": {
+    "W0001": {
+      "category": "Warning",
+      "severity": "warning"
+    },
+    "E0033": {
+      "category": "Agent",
+      "severity": "error"
+    },
+    "E0032": {
+      "category": "Agent",
+      "severity": "error"
+    },
+    "E0010": {
+      "category": "Name",
+      "severity": "error"
+    },
+    "E0036": {
+      "category": "Agent",
+      "severity": "error"
+    },
+    "E0037": {
+      "category": "Type",
+      "severity": "error"
+    },
+    "E0041": {
+      "category": "Supervisor",
+      "severity": "error"
+    },
+    "E0029": {
+      "category": "Capability",
+      "severity": "error"
+    },
+    "E0012": {
+      "category": "Capability",
+      "severity": "error"
+    },
+    "E0025": {
+      "category": "Type",
+      "severity": "error"
+    },
+    "W0003": {
+      "category": "Warning",
+      "severity": "warning"
+    },
+    "E0026": {
+      "category": "Type",
+      "severity": "error"
+    },
+    "E0022": {
+      "category": "Type",
+      "severity": "error"
+    },
+    "E0020": {
+      "category": "Type",
+      "severity": "error"
+    },
+    "E0003": {
+      "category": "Syntax",
+      "severity": "error"
+    },
+    "E0024": {
+      "category": "Type",
+      "severity": "error"
+    },
+    "E0021": {
+      "category": "Type",
+      "severity": "error"
+    },
+    "E0042": {
+      "category": "Supervisor",
+      "severity": "warning"
+    },
+    "E0043": {
+      "category": "Store",
+      "severity": "error"
+    },
+    "E0017": {
+      "category": "Capability",
+      "severity": "error"
+    },
+    "E0039": {
+      "category": "Agent",
+      "severity": "error"
+    },
+    "E0027": {
+      "category": "Type",
+      "severity": "error"
+    },
+    "W0002": {
+      "category": "Warning",
+      "severity": "warning"
+    },
+    "E0040": {
+      "category": "Supervisor",
+      "severity": "error"
+    },
+    "E0028": {
+      "category": "Capability",
+      "severity": "error"
+    },
+    "W0004": {
+      "category": "Warning",
+      "severity": "warning"
+    },
+    "E0030": {
+      "category": "Agent",
+      "severity": "error"
+    },
+    "E0016": {
+      "category": "Name",
+      "severity": "error"
+    },
+    "E0035": {
+      "category": "Agent",
+      "severity": "error"
+    },
+    "E0011": {
+      "category": "Name",
+      "severity": "error"
+    },
+    "E0031": {
+      "category": "Agent",
+      "severity": "warning"
+    },
+    "E0023": {
+      "category": "Type",
+      "severity": "error"
+    },
+    "E0001": {
+      "category": "Syntax",
+      "severity": "error"
+    },
+    "E0014": {
+      "category": "Tool",
+      "severity": "error"
+    },
+    "E0002": {
+      "category": "Syntax",
+      "severity": "error"
+    },
+    "E0038": {
+      "category": "Type",
+      "severity": "error"
+    },
+    "E0015": {
+      "category": "Tool",
+      "severity": "error"
+    },
+    "E0013": {
+      "category": "Capability",
+      "severity": "—"
+    },
+    "E0034": {
+      "category": "Agent",
+      "severity": "error"
+    }
+  },
+  "comment": "Frozen diagnostics registry (#332): code -> category/severity, parsed from spec section 7 (the canonical table). Codes are append-only; a severity change is breaking. Structured fields + edit kinds are the machine-consumed error shape.",
+  "edit_kinds": [
+    "delete_line",
+    "insert_after",
+    "insert_before",
+    "insert_line",
+    "replace"
+  ],
+  "error_fields": [
+    "code",
+    "context",
+    "edit_kind",
+    "fix_code",
+    "fix_hint",
+    "location",
+    "message",
+    "severity",
+    "span"
+  ]
+}
+
+```
+
+---
+
+# Canonical compiling examples
+
+## Hello module
+
+```skein
+module Hello {
+  fn greet(name: String) -> String {
+    "Hello, ${name}!"
+  }
+
+  fn add(a: Int, b: Int) -> Int {
+    a + b
+  }
+
+  fn classify(n: Int) -> String {
+    match n > 0 {
+      true  -> "positive"
+      false -> "non-positive"
+    }
+  }
+}
+
+```
+
+## Standard library demo
+
+```skein
+module StdlibDemo {
+  fn format_greeting(name: String) -> String {
+    let upper_name = String.upcase(name)
+    let trimmed = String.trim(upper_name)
+    "Hello, ${trimmed}!"
+  }
+
+  fn word_count(text: String) -> Int {
+    let words = String.split(text, " ")
+    List.length(words)
+  }
+
+  fn top_scores(scores: List[Int]) -> List[Int] {
+    let sorted = List.sort(scores)
+    let highest = List.reverse(sorted)
+    List.take(highest, 3)
+  }
+
+  fn lookup_label(labels: Map[String, String], key: String) -> String {
+    Option.unwrap(Map.get(labels, key), "unknown")
+  }
+
+  fn parse_or_zero(text: String) -> Int {
+    Result.unwrap(Int.parse(text), 0)
+  }
+
+  fn classify_number(n: Int) -> String {
+    let absolute = Int.abs(n)
+    let clamped = Int.clamp(absolute, 0, 100)
+    Int.to_string(clamped)
+  }
+
+  fn safe_parse(text: String) -> Result[Int, String] {
+    Int.parse(text)
+  }
+
+  fn temperature_label(celsius: Int) -> String {
+    let clamped = Int.clamp(celsius, -40, 50)
+    match clamped < -18 {
+      true  -> "freezing"
+      false -> "normal"
+    }
+  }
+
+  fn round_price(amount: Float, decimals: Int) -> Float {
+    Float.round(amount, decimals)
+  }
+
+  fn normalize(text: String) -> String {
+    let lower = String.downcase(text)
+    let cleaned = String.trim(lower)
+    let result = String.replace(cleaned, "  ", " ")
+    result
+  }
+}
+
+```
+
+## HTTP capability example
+
+```skein
+-- hello_http.skein
+-- A simple HTTP service with multiple endpoints demonstrating handler syntax
+-- and all three response helpers: respond.json, respond.text, respond.html.
+
+module HelloHttp {
+  capability http.in
+
+  -- Health check endpoint (plain text)
+  handler http GET "/health" (req) -> {
+    respond.text(200, "ok")
+  }
+
+  -- Greeting endpoint with path parameter (JSON)
+  handler http GET "/greet/:name" (req) -> {
+    let name = req.params.name
+    trace.annotate("user", name)
+    respond.json(200, "hello")
+  }
+
+  -- Echo endpoint that returns the request body (JSON)
+  handler http POST "/echo" (req) -> {
+    respond.json(200, req.body)
+  }
+
+  -- Compute endpoint demonstrating logic in handlers (JSON)
+  handler http GET "/classify/:n" (req) -> {
+    match Int.parse(req.params.n) {
+      Ok(n) -> match n >= 0 {
+        true  -> respond.json(200, "non-negative")
+        false -> respond.json(200, "negative")
+      }
+      Err(_) -> respond.json(400, "not a number")
+    }
+  }
+
+  -- HTML page endpoint
+  handler http GET "/page" (req) -> {
+    respond.html(200, "<h1>Hello from Skein</h1>")
+  }
+}
+
+```
+
+## Agent and tool example
+
+```skein
+-- refund_agent.skein
+-- An agent that processes refund requests through multiple phases.
+-- Demonstrates agent lifecycle, phase transitions, memory, LLM integration,
+-- and suspend/resume for human-in-the-loop review.
+
+agent RefundAgent {
+  capability model("anthropic", "claude-opus-4-8")
+  capability memory.kv
+
+  state {
+    order_id: String
+    reason: String
+    amount: Int
+  }
+
+  enum Phase {
+    Review -> [Approved, Denied, Failed]
+    Approved -> [Complete]
+    Denied -> [Complete]
+    Failed -> [Review]
+    Complete -> []
+  }
+
+  on start(order_id: String) -> {
+    memory.put("order_id", order_id)
+    transition(Phase.Review)
+  }
+
+  on phase(Phase.Review) -> {
+    let order = memory.get("order_id")!
+    trace.annotate("ticket_id", order)
+    let decision = llm.chat(
+      "claude-opus-4-8",
+      "Evaluate this refund request. Answer with exactly one word: approve or deny.",
+      order
+    )!
+    trace.annotate("decision", decision)
+    memory.put("decision", decision)
+
+    match String.trim(decision) {
+      "approve" -> transition(Phase.Approved)
+      "deny" -> transition(Phase.Denied)
+      _ -> transition(Phase.Failed)
+    }
+  }
+
+  on phase(Phase.Approved) -> {
+    let order = memory.get("order_id")!
+    emit RefundApproved { order_id: order }
+    transition(Phase.Complete)
+  }
+
+  on phase(Phase.Denied) -> {
+    let order = memory.get("order_id")!
+    emit RefundDenied { order_id: order }
+    transition(Phase.Complete)
+  }
+
+  on phase(Phase.Failed) -> {
+    suspend("Requires human review")
+  }
+
+  on phase(Phase.Complete) -> {
+    stop()
+  }
+}
+
+```
