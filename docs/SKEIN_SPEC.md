@@ -1387,3 +1387,73 @@ with `tool.call` — there is no cross-module function access to test against.
 > tests plus the frozen vectors under `conformance/freeze/`); between rc.5 and GA they change
 > only for release-blocking defects. The semver promises bind when v1.0.0 tags — see
 > `docs/STABILITY.md` and `docs/ROADMAP.md`.
+
+## Stable CLI JSON inspection schemas
+
+Skein CLI commands that expose compiler/runtime state to agents MUST support a
+single JSON document on stdout with the envelope:
+
+```json
+{ "schema": "skein.<command>/v1", "ok": true, "data": {} }
+```
+
+The stable inspectable commands are:
+
+- `skein compile --json <file.skein>` and `skein check --json <file.skein>`:
+  `schema: "skein.compile/v1"`; `data.module`, `data.errors[]`, and
+  `data.warnings[]`.
+- `skein test --json [project-dir]`: `schema: "skein.test/v1"`; test counts,
+  compile failures, and per-test results.
+- `skein run status --json [project-dir]`: `schema: "skein.run_status/v1"`;
+  compiled service modules, handlers, supervisors, port, persistence mode, and
+  readiness state without starting a listener.
+- `skein trace query --json [--last n] [--kind kind]` (alias: `skein trace`):
+  `schema: "skein.trace/v1"`; recent trace spans.
+- `skein event-store query --json [--last n] [--kind kind] [--event name]
+  [--stream stream]` (aliases: `eventstore query`, `EventStore query`):
+  `schema: "skein.event_store/v1"`; unified EventStore events.
+
+Inspectable entries SHOULD use these stable field names when known: `module`,
+`handler`, `tool`, `agent`, `name`, `phase`, `capability`, `effect_span`,
+`error_code`, and `fix_hint`. Compiler diagnostics additionally include
+`code`, `severity`, `message`, `location`, `span`, `context`, `fix_code`, and
+`edit_kind`; `error_code` mirrors `code` for consumers that use one field across
+compile and runtime failures.
+
+### Agent failure-inspection example
+
+An AI agent investigating a failed tool call can query:
+
+```bash
+skein event-store query --json --kind tool --last 1
+```
+
+Example response:
+
+```json
+{
+  "schema": "skein.event_store/v1",
+  "ok": true,
+  "data": {
+    "count": 1,
+    "events": [
+      {
+        "kind": "tool",
+        "module": "Refunds",
+        "tool": "Refunds.Create",
+        "phase": "execute",
+        "capability": "tool.use(Refunds.Create)",
+        "effect_span": { "start": { "line": 42, "col": 9 }, "end": { "line": 42, "col": 54 } },
+        "outcome": "error",
+        "error_code": "E_CAPABILITY_DENIED",
+        "fix_hint": "Declare capability tool.use(Refunds.Create) in the scenario or handler that calls it."
+      }
+    ]
+  }
+}
+```
+
+From `module`, `tool`, `phase`, and `effect_span`, the agent can identify that
+`Refunds` contains the failing `tool.call(Refunds.Create, ...)` construct at
+line 42, then apply the `fix_hint` by adding the missing capability declaration
+to the enclosing Skein construct.

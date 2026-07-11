@@ -5,7 +5,7 @@ description: The stable, versioned JSON envelope emitted by skein compile, build
 
 **Status:** stable from v1.0.0 onward (governed by [Stability & Versioning](/Skein/reference/stability/)).
 
-`skein compile`, `skein build`, `skein test`, and `skein trace` accept a
+`skein compile`/`skein check`, `skein build`, `skein test`, `skein run status`, `skein trace query`, and `skein event-store query` accept a
 `--json` flag that replaces their human-readable output with a single
 machine-readable JSON document on stdout. This is the contract coding agents
 and CI scripts should parse — the plain text format is for humans and is not
@@ -31,7 +31,7 @@ newline, with the same three top-level keys:
 
 | Key | Type | Meaning |
 |-----|------|---------|
-| `schema` | string | Identifies the payload shape and its version: `skein.compile/v1`, `skein.build/v1`, `skein.test/v1`, `skein.trace/v1`. The `/vN` suffix is bumped only on a breaking change to `data`; additive fields do not bump it. |
+| `schema` | string | Identifies the payload shape and its version: `skein.compile/v1`, `skein.build/v1`, `skein.test/v1`, `skein.run_status/v1`, `skein.trace/v1`, `skein.event_store/v1`. The `/vN` suffix is bumped only on a breaking change to `data`; additive fields do not bump it. |
 | `ok` | boolean | The machine success signal. `true` means the command succeeded with nothing to fix. The process **exit code mirrors this**: `0` when `ok` is `true`, `1` otherwise — so a script can branch on either. |
 | `data` | object | Command-specific payload, documented below. |
 
@@ -215,3 +215,34 @@ the same `errors` array, so `data.errors` is uniformly a list of objects.
 `SKEIN_NO_TUI` (force plain). None of these change `--json` output: a JSON
 request always produces the byte-for-byte envelope above, never a TUI. MCP, LSP,
 and any non-TTY stdout likewise never route through a TUI.
+
+
+## Runtime inspection commands
+
+`skein run status --json [project-dir]` compiles the service and returns
+`skein.run_status/v1` without opening the HTTP listener. Its payload includes
+`state`, `phase`, `module`, `modules`, `modules_count`, `port`, `persist`,
+`project_dir`, `handlers[]`, and `supervisors[]`. Handler entries carry stable
+inspection fields such as `module`, `handler`, `phase`, `source`, `method`,
+`path`, and `capability` when known.
+
+`skein trace query --json` is an alias for `skein trace --json`. Trace spans and
+EventStore events may include the cross-cutting fields `module`, `handler`,
+`tool`, `agent`, `name`, `phase`, `capability`, `effect_span`, `error_code`, and
+`fix_hint` in addition to the effect-specific span fields.
+
+`skein event-store query --json [--last n] [--kind kind] [--event name]
+[--stream stream]` returns `skein.event_store/v1` with `count` and `events[]`.
+Events are projected to a JSON-safe stable field set, so private runtime values
+such as pids are never part of the contract.
+
+### End-to-end agent example
+
+An agent can run `skein event-store query --json --kind tool --last 1`, read the
+failed event's `module`, `tool`, `phase`, `effect_span`, `error_code`, and
+`fix_hint`, and map the failure back to the source Skein construct. For example,
+a tool event with `module: "Refunds"`, `tool: "Refunds.Create"`,
+`phase: "execute"`, `effect_span.start.line: 42`, and
+`error_code: "E_CAPABILITY_DENIED"` points the agent at the
+`tool.call(Refunds.Create, ...)` expression in `Refunds` and tells it to add the
+missing `capability tool.use(Refunds.Create)` declaration.

@@ -26,7 +26,10 @@ defmodule Skein.CLI.Json do
 
   alias Skein.Error
 
-  @trace_span_fields [:kind, :method, :url, :status, :outcome, :duration_us]
+  @inspectable_fields [:module, :handler, :tool, :agent, :name, :phase, :capability, :effect_span, :error_code, :fix_hint]
+  @trace_span_fields [:kind, :method, :url, :path, :status, :outcome, :duration_us, :error] ++ @inspectable_fields
+  @event_fields [:id, :timestamp, :kind, :event, :stream, :data, :wall_time, :namespace, :key, :value] ++
+                  @trace_span_fields
 
   @doc """
   Renders an envelope map (from `compile/1`, `build/1`, `test/1`, `trace/1`) to
@@ -53,6 +56,29 @@ defmodule Skein.CLI.Json do
   end
 
   def trace({:error, message}), do: error_envelope("skein.trace/v1", message)
+
+  @doc """
+  Builds the `skein.event_store/v1` envelope from a `Skein.CLI.event_store/1` result.
+  """
+  @spec event_store({:ok, map()} | {:error, String.t()}) :: map()
+  def event_store({:ok, %{events: events, count: count}}) do
+    envelope("skein.event_store/v1", true, %{
+      events: Enum.map(events, &project_event/1),
+      count: count
+    })
+  end
+
+  def event_store({:error, message}), do: error_envelope("skein.event_store/v1", message)
+
+  @doc """
+  Builds the `skein.run_status/v1` envelope from a `Skein.CLI.run_status/1` result.
+  """
+  @spec run_status({:ok, map()} | {:error, String.t()}) :: map()
+  def run_status({:ok, status}) do
+    envelope("skein.run_status/v1", true, status)
+  end
+
+  def run_status({:error, message}), do: error_envelope("skein.run_status/v1", message)
 
   defp project_span(span) do
     @trace_span_fields
@@ -95,10 +121,19 @@ defmodule Skein.CLI.Json do
     base = %{
       description: result.description,
       status: scalar(result.status),
-      kind: scalar(Map.get(result, :kind, :test))
+      kind: scalar(Map.get(result, :kind, :test)),
+      phase: scalar(Map.get(result, :phase, :test))
     }
 
     base
+    |> maybe_put(:module, Map.get(result, :module))
+    |> maybe_put(:handler, Map.get(result, :handler))
+    |> maybe_put(:tool, Map.get(result, :tool))
+    |> maybe_put(:agent, Map.get(result, :agent))
+    |> maybe_put(:capability, Map.get(result, :capability))
+    |> maybe_put(:effect_span, Map.get(result, :effect_span))
+    |> maybe_put(:error_code, Map.get(result, :error_code))
+    |> maybe_put(:fix_hint, Map.get(result, :fix_hint))
     |> maybe_put(:file, Map.get(result, :file))
     |> maybe_put(:error, Map.get(result, :error))
     |> maybe_put(:location, Map.get(result, :location))
@@ -116,12 +151,12 @@ defmodule Skein.CLI.Json do
     envelope("skein.compile/v1", true, %{
       module: module_name(module),
       errors: [],
-      warnings: warnings
+      warnings: Enum.map(warnings, &diagnostic/1)
     })
   end
 
   def compile({:error, errors}) when is_list(errors) do
-    envelope("skein.compile/v1", false, %{module: nil, errors: errors, warnings: []})
+    envelope("skein.compile/v1", false, %{module: nil, errors: Enum.map(errors, &diagnostic/1), warnings: []})
   end
 
   def compile({:error, message}) do
@@ -166,8 +201,36 @@ defmodule Skein.CLI.Json do
   end
 
   defp compile_failure(%{file: file, errors: errors}) do
-    %{file: file, errors: errors}
+    %{file: file, phase: "compile", errors: Enum.map(errors, &diagnostic/1)}
   end
+
+  defp project_event(event) do
+    @event_fields
+    |> Enum.reduce(%{}, fn key, acc ->
+      case field(event, key) do
+        nil -> acc
+        value -> Map.put(acc, key, scalar(value))
+      end
+    end)
+  end
+
+  defp diagnostic(%Error{} = error) do
+    error
+    |> Map.from_struct()
+    |> Map.take([:code, :severity, :message, :location, :context, :fix_hint, :fix_code, :span, :edit_kind])
+    |> Map.put(:phase, "compile")
+    |> Map.put(:error_code, error.code)
+    |> Enum.reject(fn {_k, v} -> is_nil(v) end)
+    |> Map.new(fn {k, v} -> {k, scalar(v)} end)
+  end
+
+  defp diagnostic(%{} = error) do
+    error
+    |> Map.put_new(:phase, "compile")
+    |> then(fn e -> if Map.has_key?(e, :code), do: Map.put_new(e, :error_code, e[:code]), else: e end)
+  end
+
+  defp diagnostic(message), do: message_error(message)
 
   # Reason strings (usage / filesystem) become a minimal error-shaped map so
   # `data.errors` is uniformly a list of objects.
@@ -183,7 +246,15 @@ defmodule Skein.CLI.Json do
   # Atoms render as their text so the JSON stays string-typed for consumers;
   # numbers and binaries pass through untouched.
   defp scalar(value) when is_atom(value) and not is_boolean(value), do: Atom.to_string(value)
-  defp scalar(value), do: value
+  defp scalar(value) when is_binary(value) or is_number(value) or is_boolean(value) or is_nil(value), do: value
+  defp scalar(value) when is_list(value), do: Enum.map(value, &scalar/1)
+  defp scalar(value) when is_map(value) do
+    Map.new(value, fn {k, v} -> {scalar_key(k), scalar(v)} end)
+  end
+  defp scalar(value), do: inspect(value)
+
+  defp scalar_key(key) when is_atom(key), do: Atom.to_string(key)
+  defp scalar_key(key), do: to_string(key)
 
   # Span maps may use atom or string keys (live vs replayed from JSON).
   defp field(span, key) when is_map(span) do
