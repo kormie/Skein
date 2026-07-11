@@ -7,7 +7,7 @@ This is the forward-looking work list for Skein. Items are ordered by impact —
 
 ## Release posture (re-baseline 2026-06-19)
 
-**v1.0.0 GA is not imminent, and the next release is not another RC.** v1.0.0-rc.1 was tagged prematurely; the dogfooding audit reclassified GA from a docs-accuracy cleanup to a soundness + honesty + observability + conformance gate, and the 2026-06-19 source-verified audit found that **analyzer/codegen soundness is not yet established** and the **runtime effect/schema/store/EventStore contracts are drifted from the spec** — so the milestone scope was re-sequenced into a contract-first dependency graph. The release train is driven by two **pre-1.0 development milestones** (plus a conditional canonical-substrate milestone), then a true RC, then GA:
+**v1.0.0 GA is not imminent; the active gate is the next true RC (`v1.0.0-rc.5`).** v1.0.0-rc.1 was tagged prematurely; the dogfooding audit reclassified GA from a docs-accuracy cleanup to a soundness + honesty + observability + conformance gate, and the 2026-06-19 source-verified audit found that **analyzer/codegen soundness is not yet established** and the **runtime effect/schema/store/EventStore contracts are drifted from the spec** — so the milestone scope was re-sequenced into a contract-first dependency graph. The release train was re-driven through two **pre-1.0 development milestones**, then the true RC gate, then GA:
 
 | Milestone | Carries | Status |
 |---|---|---|
