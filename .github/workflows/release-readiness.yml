@@ -106,6 +106,37 @@ jobs:
         working-directory: apps/skein_cli
         run: mix test test/cli/cli_surface_freeze_test.exs test/cli/dogfood_pins_freeze_test.exs
 
+      - name: Frozen-surface manifest check
+        run: |
+          set -euo pipefail
+          missing=0
+          require() {
+            local surface="$1"
+            local path="$2"
+            if [ ! -e "$path" ]; then
+              echo "::error title=Missing frozen-surface vector::$surface is listed in docs/ROADMAP.md but $path is missing"
+              missing=1
+            else
+              echo "OK: $surface -> $path"
+            fi
+          }
+
+          require "grammar" "apps/skein_compiler/test/skein/conformance/positive_corpus_test.exs"
+          require "reserved/contextual keywords" "conformance/freeze/keywords.json"
+          require "diagnostics" "conformance/freeze/diagnostics.json"
+          require "fix_code" "apps/skein_compiler/test/skein/error_edit_test.exs"
+          require "effect ABI" "conformance/freeze/effect_abi.json"
+          require "schema derivation" "conformance/freeze/json_schema_vectors.json"
+          require "CLI JSON" "conformance/freeze/cli_surface.json"
+          require "config keys" "apps/skein_cli/test/cli/config_test.exs"
+          require "EventStore shapes" "apps/skein_runtime/test/skein/runtime/event_store_freeze_test.exs"
+          require "example corpus" "apps/skein_compiler/test/skein/examples_test.exs"
+
+          if [ "$missing" -ne 0 ]; then
+            echo "One or more agent-consumed frozen surfaces lacks an executable vector/test."
+            exit 1
+          fi
+
       - name: Writability benchmark replay
         run: mix skein.bench -- --report "$RUNNER_TEMP/writability-report.json"
 
