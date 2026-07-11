@@ -241,4 +241,64 @@ defmodule Skein.CLI.JsonTest do
       assert msg =~ "No .skein files"
     end
   end
+
+  describe "run_status/1" do
+    test "wraps runtime status in a versioned inspectable envelope" do
+      result =
+        {:ok,
+         %{
+           state: "ready",
+           phase: "run.status",
+           module: "Skein.User.Service",
+           modules: ["Skein.User.Service"],
+           modules_count: 1,
+           port: 4000,
+           persist: true,
+           project_dir: "/tmp/service",
+           handlers: [%{module: "Skein.User.Service", handler: "__handler_0__", phase: "runtime"}],
+           supervisors: []
+         }}
+
+      assert %{schema: "skein.run_status/v1", ok: true, data: data} = Json.run_status(result)
+      assert data.state == "ready"
+      assert [%{handler: "__handler_0__"}] = data.handlers
+    end
+  end
+
+  describe "event_store/1" do
+    test "projects EventStore events to stable inspectable fields" do
+      result =
+        {:ok,
+         %{
+           count: 1,
+           events: [
+             %{
+               id: "evt_1",
+               timestamp: 123,
+               kind: :tool,
+               module: "Refunds",
+               tool: "Refunds.Create",
+               phase: :execute,
+               capability: "tool.use(Refunds.Create)",
+               effect_span: %{start: %{line: 10, col: 5}, end: %{line: 12, col: 6}},
+               error_code: "E_TOOL_DENIED",
+               fix_hint: "Declare capability tool.use(Refunds.Create)",
+               private: self()
+             }
+           ]
+         }}
+
+      assert %{schema: "skein.event_store/v1", ok: true, data: data} = Json.event_store(result)
+      assert data.count == 1
+
+      assert [event] = data.events
+      assert event.module == "Refunds"
+      assert event.tool == "Refunds.Create"
+      assert event.phase == "execute"
+      assert event.error_code == "E_TOOL_DENIED"
+      refute Map.has_key?(event, :private)
+      assert {:ok, _} = Jason.decode(Json.encode(Json.event_store(result)))
+    end
+  end
+
 end

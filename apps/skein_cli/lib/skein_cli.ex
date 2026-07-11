@@ -751,6 +751,60 @@ defmodule Skein.CLI do
   # run — start service locally
   # ------------------------------------------------------------------
 
+
+  @doc """
+  Compiles a project and returns machine-inspectable runtime status without
+  starting the HTTP listener. Used by `skein run status --json`.
+  """
+  @spec run_status([String.t()]) :: {:ok, map()} | {:error, String.t()}
+  def run_status(args) do
+    with {:ok, config} <- run_config(args) do
+      modules = config.modules
+
+      {:ok,
+       %{
+         state: "ready",
+         phase: "run.status",
+         port: config.port,
+         persist: config.persist,
+         project_dir: config.project_dir,
+         module: inspect(config.module),
+         modules: Enum.map(modules, &inspect/1),
+         modules_count: length(modules),
+         handlers: Enum.flat_map(modules, &module_handlers/1),
+         supervisors: Enum.flat_map(modules, &module_supervisors/1)
+       }}
+    end
+  end
+
+  defp module_handlers(module) do
+    if function_exported?(module, :__handlers__, 0) do
+      Enum.map(module.__handlers__(), fn handler ->
+        %{
+          module: inspect(module),
+          handler: Map.get(handler, :handler) |> inspect(),
+          phase: "runtime",
+          source: Map.get(handler, :source),
+          method: Map.get(handler, :method),
+          path: Map.get(handler, :path) || Map.get(handler, :route),
+          capability: Map.get(handler, :capability)
+        }
+      end)
+    else
+      []
+    end
+  end
+
+  defp module_supervisors(module) do
+    if function_exported?(module, :__supervisors__, 0) do
+      Enum.map(module.__supervisors__(), fn supervisor ->
+        %{module: inspect(module), phase: "supervisor", name: Map.get(supervisor, :name)}
+      end)
+    else
+      []
+    end
+  end
+
   @doc """
   Compiles a Skein project and starts an HTTP server for any handlers found.
 
@@ -921,6 +975,49 @@ defmodule Skein.CLI do
   # ------------------------------------------------------------------
   # trace — view recent trace spans
   # ------------------------------------------------------------------
+
+
+  @doc """
+  Queries the unified runtime EventStore for machine-readable inspection.
+  """
+  @spec event_store([String.t()]) :: {:ok, map()} | {:error, String.t()}
+  def event_store(args) do
+    alias Skein.Runtime.EventStore
+
+    EventStore.init()
+
+    with {:ok, opts} <- parse_event_store_args(args) do
+      limit = Keyword.get(opts, :last, 10)
+      filters = Keyword.drop(opts, [:last])
+
+      events = if filters == [], do: EventStore.recent(limit), else: EventStore.query(filters) |> Enum.take(limit)
+      {:ok, %{events: events, count: length(events)}}
+    end
+  end
+
+  defp parse_event_store_args(args), do: parse_event_store_flags(args, [])
+
+  defp parse_event_store_flags(["--last", n | rest], acc) do
+    case Integer.parse(n) do
+      {count, ""} when count > 0 -> parse_event_store_flags(rest, [{:last, count} | acc])
+      _ -> {:error, "Invalid value for --last: '#{n}' (expected a positive integer)"}
+    end
+  end
+
+  defp parse_event_store_flags(["--kind", kind | rest], acc),
+    do: parse_event_store_flags(rest, [{:kind, String.to_atom(kind)} | acc])
+
+  defp parse_event_store_flags(["--event", event | rest], acc),
+    do: parse_event_store_flags(rest, [{:event, event} | acc])
+
+  defp parse_event_store_flags(["--stream", stream | rest], acc),
+    do: parse_event_store_flags(rest, [{:stream, stream} | acc])
+
+  defp parse_event_store_flags(["-" <> _ = flag | _], _acc),
+    do: {:error, "Unknown option: #{flag} (run 'skein help' for usage)"}
+
+  defp parse_event_store_flags([arg | _], _acc), do: {:error, "Unexpected argument: #{arg}"}
+  defp parse_event_store_flags([], acc), do: {:ok, Enum.reverse(acc)}
 
   @doc """
   Returns recent trace spans from the runtime trace store.

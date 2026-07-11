@@ -38,6 +38,8 @@ defmodule Skein.CLI.Main do
   handler functions.
   """
   @spec dispatch([String.t()]) :: no_return()
+  def dispatch(["check" | rest]), do: dispatch(["compile" | rest])
+
   def dispatch(["compile" | rest]) do
     {json?, rest} = take_json_flag(rest)
     result = Skein.CLI.compile(rest)
@@ -83,6 +85,17 @@ defmodule Skein.CLI.Main do
     end
   end
 
+  def dispatch(["run", "status" | rest]) do
+    {json?, rest} = take_json_flag(rest)
+    result = Skein.CLI.run_status(rest)
+
+    if json? do
+      emit_json(Skein.CLI.Json.run_status(result))
+    else
+      render_run_status(result)
+    end
+  end
+
   def dispatch(["run" | rest]) do
     case Skein.CLI.run(rest) do
       {:ok, _pid} ->
@@ -94,6 +107,23 @@ defmodule Skein.CLI.Main do
         System.halt(1)
     end
   end
+
+  def dispatch(["eventstore", "query" | rest]), do: dispatch(["event-store", "query" | rest])
+
+  def dispatch(["EventStore", "query" | rest]), do: dispatch(["event-store", "query" | rest])
+
+  def dispatch(["event-store", "query" | rest]) do
+    {json?, rest} = take_json_flag(rest)
+    result = Skein.CLI.event_store(rest)
+
+    if json? do
+      emit_json(Skein.CLI.Json.event_store(result))
+    else
+      render_event_store(result)
+    end
+  end
+
+  def dispatch(["trace", "query" | rest]), do: dispatch(["trace" | rest])
 
   def dispatch(["trace" | rest]) do
     {json?, rest} = take_json_flag(rest)
@@ -269,6 +299,26 @@ defmodule Skein.CLI.Main do
     System.halt(1)
   end
 
+  defp render_run_status({:ok, status}) do
+    IO.puts("Run status: #{status.state} (#{status.modules_count} module(s), port #{status.port})")
+    System.halt(0)
+  end
+
+  defp render_run_status({:error, reason}) do
+    IO.puts(:stderr, "Error: #{format_error(reason)}")
+    System.halt(1)
+  end
+
+  defp render_event_store({:ok, result}) do
+    IO.puts(Skein.CLI.Json.encode(Skein.CLI.Json.event_store({:ok, result})))
+    System.halt(0)
+  end
+
+  defp render_event_store({:error, reason}) do
+    IO.puts(:stderr, "Error: #{format_error(reason)}")
+    System.halt(1)
+  end
+
   defp render_trace({:ok, result}) do
     # Plain, byte-stable rendering through the pure framework-neutral
     # renderer (#284). MCP/LSP/non-TTY output never routes through a TUI.
@@ -298,14 +348,18 @@ defmodule Skein.CLI.Main do
 
     Commands:
       compile <file.skein>       Compile a single .skein file
+      check <file.skein>         Alias for compile (JSON schema: skein.compile/v1)
       new <project-dir>          Scaffold a new Skein project
       build [project-dir]        Compile all .skein files in a project (default: .)
       test [project-dir]         Run all tests in a project (default: .)
       run [project-dir]          Start the Skein service (default: .)
+      run status [project-dir]   Inspect compiled service modules without serving
       agents [project-dir]       Create or refresh AGENTS.md (default: .)
       mcp                        Start the MCP server (stdio, for coding agents)
       lsp                        Start the language server (stdio, for editors)
       trace [options]            View recent trace spans
+      trace query [options]      Alias for trace
+      event-store query [opts]   Query unified runtime EventStore
       completions zsh            Print the zsh completion script
       version                    Print version
       help                       Show this help
@@ -322,7 +376,8 @@ defmodule Skein.CLI.Main do
       trace --last <n>           Number of traces (default: 10)
       trace --kind <kind>        Filter by span kind
       --json                     Machine-readable JSON output (compile, build,
-                                 test, trace) — a versioned, documented envelope
+                                 test, trace, run status, event-store query) — a
+                                 versioned, documented envelope
     """
   end
 
