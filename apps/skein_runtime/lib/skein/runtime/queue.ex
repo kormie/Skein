@@ -25,6 +25,7 @@ defmodule Skein.Runtime.Queue do
 
   use GenServer
 
+  alias Skein.Runtime.Replay
   alias Skein.Runtime.Trace
 
   @doc """
@@ -79,13 +80,31 @@ defmodule Skein.Runtime.Queue do
   def publish(queue_name, message, capabilities) do
     case Skein.Runtime.Capability.check_scoped("queue.publish", queue_name, capabilities) do
       :ok ->
-        publish(queue_name, message)
-        {:ok, queue_name}
+        replayable_publish(:queue, queue_name, message, fn -> publish(queue_name, message) end)
 
       {:error, reason} ->
         # PublishError.Denied(reason) — the frozen ABI form (C2/#297).
         {:error, {:denied, reason}}
     end
+  end
+
+  defp replayable_publish(kind, queue_name, message, live_fun) do
+    Trace.with_recorded_span(%{kind: kind, method: :publish, queue: queue_name, message: message}, fn ->
+      case Replay.next_response(kind, %{method: :publish, queue: queue_name}) do
+        {:ok, _recorded} ->
+          {{:ok, queue_name}, %{replayed: true, result: :ok}}
+
+        :no_replay ->
+          live_fun.()
+          {{:ok, queue_name}, %{result: :ok}}
+
+        :exhausted ->
+          {{:error, {:denied, "Replay trace exhausted: no recorded queue publish remains"}}, %{replayed: true}}
+
+        {:mismatch, message} ->
+          {{:error, {:denied, message}}, %{replayed: true}}
+      end
+    end)
   end
 
   @doc """

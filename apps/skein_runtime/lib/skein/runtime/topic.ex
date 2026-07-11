@@ -28,6 +28,7 @@ defmodule Skein.Runtime.Topic do
 
   use GenServer
 
+  alias Skein.Runtime.Replay
   alias Skein.Runtime.Trace
 
   @doc """
@@ -71,13 +72,31 @@ defmodule Skein.Runtime.Topic do
   def publish(topic_name, message, capabilities) do
     case check_capability("topic.publish", topic_name, capabilities) do
       :ok ->
-        ensure_started()
-        GenServer.cast(__MODULE__, {:publish, topic_name, message})
-        {:ok, topic_name}
+        replayable_publish(:topic, topic_name, message)
 
       {:error, _reason} = error ->
         error
     end
+  end
+
+  defp replayable_publish(kind, topic_name, message) do
+    Trace.with_recorded_span(%{kind: kind, method: :publish, topic: topic_name, message: message}, fn ->
+      case Replay.next_response(kind, %{method: :publish, topic: topic_name}) do
+        {:ok, _recorded} ->
+          {{:ok, topic_name}, %{replayed: true, result: :ok}}
+
+        :no_replay ->
+          ensure_started()
+          GenServer.cast(__MODULE__, {:publish, topic_name, message})
+          {{:ok, topic_name}, %{result: :ok}}
+
+        :exhausted ->
+          {{:error, {:denied, "Replay trace exhausted: no recorded topic publish remains"}}, %{replayed: true}}
+
+        {:mismatch, message} ->
+          {{:error, {:denied, message}}, %{replayed: true}}
+      end
+    end)
   end
 
   @doc """

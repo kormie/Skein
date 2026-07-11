@@ -266,6 +266,23 @@ defmodule Skein.Runtime.Replay do
 
   defp extract_response(:tool, event), do: event["response"]
 
+  defp extract_response(:timer, event) do
+    %{
+      "result" => Map.get(event, "result"),
+      "timer_ref" => Map.get(event, "timer_ref")
+    }
+  end
+
+  defp extract_response(:process, event) do
+    %{
+      "result" => Map.get(event, "result", "ok"),
+      "spawn_id" => Map.get(event, "spawn_id")
+    }
+  end
+
+  defp extract_response(:queue, event), do: event
+  defp extract_response(:topic, event), do: event
+
   defp extract_response(_kind, event), do: event
 
   # Replay individual span types
