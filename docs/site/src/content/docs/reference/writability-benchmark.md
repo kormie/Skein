@@ -19,17 +19,15 @@ the chart regenerates whenever a live run is recorded.
 
 For each of twelve fixed tasks spanning the language surface — pure functions,
 records with `Option`, `Result` flows, enums and `match`, stdlib callbacks,
-string interpolation, tools, HTTP handlers, the typed store, agents, LLM
-effects, and scenario capability environments — the harness runs a
+string interpolation, tools, HTTP handlers, the typed store, agents, typed
+`llm.json[T]` output validation, and scenario capability environments — the harness runs a
 generate-compile-fix loop:
 
 1. Ask a code-generating model for a complete Skein module. The generation
-   context is the [agent primer](/Skein/reference/agent-primer/) that
-   `skein new` scaffolds into every project as `AGENTS.md`; tasks whose
-   surface the primer only sketches (tools, handlers, the typed store,
-   `llm.chat`, scenarios) carry a short fixed crib of the relevant effect
-   signatures, checked in with the suite.
-2. Compile it and collect the structured diagnostics.
+   context is the public language specification (`docs/SKEIN_SPEC.md`) plus
+   the checked-in task brief; the live benchmark is therefore a direct test
+   of whether an agent can write Skein from the public spec alone.
+2. Compile it, load it, run any declared tests, and collect structured diagnostics.
 3. Mechanically apply every machine-applicable fix (`span` + `edit_kind` +
    `fix_code`), the way the LSP and MCP consumers do.
 4. Feed the remaining diagnostics (JSON) back to the model and iterate to
@@ -43,6 +41,13 @@ as a compiler bug — the first live run surfaced several
 suite from 10/12 to 12/12 green.
 
 ## Deterministic by default
+
+The scenario briefs for the 1.0 thesis surfaces live under
+`conformance/writability/scenarios/`: a single-agent workflow with phases and
+terminal states, a tool definition plus `tool.call`, a scenario capability
+environment, deterministic replay/golden coverage, an HTTP handler that starts
+an agent, and an agent/program path that calls `llm.json[T]` and uses typed
+output.
 
 Every live run records the raw generations to
 `conformance/writability/recordings.json`. CI and release-readiness run in
@@ -63,3 +68,12 @@ mix skein.bench -- --live
 A live run can also be triggered on demand from the repository's
 **Writability Bench** GitHub Actions workflow; the refreshed recordings land
 through a normal pull request, pinned by the replay test.
+
+
+## 1.0 release gate
+
+Regressions in this benchmark are 1.0 blockers. A failing replay means a
+previously accepted generated solution no longer passes the same compile/load/run
+checks used by first-party examples. A live task that does not converge is also
+a release blocker when the cause is syntax ambiguity, a misleading diagnostic,
+or a missing actionable fix hint.
