@@ -174,17 +174,21 @@ defmodule Skein.CLI.Bench.Tasks do
       },
       %{
         id: "llm_effect",
-        name: "LLM chat effect",
+        name: "Typed LLM JSON output",
         prompt: """
         Write a Skein module named `Poet` with:
         - the model capability for provider "anthropic", model "claude-opus-4-8".
-        - `fn haiku(topic: String) -> Result[String, LlmError]` — asks the model for a
-          haiku about the topic via `llm.chat` (system prompt of your choosing),
-          propagating errors to the caller.
+        - `type PoemCheck { ok: Bool, reason: String }`.
+        - `fn validate(topic: String) -> Result[PoemCheck, LlmError]` — asks the model
+          via `llm.json[PoemCheck]` to return typed JSON deciding whether the topic is
+          suitable for a haiku, propagating model or schema errors to the caller.
+        - `fn is_valid_topic(topic: String) -> Result[Bool, LlmError]` — calls
+          `validate`, propagates errors, and returns the typed `ok` field.
         """,
         context: """
-        `llm.chat(model: String, system: String, input: T) -> Result[String, LlmError]`
-        requires `capability model(provider, model_name)`.
+        `llm.json[T](model: String, system: String, input: U) -> Result[T, LlmError]`
+        requires `capability model(provider, model_name)`. The compiler derives the JSON
+        schema from `T`; field access on the unwrapped result is typed.
         """
       },
       %{

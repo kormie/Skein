@@ -27,7 +27,6 @@ defmodule Skein.CLI.Bench do
   the recordings.
   """
 
-  alias Skein.CLI.AgentsMd
   alias Skein.CLI.Bench.History
   alias Skein.CLI.Bench.Recordings
   alias Skein.CLI.Bench.Tasks
@@ -267,9 +266,51 @@ defmodule Skein.CLI.Bench do
 
   defp check(source, task) do
     case Skein.Compiler.check_string(source, task.id <> ".skein") do
-      {:ok, %{errors: errors, warnings: warnings}} -> {errors, warnings}
-      {:error, message} -> {[internal_error(message, task)], []}
+      {:ok, %{errors: [], warnings: warnings}} ->
+        case compile_load_and_run(source, task) do
+          :ok -> {[], warnings}
+          {:error, error} -> {[error], warnings}
+        end
+
+      {:ok, %{errors: errors, warnings: warnings}} ->
+        {errors, warnings}
+
+      {:error, message} ->
+        {[internal_error(message, task)], []}
     end
+  end
+
+  defp compile_load_and_run(source, task) do
+    case Skein.Compiler.compile_string(source) do
+      {:module, mod} ->
+        run_declared_tests(mod, task)
+
+      {:error, errors} when is_list(errors) ->
+        message =
+          "compile/load failed after a clean check: " <>
+            inspect(Enum.map(errors, &{&1.code, &1.message}))
+
+        {:error, internal_error(message, task)}
+
+      {:error, message} ->
+        {:error,
+         internal_error("compile/load failed after a clean check: " <> to_string(message), task)}
+    end
+  end
+
+  defp run_declared_tests(mod, task) do
+    if function_exported?(mod, :__tests__, 0) do
+      mod.__tests__()
+      |> Enum.each(fn %{fn: name} -> apply(mod, name, []) end)
+    end
+
+    :ok
+  rescue
+    exception ->
+      {:error, internal_error("generated test failed: " <> Exception.message(exception), task)}
+  catch
+    kind, reason ->
+      {:error, internal_error("generated test failed: " <> inspect({kind, reason}), task)}
   end
 
   # check_string only returns {:error, message} for file-system problems,
@@ -329,9 +370,10 @@ defmodule Skein.CLI.Bench do
   def system_prompt do
     """
     You are an expert Skein programmer. Skein is a small language for cloud
-    services on the BEAM; here is its primer:
+    services on the BEAM. Use only the public language specification below as
+    the authority for syntax and semantics:
 
-    #{AgentsMd.primer()}
+    #{public_spec()}
 
     Write exactly one complete, compiling Skein source file for the user's
     task. Output ONLY the Skein source inside a single ```skein fence —
@@ -339,11 +381,13 @@ defmodule Skein.CLI.Bench do
     """
   end
 
-  defp initial_prompt(%{prompt: prompt, context: nil}), do: prompt
-
-  defp initial_prompt(%{prompt: prompt, context: context}) do
-    prompt <> "\nAdditional language context for this task:\n\n" <> context
+  defp public_spec do
+    [File.cwd!(), "docs", "SKEIN_SPEC.md"]
+    |> Path.join()
+    |> File.read!()
   end
+
+  defp initial_prompt(%{prompt: prompt}), do: prompt
 
   defp feedback_prompt(source, errors) do
     diagnostics = errors |> Skein.Error.to_json_list() |> Jason.encode!(pretty: true)
