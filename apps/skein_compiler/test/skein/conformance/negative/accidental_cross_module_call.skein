@@ -1,0 +1,13 @@
+-- expect: E0016
+-- Agents often try to call functions from another module as if every module were
+-- in scope. Cross-module calls are not implicit; expose the behavior through a
+-- tool/effect boundary or keep the helper in this module.
+module Helpers {
+  fn double(x: Int) -> Int { x + x }
+}
+
+module Caller {
+  fn run() -> Int {
+    Helpers.double(21)
+  }
+}
